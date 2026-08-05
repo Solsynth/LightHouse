@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	"src.solsynth.dev/sosys/stargate/internal/actionlog"
 	"src.solsynth.dev/sosys/stargate/internal/auth"
@@ -176,8 +178,21 @@ func run(log *slog.Logger) error {
 	})
 	authctl.RegisterWellKnown(srv.Engine, cfg)
 
-	// gRPC server (Phase 9 service servers).
-	grpcSrv := grpc.NewServer()
+	// gRPC server (Phase 9 service servers). TLS mirrors DysonFS: when
+	// grpc.useTLS is set, certFile/keyFile are required (self-signed fleet
+	// certs; clients skip CA validation).
+	grpcOpts := []grpc.ServerOption{}
+	if cfg.GRPC.UseTLS {
+		if cfg.GRPC.CertFile == "" || cfg.GRPC.KeyFile == "" {
+			return fmt.Errorf("grpc tls requires grpc.certFile and grpc.keyFile")
+		}
+		creds, err := credentials.NewServerTLSFromFile(cfg.GRPC.CertFile, cfg.GRPC.KeyFile)
+		if err != nil {
+			return fmt.Errorf("load grpc tls credentials: %w", err)
+		}
+		grpcOpts = append(grpcOpts, grpc.Creds(creds))
+	}
+	grpcSrv := grpc.NewServer(grpcOpts...)
 	registerGrpcServices(grpcSrv, authService, tokenAuth, st, permService, logs, jwtService, rc, cfg, log)
 
 	errCh := make(chan error, 2)

@@ -6,9 +6,12 @@ port = "8080"
 
 [grpc]
 port = "9090"
-useTLS = false
-certFile = ""
-keyFile = ""
+# TLS is on by default (the C# fleet and Blade dial https://_grpc.stargate).
+# server.crt/server.key are issued by the DysonNetwork CA (self-signed);
+# clients skip CA validation, mirroring the fleet convention.
+useTLS = true
+certFile = "Keys/server.crt"
+keyFile = "Keys/server.key"
 
 [database]
 dsn = "host=localhost port=5432 user=postgres dbname=dyson_stargate sslmode=disable"

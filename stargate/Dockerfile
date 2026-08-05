@@ -14,7 +14,7 @@ COPY --from=build /out/stargate /app/stargate
 COPY config.example.toml /app/config.example.toml
 EXPOSE 8080 9090
 # Runtime secrets (Keys/PrivateKey.pem, PublicKey.pem, Solarpass.p8,
-# GeoLite2-City.mmdb) are NOT baked into the image — mount them at deploy
-# time, e.g.:
+# GeoLite2-City.mmdb, server.crt, server.key) are NOT baked into the image —
+# mount them at deploy time, e.g.:
 #   docker run -v /host/keys:/app/Keys ghcr.io/$PACKAGE_OWNER/stargate
 ENTRYPOINT ["/app/stargate"]
