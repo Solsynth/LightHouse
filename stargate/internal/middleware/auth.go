@@ -154,10 +154,13 @@ func Auth(deps AuthDeps) gin.HandlerFunc {
 		ip := ClientIP(c.Request)
 		valid, session, message, _ := deps.Token.AuthenticateToken(c.Request.Context(), tokenInfo.Token, ip)
 		if !valid || session == nil {
-			// Mirror ApiError.Unauthorized(): surface only the canonical
-			// message; keep the rejection reason server-side.
+			// Mirror DysonTokenAuthHandler: an invalid token leaves the
+			// request unauthenticated but does NOT reject anonymous routes
+			// (login/challenge start must work even with a stale token
+			// attached). RequireAuth and handlers checking CurrentUser
+			// emit the 401 where auth is actually mandatory.
 			deps.Log.Debug("token rejected", "reason", message)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, errs.Unauthorized(""))
+			c.Next()
 			return
 		}
 		// API-key tokens are typed ApiKey regardless of extraction path.
