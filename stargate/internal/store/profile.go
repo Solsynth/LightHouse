@@ -41,7 +41,7 @@ func (s *Store) GetOrCreateAccountProfile(ctx context.Context, accountID uuid.UU
 	now := time.Now().UTC()
 	if _, err := s.DB.Exec(ctx, `INSERT INTO account_profiles
 		(id, account_id, created_at, updated_at, experience, social_credits)
-		VALUES ($1, $2, $3, $3, 0, 0)
+		VALUES ($1, $2, $3, $3, 0, 100)
 		ON CONFLICT (account_id) DO NOTHING`, uuid.NewString(), accountID, now); err != nil {
 		return nil, err
 	}
@@ -162,6 +162,7 @@ func scanProfile(row pgx.Row) (*model.Profile, error) {
 	profile.LastSeenAt = lastSeenAt
 	profile.Experience = experience
 	profile.SocialCredits = socialCredits
+	profile.ComputeLeveling()
 	_ = json.Unmarshal(links, &profile.Links)
 	_ = json.Unmarshal(usernameColor, &profile.UsernameColor)
 	_ = json.Unmarshal(verification, &profile.Verification)

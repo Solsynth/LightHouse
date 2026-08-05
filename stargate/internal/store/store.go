@@ -182,8 +182,8 @@ func scanAccountWithProfile(row pgx.Row) (*model.Account, error) {
 		profileID, profileAccountID                                                *string
 		firstName, middleName, lastName, bio, gender, pronouns, timeZone, location *string
 		birthday, lastSeenAt                                                       *model.Time
-		experience                                                                 int
-		socialCredits                                                              float64
+		experience                                                                 *int
+		socialCredits                                                              *float64
 		profileCreated, profileUpdated, profileDeleted                             *model.Time
 	)
 	err := row.Scan(
@@ -212,8 +212,13 @@ func scanAccountWithProfile(row pgx.Row) (*model.Account, error) {
 		profile.Location = location
 		profile.Birthday = birthday
 		profile.LastSeenAt = lastSeenAt
-		profile.Experience = experience
-		profile.SocialCredits = socialCredits
+		if experience != nil {
+			profile.Experience = *experience
+		}
+		if socialCredits != nil {
+			profile.SocialCredits = *socialCredits
+		}
+		profile.ComputeLeveling()
 		if profileAccountID != nil {
 			profile.AccountId = *profileAccountID
 		}
