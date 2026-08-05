@@ -1,5 +1,7 @@
 package model
 
+import "encoding/json"
+
 // Auth models mirror DysonNetwork.Shared.Models.AuthSession.cs and related
 // files. JSON keys match the Island SDK parsers (auth_session.g.dart).
 
@@ -42,57 +44,90 @@ const (
 
 // AuthSession mirrors SnAuthSession.
 type AuthSession struct {
-	Id            string      `json:"id"`
-	Label         *string     `json:"label,omitempty"`
-	LastGrantedAt *Time       `json:"last_granted_at,omitempty"`
-	ExpiredAt     *Time       `json:"expired_at,omitempty"`
-	Audiences     []string    `json:"audiences,omitempty"`
-	Scopes        []string    `json:"scopes,omitempty"`
-	IpAddress     *string     `json:"ip_address,omitempty"`
-	UserAgent     *string     `json:"user_agent,omitempty"`
-	Location      *GeoPoint   `json:"location,omitempty"`
-	Type          SessionType `json:"type"`
-	AccountId     string      `json:"account_id"`
-	CreatedAt     *Time       `json:"created_at,omitempty"`
-	UpdatedAt     *Time       `json:"updated_at,omitempty"`
-	DeletedAt     *Time       `json:"deleted_at,omitempty"`
-	IsCurrent     bool        `json:"is_current,omitempty"`
-	ChildrenCount *int        `json:"children_count,omitempty"`
+	Id             string     `json:"id"`
+	Label          *string    `json:"label,omitempty"`
+	LastGrantedAt  *Time      `json:"last_granted_at,omitempty"`
+	ExpiredAt      *Time      `json:"expired_at,omitempty"`
+	Audiences      []string   `json:"audiences"`
+	Scopes         []string   `json:"scopes"`
+	IpAddress      *string    `json:"ip_address,omitempty"`
+	UserAgent      *string    `json:"user_agent,omitempty"`
+	Location       *GeoPoint  `json:"location,omitempty"`
+	Type           SessionType `json:"type"`
+	AccountId      string     `json:"account_id"`
+	CreatedAt      *Time      `json:"created_at,omitempty"`
+	UpdatedAt      *Time      `json:"updated_at,omitempty"`
+	DeletedAt      *Time      `json:"deleted_at,omitempty"`
+	IsCurrent      bool       `json:"is_current,omitempty"`
+	ChildrenCount  *int       `json:"children_count,omitempty"`
 	// ClientId/ParentSessionId/AppId/ChallengeId/Epoch are persisted columns
 	// that are not part of the public wire shape.
-	ClientId        *string `json:"-"`
+	ClientId       *string `json:"-"`
 	ParentSessionId *string `json:"-"`
-	AppId           *string `json:"-"`
-	ChallengeId     *string `json:"-"`
-	Epoch           int     `json:"-"`
+	AppId          *string `json:"-"`
+	ChallengeId    *string `json:"-"`
+	Epoch          int     `json:"-"`
 	// Account is populated server-side for enrichment.
 	Account *Account `json:"-"`
 }
 
-// AuthChallenge mirrors SnAuthChallenge.
+// MarshalJSON normalizes nil audiences/scopes to [] (the C# always emits
+// empty lists; the SDK tolerates both but parity is cheap).
+func (s AuthSession) MarshalJSON() ([]byte, error) {
+	type alias AuthSession
+	normalized := s
+	if normalized.Audiences == nil {
+		normalized.Audiences = []string{}
+	}
+	if normalized.Scopes == nil {
+		normalized.Scopes = []string{}
+	}
+	return json.Marshal((alias)(normalized))
+}
+
+// AuthChallenge mirrors SnAuthChallenge. The three list fields are strict-cast
+// by the Dart SDK (`as List<dynamic>`), so they must always serialize as []
+// (the C# emits empty lists, never null).
 type AuthChallenge struct {
-	Id                  string         `json:"id"`
-	ExpiredAt           *Time          `json:"expired_at,omitempty"`
-	StepRemain          int            `json:"step_remain"`
-	StepTotal           int            `json:"step_total"`
-	FailedAttempts      int            `json:"failed_attempts"`
-	BlacklistFactors    []string       `json:"blacklist_factors,omitempty"`
-	Audiences           []string       `json:"audiences,omitempty"`
-	Scopes              []string       `json:"scopes,omitempty"`
-	IpAddress           *string        `json:"ip_address,omitempty"`
-	UserAgent           *string        `json:"user_agent,omitempty"`
-	DeviceId            string         `json:"device_id"`
-	DeviceName          *string        `json:"device_name,omitempty"`
-	Platform            ClientPlatform `json:"platform"`
-	Nonce               *string        `json:"nonce,omitempty"`
-	Location            *GeoPoint      `json:"location,omitempty"`
-	AccountId           string         `json:"account_id"`
-	ApprovedAt          *Time          `json:"approved_at,omitempty"`
-	DeclinedAt          *Time          `json:"declined_at,omitempty"`
-	ApprovedBySessionId *string        `json:"approved_by_session_id,omitempty"`
-	CreatedAt           *Time          `json:"created_at,omitempty"`
-	UpdatedAt           *Time          `json:"updated_at,omitempty"`
-	DeletedAt           *Time          `json:"deleted_at,omitempty"`
+	Id             string     `json:"id"`
+	ExpiredAt      *Time      `json:"expired_at,omitempty"`
+	StepRemain     int        `json:"step_remain"`
+	StepTotal      int        `json:"step_total"`
+	FailedAttempts int        `json:"failed_attempts"`
+	BlacklistFactors []string `json:"blacklist_factors"`
+	Audiences      []string   `json:"audiences"`
+	Scopes         []string   `json:"scopes"`
+	IpAddress      *string    `json:"ip_address,omitempty"`
+	UserAgent      *string    `json:"user_agent,omitempty"`
+	DeviceId       string     `json:"device_id"`
+	DeviceName     *string    `json:"device_name,omitempty"`
+	Platform       ClientPlatform `json:"platform"`
+	Nonce          *string    `json:"nonce,omitempty"`
+	Location       *GeoPoint  `json:"location,omitempty"`
+	AccountId      string     `json:"account_id"`
+	ApprovedAt     *Time      `json:"approved_at,omitempty"`
+	DeclinedAt     *Time      `json:"declined_at,omitempty"`
+	ApprovedBySessionId *string `json:"approved_by_session_id,omitempty"`
+	CreatedAt      *Time      `json:"created_at,omitempty"`
+	UpdatedAt      *Time      `json:"updated_at,omitempty"`
+	DeletedAt      *Time      `json:"deleted_at,omitempty"`
+}
+
+// MarshalJSON normalizes nil list fields to [] so the Dart SDK's strict
+// `as List<dynamic>` casts never see null.
+func (c AuthChallenge) MarshalJSON() ([]byte, error) {
+	type alias AuthChallenge
+	normalized := c
+	if normalized.BlacklistFactors == nil {
+		normalized.BlacklistFactors = []string{}
+	}
+	if normalized.Audiences == nil {
+		normalized.Audiences = []string{}
+	}
+	if normalized.Scopes == nil {
+		normalized.Scopes = []string{}
+	}
+	return json.Marshal((alias)(normalized))
 }
 
 // AuthClient mirrors SnAuthClient (device).
@@ -109,10 +144,22 @@ type AuthClient struct {
 	DeletedAt   *Time          `json:"deleted_at,omitempty"`
 }
 
-// AuthClientWithSessions mirrors SnAuthClientWithSessions.
+// AuthClientWithSessions mirrors SnAuthClientWithSessions. Sessions is
+// strict-cast by the Dart SDK (`as List<dynamic>`), so it must always
+// serialize as [].
 type AuthClientWithSessions struct {
 	AuthClient
 	Sessions []AuthSession `json:"sessions"`
+}
+
+// MarshalJSON normalizes a nil Sessions list to [].
+func (c AuthClientWithSessions) MarshalJSON() ([]byte, error) {
+	type alias AuthClientWithSessions
+	normalized := c
+	if normalized.Sessions == nil {
+		normalized.Sessions = []AuthSession{}
+	}
+	return json.Marshal((alias)(normalized))
 }
 
 // ApiKey mirrors SnApiKey (Shared ApiKey.cs).
