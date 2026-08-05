@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +17,25 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/config"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
+
+// ClaimInt reads an integer claim that may be serialized either as a JSON
+// number (float64 after parsing) or as a string: the C# minting writes
+// ver/epoch as strings (JWT claims are string-valued) and validates with
+// int.TryParse, so a float64-only assertion silently skips the check on
+// fleet-issued tokens.
+func ClaimInt(claims jwt.MapClaims, name string) (int, bool) {
+	switch v := claims[name].(type) {
+	case float64:
+		return int(v), true
+	case string:
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return 0, false
+		}
+		return n, true
+	}
+	return 0, false
+}
 
 // ClaimType is the JWT claim holding the token use ("user"|"refresh"|"api_key").
 // Legacy tokens use "token_use" instead; the validation path falls back to it.

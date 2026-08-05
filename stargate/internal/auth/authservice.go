@@ -451,12 +451,12 @@ func (s *AuthService) RefreshSessionAndIssueTokens(ctx context.Context, refreshT
 	if !ok {
 		return nil, &ErrInvalid{Message: "Invalid refresh token."}
 	}
-	if tokenVer, ok := claims["ver"].(float64); ok {
+	if tokenVer, ok := ClaimInt(claims, "ver"); ok {
 		currentVer, err := s.token.GetAccountVersion(ctx, accountID.String())
 		if err != nil {
 			return nil, err
 		}
-		if int(tokenVer) < currentVer {
+		if tokenVer < currentVer {
 			return nil, &ErrInvalid{Message: "Refresh token has been invalidated."}
 		}
 	}
@@ -474,7 +474,7 @@ func (s *AuthService) RefreshSessionAndIssueTokens(ctx context.Context, refreshT
 	if session.ExpiredAt != nil && !session.ExpiredAt.Time().After(now) {
 		return nil, &ErrInvalid{Message: "Session has been expired."}
 	}
-	if tokenEpoch, ok := claims["epoch"].(float64); ok && int(tokenEpoch) != session.Epoch {
+	if tokenEpoch, ok := ClaimInt(claims, "epoch"); ok && tokenEpoch != session.Epoch {
 		return nil, &ErrInvalid{Message: "Refresh token has been revoked."}
 	}
 

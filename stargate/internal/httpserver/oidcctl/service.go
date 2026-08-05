@@ -686,7 +686,7 @@ func (s *service) handleRefreshTokenFlow(ctx context.Context, clientID, refreshT
 	if err != nil {
 		return nil, nil, nil, errors.New("Invalid refresh token")
 	}
-	if claimVersion, ok := claims["ver"].(float64); ok {
+	if claimVersion, ok := auth.ClaimInt(claims, "ver"); ok {
 		currentVersion, err := s.token.GetAccountVersion(ctx, accountID.String())
 		if err != nil {
 			return nil, nil, nil, err
@@ -717,7 +717,7 @@ func (s *service) handleRefreshTokenFlow(ctx context.Context, clientID, refreshT
 			}
 		}
 	}
-	if tokenEpoch, ok := claims["epoch"].(float64); ok && int(tokenEpoch) != session.Epoch {
+	if tokenEpoch, ok := auth.ClaimInt(claims, "epoch"); ok && tokenEpoch != session.Epoch {
 		return nil, nil, nil, errors.New("Refresh token has been revoked")
 	}
 	newExpiry := now.Add(s.refreshLifetime)

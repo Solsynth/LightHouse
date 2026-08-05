@@ -222,8 +222,8 @@ func (t *TokenAuthService) validateToken(token string) (sessionID uuid.UUID, tok
 		return uuid.Nil, "", 0, nil, false
 	}
 	tokenUse = TokenUseOf(claims)
-	if e, ok := claims["epoch"].(float64); ok {
-		epoch = int(e)
+	if e, ok := ClaimInt(claims, "epoch"); ok {
+		epoch = e
 	}
 	return jti, tokenUse, epoch, claims, true
 }
@@ -257,8 +257,8 @@ func (t *TokenAuthService) validateOidcToken(token string) (sessionID uuid.UUID,
 		return uuid.Nil, "", 0, nil, false
 	}
 	tokenUse = TokenUseOf(claims)
-	if e, ok := claims["epoch"].(float64); ok {
-		epoch = int(e)
+	if e, ok := ClaimInt(claims, "epoch"); ok {
+		epoch = e
 	}
 	return sessionID, tokenUse, epoch, claims, true
 }
