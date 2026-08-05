@@ -364,7 +364,7 @@ func (s *AuthService) CreateSessionAndIssueTokens(ctx context.Context, challenge
 		IpAddress:       challenge.IpAddress,
 		UserAgent:       challenge.UserAgent,
 		Location:        challenge.Location,
-		Scopes:          challenge.Scopes,
+		Scopes:          scopesWithFullScope(challenge.Scopes),
 		Audiences:       challenge.Audiences,
 		ChallengeId:     &challenge.Id,
 		ClientId:        &device.Id,
@@ -410,6 +410,23 @@ func (s *AuthService) CreateSessionAndIssueTokens(ctx context.Context, challenge
 		}, deref(challenge.UserAgent), deref(challenge.IpAddress), &locText, &sid)
 	}
 	return pair, nil
+}
+
+// fullScope is the wildcard scope that grants everything, mirroring
+// PermissionScopeGate.HasFullScope in DysonNetwork.Shared.
+const fullScope = "*"
+
+// scopesWithFullScope appends the full-grant wildcard scope when missing.
+// Normal login sessions always carry it so they bypass permission checks
+// (HasFullScope), matching the C# semantics.
+func scopesWithFullScope(scopes []string) []string {
+	out := append([]string{}, scopes...)
+	for _, scope := range out {
+		if scope == fullScope {
+			return out
+		}
+	}
+	return append(out, fullScope)
 }
 
 // RefreshSessionAndIssueTokens rotates a refresh token (epoch bump) and
