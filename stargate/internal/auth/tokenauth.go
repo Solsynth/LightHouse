@@ -31,6 +31,17 @@ const (
 	RevokedJtiTTL         = 30 * 24 * time.Hour
 )
 
+// MsgTokenExpired is the rejection reason for a token whose exp claim has
+// passed. The HTTP middleware maps it to the TOKEN_EXPIRED ApiError code so
+// clients can refresh and retry.
+const MsgTokenExpired = "Token has expired."
+
+// tokenExpired reports whether the JWT exp claim is in the past.
+func tokenExpired(claims jwt.MapClaims) bool {
+	exp, ok := claims["exp"].(float64)
+	return ok && time.Now().Unix() > int64(exp)
+}
+
 // TokenType mirrors Padlock's TokenType enum (wire context value).
 type TokenType int
 
@@ -146,6 +157,14 @@ func (t *TokenAuthService) AuthenticateToken(ctx context.Context, token, ipAddre
 	}
 	if tokenUse == TokenUseRefresh {
 		return false, nil, "Refresh token cannot be used for authentication.", tokenUse
+	}
+
+	// JWT exp is enforced here, unlike ValidateJwt (which mirrors the C# and
+	// skips it): an expired access token is a refreshable condition, so it
+	// gets a distinct rejection the HTTP layer maps to the TOKEN_EXPIRED
+	// ApiError code. Session expiry below still governs the session itself.
+	if tokenExpired(claims) {
+		return false, nil, MsgTokenExpired, tokenUse
 	}
 
 	// Cache hit path.

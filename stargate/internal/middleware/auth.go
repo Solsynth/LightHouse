@@ -27,6 +27,9 @@ const (
 	ctxKeyCurrentUser contextKey = iota
 	ctxKeyCurrentSession
 	ctxKeyCurrentTokenType
+	// ctxKeyAuthRejectReason carries the token rejection reason set by Auth
+	// so RequireAuth can emit a precise error code (e.g. TOKEN_EXPIRED).
+	ctxKeyAuthRejectReason
 )
 
 // CurrentUser extracts the authenticated account from the context.
@@ -159,6 +162,8 @@ func Auth(deps AuthDeps) gin.HandlerFunc {
 			// (login/challenge start must work even with a stale token
 			// attached). RequireAuth and handlers checking CurrentUser
 			// emit the 401 where auth is actually mandatory.
+			ctx := context.WithValue(c.Request.Context(), ctxKeyAuthRejectReason, message)
+			c.Request = c.Request.WithContext(ctx)
 			deps.Log.Debug("token rejected", "reason", message)
 			c.Next()
 			return
@@ -179,10 +184,17 @@ func Auth(deps AuthDeps) gin.HandlerFunc {
 	}
 }
 
-// RequireAuth rejects unauthenticated requests with a 401 ApiError.
+// RequireAuth rejects unauthenticated requests with a 401 ApiError. A token
+// whose JWT exp has passed is rejected with the distinct TOKEN_EXPIRED code
+// (clients refresh and retry); every other rejection is the canonical
+// UNAUTHORIZED.
 func RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if CurrentUser(c.Request.Context()) == nil {
+			if reason, _ := c.Request.Context().Value(ctxKeyAuthRejectReason).(string); reason == auth.MsgTokenExpired {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, errs.New("TOKEN_EXPIRED", auth.MsgTokenExpired, http.StatusUnauthorized))
+				return
+			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, errs.Unauthorized(""))
 			return
 		}
