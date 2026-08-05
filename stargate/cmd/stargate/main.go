@@ -43,6 +43,12 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
 
+// version and gitCommit are injected at build time (see Dockerfile).
+var (
+	version   = "dev"
+	gitCommit = "unknown"
+)
+
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	slog.SetDefault(log)
