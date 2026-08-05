@@ -1,0 +1,13 @@
+# Secrets and runtime assets — copy from the C# deployment's Keys/ dir
+Keys/
+
+# Local config overrides
+config.toml
+
+# Build output (make build → bin/, direct go build → root binaries)
+bin/
+/stargate
+/stargate-migrate
+
+# Go
+*.test

@@ -1,0 +1,188 @@
+package store
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"src.solsynth.dev/sosys/stargate/internal/model"
+)
+
+// Profile helpers for the Passport-moved profile surface. All queries target
+// the account_profiles table (snake_case, timestamptz instants, jsonb blobs).
+
+// GetProfileByAccount loads an account's 1:1 profile row.
+func (s *Store) GetProfileByAccount(ctx context.Context, accountID uuid.UUID) (*model.Profile, error) {
+	row := s.DB.QueryRow(ctx, `SELECT `+profileColumns+` FROM account_profiles p
+		WHERE p.account_id = $1 AND p.deleted_at IS NULL`, accountID)
+	return scanProfile(row)
+}
+
+// GetOrCreateAccountProfile loads the account's profile, creating an empty
+// row when missing. The returned profile always carries the board list
+// (mirrors AccountService.GetOrCreateAccountProfileAsync + board hydration).
+// A concurrent-create race is resolved by re-reading after the insert.
+func (s *Store) GetOrCreateAccountProfile(ctx context.Context, accountID uuid.UUID) (*model.Profile, error) {
+	profile, err := s.GetProfileByAccount(ctx, accountID)
+	if err == nil {
+		if err := s.hydrateProfileBoard(ctx, profile); err != nil {
+			return nil, err
+		}
+		return profile, nil
+	}
+	if !errors.Is(err, ErrNotFound) {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	if _, err := s.DB.Exec(ctx, `INSERT INTO account_profiles
+		(id, account_id, created_at, updated_at, experience, social_credits)
+		VALUES ($1, $2, $3, $3, 0, 0)
+		ON CONFLICT (account_id) DO NOTHING`, uuid.NewString(), accountID, now); err != nil {
+		return nil, err
+	}
+
+	profile, err = s.GetProfileByAccount(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	profile.Board = []model.BoardItem{}
+	return profile, nil
+}
+
+// SaveProfile writes the mutable profile columns (mirrors EF db.Update on
+// SnAccountProfile; computed fields like level are derived and not stored).
+func (s *Store) SaveProfile(ctx context.Context, p *model.Profile) error {
+	links, err := json.Marshal(p.Links)
+	if err != nil {
+		return err
+	}
+	usernameColor, err := marshalJSONOrNull(p.UsernameColor)
+	if err != nil {
+		return err
+	}
+	verification, err := marshalJSONOrNull(p.Verification)
+	if err != nil {
+		return err
+	}
+	activeBadge, err := marshalJSONOrNull(p.ActiveBadge)
+	if err != nil {
+		return err
+	}
+	picture, err := marshalJSONOrNull(p.Picture)
+	if err != nil {
+		return err
+	}
+	background, err := marshalJSONOrNull(p.Background)
+	if err != nil {
+		return err
+	}
+	_, err = s.DB.Exec(ctx, `UPDATE account_profiles SET
+		first_name = $1, middle_name = $2, last_name = $3, bio = $4, gender = $5,
+		pronouns = $6, time_zone = $7, location = $8, links = $9, username_color = $10,
+		birthday = $11, last_seen_at = $12, verification = $13, active_badge = $14,
+		experience = $15, social_credits = $16, picture = $17, background = $18,
+		updated_at = $19
+		WHERE id = $20 AND deleted_at IS NULL`,
+		p.FirstName, p.MiddleName, p.LastName, p.Bio, p.Gender,
+		p.Pronouns, p.TimeZone, p.Location, links, usernameColor,
+		p.Birthday, p.LastSeenAt, verification, activeBadge,
+		p.Experience, p.SocialCredits, picture, background,
+		time.Now().UTC(), p.Id)
+	return err
+}
+
+// UpdateAccountBasicInfo applies the PATCH /api/accounts/me BasicInfo patch
+// (only non-nil fields are written) and returns the refreshed account.
+func (s *Store) UpdateAccountBasicInfo(ctx context.Context, accountID uuid.UUID, nick, language, region *string) (*model.Account, error) {
+	now := time.Now().UTC()
+	if nick != nil {
+		if _, err := s.DB.Exec(ctx, `UPDATE accounts SET nick = $1, updated_at = $2 WHERE id = $3 AND deleted_at IS NULL`, *nick, now, accountID); err != nil {
+			return nil, err
+		}
+	}
+	if language != nil {
+		if _, err := s.DB.Exec(ctx, `UPDATE accounts SET language = $1, updated_at = $2 WHERE id = $3 AND deleted_at IS NULL`, *language, now, accountID); err != nil {
+			return nil, err
+		}
+	}
+	if region != nil {
+		if _, err := s.DB.Exec(ctx, `UPDATE accounts SET region = $1, updated_at = $2 WHERE id = $3 AND deleted_at IS NULL`, *region, now, accountID); err != nil {
+			return nil, err
+		}
+	}
+	return s.GetAccountByID(ctx, accountID)
+}
+
+// hydrateProfileBoard attaches the account's board items (ordered) to the
+// profile, mirroring AccountBoardService.HydrateBoardAsync.
+func (s *Store) hydrateProfileBoard(ctx context.Context, profile *model.Profile) error {
+	board, err := s.ListBoardItems(ctx, mustParseUUID(profile.AccountId))
+	if err != nil {
+		return err
+	}
+	profile.Board = board
+	return nil
+}
+
+func scanProfile(row pgx.Row) (*model.Profile, error) {
+	profile := &model.Profile{}
+	var (
+		links, usernameColor, verification, activeBadge, picture, background []byte
+		firstName, middleName, lastName, bio, gender, pronouns, timeZone     *string
+		location                                                             *string
+		birthday, lastSeenAt                                                 *model.Time
+		experience                                                           int
+		socialCredits                                                        float64
+	)
+	err := row.Scan(
+		&profile.Id, &firstName, &middleName, &lastName, &bio, &gender, &pronouns, &timeZone, &location,
+		&links, &usernameColor, &birthday, &lastSeenAt, &verification, &activeBadge, &experience, &socialCredits,
+		&picture, &background, &profile.AccountId, &profile.CreatedAt, &profile.UpdatedAt, &profile.DeletedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	profile.FirstName = firstName
+	profile.MiddleName = middleName
+	profile.LastName = lastName
+	profile.Bio = bio
+	profile.Gender = gender
+	profile.Pronouns = pronouns
+	profile.TimeZone = timeZone
+	profile.Location = location
+	profile.Birthday = birthday
+	profile.LastSeenAt = lastSeenAt
+	profile.Experience = experience
+	profile.SocialCredits = socialCredits
+	_ = json.Unmarshal(links, &profile.Links)
+	_ = json.Unmarshal(usernameColor, &profile.UsernameColor)
+	_ = json.Unmarshal(verification, &profile.Verification)
+	_ = json.Unmarshal(picture, &profile.Picture)
+	_ = json.Unmarshal(background, &profile.Background)
+	return profile, nil
+}
+
+// marshalJSONOrNull marshals a value to JSON, emitting SQL NULL for nil.
+func marshalJSONOrNull(v any) (any, error) {
+	if v == nil {
+		return nil, nil
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+func mustParseUUID(s string) uuid.UUID {
+	id, _ := uuid.Parse(s)
+	return id
+}

@@ -1,0 +1,73 @@
+siteUrl = "http://localhost:3000"
+baseUrl = "http://localhost:5011"
+
+[http]
+port = "8080"
+
+[grpc]
+port = "9090"
+useTLS = false
+certFile = ""
+keyFile = ""
+
+[database]
+dsn = "host=localhost port=5432 user=postgres dbname=dyson_stargate sslmode=disable"
+
+[redis]
+addr = "localhost:6379"
+password = ""
+db = 0
+
+[nats]
+target = "nats://127.0.0.1:4222"
+sessionEventsStream = "auth_session_events"
+sessionEventsSubject = "auth.session.revoked"
+websocketPushStream = "websocket_push"
+websocketPushSubject = "websocket.push"
+
+[auth]
+issuer = "solar-network"
+audiences = ["http://localhost:5071", "https://localhost:7099"]
+publicKeyPath = "Keys/PublicKey.pem"
+privateKeyPath = "Keys/PrivateKey.pem"
+accessTokenLifetime = "5m"
+refreshTokenLifetime = "720h"
+cookieDomain = "localhost"
+cookieSecure = false
+
+[oidcProvider]
+issuerUri = "https://nt.solian.app"
+publicKeyPath = "Keys/PublicKey.pem"
+privateKeyPath = "Keys/PrivateKey.pem"
+accessTokenLifetime = "5m"
+refreshTokenLifetime = "720h"
+authorizationCodeLifetime = "30m"
+requireHttpsMetadata = true
+
+[captcha]
+provider = "cloudflare"
+apiKey = "0x4AAAAAABCDUdOujj4feOb_"
+apiSecret = ""
+skip = true
+
+[webauthn]
+rpId = "localhost"
+rpName = "Solar Network"
+relatedOrigins = ["http://localhost:3000"]
+
+[geoip]
+databasePath = "Keys/GeoLite2-City.mmdb"
+
+[services]
+drive = { grpc = "" }
+wallet = { grpc = "" }
+pass = { grpc = "" }
+blade = { grpc = "" }
+ring = { grpc = "" }
+
+[oidc]
+google = { clientId = "", clientSecret = "" }
+apple = { clientId = "dev.solsynth.solian", teamId = "", keyId = "", privateKeyPath = "Keys/Solarpass.p8" }
+microsoft = { clientId = "", clientSecret = "", discoveryEndpoint = "" }
+steam = { apiKey = "" }
+discord = { clientId = "", clientSecret = "" }
