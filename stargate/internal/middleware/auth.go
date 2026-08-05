@@ -154,7 +154,10 @@ func Auth(deps AuthDeps) gin.HandlerFunc {
 		ip := ClientIP(c.Request)
 		valid, session, message, _ := deps.Token.AuthenticateToken(c.Request.Context(), tokenInfo.Token, ip)
 		if !valid || session == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, errs.Unauthorized(message))
+			// Mirror ApiError.Unauthorized(): surface only the canonical
+			// message; keep the rejection reason server-side.
+			deps.Log.Debug("token rejected", "reason", message)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, errs.Unauthorized(""))
 			return
 		}
 		// API-key tokens are typed ApiKey regardless of extraction path.
@@ -177,7 +180,7 @@ func Auth(deps AuthDeps) gin.HandlerFunc {
 func RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if CurrentUser(c.Request.Context()) == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, errs.Unauthorized("Authentication required."))
+			c.AbortWithStatusJSON(http.StatusUnauthorized, errs.Unauthorized(""))
 			return
 		}
 		c.Next()

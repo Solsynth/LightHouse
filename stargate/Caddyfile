@@ -1,0 +1,108 @@
+# Stargate cutover edge config — runs in front of Blade (api.solian.app).
+#
+# Old clients (shipped Island builds) still call /padlock/** and the moved
+# /passport/** paths; new clients call /stargate/**. This file only swaps the
+# service prefix; Blade inserts /api and routes /stargate/** to the stargate
+# service. Everything not matched falls through to the single reverse_proxy
+# and reaches Blade unchanged.
+#
+# Blade config delta (Blade/configs/config.toml):
+#   [services]
+#   stargate = { http = "http://localhost:8080", grpc = "localhost:9090" }
+#   [endpoints]
+#   serviceNames = [ ..., "stargate" ]
+#   # repoint the OIDC well-known at stargate (was service "pass"):
+#   [[routes]]
+#   path = "/.well-known/openid-configuration"
+#   service = "stargate"
+#   target = "/.well-known/openid-configuration"
+#   prefix = false
+#   [[routes]]
+#   path = "/.well-known/jwks"
+#   service = "stargate"
+#   target = "/.well-known/jwks"
+#   prefix = false
+#   # add the same for /.well-known/webauthn, /.well-known/permissions,
+#   # /.well-known/error-codes
+#   # ws [websocket] authService: flip "padlock" -> "stargate" (or keep the
+#   # padlock entry pointing at Stargate, as the plan's services__padlock__grpc__0
+#   # env flip does).
+#
+# Once old clients are gone, delete the @padlock and @pm_* matcher/rewrite
+# pairs; @id, the imports, encode and the final reverse_proxy stay.
+
+api.solian.app {
+    import logging
+    import bad_bots
+
+    encode zstd gzip
+
+    @id path_regexp id ^/id/(.*)
+    rewrite @id /passport/{re.id.1}
+
+    # ---- old clients: /padlock/** -> Stargate (Padlock fully replaced) ----
+    @padlock path /padlock/*
+    rewrite @padlock /stargate{path}
+
+    # ---- old clients: moved Passport routes -> Stargate ----
+    # /passport/accounts/me and its moved sub-paths.
+    # Do NOT widen @pm_me into /passport/accounts/me*: /me/badges, /me/check-in,
+    # /me/calendar*, /me/credits*, /me/leveling, /me/progression*, /me/statuses,
+    # /me/activation/*, /me/passbook/* stay in Passport.
+    @pm_me path /passport/accounts/me
+    rewrite @pm_me /stargate{path}
+    @pm_me_board path /passport/accounts/me/board
+    rewrite @pm_me_board /stargate{path}
+    @pm_me_profile path /passport/accounts/me/profile
+    rewrite @pm_me_profile /stargate{path}
+    @pm_me_followers path /passport/accounts/me/followers
+    rewrite @pm_me_followers /stargate{path}
+    @pm_me_following path /passport/accounts/me/following
+    rewrite @pm_me_following /stargate{path}
+
+    # search and id/{id} — must precede @pm_name (both would match the
+    # single-segment {name} pattern)
+    @pm_search path /passport/accounts/search
+    rewrite @pm_search /stargate{path}
+    @pm_id path /passport/accounts/id/*
+    rewrite @pm_id /stargate{path}
+
+    # /passport/accounts/{name}/... public sub-paths
+    @pm_name_board path /passport/accounts/*/board
+    rewrite @pm_name_board /stargate{path}
+    @pm_name_connections path /passport/accounts/*/connections
+    rewrite @pm_name_connections /stargate{path}
+    @pm_name_followers path /passport/accounts/*/followers
+    rewrite @pm_name_followers /stargate{path}
+    @pm_name_following path /passport/accounts/*/following
+    rewrite @pm_name_following /stargate{path}
+    @pm_name_picture path /passport/accounts/*/picture
+    rewrite @pm_name_picture /stargate{path}
+    @pm_name_background path /passport/accounts/*/background
+    rewrite @pm_name_background /stargate{path}
+
+    # /passport/accounts/{name} — exactly one segment (e.g. /accounts/littlesheep).
+    # Does not match /accounts/{name}/timeline|badges|calendar*|statuses|credits.
+    @pm_name path_regexp pm_name ^/passport/accounts/[^/]+$
+    rewrite @pm_name /stargate{path}
+
+    # relationships surface (list, get, friends, block, mute, close-friend,
+    # alias, requests, accept/decline) — all moved
+    @pm_rels path /passport/relationships*
+    rewrite @pm_rels /stargate{path}
+
+    reverse_proxy localhost:5001
+}
+
+# OIDC issuer domain (config [oidcProvider] issuerUri). If clients resolve
+# https://nt.solian.app for the provider well-known + authorize/token/
+# device/userinfo, point it at Stargate too. Delete this block if
+# nt.solian.app is served elsewhere.
+nt.solian.app {
+    import logging
+    import bad_bots
+
+    encode zstd gzip
+
+    reverse_proxy localhost:8080
+}

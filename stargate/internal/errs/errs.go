@@ -44,8 +44,13 @@ func NotFound(message string) *ApiError {
 	return New("NOT_FOUND", message, http.StatusNotFound)
 }
 
-// Unauthorized builds a 401 UNAUTHORIZED error.
+// Unauthorized builds a 401 UNAUTHORIZED error, mirroring
+// ApiError.Unauthorized: an empty message falls back to the canonical
+// "Authentication is required.".
 func Unauthorized(message string) *ApiError {
+	if message == "" {
+		message = "Authentication is required."
+	}
 	return New("UNAUTHORIZED", message, http.StatusUnauthorized)
 }
 

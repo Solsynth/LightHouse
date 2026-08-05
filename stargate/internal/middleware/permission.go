@@ -22,12 +22,12 @@ func AskPermission(perm PermissionChecker, key string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user := CurrentUser(c.Request.Context())
 		if user == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, errs.Unauthorized("Authentication required."))
+			c.AbortWithStatusJSON(http.StatusUnauthorized, errs.Unauthorized(""))
 			return
 		}
 		accountID, err := uuid.Parse(user.Id)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, errs.Unauthorized("Authentication required."))
+			c.AbortWithStatusJSON(http.StatusUnauthorized, errs.Unauthorized(""))
 			return
 		}
 		ok, err := perm.HasPermission(c.Request.Context(), accountID, key)
