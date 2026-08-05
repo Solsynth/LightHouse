@@ -92,8 +92,7 @@ type provider interface {
 }
 
 // newProvider mirrors OidcService.GetOidcService (apple/google/microsoft/
-// discord/steam; github/afdian exist in the C# but are not configured in
-// Stargate's config struct).
+// discord/steam/github/afdian).
 func newProvider(name string, d Deps) (provider, error) {
 	switch strings.ToLower(name) {
 	case "apple":
@@ -106,6 +105,10 @@ func newProvider(name string, d Deps) (provider, error) {
 		return &discordProvider{base: newBaseProvider("discord", d)}, nil
 	case "steam":
 		return &steamProvider{base: newBaseProvider("steam", d)}, nil
+	case "github":
+		return &githubProvider{base: newBaseProvider("github", d)}, nil
+	case "afdian":
+		return &afdianProvider{base: newBaseProvider("afdian", d)}, nil
 	default:
 		return nil, fmt.Errorf("Unsupported provider: %s", name)
 	}
@@ -143,6 +146,12 @@ func newBaseProvider(name string, d Deps) *baseProvider {
 	case "discord":
 		cfg.ClientId = d.Cfg.Oidc.Discord.ClientId
 		cfg.ClientSecret = d.Cfg.Oidc.Discord.ClientSecret
+	case "github":
+		cfg.ClientId = d.Cfg.Oidc.GitHub.ClientId
+		cfg.ClientSecret = d.Cfg.Oidc.GitHub.ClientSecret
+	case "afdian":
+		cfg.ClientId = d.Cfg.Oidc.Afdian.ClientId
+		cfg.ClientSecret = d.Cfg.Oidc.Afdian.ClientSecret
 	}
 	return &baseProvider{d: d, name: name, http: &http.Client{Timeout: 20 * time.Second}, cfg: cfg}
 }

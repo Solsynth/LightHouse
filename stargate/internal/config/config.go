@@ -97,6 +97,8 @@ type Config struct {
 		Microsoft MicrosoftClient `toml:"microsoft"`
 		Steam     SteamClient     `toml:"steam"`
 		Discord   DiscordClient   `toml:"discord"`
+		GitHub    GitHubClient    `toml:"github"`
+		Afdian    AfdianClient    `toml:"afdian"`
 	} `toml:"oidc"`
 }
 
@@ -128,6 +130,16 @@ type SteamClient struct {
 }
 
 type DiscordClient struct {
+	ClientId     string `toml:"clientId"`
+	ClientSecret string `toml:"clientSecret"`
+}
+
+type GitHubClient struct {
+	ClientId     string `toml:"clientId"`
+	ClientSecret string `toml:"clientSecret"`
+}
+
+type AfdianClient struct {
 	ClientId     string `toml:"clientId"`
 	ClientSecret string `toml:"clientSecret"`
 }

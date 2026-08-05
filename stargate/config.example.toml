@@ -71,3 +71,5 @@ apple = { clientId = "dev.solsynth.solian", teamId = "", keyId = "", privateKeyP
 microsoft = { clientId = "", clientSecret = "", discoveryEndpoint = "" }
 steam = { apiKey = "" }
 discord = { clientId = "", clientSecret = "" }
+github = { clientId = "", clientSecret = "" }
+afdian = { clientId = "", clientSecret = "" }

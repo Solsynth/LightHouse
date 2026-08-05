@@ -79,7 +79,9 @@ func NewClients(cfg *config.Config) (*Clients, error) {
 // Close closes all dialed connections.
 func (c *Clients) Close() {
 	for _, conn := range c.conns {
-		_ = conn.Close()
+		if conn != nil {
+			_ = conn.Close()
+		}
 	}
 }
 

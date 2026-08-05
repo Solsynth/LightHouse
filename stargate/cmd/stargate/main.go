@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -43,6 +44,20 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
 
+// parseLogLevel maps the LOG_LEVEL env value to a slog level (default debug).
+func parseLogLevel(value string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "error":
+		return slog.LevelError
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "info":
+		return slog.LevelInfo
+	default:
+		return slog.LevelDebug
+	}
+}
+
 // version and gitCommit are injected at build time (see Dockerfile).
 var (
 	version   = "dev"
@@ -50,7 +65,8 @@ var (
 )
 
 func main() {
-	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	level := parseLogLevel(os.Getenv("LOG_LEVEL"))
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
 	slog.SetDefault(log)
 
 	if err := run(log); err != nil {
