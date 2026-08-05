@@ -44,6 +44,21 @@ type Config struct {
 		WebsocketPushSubject string `toml:"websocketPushSubject"`
 	} `toml:"nats"`
 
+	// Discovery registers this instance with Blade's service discovery
+	// (DyServiceDiscoveryService gRPC) so Blade's /meta capability
+	// aggregator and proxy can resolve and health-check Stargate.
+	Discovery struct {
+		Enabled           bool   `toml:"enabled"`
+		Target            string `toml:"target"` // Blade gRPC endpoint (host:port)
+		RegistrationToken string `toml:"registrationToken"`
+		Service           string `toml:"service"`
+		InstanceID        string `toml:"instanceId"`
+		HttpEndpoint      string `toml:"httpEndpoint"` // absolute URL Blade probes /health on
+		GrpcEndpoint      string `toml:"grpcEndpoint"` // where Blade fetches capabilities
+		LeaseSeconds      int    `toml:"leaseSeconds"`
+		Weight            int    `toml:"weight"`
+	} `toml:"discovery"`
+
 	Auth struct {
 		Issuer               string   `toml:"issuer"`
 		Audiences            []string `toml:"audiences"`
@@ -171,6 +186,9 @@ func Default() *Config {
 	cfg.NATS.SessionEventsSubject = "auth.session.revoked"
 	cfg.NATS.WebsocketPushStream = "websocket_push"
 	cfg.NATS.WebsocketPushSubject = "websocket.push"
+	cfg.Discovery.Service = "stargate"
+	cfg.Discovery.LeaseSeconds = 30
+	cfg.Discovery.Weight = 1
 	return cfg
 }
 
@@ -219,6 +237,13 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("STARGATE_SERVICES_BLADE__GRPC", &cfg.Services.Blade.GRPC)
 	setStr("STARGATE_SERVICES_RING__GRPC", &cfg.Services.Ring.GRPC)
 	setBool("STARGATE_CAPTCHA_SKIP", &cfg.Captcha.Skip)
+	setBool("STARGATE_DISCOVERY_ENABLED", &cfg.Discovery.Enabled)
+	setStr("STARGATE_DISCOVERY_TARGET", &cfg.Discovery.Target)
+	setStr("STARGATE_DISCOVERY_REGISTRATION_TOKEN", &cfg.Discovery.RegistrationToken)
+	setStr("STARGATE_DISCOVERY_SERVICE", &cfg.Discovery.Service)
+	setStr("STARGATE_DISCOVERY_INSTANCE_ID", &cfg.Discovery.InstanceID)
+	setStr("STARGATE_DISCOVERY_HTTP_ENDPOINT", &cfg.Discovery.HttpEndpoint)
+	setStr("STARGATE_DISCOVERY_GRPC_ENDPOINT", &cfg.Discovery.GrpcEndpoint)
 }
 
 func setStr(key string, dst *string) {

@@ -18,13 +18,17 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
+	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/stargate/internal/actionlog"
 	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/config"
 	"src.solsynth.dev/sosys/stargate/internal/db"
+	"src.solsynth.dev/sosys/stargate/internal/discovery"
 	"src.solsynth.dev/sosys/stargate/internal/geo"
 	"src.solsynth.dev/sosys/stargate/internal/grpcclient"
 	"src.solsynth.dev/sosys/stargate/internal/grpcserver"
@@ -202,6 +206,43 @@ func run(log *slog.Logger) error {
 	grpcSrv := grpc.NewServer(grpcOpts...)
 	registerGrpcServices(grpcSrv, authService, tokenAuth, st, permService, logs, jwtService, rc, cfg, log)
 
+	// Blade service discovery: without registration, Blade's /meta capability
+	// aggregator never sees this instance and the Padlock-family capabilities
+	// (auth.*, e2ee, permissions, admin.*, accounts.*) disappear from /meta.
+	var discoveryReg *discovery.Registration
+	if cfg.Discovery.Enabled {
+		opts := discovery.Options{
+			Service:           cfg.Discovery.Service,
+			InstanceID:        cfg.Discovery.InstanceID,
+			HttpEndpoint:      cfg.Discovery.HttpEndpoint,
+			GrpcEndpoint:      cfg.Discovery.GrpcEndpoint,
+			RegistrationToken: cfg.Discovery.RegistrationToken,
+			LeaseSeconds:      cfg.Discovery.LeaseSeconds,
+			Weight:            cfg.Discovery.Weight,
+		}
+		if opts.InstanceID == "" {
+			opts.InstanceID = uuid.NewString()
+		}
+		if opts.HttpEndpoint == "" {
+			opts.HttpEndpoint = "http://" + opts.Service + ":" + cfg.HTTP.Port
+		}
+		if opts.GrpcEndpoint == "" {
+			opts.GrpcEndpoint = opts.Service + ":" + cfg.GRPC.Port
+		}
+		if err := discovery.Validate(opts); err != nil {
+			return fmt.Errorf("discovery: %w", err)
+		}
+		conn, err := grpc.NewClient(cfg.Discovery.Target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			return fmt.Errorf("dial blade discovery %s: %w", cfg.Discovery.Target, err)
+		}
+		defer conn.Close()
+		discoveryReg = discovery.New(gen.NewDyServiceDiscoveryServiceClient(conn), opts, log)
+		go discoveryReg.Run(ctx)
+		log.Info("blade service discovery enabled",
+			"service", opts.Service, "instance_id", opts.InstanceID, "target", cfg.Discovery.Target)
+	}
+
 	errCh := make(chan error, 2)
 	go func() {
 		addr := ":" + cfg.HTTP.Port
@@ -224,6 +265,9 @@ func run(log *slog.Logger) error {
 		log.Info("shutting down")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		if discoveryReg != nil {
+			discoveryReg.Deregister(shutdownCtx)
+		}
 		grpcSrv.GracefulStop()
 		_ = shutdownCtx
 		if nc != nil {

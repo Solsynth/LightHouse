@@ -68,6 +68,23 @@ pass = { grpc = "" }
 blade = { grpc = "" }
 ring = { grpc = "" }
 
+[discovery]
+# Register with Blade service discovery so Blade's /meta capability
+# aggregator and proxy resolve this instance (auth.*, e2ee, permissions,
+# admin.*, accounts.*). Mirror the C# Blade:ServiceDiscovery settings.
+enabled = false
+target = "blade:9090"
+registrationToken = ""
+service = "stargate"
+instanceId = ""
+# Defaults mirror the C# fallback: http://{service}:{httpPort} and
+# {service}:{grpcPort}; Blade probes {httpEndpoint}/health and fetches
+# capabilities from {grpcEndpoint}.
+httpEndpoint = ""
+grpcEndpoint = ""
+leaseSeconds = 30
+weight = 1
+
 [oidc]
 google = { clientId = "", clientSecret = "" }
 apple = { clientId = "dev.solsynth.solian", teamId = "", keyId = "", privateKeyPath = "Keys/Solarpass.p8" }
