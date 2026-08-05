@@ -26,6 +26,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
+	"src.solsynth.dev/sosys/stargate/internal/spell"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
 
@@ -168,6 +169,11 @@ func registerAccountAdmin(g *gin.RouterGroup, d Deps) {
 	g.POST(":name/contacts/:contactId/primary", requirePerm(d, permission.AccountContactsManage), setPrimaryAccountContact(d))
 	g.POST(":name/contacts/:contactId/visibility", requirePerm(d, permission.AccountContactsManage), setAccountContactVisibility(d))
 	g.DELETE(":name/contacts/:contactId", requirePerm(d, permission.AccountContactsManage), deleteAccountContact(d))
+
+	g.GET(":name/spells", requirePerm(d, permission.AccountsView), listAccountMagicSpells(d))
+	g.POST(":name/spells", requirePerm(d, permission.AccountsManage), createAccountMagicSpell(d))
+	g.POST(":name/spells/:spellId/resend", requirePerm(d, permission.AccountsManage), resendAccountMagicSpell(d))
+	g.DELETE(":name/spells/:spellId", requirePerm(d, permission.AccountsManage), deleteAccountMagicSpell(d))
 
 	g.GET(":name/factors", requirePerm(d, permission.AccountsView), listAccountAuthFactors(d))
 	g.POST(":name/factors", requirePerm(d, permission.AuthFactorsManage), createAccountAuthFactor(d))
@@ -733,9 +739,8 @@ func requestAccountContactVerification(d Deps) gin.HandlerFunc {
 			serverError(c, err, d)
 			return
 		}
-		// The C# dispatches a contact-verification magic spell through
-		// Passport's DyMagicSpellService; Stargate has no spell client, so
-		// the request is logged and acknowledged (see the phase report).
+		// Mirrors the C# dispatch: RequestContactVerification creates a 24h
+		// contact-verification magic spell and emails it.
 		if contact.VerifiedAt != nil {
 			c.JSON(http.StatusBadRequest, errs.New("PADLOCK_OPERATION_FAILED", "Contact has already been verified.", http.StatusBadRequest))
 			return
@@ -744,12 +749,183 @@ func requestAccountContactVerification(d Deps) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, errs.New("PADLOCK_OPERATION_FAILED", "Only email contact methods can be verified.", http.StatusBadRequest))
 			return
 		}
-		if d.Log != nil {
-			d.Log.Warn("admin contact verification request dispatched without spell service",
-				"account", accountID, "contact", contactID)
+		expiresAt := time.Now().UTC().Add(24 * time.Hour)
+		spell, err := d.Spells.CreateMagicSpell(c.Request.Context(), account.Id, model.MagicSpellTypeContactVerification, map[string]any{
+			"contact_id":     contact.Id,
+			"contact_type":   "Email",
+			"contact_method": contact.Content,
+		}, spell.CreateOptions{ExpiresAt: &expiresAt, PreventRepeat: true})
+		if err != nil {
+			serverError(c, err, d)
+			return
+		}
+		if err := d.Spells.NotifyMagicSpell(c.Request.Context(), spell, true); err != nil {
+			serverError(c, err, d)
+			return
 		}
 		c.JSON(http.StatusOK, contact)
 	}
+}
+
+// ─────────────────────────── Admin magic spells ───────────────────────────
+
+// listAccountMagicSpells mirrors Passport AccountAdminController.
+// ListAccountMagicSpells: the account's spells, newest first.
+func listAccountMagicSpells(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		account := lookupAccount(c, d, c.Param("name"))
+		if account == nil {
+			return
+		}
+		spells, err := d.Store.ListMagicSpellsByAccount(c.Request.Context(), account.Id)
+		if err != nil {
+			serverError(c, err, d)
+			return
+		}
+		c.JSON(http.StatusOK, spells)
+	}
+}
+
+// createAdminMagicSpellRequest mirrors CreateAdminMagicSpellRequest.
+type createAdminMagicSpellRequest struct {
+	Type          *int           `json:"type"`
+	Meta          map[string]any `json:"meta"`
+	ExpiresAt     *model.Time    `json:"expires_at"`
+	AffectedAt    *model.Time    `json:"affected_at"`
+	Code          *string        `json:"code"`
+	PreventRepeat bool           `json:"prevent_repeat"`
+	SendEmail     *bool          `json:"send_email"`
+	BypassVerify  *bool          `json:"bypass_verify"`
+}
+
+// createAccountMagicSpell mirrors Passport AccountAdminController.
+// CreateAccountMagicSpell: 201 Created with the spell; optionally emails it.
+func createAccountMagicSpell(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		account := lookupAccount(c, d, c.Param("name"))
+		if account == nil {
+			return
+		}
+		var request createAdminMagicSpellRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, errs.New("PASSPORT_SPELL_TYPE_REQUIRED", "A supported magic spell type is required.", http.StatusBadRequest))
+			return
+		}
+		typ := model.MagicSpellType(-1)
+		if request.Type != nil {
+			typ = model.MagicSpellType(*request.Type)
+		}
+		if typ < 0 || typ > model.MagicSpellTypeContactVerification {
+			c.JSON(http.StatusBadRequest, errs.New("PASSPORT_SPELL_TYPE_REQUIRED", "A supported magic spell type is required.", http.StatusBadRequest))
+			return
+		}
+		if typ == model.MagicSpellTypeAccountDeactivation {
+			c.JSON(http.StatusBadRequest, errs.New("PASSPORT_SPELL_DEACTIVATION_NO_EMAIL", "Account deactivation magic spells cannot be sent by email.", http.StatusBadRequest))
+			return
+		}
+		opts := spell.CreateOptions{
+			Code:          derefString(request.Code),
+			PreventRepeat: request.PreventRepeat,
+		}
+		if request.ExpiresAt != nil {
+			expires := request.ExpiresAt.Time()
+			opts.ExpiresAt = &expires
+		}
+		if request.AffectedAt != nil {
+			affected := request.AffectedAt.Time()
+			opts.AffectedAt = &affected
+		}
+		created, err := d.Spells.CreateMagicSpell(c.Request.Context(), account.Id, typ, request.Meta, opts)
+		if err != nil {
+			serverError(c, err, d)
+			return
+		}
+		sendEmail := request.SendEmail == nil || *request.SendEmail
+		if sendEmail {
+			bypass := request.BypassVerify == nil || *request.BypassVerify
+			if err := d.Spells.ResendMagicSpell(c.Request.Context(), created, bypass); err != nil {
+				serverError(c, err, d)
+				return
+			}
+		}
+		c.Header("Location", "/api/admin/accounts/"+account.Id+"/spells/"+created.Id)
+		c.JSON(http.StatusCreated, created)
+	}
+}
+
+// resendAdminMagicSpellRequest mirrors ResendAdminMagicSpellRequest.
+type resendAdminMagicSpellRequest struct {
+	BypassVerify *bool `json:"bypass_verify"`
+}
+
+// resendAccountMagicSpell mirrors Passport AccountAdminController.
+// ResendAccountMagicSpell: 204 NoContent.
+func resendAccountMagicSpell(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		account := lookupAccount(c, d, c.Param("name"))
+		if account == nil {
+			return
+		}
+		spell, ok := loadAccountSpell(c, d, account)
+		if !ok {
+			return
+		}
+		if spell.Type == model.MagicSpellTypeAccountDeactivation {
+			c.JSON(http.StatusBadRequest, errs.New("PASSPORT_SPELL_DEACTIVATION_NO_EMAIL", "Account deactivation magic spells cannot be sent by email.", http.StatusBadRequest))
+			return
+		}
+		var request resendAdminMagicSpellRequest
+		_ = c.ShouldBindJSON(&request)
+		bypass := request.BypassVerify == nil || *request.BypassVerify
+		if err := d.Spells.ResendMagicSpell(c.Request.Context(), spell, bypass); err != nil {
+			serverError(c, err, d)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	}
+}
+
+// deleteAccountMagicSpell mirrors Passport AccountAdminController.
+// DeleteAccountMagicSpell: 204 NoContent.
+func deleteAccountMagicSpell(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		account := lookupAccount(c, d, c.Param("name"))
+		if account == nil {
+			return
+		}
+		spell, ok := loadAccountSpell(c, d, account)
+		if !ok {
+			return
+		}
+		if err := d.Store.DeleteMagicSpell(c.Request.Context(), spell.Id); err != nil {
+			serverError(c, err, d)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	}
+}
+
+// loadAccountSpell loads a spell that belongs to the account, aborting with
+// the canonical 404 PASSPORT_SPELL_NOT_FOUND otherwise.
+func loadAccountSpell(c *gin.Context, d Deps, account *model.Account) (*model.MagicSpell, bool) {
+	spellID, err := uuid.Parse(c.Param("spellId"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, errs.New("PASSPORT_SPELL_NOT_FOUND", "Magic spell not found.", http.StatusNotFound))
+		return nil, false
+	}
+	spell, err := d.Store.GetMagicSpellByID(c.Request.Context(), spellID)
+	if err != nil || spell.AccountId != account.Id {
+		c.JSON(http.StatusNotFound, errs.New("PASSPORT_SPELL_NOT_FOUND", "Magic spell not found.", http.StatusNotFound))
+		return nil, false
+	}
+	return spell, true
+}
+
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func verifyAccountContact(d Deps) gin.HandlerFunc {

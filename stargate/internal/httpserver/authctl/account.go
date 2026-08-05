@@ -1,6 +1,7 @@
 package authctl
 
 import (
+	"context"
 	"net/http"
 	"regexp"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/errs"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
+	"src.solsynth.dev/sosys/stargate/internal/spell"
 )
 
 // ---------------------------------------------------------------------------
@@ -131,6 +133,11 @@ func (h *handler) createAccount(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, badRequestDetail("Failed to create account.", err.Error()))
 		return
 	}
+	affiliationSpell := ""
+	if req.AffiliationSpell != nil {
+		affiliationSpell = *req.AffiliationSpell
+	}
+	h.afterRegistration(ctx, account, req.Email, affiliationSpell)
 	// The C# returns the in-memory entity whose Contacts navigation holds the
 	// freshly created email contact.
 	account.Contacts = []model.Contact{{
@@ -143,6 +150,46 @@ func (h *handler) createAccount(c *gin.Context) {
 		UpdatedAt: model.NewTime(now),
 	}}
 	c.JSON(http.StatusOK, account)
+}
+
+// afterRegistration ports the Passport AccountCreatedEvent consumer into the
+// registration request: it consumes the affiliation (registration-invite)
+// spell, creates + emails the contact-verification magic spell, and sends the
+// welcome email. The C# runs these on the event bus asynchronously, so every
+// failure is logged here without failing the registration response.
+func (h *handler) afterRegistration(ctx context.Context, account *model.Account, email, affiliationSpell string) {
+	contact, err := h.d.Store.GetEmailContact(ctx, account.Id)
+	if err != nil || contact == nil {
+		h.logError("load registration contact for spell", err)
+		return
+	}
+
+	if affiliationSpell != "" {
+		if consumed, skipsTests, err := h.d.Spells.ConsumeRegistrationInvite(ctx, affiliationSpell, account.Id); err != nil {
+			h.logError("consume affiliation spell", err)
+		} else if consumed && skipsTests {
+			// The C# calls TestService.TryActivateAccount for invites that
+			// skip entry tests; Stargate has no TestService (test-mode only).
+			if h.d.Log != nil {
+				h.d.Log.Info("affiliation invite consumed; test activation skipped", "account_id", account.Id)
+			}
+		}
+	}
+
+	spell, err := h.d.Spells.CreateMagicSpell(ctx, account.Id, model.MagicSpellTypeContactVerification, map[string]any{
+		"contact_method": email,
+		"contact_id":     contact.Id,
+	}, spell.CreateOptions{PreventRepeat: true})
+	if err != nil {
+		h.logError("create contact verification spell", err)
+		return
+	}
+	if err := h.d.Spells.NotifyMagicSpell(ctx, spell, true); err != nil {
+		h.logError("notify contact verification spell", err)
+	}
+	if err := h.d.Spells.SendWelcomeEmail(ctx, account, email); err != nil {
+		h.logError("send welcome email", err)
+	}
 }
 
 // accountCreateValidateRequest mirrors AccountCreateValidateRequest.

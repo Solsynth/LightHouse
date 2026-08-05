@@ -40,6 +40,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
+	"src.solsynth.dev/sosys/stargate/internal/spell"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
 
@@ -53,6 +54,7 @@ type Deps struct {
 	Perm    *permission.Service
 	Logs    *actionlog.Service
 	Clients *grpcclient.Clients
+	Spells  *spell.Service
 	Log     *slog.Logger
 }
 
@@ -1448,10 +1450,9 @@ func (c *controller) verifyContact(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, contact)
 }
 
-// requestContactVerification mirrors AccountService.RequestContactVerification.
-// The magic-spell side effect (email verification spell) is not wired to a
-// MagicSpell gRPC client; the validation rules are ported and the spell
-// creation is skipped with a log line.
+// requestContactVerification mirrors AccountService.RequestContactVerification:
+// creates a 24h contact-verification magic spell (preventRepeat) and emails
+// it, mirroring the Passport MagicSpellService dispatch.
 func (c *controller) requestContactVerification(ctx context.Context, account *model.Account, contact *model.Contact) error {
 	if contact.AccountId != account.Id {
 		return errors.New("Contact does not belong to the account.")
@@ -1462,11 +1463,16 @@ func (c *controller) requestContactVerification(ctx context.Context, account *mo
 	if contact.Type != int(model.ContactTypeEmail) {
 		return errors.New("Only email contact methods can be verified.")
 	}
-	if c.d.Log != nil {
-		c.d.Log.Info("contact verification spell not sent (no MagicSpell client)",
-			"account_id", account.Id, "contact_id", contact.Id)
+	expiresAt := time.Now().UTC().Add(24 * time.Hour)
+	spell, err := c.d.Spells.CreateMagicSpell(ctx, account.Id, model.MagicSpellTypeContactVerification, map[string]any{
+		"contact_id":     contact.Id,
+		"contact_type":   "Email",
+		"contact_method": contact.Content,
+	}, spell.CreateOptions{ExpiresAt: &expiresAt, PreventRepeat: true})
+	if err != nil {
+		return err
 	}
-	return nil
+	return c.d.Spells.NotifyMagicSpell(ctx, spell, true)
 }
 
 // POST /api/contacts/{id}/primary

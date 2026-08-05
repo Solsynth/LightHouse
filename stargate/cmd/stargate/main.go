@@ -36,6 +36,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/profilectl"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/securityctl"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/socialctl"
+	"src.solsynth.dev/sosys/stargate/internal/httpserver/spellctl"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/wellknownctl"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/migrate"
@@ -43,6 +44,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/permission"
 	redisclient "src.solsynth.dev/sosys/stargate/internal/redis"
 	"src.solsynth.dev/sosys/stargate/internal/seed"
+	"src.solsynth.dev/sosys/stargate/internal/spell"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
 
@@ -143,16 +145,18 @@ func run(log *slog.Logger) error {
 		Log:     log,
 	})
 
+	spellService := spell.NewService(st, rc, clients.Ring, cfg.SiteUrl, log)
+
 	srv := httpserver.New(cfg, authMw)
 	srv.Register(registerCoreRoutes(authService, tokenAuth, permService, logs, st, cfg, log))
 	srv.Register(func(api *gin.RouterGroup) {
 		authctl.Register(api, authctl.Deps{
 			Store: st, Redis: rc, Cfg: cfg, Token: tokenAuth, Auth: authService,
-			Geo: geoService, Clients: clients, Events: nc, Log: log,
+			Geo: geoService, Clients: clients, Events: nc, Log: log, Spells: spellService,
 		})
 		securityctl.Register(api, securityctl.Deps{
 			Store: st, Redis: rc, Cfg: cfg, Auth: authService, Token: tokenAuth,
-			Perm: permService, Logs: logs, Clients: clients, Log: log,
+			Perm: permService, Logs: logs, Clients: clients, Log: log, Spells: spellService,
 		})
 		socialctl.Register(api, socialctl.Deps{
 			Store: st, Redis: rc, Cfg: cfg, Auth: authService, Logs: logs, Log: log,
@@ -162,13 +166,16 @@ func run(log *slog.Logger) error {
 			Auth: authService, Clients: clients, Log: log,
 		})
 		adminctl.Register(api, adminctl.Deps{
-			Store: st, Redis: rc, Cfg: cfg, Perm: permService, Logs: logs, Clients: clients, Log: log,
+			Store: st, Redis: rc, Cfg: cfg, Perm: permService, Logs: logs, Clients: clients, Log: log, Spells: spellService,
 		})
 		profilectl.Register(api, profilectl.Deps{
 			Store: st, Redis: rc, Cfg: cfg, Perm: permService, Logs: logs, Clients: clients, Log: log,
 		})
 		e2eectl.Register(api, e2eectl.Deps{
 			Store: st, Events: nc, Clients: clients, Log: log,
+		})
+		spellctl.Register(api, spellctl.Deps{
+			Store: st, Spell: spellService, Log: log,
 		})
 	})
 	wellknownctl.RegisterTop(srv.Engine, wellknownctl.Deps{})

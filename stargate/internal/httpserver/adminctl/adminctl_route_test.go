@@ -26,6 +26,7 @@ func TestRegisterRoutes(t *testing.T) {
 		"/api/admin/accounts/alice/sessions/11111111-1111-1111-1111-111111111111/children",
 		"/api/admin/accounts/alice/contacts",
 		"/api/admin/accounts/alice/factors",
+		"/api/admin/accounts/alice/spells",
 		"/api/admin/accounts/punishments/created",
 		"/api/admin/accounts/emails/export",
 		"/api/admin/permissions/groups",
@@ -54,6 +55,9 @@ func TestRegisterRoutes(t *testing.T) {
 	methods := []struct{ method, path string }{
 		{"DELETE", "/api/admin/accounts/alice/sessions/11111111-1111-1111-1111-111111111111"},
 		{"POST", "/api/admin/accounts/alice/sessions/revoke"},
+		{"POST", "/api/admin/accounts/alice/spells"},
+		{"POST", "/api/admin/accounts/alice/spells/11111111-1111-1111-1111-111111111111/resend"},
+		{"DELETE", "/api/admin/accounts/alice/spells/11111111-1111-1111-1111-111111111111"},
 		{"POST", "/api/admin/accounts/alice/suspend"},
 		{"PATCH", "/api/admin/accounts/alice/devices/abc/label"},
 		{"PUT", "/api/admin/permissions/groups/11111111-1111-1111-1111-111111111111/permissions/chat.create"},

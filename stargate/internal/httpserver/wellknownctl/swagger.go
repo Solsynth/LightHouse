@@ -262,6 +262,10 @@ var padlockSwagger = buildDoc(
 		{path: "/api/identity", method: "GET", tag: "Security", summary: "Get the current account's security identity"},
 
 		{path: "/api/admin/accounts", method: "GET", tag: "Admin", summary: "List accounts (admin)", forbidden: true},
+		{path: "/api/admin/accounts/{name}/spells", method: "GET", tag: "Admin", summary: "List an account's magic spells (admin)", params: []string{"name"}, forbidden: true},
+		{path: "/api/admin/accounts/{name}/spells", method: "POST", tag: "Admin", summary: "Create a magic spell for an account (admin)", params: []string{"name"}, forbidden: true},
+		{path: "/api/admin/accounts/{name}/spells/{spellId}/resend", method: "POST", tag: "Admin", summary: "Resend an account's magic spell (admin)", params: []string{"name", "spellId"}, forbidden: true},
+		{path: "/api/admin/accounts/{name}/spells/{spellId}", method: "DELETE", tag: "Admin", summary: "Delete an account's magic spell (admin)", params: []string{"name", "spellId"}, forbidden: true},
 		{path: "/api/admin/accounts/notifications", method: "POST", tag: "Admin", summary: "Send a notification (admin)", forbidden: true},
 		{path: "/api/admin/accounts/emails", method: "POST", tag: "Admin", summary: "Send an email (admin)", forbidden: true},
 		{path: "/api/admin/permissions", method: "GET", tag: "Admin", summary: "List permission groups (admin)", forbidden: true},
@@ -271,10 +275,10 @@ var padlockSwagger = buildDoc(
 )
 
 // passportSwagger covers the Passport surface moved into Stargate: profile,
-// board, public accounts and relationships.
+// board, public accounts, relationships and magic spells.
 var passportSwagger = buildDoc(
 	"DysonNetwork.Passport",
-	"Passport API — profile, board, public accounts and relationships. Ported from DysonNetwork.Passport into Stargate.",
+	"Passport API — profile, board, public accounts, relationships and magic spells. Ported from DysonNetwork.Passport into Stargate.",
 	[]routeSpec{
 		{path: "/api/accounts/me", method: "GET", tag: "Profile", summary: "Get the current account with hydrated profile, badges, perk subscription and contacts"},
 		{path: "/api/accounts/me", method: "PATCH", tag: "Profile", summary: "Update basic account info (nick, language, region)"},
@@ -315,5 +319,10 @@ var passportSwagger = buildDoc(
 		{path: "/api/relationships/{accountId}/mutual-friends", method: "GET", tag: "Relationships", summary: "List mutual friends", params: []string{"accountId"}},
 		{path: "/api/relationships/sync", method: "POST", tag: "Relationships", summary: "Incremental relationship sync"},
 		{path: "/api/relationships/inspect/{accountId}", method: "GET", tag: "Relationships", summary: "Inspect the relationship status with an account", params: []string{"accountId"}},
+
+		{path: "/api/spells/contact-verification/resend", method: "POST", tag: "Spells", summary: "Resend the current account's contact-verification spell", forbidden: true},
+		{path: "/api/spells/{word}", method: "GET", tag: "Spells", summary: "Get a magic spell by its secret word", params: []string{"word"}, notFound: true},
+		{path: "/api/spells/{word}/apply", method: "POST", tag: "Spells", summary: "Apply a magic spell (verify contact / reset password)", params: []string{"word"}, notFound: true},
+		{path: "/api/spells/{id}/resend", method: "POST", tag: "Spells", summary: "Resend a magic spell by id", params: []string{"id"}, notFound: true},
 	},
 )

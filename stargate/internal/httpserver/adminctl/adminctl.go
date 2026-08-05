@@ -23,6 +23,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
+	"src.solsynth.dev/sosys/stargate/internal/spell"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
 
@@ -34,6 +35,7 @@ type Deps struct {
 	Perm    *permission.Service
 	Logs    *actionlog.Service
 	Clients *grpcclient.Clients
+	Spells  *spell.Service
 	Log     *slog.Logger
 }
 

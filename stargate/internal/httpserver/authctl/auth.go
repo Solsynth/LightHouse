@@ -35,6 +35,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
+	"src.solsynth.dev/sosys/stargate/internal/spell"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
 
@@ -49,6 +50,7 @@ type Deps struct {
 	Geo     *geo.Service
 	Clients *grpcclient.Clients
 	Events  auth.EventBus
+	Spells  *spell.Service
 	Log     *slog.Logger
 }
 
