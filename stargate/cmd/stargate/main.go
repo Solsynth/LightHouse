@@ -6,7 +6,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -22,6 +21,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/stargate/internal/actionlog"
@@ -232,8 +232,7 @@ func run(log *slog.Logger) error {
 		if err := discovery.Validate(opts); err != nil {
 			return fmt.Errorf("discovery: %w", err)
 		}
-		conn, err := grpc.NewClient(cfg.Discovery.Target,
-			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})))
+		conn, err := grpc.NewClient(cfg.Discovery.Target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			return fmt.Errorf("dial blade discovery %s: %w", cfg.Discovery.Target, err)
 		}
