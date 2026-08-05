@@ -659,15 +659,6 @@ func (h *handler) sendFactorCode(ctx context.Context, account *model.Account, fa
 // + VerifyPasskeyAssertionAsync with the P-256/ES256 verification)
 // ---------------------------------------------------------------------------
 
-// passkeyCredential mirrors AccountService.PasskeyCredential (stored as
-// PascalCase JSON by the C# JsonSerializer).
-type passkeyCredential struct {
-	CredentialId string `json:"CredentialId"`
-	PublicKeyX   []byte `json:"PublicKeyX"`
-	PublicKeyY   []byte `json:"PublicKeyY"`
-	Counter      uint64 `json:"Counter"`
-}
-
 // passkeyCredentialDescriptor mirrors AccountService.PasskeyCredentialDescriptor.
 type passkeyCredentialDescriptor struct {
 	Type       string   `json:"type"`
@@ -718,8 +709,8 @@ func normalizePasskeyCredentialId(value string) (string, bool) {
 	return base64.StdEncoding.EncodeToString(raw), true
 }
 
-func parsePasskeyCredential(credentialJSON string) *passkeyCredential {
-	var cred passkeyCredential
+func parsePasskeyCredential(credentialJSON string) *model.PasskeyCredential {
+	var cred model.PasskeyCredential
 	if err := json.Unmarshal([]byte(credentialJSON), &cred); err != nil {
 		return nil
 	}
@@ -738,7 +729,7 @@ func (h *handler) generatePasskeyAssertionChallenge(ctx context.Context, challen
 	return challenge, nil
 }
 
-func (h *handler) verifyPasskeyAssertion(ctx context.Context, cred *passkeyCredential, challengeID, credentialID, clientDataJson, authenticatorData, signature string) bool {
+func (h *handler) verifyPasskeyAssertion(ctx context.Context, cred *model.PasskeyCredential, challengeID, credentialID, clientDataJson, authenticatorData, signature string) bool {
 	var storedChallenge string
 	found, err := h.d.Redis.Cache.Get(ctx, "passkey:assertion:"+challengeID, &storedChallenge)
 	if err != nil || !found || storedChallenge == "" {
@@ -938,7 +929,7 @@ func (h *handler) completePasskeyChallenge(c *gin.Context) {
 
 	isFirstFactor := len(challenge.BlacklistFactors) == 0
 
-	if !h.verifyPasskeyAssertion(ctx, credential, challenge.Id, req.CredentialId,
+	if !h.verifyPasskeyAssertion(ctx, credential, challenge.Id, credentialID,
 		req.ClientDataJson, req.AuthenticatorData, req.Signature) {
 		challenge.FailedAttempts++
 		challenge.UpdatedAt = model.NewTime(now)
@@ -1075,7 +1066,7 @@ func (h *handler) completePasskeyLogin(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_PASSKEY_INVALID", "Passkey is invalid."))
 		return
 	}
-	if !h.verifyPasskeyAssertion(ctx, credential, challenge.Id, req.CredentialId,
+	if !h.verifyPasskeyAssertion(ctx, credential, challenge.Id, credentialID,
 		req.ClientDataJson, req.AuthenticatorData, req.Signature) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_PASSKEY_ASSERTION", "Invalid passkey assertion."))
 		return

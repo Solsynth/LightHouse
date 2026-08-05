@@ -676,6 +676,45 @@ func (c *controller) deleteAuthFactor(ctx *gin.Context) {
 const passkeyChallengePrefix = "passkey:challenge:"
 const passkeyChallengeTTL = 5 * time.Minute
 
+// passkeyCredentialJSON converts a go-webauthn credential into the PascalCase
+// PasskeyCredential JSON shape Padlock stores (see model.PasskeyCredential),
+// so the login assertion verifier (authctl) and Padlock itself can both read
+// it back. X/Y are extracted from the credential's COSE EC2 public key (COSE
+// labels -2 / -3), matching AccountService.ExtractPublicKeyFromCbor.
+func passkeyCredentialJSON(cred *webauthn.Credential) (string, error) {
+	var cose map[int64]any
+	if err := webauthncbor.Unmarshal(cred.PublicKey, &cose); err != nil {
+		return "", fmt.Errorf("parse COSE public key: %w", err)
+	}
+	// AccountService.ExtractPublicKeyFromCbor only accepts EC2 keys (kty = 2)
+	// and returns null otherwise, failing registration.
+	var kty int64
+	switch v := cose[1].(type) {
+	case int64:
+		kty = v
+	case uint64:
+		kty = int64(v)
+	}
+	if kty != 2 {
+		return "", errors.New("unsupported COSE public key: not an EC2 key")
+	}
+	x, _ := cose[-2].([]byte)
+	y, _ := cose[-3].([]byte)
+	if len(x) == 0 || len(y) == 0 {
+		return "", errors.New("unsupported COSE public key: missing EC2 coordinates")
+	}
+	b, err := json.Marshal(model.PasskeyCredential{
+		CredentialId: base64.StdEncoding.EncodeToString(cred.ID),
+		PublicKeyX:   x,
+		PublicKeyY:   y,
+		Counter:      uint64(cred.Authenticator.SignCount),
+	})
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
 // webauthnUser adapts model.Account to the go-webauthn User interface.
 type webauthnUser struct {
 	account *model.Account
@@ -945,7 +984,7 @@ func (c *controller) completePasskeyRegistration(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, errs.New("PADLOCK_PASSKEY_ALREADY_REGISTERED", "Passkey is already registered.", http.StatusBadRequest))
 		return
 	}
-	credentialJSON, err := json.Marshal(credential)
+	credentialJSON, err := passkeyCredentialJSON(credential)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to store passkey.", http.StatusInternalServerError))
 		return

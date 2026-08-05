@@ -146,6 +146,18 @@ type Passkey struct {
 	DeletedAt    *Time  `json:"deleted_at,omitempty"`
 }
 
+// PasskeyCredential mirrors AccountService.PasskeyCredential (Padlock): the
+// JSON shape stored in account_passkeys.credential. The C# side serializes it
+// with System.Text.Json (PascalCase names; byte slices as base64), so Stargate
+// must store exactly this shape for the assertion verifier and for DB rows to
+// stay readable by Padlock.
+type PasskeyCredential struct {
+	CredentialId string `json:"CredentialId"`
+	PublicKeyX   []byte `json:"PublicKeyX"`
+	PublicKeyY   []byte `json:"PublicKeyY"`
+	Counter      uint64 `json:"Counter"`
+}
+
 // Punishment mirrors SnAccountPunishment (Padlock Models).
 type Punishment struct {
 	Id                 string         `json:"id"`

@@ -232,7 +232,8 @@ func run(log *slog.Logger) error {
 		if err := discovery.Validate(opts); err != nil {
 			return fmt.Errorf("discovery: %w", err)
 		}
-		conn, err := grpc.NewClient(cfg.Discovery.Target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := grpc.NewClient(cfg.Discovery.Target,
+			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})))
 		if err != nil {
 			return fmt.Errorf("dial blade discovery %s: %w", cfg.Discovery.Target, err)
 		}

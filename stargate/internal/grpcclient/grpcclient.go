@@ -8,12 +8,13 @@ package grpcclient
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 	gen "src.solsynth.dev/sosys/go/proto"
 
@@ -21,14 +22,15 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
 
-// Dial creates an insecure gRPC connection (the fleet uses self-signed
-// certs; per the Golaunch README, CA validation is off).
+// Dial creates a TLS gRPC connection with CA validation skipped. The fleet
+// uses self-signed certs issued by the DysonNetwork CA; per the Golaunch
+// README, CA validation is off.
 func Dial(target string) (*grpc.ClientConn, error) {
 	if target == "" {
 		return nil, nil
 	}
 	return grpc.NewClient(target,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})),
 		grpc.WithDefaultCallOptions(grpc.WaitForReady(false)),
 	)
 }
