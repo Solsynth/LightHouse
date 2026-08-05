@@ -104,5 +104,26 @@ nt.solian.app {
 
     encode zstd gzip
 
+    # CORS for the direct-exposed OIDC issuer: Stargate no longer emits CORS
+    # headers itself (its middleware was removed — the edge owns CORS, matching
+    # the rest of the fleet behind Blade). Echo the request origin so
+    # credentialed browser flows (authorize/token/device/userinfo) work;
+    # values mirror the removed middleware.
+    @cors header Origin *
+    header @cors Access-Control-Allow-Origin {http.request.header.Origin}
+    header @cors Vary Origin
+    header @cors Access-Control-Allow-Credentials true
+    header @cors Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    header @cors Access-Control-Allow-Headers "Authorization, Content-Type, X-Device-Id, X-Auth-Session, tk"
+    header @cors Access-Control-Expose-Headers "X-Total, X-Auth-Session"
+
+    # Browser preflight: answer with 204 before proxying to Stargate (the
+    # removed middleware used to short-circuit OPTIONS the same way).
+    @preflight {
+        method OPTIONS
+        header Origin *
+    }
+    respond @preflight 204
+
     reverse_proxy localhost:8080
 }

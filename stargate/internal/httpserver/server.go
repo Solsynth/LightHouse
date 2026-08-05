@@ -26,7 +26,6 @@ func New(cfg *config.Config, authMiddleware gin.HandlerFunc) *Server {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 	engine.Use(gin.Recovery())
-	engine.Use(corsMiddleware())
 	engine.Use(authMiddleware)
 
 	s := &Server{Engine: engine, cfg: cfg}
@@ -47,30 +46,6 @@ func (s *Server) Register(registrars ...RouteRegistrar) {
 	api := s.Engine.Group("/api")
 	for _, r := range registrars {
 		r(api)
-	}
-}
-
-func corsMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if origin := c.GetHeader("Origin"); origin != "" {
-			// Echo the origin and allow credentials so cookie-based auth works
-			// (browsers reject `*` with credentials). Mirror Blade's gateway
-			// CORS (AllowOriginFunc → true); Blade's reverse proxy copies these
-			// response headers through verbatim, so the values must match.
-			c.Header("Access-Control-Allow-Origin", origin)
-			c.Header("Vary", "Origin")
-			c.Header("Access-Control-Allow-Credentials", "true")
-		} else {
-			c.Header("Access-Control-Allow-Origin", "*")
-		}
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Device-Id, X-Auth-Session, tk")
-		c.Header("Access-Control-Expose-Headers", "X-Total, X-Auth-Session")
-		if c.Request.Method == http.MethodOptions {
-			c.AbortWithStatus(http.StatusNoContent)
-			return
-		}
-		c.Next()
 	}
 }
 
