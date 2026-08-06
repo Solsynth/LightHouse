@@ -47,7 +47,12 @@ func TestGetPerkSubscriptionEmptySentinel(t *testing.T) {
 	t.Run("valid id maps to model", func(t *testing.T) {
 		const subID = "b78f8d4a-4d2e-4a5c-9a4b-9b8f7a6e5d4c"
 		p := &WalletPerkProvider{Client: &fakeWalletClient{
-			resp: &gen.DySubscription{Id: subID, Identifier: "dy_plus"},
+			resp: &gen.DySubscription{
+				Id:         subID,
+				Identifier: "dy_plus",
+				BasePrice:  "19.99",
+				FinalPrice: "14.99",
+			},
 		}}
 		got, err := p.GetPerkSubscription(ctx, accountID)
 		if err != nil {
@@ -55,6 +60,9 @@ func TestGetPerkSubscriptionEmptySentinel(t *testing.T) {
 		}
 		if got == nil || got.Id != subID {
 			t.Fatalf("GetPerkSubscription = %+v, want model with id %q", got, subID)
+		}
+		if got.BasePrice != "19.99" || got.FinalPrice != "14.99" {
+			t.Fatalf("prices = %q/%q, want 19.99/14.99", got.BasePrice, got.FinalPrice)
 		}
 	})
 

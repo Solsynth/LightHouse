@@ -65,6 +65,8 @@ func AccountToProto(a *model.Account) *gen.DyAccount {
 			IsAvailable: sub.IsAvailable,
 			IsFreeTrial: sub.IsFreeTrial,
 			Status:      gen.DySubscriptionStatus(sub.Status),
+			BasePrice:   sub.BasePrice,
+			FinalPrice:  sub.FinalPrice,
 			AccountId:   sub.AccountId,
 			CreatedAt:   toProtoTime(sub.CreatedAt),
 		}

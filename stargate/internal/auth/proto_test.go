@@ -23,6 +23,8 @@ func TestAccountToProtoPerk(t *testing.T) {
 		PerkLevel:   2,
 		IsActive:    true,
 		IsAvailable: true,
+		BasePrice:   "19.99",
+		FinalPrice:  "14.99",
 		AccountId:   accountID,
 	}
 
@@ -61,6 +63,12 @@ func TestAccountToProtoPerk(t *testing.T) {
 			}
 			if proto.PerkSubscription.Id != subID {
 				t.Errorf("PerkSubscription.Id = %q, want %q", proto.PerkSubscription.Id, subID)
+			}
+			// Prices must be present — the C# side decimal.Parse's them and
+			// throws on "".
+			if proto.PerkSubscription.BasePrice != "19.99" || proto.PerkSubscription.FinalPrice != "14.99" {
+				t.Errorf("prices = %q/%q, want 19.99/14.99",
+					proto.PerkSubscription.BasePrice, proto.PerkSubscription.FinalPrice)
 			}
 			if proto.PerkLevel == nil || *proto.PerkLevel != 2 {
 				t.Errorf("PerkLevel = %v, want 2", proto.PerkLevel)

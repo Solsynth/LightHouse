@@ -504,6 +504,8 @@ func accountFromProto(p *gen.DyAccount) *model.Account {
 			BegunAt:     protoTimeToModel(sub.BegunAt),
 			EndedAt:     protoTimeToModel(sub.EndedAt),
 			RenewalAt:   protoTimeToModel(sub.RenewalAt),
+			BasePrice:   sub.BasePrice,
+			FinalPrice:  sub.FinalPrice,
 			AccountId:   sub.AccountId,
 			CreatedAt:   protoTimeToModel(sub.CreatedAt),
 		}

@@ -134,9 +134,13 @@ type SnSubscriptionReferenceObject struct {
 	BegunAt     *Time   `json:"begun_at,omitempty"`
 	EndedAt     *Time   `json:"ended_at,omitempty"`
 	RenewalAt   *Time   `json:"renewal_at,omitempty"`
-	AccountId   string  `json:"account_id"`
-	CreatedAt   *Time   `json:"created_at,omitempty"`
-	UpdatedAt   *Time   `json:"updated_at,omitempty"`
+	// BasePrice/FinalPrice are wire strings ("19.99"); the C# model parses
+	// them with decimal.Parse, so they must be present once the reference is.
+	BasePrice  string `json:"base_price,omitempty"`
+	FinalPrice string `json:"final_price,omitempty"`
+	AccountId  string `json:"account_id"`
+	CreatedAt  *Time  `json:"created_at,omitempty"`
+	UpdatedAt  *Time  `json:"updated_at,omitempty"`
 }
 
 // SnVerificationMark is the verification mark embedded in profiles.

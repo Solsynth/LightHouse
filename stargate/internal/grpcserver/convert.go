@@ -184,6 +184,8 @@ func accountFromProto(p *gen.DyAccount) *model.Account {
 			BegunAt:     tsToModel(sub.BegunAt),
 			EndedAt:     tsToModel(sub.EndedAt),
 			RenewalAt:   tsToModel(sub.RenewalAt),
+			BasePrice:   sub.BasePrice,
+			FinalPrice:  sub.FinalPrice,
 			AccountId:   sub.AccountId,
 			CreatedAt:   tsToModel(sub.CreatedAt),
 			UpdatedAt:   tsToModel(sub.UpdatedAt),

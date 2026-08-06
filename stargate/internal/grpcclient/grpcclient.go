@@ -122,6 +122,8 @@ func (p *WalletPerkProvider) GetPerkSubscription(ctx context.Context, accountID 
 		BegunAt:     tsToModel(resp.BegunAt),
 		EndedAt:     tsToModel(resp.EndedAt),
 		RenewalAt:   tsToModel(resp.RenewalAt),
+		BasePrice:   resp.BasePrice,
+		FinalPrice:  resp.FinalPrice,
 		AccountId:   resp.AccountId,
 		CreatedAt:   tsToModel(resp.CreatedAt),
 	}
