@@ -381,6 +381,9 @@ func (s *dyAccountService) GetAccountByConnection(ctx context.Context, req *gen.
 		}
 		return nil, err
 	}
+	if err := s.hydrateProfiles(ctx, []model.Account{*account}); err != nil {
+		return nil, err
+	}
 	if s.d.Token != nil {
 		s.d.Token.HydratePerk(ctx, account)
 	}
@@ -440,6 +443,9 @@ func (s *dyAccountService) ListSuperusers(ctx context.Context, req *emptypb.Empt
 	}
 	accounts, err := s.d.Store.GetAccountsByIDs(ctx, ids)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.hydrateProfiles(ctx, accounts); err != nil {
 		return nil, err
 	}
 	response := &gen.DyListSuperusersResponse{}
