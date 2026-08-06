@@ -235,11 +235,17 @@ func (d Deps) listBadges(ctx context.Context, accountID string) ([]any, error) {
 func badgeToJSON(b *gen.DyAccountBadge) map[string]any {
 	raw, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(b)
 	if err != nil {
-		return map[string]any{"id": b.Id, "type": b.Type}
+		return map[string]any{"id": b.Id, "type": b.Type, "meta": map[string]any{}}
 	}
 	var m map[string]any
 	if err := json.Unmarshal(raw, &m); err != nil {
-		return map[string]any{"id": b.Id, "type": b.Type}
+		return map[string]any{"id": b.Id, "type": b.Type, "meta": map[string]any{}}
+	}
+	// The Dart SDK strict-casts badge.meta as Map<String, dynamic>
+	// (account.g.dart); protojson drops empty maps, so a badge without meta
+	// would omit the key and crash the client. Normalize to an empty object.
+	if _, ok := m["meta"]; !ok {
+		m["meta"] = map[string]any{}
 	}
 	return m
 }

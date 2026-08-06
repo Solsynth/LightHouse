@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/protobuf/types/known/structpb"
 	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
@@ -199,6 +200,31 @@ func TestBadgeToJSONSnakeCase(t *testing.T) {
 	m := badgeToJSON(b)
 	if m["id"] != "b1" || m["type"] != "pioneer" || m["account_id"] != "acc" {
 		t.Errorf("badge map = %#v", m)
+	}
+	// The Dart SDK strict-casts badge.meta as Map<String, dynamic>; a badge
+	// without meta must still serialize an empty object, never omit the key.
+	meta, ok := m["meta"].(map[string]any)
+	if !ok {
+		t.Fatalf("badge meta = %#v (%T), want map[string]any{}", m["meta"], m["meta"])
+	}
+	if len(meta) != 0 {
+		t.Errorf("badge meta = %#v, want empty", meta)
+	}
+}
+
+func TestBadgeToJSONKeepsMeta(t *testing.T) {
+	b := &gen.DyAccountBadge{
+		Id:   "b2",
+		Type: "custom",
+		Meta: map[string]*structpb.Value{"color": structpb.NewStringValue("gold")},
+	}
+	m := badgeToJSON(b)
+	meta, ok := m["meta"].(map[string]any)
+	if !ok {
+		t.Fatalf("badge meta = %#v (%T), want map[string]any", m["meta"], m["meta"])
+	}
+	if meta["color"] != "gold" {
+		t.Errorf("badge meta = %#v, want color=gold", meta)
 	}
 }
 
