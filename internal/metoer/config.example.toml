@@ -1,0 +1,95 @@
+# Metoer — Go replacement of DysonNetwork.Ring (notifications/push/email).
+# Mirrors the house pattern (see Stargate's config.example.toml).
+
+siteUrl = "http://localhost:3000"
+baseUrl = "http://localhost:5212"
+# Number of concurrent queue consumers (port of C# "ConsumerCount");
+# 0 = runtime.NumCPU().
+consumerCount = 0
+
+[http]
+port = "8080"
+
+[grpc]
+port = "9090"
+# TLS for the gRPC surface (the C# fleet and Blade dial
+# https://_grpc.ring). server.crt/server.key are issued by the DysonNetwork
+# CA (self-signed); clients skip CA validation, mirroring the fleet
+# convention.
+useTLS = false
+certFile = "Keys/server.crt"
+keyFile = "Keys/server.key"
+
+[database]
+# Same live dyson_ring database the C# fleet uses — migrations are
+# non-destructive (CREATE ... IF NOT EXISTS only).
+dsn = "host=localhost port=5432 user=postgres dbname=dyson_ring sslmode=disable"
+
+[redis]
+addr = "localhost:6379"
+password = ""
+db = 0
+
+[nats]
+target = "nats://127.0.0.1:4222"
+
+[email]
+server = "smtp4dev.orb.local"
+port = 25
+useSsl = false
+username = "no-reply@mail.solsynth.dev"
+password = "password"
+fromAddress = "no-reply@mail.solsynth.dev"
+fromName = "Alphabot"
+subjectPrefix = "Solar Network"
+
+# Per-app push configuration, mirroring appsettings.json Notifications:Push:Apps.
+[notifications.push]
+defaultApp = ""
+
+[notifications.push.apps."dev.solsynth.solian"]
+production = true
+fcmKeyPath = "Keys/Solian.json"
+
+[notifications.push.apps."dev.solsynth.solian".apns]
+privateKeyPath = "Keys/Solian.p8"
+privateKeyId = "4US4KSX4W6"
+teamId = "W7HPZ53V6B"
+bundleIdentifier = "dev.solsynth.solian"
+
+[notifications.push.apps."dev.solsynth.solian".topics]
+alert = "dev.solsynth.solian"
+voip = "dev.solsynth.solian.voip"
+
+# Legacy flat layout (used when [notifications.push.apps] is absent):
+# [notifications.push]
+# production = true
+# google = "Keys/Solian.json"
+# [notifications.push.apple]
+# privateKey = "Keys/Solian.p8"
+# privateKeyId = "4US4KSX4W6"
+# teamId = "W7HPZ53V6B"
+# bundleIdentifier = "dev.solsynth.solian"
+
+# Outbound gRPC targets. stargate serves the account/auth/permission/profile/
+# action-log surface Ring's shared middleware calls; blade serves the
+# WebSocketService (connected-device lookups) and service discovery.
+[services]
+stargate = { grpc = "" }
+blade = { grpc = "" }
+
+[discovery]
+# Register with Blade service discovery so Blade's /meta capability
+# aggregator and proxy resolve this instance (notifications.*, admin.*).
+# Mirror the C# Blade:ServiceDiscovery settings.
+enabled = false
+target = "blade:9090"
+registrationToken = ""
+service = "metoer"
+instanceId = ""
+# Defaults mirror the C# fallback: http://{service}:{httpPort} and
+# {service}:{grpcPort}.
+httpEndpoint = ""
+grpcEndpoint = ""
+leaseSeconds = 30
+weight = 1
