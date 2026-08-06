@@ -293,13 +293,18 @@ func (s *Service) GetConnectedSopWebSocketDeviceIds(accountID uuid.UUID) map[str
 	return s.streams.ConnectedDeviceIds(accountID)
 }
 
+// ErrEmptyNotification mirrors the C# ArgumentException thrown by
+// SendNotification when title/subtitle/content are all null (ASP.NET Core
+// gRPC maps it to InvalidArgument).
+var ErrEmptyNotification = errors.New("Unable to send notification that is completely empty.")
+
 // SendNotification mirrors PushService.SendNotification.
 func (s *Service) SendNotification(ctx context.Context, accountID uuid.UUID, topic string, title, subtitle, content *string, meta map[string]any, actionUri *string, isSilent, save bool, appId, pushType string) error {
 	if meta == nil {
 		meta = map[string]any{}
 	}
 	if title == nil && subtitle == nil && content == nil {
-		return errors.New("Unable to send notification that is completely empty.")
+		return ErrEmptyNotification
 	}
 	if actionUri != nil {
 		meta["action_uri"] = *actionUri
