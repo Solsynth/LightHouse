@@ -224,6 +224,7 @@ func scanProfile(row pgx.Row) (*model.Profile, error) {
 	_ = json.Unmarshal(verification, &profile.Verification)
 	_ = json.Unmarshal(picture, &profile.Picture)
 	_ = json.Unmarshal(background, &profile.Background)
+	_ = json.Unmarshal(activeBadge, &profile.ActiveBadge)
 	return profile, nil
 }
 

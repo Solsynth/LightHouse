@@ -1,8 +1,10 @@
 package auth
 
 import (
+	"encoding/json"
 	"time"
 
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 	gen "src.solsynth.dev/sosys/go/proto"
@@ -127,7 +129,82 @@ func ProfileToProto(p *model.Profile) *gen.DyAccountProfile {
 			VerifiedBy:  derefOrEmpty(p.Verification.VerifiedBy),
 		}
 	}
+	proto.Picture = cloudFileToProto(p.Picture)
+	proto.Background = cloudFileToProto(p.Background)
+	proto.ActiveBadge = badgeRefToProto(p.ActiveBadge)
 	return proto
+}
+
+// cloudFileToProto maps the stored file reference to the DyCloudFile wire
+// shape the C# SnCloudFileReferenceObject.FromProtoValue reads (Id/Url are
+// what the clients render).
+func cloudFileToProto(f *model.SnCloudFileReferenceObject) *gen.DyCloudFile {
+	if f == nil {
+		return nil
+	}
+	out := &gen.DyCloudFile{Id: f.Id, Url: f.Url, MimeType: f.MimeType}
+	if f.Size != nil {
+		out.Size = *f.Size
+	}
+	if f.Width != nil {
+		w := int32(*f.Width)
+		out.Width = &w
+	}
+	if f.Height != nil {
+		h := int32(*f.Height)
+		out.Height = &h
+	}
+	return out
+}
+
+// badgeRefToProto maps the stored active-badge jsonb (C# PascalCase keys) to
+// the DyBadgeReferenceObject wire shape.
+func badgeRefToProto(v *any) *gen.DyBadgeReferenceObject {
+	if v == nil || *v == nil {
+		return nil
+	}
+	raw, err := json.Marshal(*v)
+	if err != nil {
+		return nil
+	}
+	var ref struct {
+		Id          string         `json:"Id"`
+		Type        string         `json:"Type"`
+		Label       *string        `json:"Label"`
+		Caption     *string        `json:"Caption"`
+		Meta        map[string]any `json:"Meta"`
+		ActivatedAt *time.Time     `json:"ActivatedAt"`
+		ExpiredAt   *time.Time     `json:"ExpiredAt"`
+		AccountId   string         `json:"AccountId"`
+	}
+	if err := json.Unmarshal(raw, &ref); err != nil {
+		return nil
+	}
+	out := &gen.DyBadgeReferenceObject{Id: ref.Id, Type: ref.Type, AccountId: ref.AccountId}
+	if ref.Label != nil {
+		out.Label = wrapperspb.String(*ref.Label)
+	}
+	if ref.Caption != nil {
+		out.Caption = wrapperspb.String(*ref.Caption)
+	}
+	if len(ref.Meta) > 0 {
+		meta := make(map[string]*structpb.Value, len(ref.Meta))
+		for k, v := range ref.Meta {
+			value, err := structpb.NewValue(v)
+			if err != nil {
+				continue
+			}
+			meta[k] = value
+		}
+		out.Meta = meta
+	}
+	if ref.ActivatedAt != nil {
+		out.ActivatedAt = timestamppb.New(*ref.ActivatedAt)
+	}
+	if ref.ExpiredAt != nil {
+		out.ExpiredAt = timestamppb.New(*ref.ExpiredAt)
+	}
+	return out
 }
 
 // ContactToProto converts a contact to DyAccountContact.
