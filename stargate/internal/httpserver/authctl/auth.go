@@ -118,6 +118,16 @@ func Register(api *gin.RouterGroup, d Deps) {
 
 // detectChallengeRisk ports AuthService.DetectChallengeRisk: it computes the
 // number of required authentication steps for a new challenge.
+//
+// Unlike the C# source, NfcToken and Passkey factors are excluded from the
+// step count alongside PinCode/RecoveryCode/QrLogin: neither can satisfy a
+// step of the username-challenge flow. Passkeys are only offered to the
+// client through the separate discoverable-passkey flow
+// (startPasskeyLogin), which mints its own single-step challenge, and NFC
+// verification degrades to failure here (the Passport gRPC RPC is not
+// ported). Counting them produced challenges whose StepTotal exceeded the
+// factors the picker can complete, stranding the login after the last usable
+// factor with an empty picker.
 func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress, userAgent string) (int, error) {
 	factors, err := h.d.Store.GetAuthFactors(ctx, uuid.MustParse(accountID))
 	if err != nil {
@@ -127,7 +137,8 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 	for _, f := range factors {
 		ft := model.AuthFactorType(f.Type)
 		if f.EnabledAt != nil && ft != model.AuthFactorTypePinCode &&
-			ft != model.AuthFactorTypeRecoveryCode && ft != model.AuthFactorTypeQrLogin {
+			ft != model.AuthFactorTypeRecoveryCode && ft != model.AuthFactorTypeQrLogin &&
+			ft != model.AuthFactorTypeNfcToken && ft != model.AuthFactorTypePasskey {
 			enabledFactors = append(enabledFactors, f)
 		}
 	}
