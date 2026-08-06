@@ -48,7 +48,10 @@ func AccountToProto(a *model.Account) *gen.DyAccount {
 	if a.AutomatedId != nil {
 		proto.AutomatedId = wrapperspb.String(*a.AutomatedId)
 	}
-	if a.PerkSubscription != nil {
+	// Skip empty perk subscriptions: the wallet uses Id == "" as the "no
+	// active perk subscription" sentinel, and downstream C# consumers
+	// (SnSubscriptionReferenceObject.FromProtoValue) Guid.Parse the id.
+	if a.PerkSubscription != nil && a.PerkSubscription.Id != "" {
 		sub := a.PerkSubscription
 		proto.PerkSubscription = &gen.DySubscriptionReferenceObject{
 			Id:          sub.Id,

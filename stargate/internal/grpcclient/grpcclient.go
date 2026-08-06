@@ -104,7 +104,10 @@ func (p *WalletPerkProvider) GetPerkSubscription(ctx context.Context, accountID 
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil {
+	// Mirrors RemoteSubscriptionService.GetPerkSubscription: the wallet returns
+	// an empty Id as the "no active perk subscription" sentinel, which must map
+	// to nil here (callers then set account.PerkSubscription = nil).
+	if resp == nil || resp.Id == "" {
 		return nil, nil
 	}
 	ref := &model.SnSubscriptionReferenceObject{

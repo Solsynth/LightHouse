@@ -490,7 +490,7 @@ func accountFromProto(p *gen.DyAccount) *model.Account {
 		v := p.AutomatedId.Value
 		a.AutomatedId = &v
 	}
-	if p.PerkSubscription != nil {
+	if p.PerkSubscription != nil && p.PerkSubscription.Id != "" {
 		sub := p.PerkSubscription
 		a.PerkSubscription = &model.SnSubscriptionReferenceObject{
 			Id:          sub.Id,
