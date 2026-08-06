@@ -22,12 +22,13 @@ const challengeColumns = `id, account_id, approved_at, approved_by_session_id, a
 func scanChallenge(row pgx.Row) (*model.AuthChallenge, error) {
 	ch := &model.AuthChallenge{}
 	var (
+		accountID                    *string
 		audiences, scopes, blacklist []string
 		location                     []byte
 		approvedBySessionID          *uuid.UUID
 	)
 	err := row.Scan(
-		&ch.Id, &ch.AccountId, &ch.ApprovedAt, &approvedBySessionID,
+		&ch.Id, &accountID, &ch.ApprovedAt, &approvedBySessionID,
 		&audiences, &blacklist, &ch.CreatedAt, &ch.DeclinedAt, &ch.DeletedAt,
 		&ch.DeviceId, &ch.DeviceName, &ch.ExpiredAt, &ch.FailedAttempts, &ch.IpAddress,
 		&location, &ch.Nonce, &ch.Platform, &scopes, &ch.StepRemain, &ch.StepTotal,
@@ -39,6 +40,7 @@ func scanChallenge(row pgx.Row) (*model.AuthChallenge, error) {
 		}
 		return nil, err
 	}
+	ch.AccountId = accountIDOrSentinel(accountID)
 	ch.Audiences = audiences
 	ch.Scopes = scopes
 	ch.BlacklistFactors = blacklist
@@ -58,6 +60,25 @@ func (s *Store) GetAuthChallenge(ctx context.Context, id uuid.UUID) (*model.Auth
 	return scanChallenge(row)
 }
 
+// nullableAccountID maps the all-zero-UUID sentinel to NULL so anonymous
+// challenges (discoverable passkey login, QR login) can be stored without an
+// accounts row (account_id is nullable; see 0003 migration).
+func nullableAccountID(accountID string) any {
+	if accountID == "" || accountID == uuid.Nil.String() {
+		return nil
+	}
+	return accountID
+}
+
+// accountIDOrSentinel normalizes a NULL account_id back to the sentinel so
+// handlers keep treating uuid.Nil.String() as the "no account yet" marker.
+func accountIDOrSentinel(accountID *string) string {
+	if accountID == nil {
+		return uuid.Nil.String()
+	}
+	return *accountID
+}
+
 // CreateAuthChallenge inserts a challenge (ids and timestamps must be set).
 func (s *Store) CreateAuthChallenge(ctx context.Context, ch *model.AuthChallenge) error {
 	locationJSON, _ := json.Marshal(ch.Location)
@@ -69,7 +90,7 @@ func (s *Store) CreateAuthChallenge(ctx context.Context, ch *model.AuthChallenge
 		 declined_at, deleted_at, device_id, device_name, expired_at, failed_attempts, ip_address,
 		 location, nonce, platform, scopes, step_remain, step_total, updated_at, user_agent)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
-		ch.Id, ch.AccountId, ch.ApprovedAt, ch.ApprovedBySessionId, audiences, blacklist, ch.CreatedAt,
+		ch.Id, nullableAccountID(ch.AccountId), ch.ApprovedAt, ch.ApprovedBySessionId, audiences, blacklist, ch.CreatedAt,
 		ch.DeclinedAt, ch.DeletedAt, ch.DeviceId, ch.DeviceName, ch.ExpiredAt, ch.FailedAttempts, ch.IpAddress,
 		locationJSON, ch.Nonce, int(ch.Platform), scopes, ch.StepRemain, ch.StepTotal, ch.UpdatedAt, ch.UserAgent)
 	return err
@@ -94,7 +115,7 @@ func (s *Store) UpdateAuthChallenge(ctx context.Context, ch *model.AuthChallenge
 		account_id = $2, approved_at = $3, approved_by_session_id = $4, blacklist_factors = $5,
 		declined_at = $6, expired_at = $7, failed_attempts = $8, step_remain = $9, updated_at = $10
 		WHERE id = $1`,
-		ch.Id, ch.AccountId, ch.ApprovedAt, ch.ApprovedBySessionId, ch.BlacklistFactors,
+		ch.Id, nullableAccountID(ch.AccountId), ch.ApprovedAt, ch.ApprovedBySessionId, ch.BlacklistFactors,
 		ch.DeclinedAt, ch.ExpiredAt, ch.FailedAttempts, ch.StepRemain, ch.UpdatedAt)
 	return err
 }
