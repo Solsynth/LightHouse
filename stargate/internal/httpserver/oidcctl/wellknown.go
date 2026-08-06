@@ -11,8 +11,9 @@ import (
 
 // handleConfiguration mirrors OidcProviderController.GetConfiguration. The
 // endpoint/issuer URLs use the trimmed issuer and the configured SiteUrl /
-// BaseUrl exactly like the C# (including the /padlock prefixes the deployed
-// gateway exposes).
+// BaseUrl; the provider endpoints use the /stargate service prefix the
+// deployed gateway exposes (Padlock fully replaced — the legacy /padlock
+// prefix is no longer routed).
 func (s *service) handleConfiguration(c *gin.Context) {
 	issuer := strings.TrimSuffix(s.issuer, "/")
 	baseUrl := strings.TrimSuffix(s.cfg.BaseUrl, "/")
@@ -21,9 +22,9 @@ func (s *service) handleConfiguration(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"issuer":                                issuer,
 		"authorization_endpoint":                siteUrl + "/auth/authorize",
-		"device_authorization_endpoint":         baseUrl + "/padlock/auth/open/device/code",
-		"token_endpoint":                        baseUrl + "/padlock/auth/open/token",
-		"userinfo_endpoint":                     baseUrl + "/padlock/auth/open/userinfo",
+		"device_authorization_endpoint":         baseUrl + "/stargate/auth/open/device/code",
+		"token_endpoint":                        baseUrl + "/stargate/auth/open/token",
+		"userinfo_endpoint":                     baseUrl + "/stargate/auth/open/userinfo",
 		"jwks_uri":                              baseUrl + "/.well-known/jwks",
 		"scopes_supported":                      []string{"openid", "profile", "email"},
 		"response_types_supported":              []string{"code", "token", "id_token", "code token", "code id_token", "token id_token", "code token id_token"},
