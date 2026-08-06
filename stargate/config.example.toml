@@ -58,10 +58,26 @@ rpId = "localhost"
 rpName = "Solar Network"
 relatedOrigins = ["http://localhost:3000"]
 
+# Account activation (mirrors Passport's AccountActivation). Entry-test (exam)
+# logic stays in Passport: when testsEnabled is true and requiredTestKeys is
+# non-empty, contact verification does NOT activate the account here — Passport
+# evaluates the attempts and publishes accounts.activated, which Stargate
+# consumes. With no required tests (default), a verified contact activates the
+# account immediately.
+[accountActivation]
+testsEnabled = false
+requiredTestKeys = []
+
 [geoip]
 databasePath = "Keys/GeoLite2-City.mmdb"
 
+# Outbound gRPC targets. develop is REQUIRED for OIDC client lookup
+# (authorize/token/device flows) and custom-app checks; without it every
+# /api/auth/open/* client lookup fails with "Client not found". The C#
+# Padlock wired it unconditionally via the shared _grpc.develop channel —
+# mirror that here, e.g. develop = { grpc = "develop:5001" }.
 [services]
+develop = { grpc = "" }
 drive = { grpc = "" }
 wallet = { grpc = "" }
 pass = { grpc = "" }

@@ -258,6 +258,9 @@ func (s *service) findClientBySlug(ctx context.Context, slug string) (*oidcClien
 
 func (s *service) fetchClient(ctx context.Context, id, slug string) (oidcClient, error) {
 	if s.develop == nil {
+		if s.log != nil {
+			s.log.Warn("OIDC client lookup skipped: Develop gRPC client is not configured ([services] develop)", "id", id, "slug", slug)
+		}
 		return oidcClient{}, nil
 	}
 	req := &gen.DyGetCustomAppRequest{}
