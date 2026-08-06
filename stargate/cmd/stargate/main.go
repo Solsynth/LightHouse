@@ -144,9 +144,12 @@ func run(log *slog.Logger) error {
 	}
 
 	authMw := middleware.Auth(middleware.AuthDeps{
-		Token:   tokenAuth,
-		Toucher: toucher,
-		Log:     log,
+		Token:        tokenAuth,
+		Renewer:      authService,
+		Toucher:      toucher,
+		CookieDomain: cfg.Auth.CookieDomain,
+		CookieSecure: cfg.Auth.CookieSecure,
+		Log:          log,
 	})
 
 	spellService := spell.NewService(st, rc, clients.Ring, cfg.SiteUrl, log)

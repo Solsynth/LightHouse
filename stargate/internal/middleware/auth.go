@@ -137,11 +137,20 @@ func (t *LastSeenToucher) flush() {
 	}
 }
 
+// TokenRenewer rotates an expired access token using its refresh token,
+// returning the fresh pair plus the rotated session.
+type TokenRenewer interface {
+	RefreshSessionAndIssueTokens(ctx context.Context, refreshToken string) (*auth.TokenPair, *model.AuthSession, error)
+}
+
 // AuthDeps bundles what the auth middleware needs.
 type AuthDeps struct {
-	Token   *auth.TokenAuthService
-	Toucher *LastSeenToucher
-	Log     *slog.Logger
+	Token        *auth.TokenAuthService
+	Renewer      TokenRenewer
+	Toucher      *LastSeenToucher
+	CookieDomain string
+	CookieSecure bool
+	Log          *slog.Logger
 }
 
 // Auth returns a middleware that authenticates requests, mirroring
@@ -156,6 +165,26 @@ func Auth(deps AuthDeps) gin.HandlerFunc {
 		}
 		ip := ClientIP(c.Request)
 		valid, session, message, _ := deps.Token.AuthenticateToken(c.Request.Context(), tokenInfo.Token, ip)
+
+		// Auto-renew: an expired access token whose session is still valid is
+		// transparently rotated via the RefreshToken cookie, so clients with a
+		// valid session never see TOKEN_EXPIRED. OIDC and API-key tokens are
+		// excluded (see TokenAuthService.AutoRenewable).
+		if (!valid || session == nil) && message == auth.MsgTokenExpired && deps.Renewer != nil {
+			if refreshToken, err := c.Cookie("RefreshToken"); err == nil && strings.TrimSpace(refreshToken) != "" {
+				if deps.Token.AutoRenewable(tokenInfo.Token, refreshToken) {
+					pair, renewed, rerr := deps.Renewer.RefreshSessionAndIssueTokens(c.Request.Context(), refreshToken)
+					if rerr == nil && pair != nil && renewed != nil {
+						setAuthCookies(c, pair, deps.CookieDomain, deps.CookieSecure)
+						valid, session = true, renewed
+						deps.Log.Debug("auto-renewed expired access token", "session", renewed.Id)
+					} else {
+						deps.Log.Debug("auto-renew failed", "error", rerr)
+					}
+				}
+			}
+		}
+
 		if !valid || session == nil {
 			// Mirror DysonTokenAuthHandler: an invalid token leaves the
 			// request unauthenticated but does NOT reject anonymous routes
@@ -182,6 +211,14 @@ func Auth(deps AuthDeps) gin.HandlerFunc {
 		}
 		c.Next()
 	}
+}
+
+// setAuthCookies mirrors Padlock's SetAuthCookies (HttpOnly, Secure,
+// SameSite=Lax, domain from AuthToken:CookieDomain).
+func setAuthCookies(c *gin.Context, pair *auth.TokenPair, domain string, secure bool) {
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("AuthToken", pair.AccessToken, int(pair.AccessTokenExpiresAt.Sub(time.Now()).Seconds()), "/", domain, secure, true)
+	c.SetCookie("RefreshToken", pair.RefreshToken, int(pair.RefreshTokenExpiresAt.Sub(time.Now()).Seconds()), "/", domain, secure, true)
 }
 
 // RequireAuth rejects unauthenticated requests with a 401 ApiError. A token

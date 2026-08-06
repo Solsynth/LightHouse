@@ -430,18 +430,19 @@ func scopesWithFullScope(scopes []string) []string {
 }
 
 // RefreshSessionAndIssueTokens rotates a refresh token (epoch bump) and
-// returns a new pair.
-func (s *AuthService) RefreshSessionAndIssueTokens(ctx context.Context, refreshToken string) (*TokenPair, error) {
+// returns a new pair plus the rotated session (the session powers the
+// middleware auto-renew path without re-loading it).
+func (s *AuthService) RefreshSessionAndIssueTokens(ctx context.Context, refreshToken string) (*TokenPair, *model.AuthSession, error) {
 	isValid, claims := s.jwt.ValidateJwt(refreshToken)
 	if !isValid || claims == nil {
-		return nil, &ErrInvalid{Message: "Invalid refresh token."}
+		return nil, nil, &ErrInvalid{Message: "Invalid refresh token."}
 	}
 	if TokenUseOf(claims) != TokenUseRefresh {
-		return nil, &ErrInvalid{Message: "Invalid refresh token."}
+		return nil, nil, &ErrInvalid{Message: "Invalid refresh token."}
 	}
 	jti, ok := ParseUUIDClaim(claims, "jti")
 	if !ok {
-		return nil, &ErrInvalid{Message: "Invalid refresh token."}
+		return nil, nil, &ErrInvalid{Message: "Invalid refresh token."}
 	}
 	sessionID, ok := ParseUUIDClaim(claims, "sid")
 	if !ok {
@@ -449,33 +450,33 @@ func (s *AuthService) RefreshSessionAndIssueTokens(ctx context.Context, refreshT
 	}
 	accountID, ok := ParseUUIDClaim(claims, "sub")
 	if !ok {
-		return nil, &ErrInvalid{Message: "Invalid refresh token."}
+		return nil, nil, &ErrInvalid{Message: "Invalid refresh token."}
 	}
 	if tokenVer, ok := ClaimInt(claims, "ver"); ok {
 		currentVer, err := s.token.GetAccountVersion(ctx, accountID.String())
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if tokenVer < currentVer {
-			return nil, &ErrInvalid{Message: "Refresh token has been invalidated."}
+			return nil, nil, &ErrInvalid{Message: "Refresh token has been invalidated."}
 		}
 	}
 	now := time.Now().UTC()
 	session, err := s.store.GetSessionWithAccount(ctx, sessionID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return nil, &ErrInvalid{Message: "Session was not found."}
+			return nil, nil, &ErrInvalid{Message: "Session was not found."}
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	if session.AccountId != accountID.String() {
-		return nil, &ErrInvalid{Message: "Session was not found."}
+		return nil, nil, &ErrInvalid{Message: "Session was not found."}
 	}
 	if session.ExpiredAt != nil && !session.ExpiredAt.Time().After(now) {
-		return nil, &ErrInvalid{Message: "Session has been expired."}
+		return nil, nil, &ErrInvalid{Message: "Session has been expired."}
 	}
 	if tokenEpoch, ok := ClaimInt(claims, "epoch"); ok && tokenEpoch != session.Epoch {
-		return nil, &ErrInvalid{Message: "Refresh token has been revoked."}
+		return nil, nil, &ErrInvalid{Message: "Refresh token has been revoked."}
 	}
 
 	newExpiry := now.Add(s.cfg.RefreshTokenLifetime())
@@ -483,7 +484,7 @@ func (s *AuthService) RefreshSessionAndIssueTokens(ctx context.Context, refreshT
 		`UPDATE auth_sessions SET last_granted_at = $1, expired_at = $2, epoch = epoch + 1 WHERE id = $3`,
 		now, newExpiry, sessionID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	session.LastGrantedAt = model.NewTime(now)
 	session.ExpiredAt = model.NewTime(newExpiry)
@@ -492,7 +493,11 @@ func (s *AuthService) RefreshSessionAndIssueTokens(ctx context.Context, refreshT
 	_ = s.redis.Cache.Remove(ctx, "auth:session:"+sessionID.String())
 	_ = s.redis.Raw.Del(ctx, fmt.Sprintf(SessionTokensGroupFmt, sessionID.String())).Err()
 
-	return s.CreateTokenPair(ctx, session)
+	pair, err := s.CreateTokenPair(ctx, session)
+	if err != nil {
+		return nil, nil, err
+	}
+	return pair, session, nil
 }
 
 // TrackAuthenticatedActivityAsync throttles (1h) account-active action logs.

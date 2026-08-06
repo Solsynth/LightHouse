@@ -36,9 +36,11 @@ const (
 // clients can refresh and retry.
 const MsgTokenExpired = "Token has expired."
 
-// tokenExpired reports whether the JWT exp claim is in the past.
+// tokenExpired reports whether the JWT exp claim is in the past. The claim
+// is read string-or-number (ClaimInt) because the C# minting serializes
+// claims as strings (see ClaimInt).
 func tokenExpired(claims jwt.MapClaims) bool {
-	exp, ok := claims["exp"].(float64)
+	exp, ok := ClaimInt(claims, "exp")
 	return ok && time.Now().Unix() > int64(exp)
 }
 
@@ -257,7 +259,7 @@ func (t *TokenAuthService) validateOidcToken(token string) (sessionID uuid.UUID,
 	if parts != 3 {
 		return uuid.Nil, "", 0, nil, false
 	}
-	parser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256"}))
+	parser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256"}), jwt.WithoutClaimsValidation())
 	parsed, err := parser.Parse(token, func(tk *jwt.Token) (any, error) {
 		return t.jwt.PublicKey(), nil
 	})
@@ -314,6 +316,68 @@ func (t *TokenAuthService) validateOidcBinding(ctx context.Context, session *gen
 		return false, "OIDC token authorized party mismatch."
 	}
 	return true, ""
+}
+
+// unverifiedClaims parses a JWT's payload without signature validation.
+func unverifiedClaims(token string) (jwt.MapClaims, bool) {
+	parsed, _, err := jwt.NewParser().ParseUnverified(token, jwt.MapClaims{})
+	if err != nil {
+		return nil, false
+	}
+	claims, ok := parsed.Claims.(jwt.MapClaims)
+	return claims, ok
+}
+
+// firstSessionID extracts the session id claim (sid, falling back to jti).
+func firstSessionID(claims jwt.MapClaims) string {
+	for _, name := range []string{"sid", "jti"} {
+		if v, ok := claims[name].(string); ok && v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// IsOidcToken reports whether the token is an OIDC-issued access token
+// (relaxed-issuer path) rather than a plain Padlock user token: OIDC tokens
+// carry the azp claim and an OIDC provider issuer.
+func (t *TokenAuthService) IsOidcToken(token string) bool {
+	claims, ok := unverifiedClaims(token)
+	if !ok {
+		return false
+	}
+	if _, hasAzp := claims["azp"]; hasAzp {
+		return true
+	}
+	if iss, ok := claims["iss"].(string); ok && iss != "" && iss != t.jwt.issuer {
+		return true
+	}
+	return false
+}
+
+// AutoRenewable reports whether an expired token may be silently rotated
+// with the given refresh token: the token must be a plain user token (not
+// an API key or OIDC-issued) and both must reference the same session. OIDC
+// clients rotate through the OAuth refresh grant instead — rotating their
+// session here would bump the epoch and revoke the client's refresh tokens.
+func (t *TokenAuthService) AutoRenewable(token, refreshToken string) bool {
+	if IsApiKeyTokenString(token) {
+		return false
+	}
+	if t.IsOidcToken(token) {
+		return false
+	}
+	claims, ok := unverifiedClaims(token)
+	if !ok {
+		return false
+	}
+	refreshClaims, ok := unverifiedClaims(refreshToken)
+	if !ok {
+		return false
+	}
+	sid := firstSessionID(claims)
+	refreshSid := firstSessionID(refreshClaims)
+	return sid != "" && sid == refreshSid
 }
 
 func (t *TokenAuthService) hydratePerk(ctx context.Context, account *model.Account) {

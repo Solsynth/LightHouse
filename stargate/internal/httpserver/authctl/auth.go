@@ -1309,7 +1309,7 @@ func (h *handler) exchangeToken(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_REFRESH_TOKEN_REQUIRED", "Missing refresh token."))
 			return
 		}
-		pair, err := h.d.Auth.RefreshSessionAndIssueTokens(ctx, submitted)
+		pair, _, err := h.d.Auth.RefreshSessionAndIssueTokens(ctx, submitted)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_REFRESH_FAILED", err.Error()))
 			return
@@ -1328,7 +1328,7 @@ func (h *handler) refreshToken(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_REFRESH_TOKEN_REQUIRED", "Missing refresh token."))
 		return
 	}
-	pair, err := h.d.Auth.RefreshSessionAndIssueTokens(ctx, refreshToken)
+	pair, _, err := h.d.Auth.RefreshSessionAndIssueTokens(ctx, refreshToken)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_REFRESH_FAILED", err.Error()))
 		return

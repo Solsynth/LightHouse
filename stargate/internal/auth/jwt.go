@@ -210,10 +210,12 @@ func (s *JWTService) sign(claims jwt.MapClaims, now, expiresAt time.Time) (strin
 }
 
 // ValidateJwt validates signature, issuer, audience and nbf. Like the C#,
-// exp is NOT enforced here (session expiry governs); nbf is checked with a
-// 1-minute clock skew.
+// exp is NOT enforced here (the caller governs it: AuthenticateToken maps an
+// expired access token to TOKEN_EXPIRED, session expiry governs refresh
+// tokens); nbf is checked with a 1-minute clock skew. WithoutClaimsValidation
+// is required because the golang-jwt v5 default validator enforces exp.
 func (s *JWTService) ValidateJwt(tokenText string) (bool, jwt.MapClaims) {
-	parser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256"}))
+	parser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256"}), jwt.WithoutClaimsValidation())
 	token, err := parser.Parse(tokenText, func(t *jwt.Token) (any, error) {
 		return s.public, nil
 	})
