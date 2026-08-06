@@ -135,3 +135,87 @@ func (c *Client) PublishWS(ctx context.Context, target string, event string, pay
 	_, err = c.JS.Publish(ctx, c.cfg.NATS.WebsocketPushSubject, data)
 	return err
 }
+
+// accountEventsStream is the C# fleet's shared stream for account domain
+// events (EventBase.StreamName of the account events, e.g.
+// AccountActivatedEvent).
+const accountEventsStream = "account_events"
+
+// AccountActivatedEvent mirrors the C# AccountActivatedEvent wire shape
+// (System.Text.Json PascalCase keys; NodaTime Instant as ISO-8601 UTC).
+// Passport publishes it on the subject accounts.activated once activation
+// requirements are satisfied (e.g. required entry tests passed); the old
+// Padlock consumer set activated_at + the verified group, which Stargate now
+// does.
+type AccountActivatedEvent struct {
+	AccountID   string    `json:"AccountId"`
+	ActivatedAt time.Time `json:"ActivatedAt"`
+}
+
+// AccountTestPassedPermissionGroupEvent mirrors the C#
+// AccountTestPassedPermissionGroupEvent wire shape. Passport publishes it on
+// accounts.tests.permission-group-granted when a passed test is configured
+// with granted_permission_group_key; the old Padlock consumer granted the
+// group membership, which Stargate now does.
+type AccountTestPassedPermissionGroupEvent struct {
+	AccountID          string    `json:"AccountId"`
+	TestID             string    `json:"TestId"`
+	AttemptID          string    `json:"AttemptId"`
+	PermissionGroupKey string    `json:"PermissionGroupKey"`
+	GrantedAt          time.Time `json:"GrantedAt"`
+}
+
+// ConsumeAccountEvents runs a durable JetStream consumer for one subject on
+// the account_events stream, mirroring the C# EventBusBackgroundService
+// defaults (JetStream, DeliverPolicy New). handler returns nil to ack;
+// returning an error leaves the message unacked for redelivery
+// (at-least-once). The consumer is created if missing and the loop blocks
+// until ctx is cancelled.
+func (c *Client) ConsumeAccountEvents(ctx context.Context, subject, consumerName string, handler func(payload []byte) error) error {
+	if c == nil || c.Conn == nil || c.JS == nil {
+		return nil // NATS disabled
+	}
+	// Union subjects: the C# fleet created account_events with its own
+	// subject list; replacing it would drop coverage for its other events.
+	subjects := []string{subject}
+	if stream, err := c.JS.Stream(ctx, accountEventsStream); err == nil {
+		if info, err := stream.Info(ctx); err == nil {
+			seen := map[string]bool{subject: true}
+			for _, s := range info.Config.Subjects {
+				if !seen[s] {
+					seen[s] = true
+					subjects = append(subjects, s)
+				}
+			}
+		}
+	}
+	if _, err := c.JS.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+		Name:      accountEventsStream,
+		Subjects:  subjects,
+		Retention: jetstream.LimitsPolicy,
+	}); err != nil {
+		return fmt.Errorf("ensure %s stream: %w", accountEventsStream, err)
+	}
+	cons, err := c.JS.CreateOrUpdateConsumer(ctx, accountEventsStream, jetstream.ConsumerConfig{
+		Name:          consumerName,
+		FilterSubject: subject,
+		DeliverPolicy: jetstream.DeliverNewPolicy,
+		AckPolicy:     jetstream.AckExplicitPolicy,
+	})
+	if err != nil {
+		return fmt.Errorf("create %s consumer: %w", consumerName, err)
+	}
+	cc, err := cons.Consume(func(msg jetstream.Msg) {
+		if err := handler(msg.Data()); err != nil {
+			_ = msg.Nak()
+			return
+		}
+		_ = msg.Ack()
+	})
+	if err != nil {
+		return fmt.Errorf("start %s consumer: %w", consumerName, err)
+	}
+	<-ctx.Done()
+	cc.Stop()
+	return nil
+}

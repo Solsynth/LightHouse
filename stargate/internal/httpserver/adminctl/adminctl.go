@@ -199,11 +199,5 @@ func logAction(d Deps, ctx *gin.Context, accountID uuid.UUID, action model.Actio
 // an actor. The Go permission service is DB-backed, but the C# fleet still
 // reads the perm:* keys, so the clear is kept for interop (best-effort).
 func clearActorPermissionCache(d Deps, c *gin.Context, actor string) {
-	if d.Redis == nil || d.Redis.Cache == nil {
-		return
-	}
-	ctx := c.Request.Context()
-	_ = d.Redis.Cache.Remove(ctx, "perm-cg:"+actor)
-	_ = d.Redis.Cache.RemoveGroup(ctx, "perm-g:"+actor)
-	_ = d.Redis.Cache.Remove(ctx, "perm-blocked:"+actor)
+	d.Redis.ClearActorPermissionCache(c.Request.Context(), actor)
 }

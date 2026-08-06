@@ -93,6 +93,15 @@ type Config struct {
 		RelatedOrigins []string `toml:"relatedOrigins"`
 	} `toml:"webauthn"`
 
+	// AccountActivation mirrors Passport's AccountActivation settings. Entry
+	// tests (exam logic) stay in Passport, so Stargate only needs to know
+	// whether tests are required to defer activation to Passport — the exam
+	// evaluation itself never runs here.
+	AccountActivation struct {
+		TestsEnabled     bool     `toml:"testsEnabled"`
+		RequiredTestKeys []string `toml:"requiredTestKeys"`
+	} `toml:"accountActivation"`
+
 	GeoIP struct {
 		DatabasePath string `toml:"databasePath"`
 	} `toml:"geoip"`
@@ -237,6 +246,7 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("STARGATE_SERVICES_BLADE__GRPC", &cfg.Services.Blade.GRPC)
 	setStr("STARGATE_SERVICES_RING__GRPC", &cfg.Services.Ring.GRPC)
 	setBool("STARGATE_CAPTCHA_SKIP", &cfg.Captcha.Skip)
+	setBool("STARGATE_ACCOUNT_ACTIVATION__TESTS_ENABLED", &cfg.AccountActivation.TestsEnabled)
 	setBool("STARGATE_DISCOVERY_ENABLED", &cfg.Discovery.Enabled)
 	setStr("STARGATE_DISCOVERY_TARGET", &cfg.Discovery.Target)
 	setStr("STARGATE_DISCOVERY_REGISTRATION_TOKEN", &cfg.Discovery.RegistrationToken)

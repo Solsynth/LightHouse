@@ -582,6 +582,34 @@ type seedGroup struct {
 	keys []string
 }
 
+// GrantPermissionGroup mirrors AccountService.GrantPermissionGroup (the
+// Padlock consumer of Passport's accounts.tests.permission-group-granted
+// event): it adds the account to the group by key, or re-activates an
+// existing membership (clears affected_at/expired_at), and reports whether
+// the group exists. The actor permission-cache clear is the caller's job.
+func (s *Service) GrantPermissionGroup(ctx context.Context, accountID uuid.UUID, groupKey string) (bool, error) {
+	if groupKey == "" {
+		return false, nil
+	}
+	var groupID uuid.UUID
+	if err := s.DB.QueryRow(ctx, `SELECT id FROM permission_groups
+		WHERE "key" = $1 AND deleted_at IS NULL`, groupKey).Scan(&groupID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("permission: lookup group %q: %w", groupKey, err)
+	}
+	actor := accountID.String()
+	if _, err := s.DB.Exec(ctx, `INSERT INTO permission_group_members
+		(group_id, actor, affected_at, expired_at, created_at, updated_at)
+		VALUES ($1, $2, NULL, NULL, now(), now())
+		ON CONFLICT (group_id, actor) DO UPDATE SET affected_at = NULL, expired_at = NULL, updated_at = now()`,
+		groupID, actor); err != nil {
+		return false, fmt.Errorf("permission: grant group %q to %s: %w", groupKey, actor, err)
+	}
+	return true, nil
+}
+
 // EnsureSeeded synchronizes the permission registry exactly like the C#
 // PermissionSeedService.EnsureSeededAsync: the legacy `all-users` group is
 // removed, then the default/verified/moderator/developer groups are ensured

@@ -32,3 +32,15 @@ func Connect(ctx context.Context, addr, password string, dbIndex int) (*Client, 
 		Cache: cache.NewRedisCacheService(raw),
 	}, nil
 }
+
+// ClearActorPermissionCache removes the C#-side permission cache entries for
+// an actor. The Go permission service is DB-backed, but the C# fleet still
+// reads the perm:* keys, so the clear is kept for interop (best-effort).
+func (c *Client) ClearActorPermissionCache(ctx context.Context, actor string) {
+	if c == nil || c.Cache == nil {
+		return
+	}
+	_ = c.Cache.Remove(ctx, "perm-cg:"+actor)
+	_ = c.Cache.RemoveGroup(ctx, "perm-g:"+actor)
+	_ = c.Cache.Remove(ctx, "perm-blocked:"+actor)
+}

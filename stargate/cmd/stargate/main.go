@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -152,7 +153,17 @@ func run(log *slog.Logger) error {
 		Log:          log,
 	})
 
-	spellService := spell.NewService(st, rc, clients.Ring, cfg.SiteUrl, log)
+	spellService := spell.NewService(st, rc, clients.Ring, cfg.SiteUrl, cfg, log)
+
+	// Passport owns entry-test (exam) logic; when activation requirements are
+	// satisfied there, it publishes accounts.activated and Stargate applies
+	// the activation side effect (Padlock's old consumer wrote to its own DB,
+	// which is no longer authoritative after cutover). The same applies to
+	// permission-group grants from passed tests.
+	if nc != nil {
+		go consumeAccountActivated(ctx, nc, st, rc, log)
+		go consumeTestPassedGroupGrant(ctx, nc, permService, rc, log)
+	}
 
 	srv := httpserver.New(cfg, authMw)
 	srv.Register(registerCoreRoutes(authService, tokenAuth, permService, logs, st, cfg, log))
@@ -282,6 +293,74 @@ func run(log *slog.Logger) error {
 			return nil
 		}
 		return err
+	}
+}
+
+// consumeAccountActivated mirrors Padlock's AccountActivatedEvent consumer:
+// it sets activated_at, grants the `verified` group and clears the
+// permission cache. Runs until ctx is cancelled. Malformed events are acked
+// (they can never succeed on redelivery), mirroring the C# behavior; DB
+// errors leave the message unacked for redelivery.
+func consumeAccountActivated(ctx context.Context, nc *nats.Client, st *store.Store, rc *redisclient.Client, log *slog.Logger) {
+	if err := nc.ConsumeAccountEvents(ctx, "accounts.activated", "stargate_accountactivatedevent_consumer", func(payload []byte) error {
+		var ev nats.AccountActivatedEvent
+		if err := json.Unmarshal(payload, &ev); err != nil {
+			log.Warn("malformed accounts.activated event", "error", err)
+			return nil
+		}
+		id, err := uuid.Parse(ev.AccountID)
+		if err != nil {
+			log.Warn("accounts.activated event has invalid account id", "account_id", ev.AccountID)
+			return nil
+		}
+		activated, err := st.ActivateAccountAndGrantVerified(ctx, id, ev.ActivatedAt)
+		if err != nil {
+			return err
+		}
+		if !activated {
+			log.Warn("accounts.activated for missing or already-activated account", "account_id", ev.AccountID)
+			return nil
+		}
+		rc.ClearActorPermissionCache(ctx, ev.AccountID)
+		log.Info("activated account from accounts.activated", "account_id", ev.AccountID)
+		return nil
+	}); err != nil {
+		log.Warn("accounts.activated consumer stopped", "error", err)
+	}
+}
+
+// consumeTestPassedGroupGrant mirrors Padlock's
+// AccountTestPassedPermissionGroupEvent consumer: it grants the account the
+// permission group a passed test configured and clears the permission cache.
+// Runs until ctx is cancelled. Malformed events are acked; missing groups
+// are logged and acked (nothing to do); DB errors redeliver.
+func consumeTestPassedGroupGrant(ctx context.Context, nc *nats.Client, perm *permission.Service, rc *redisclient.Client, log *slog.Logger) {
+	if err := nc.ConsumeAccountEvents(ctx, "accounts.tests.permission-group-granted", "stargate_accounttestpassedpermissiongroupevent_consumer", func(payload []byte) error {
+		var ev nats.AccountTestPassedPermissionGroupEvent
+		if err := json.Unmarshal(payload, &ev); err != nil {
+			log.Warn("malformed accounts.tests.permission-group-granted event", "error", err)
+			return nil
+		}
+		id, err := uuid.Parse(ev.AccountID)
+		if err != nil {
+			log.Warn("accounts.tests.permission-group-granted event has invalid account id", "account_id", ev.AccountID)
+			return nil
+		}
+		granted, err := perm.GrantPermissionGroup(ctx, id, ev.PermissionGroupKey)
+		if err != nil {
+			return err
+		}
+		if !granted {
+			log.Warn("permission group not found for passed test",
+				"account_id", ev.AccountID, "group_key", ev.PermissionGroupKey, "test_id", ev.TestID)
+			return nil
+		}
+		rc.ClearActorPermissionCache(ctx, ev.AccountID)
+		log.Info("granted permission group from passed test",
+			"account_id", ev.AccountID, "group_key", ev.PermissionGroupKey, "test_id", ev.TestID)
+		return nil
+	}); err != nil {
+		log.Warn("accounts.tests.permission-group-granted consumer stopped", "error", err)
 	}
 }
 

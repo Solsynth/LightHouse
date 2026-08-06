@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	gen "src.solsynth.dev/sosys/go/proto"
 
+	"src.solsynth.dev/sosys/stargate/internal/config"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
 	"src.solsynth.dev/sosys/stargate/internal/store"
@@ -29,11 +30,12 @@ type Service struct {
 	ring    gen.DyRingServiceClient
 	siteURL string
 	log     *slog.Logger
+	cfg     *config.Config
 }
 
 // NewService wires the spell service. ring may be nil (email degrades).
-func NewService(st *store.Store, rc *redis.Client, ring gen.DyRingServiceClient, siteURL string, log *slog.Logger) *Service {
-	return &Service{store: st, redis: rc, ring: ring, siteURL: siteURL, log: log}
+func NewService(st *store.Store, rc *redis.Client, ring gen.DyRingServiceClient, siteURL string, cfg *config.Config, log *slog.Logger) *Service {
+	return &Service{store: st, redis: rc, ring: ring, siteURL: siteURL, log: log, cfg: cfg}
 }
 
 // CreateOptions mirrors the optional parameters of
@@ -210,11 +212,16 @@ func (s *Service) ApplyMagicSpell(ctx context.Context, spell *model.MagicSpell) 
 }
 
 // activateAfterContactVerification mirrors Passport's
-// TestService.TryActivateAfterContactVerification in the tests-disabled
-// branch: entry-test (exam) logic stays in Passport and Stargate requires
-// none, so a verified contact activates the account immediately. Idempotent:
-// an already activated account is left untouched.
+// TestService.TryActivateAfterContactVerification. Entry-test (exam) logic
+// stays in Passport: when [accountActivation] requires tests, activation is
+// deferred to Passport — it evaluates attempts and publishes
+// accounts.activated, which Stargate consumes. Only the tests-disabled
+// branch activates directly here. Idempotent: an already activated account
+// is left untouched.
 func (s *Service) activateAfterContactVerification(ctx context.Context, accountID string) error {
+	if s.cfg != nil && s.cfg.AccountActivation.TestsEnabled && len(s.cfg.AccountActivation.RequiredTestKeys) > 0 {
+		return nil
+	}
 	id, err := uuid.Parse(accountID)
 	if err != nil {
 		return errors.New("spell contains an invalid account id")
@@ -231,15 +238,10 @@ func (s *Service) activateAfterContactVerification(ctx context.Context, accountI
 }
 
 // clearActorPermissionCache removes the C#-side permission cache entries for
-// an actor. The Go permission service is DB-backed, but the C# fleet still
-// reads the perm:* keys, so the clear is kept for interop (best-effort).
+// an actor (the Go permission service is DB-backed, but the C# fleet still
+// reads the perm:* keys), best-effort.
 func (s *Service) clearActorPermissionCache(ctx context.Context, actor string) {
-	if s.redis == nil || s.redis.Cache == nil {
-		return
-	}
-	_ = s.redis.Cache.Remove(ctx, "perm-cg:"+actor)
-	_ = s.redis.Cache.RemoveGroup(ctx, "perm-g:"+actor)
-	_ = s.redis.Cache.Remove(ctx, "perm-blocked:"+actor)
+	s.redis.ClearActorPermissionCache(ctx, actor)
 }
 
 // ApplyPasswordReset mirrors MagicSpellService.ApplyPasswordReset: replaces
