@@ -242,8 +242,16 @@ func TestFileRefFromProto(t *testing.T) {
 	if ref.Width == nil || *ref.Width != 120 || ref.Height == nil || *ref.Height != 240 {
 		t.Errorf("ref dims = %#v", ref)
 	}
-	if ref.Size == nil || *ref.Size != 42 {
-		t.Errorf("ref size = %#v", ref)
+	// Full CloudFileReferenceObject shape: size is a plain int, meta maps are
+	// always present, and missing proto timestamps fall back to now.
+	if ref.Size != 42 {
+		t.Errorf("ref size = %d, want 42", ref.Size)
+	}
+	if ref.FileMeta == nil || ref.UserMeta == nil {
+		t.Errorf("file_meta/user_meta must be non-nil: %#v", ref)
+	}
+	if ref.CreatedAt == nil || ref.UpdatedAt == nil {
+		t.Error("created_at/updated_at must fall back to now")
 	}
 }
 

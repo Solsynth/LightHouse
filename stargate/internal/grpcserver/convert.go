@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+	"src.solsynth.dev/sosys/go/pkg/models"
 	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
@@ -249,24 +250,8 @@ func profileFromProto(p *gen.DyAccountProfile) *model.Profile {
 }
 
 func cloudFileToRef(f *gen.DyCloudFile) *model.SnCloudFileReferenceObject {
-	ref := &model.SnCloudFileReferenceObject{
-		Id:       f.Id,
-		Url:      f.Url,
-		MimeType: f.MimeType,
-		Size:     &f.Size,
-	}
-	if f.Blurhash != nil {
-		ref.Blurhash = *f.Blurhash
-	}
-	if f.Width != nil {
-		w := int64(*f.Width)
-		ref.Width = &w
-	}
-	if f.Height != nil {
-		h := int64(*f.Height)
-		ref.Height = &h
-	}
-	return ref
+	ref := models.FromProtoValue(f)
+	return &ref
 }
 
 func strPtrOrNil(s string) *string {

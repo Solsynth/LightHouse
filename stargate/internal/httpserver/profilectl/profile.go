@@ -20,11 +20,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/encoding/protojson"
+	"src.solsynth.dev/sosys/go/pkg/models"
 	gen "src.solsynth.dev/sosys/go/proto"
 
+	"src.solsynth.dev/sosys/go/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/internal/actionlog"
 	"src.solsynth.dev/sosys/stargate/internal/config"
-	"src.solsynth.dev/sosys/go/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/internal/grpcclient"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
@@ -291,26 +292,8 @@ func (d Deps) resolveFile(ctx context.Context, fileID string) (*model.SnCloudFil
 }
 
 func fileRefFromProto(f *gen.DyCloudFile) *model.SnCloudFileReferenceObject {
-	ref := &model.SnCloudFileReferenceObject{
-		Id:       f.Id,
-		Url:      f.Url,
-		MimeType: f.MimeType,
-	}
-	if f.Size > 0 {
-		ref.Size = &f.Size
-	}
-	if f.Width != nil {
-		w := int64(*f.Width)
-		ref.Width = &w
-	}
-	if f.Height != nil {
-		h := int64(*f.Height)
-		ref.Height = &h
-	}
-	if f.Blurhash != nil {
-		ref.Blurhash = *f.Blurhash
-	}
-	return ref
+	ref := models.FromProtoValue(f)
+	return &ref
 }
 
 // fileURL builds the redirect target for {name}/picture|background. The C#

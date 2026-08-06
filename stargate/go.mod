@@ -17,7 +17,7 @@ require (
 	golang.org/x/crypto v0.51.0
 	google.golang.org/grpc v1.79.1
 	google.golang.org/protobuf v1.36.11
-	src.solsynth.dev/sosys/go v0.2.1-0.20260806093737-26adce6c502f
+	src.solsynth.dev/sosys/go v0.2.1-0.20260806100538-e3430ca507d0
 )
 
 require (

@@ -4,101 +4,18 @@
 package model
 
 import (
-	"database/sql/driver"
-	"encoding/json"
-	"fmt"
 	"time"
+
+	models "src.solsynth.dev/sosys/go/pkg/models"
 )
 
-// Time is a UTC instant serialized as ISO-8601 (RFC3339, seconds precision,
-// e.g. 2026-07-27T15:32:00Z). Null is represented by a nil *Time and omitted
-// from JSON.
-type Time time.Time
-
-func (t Time) Time() time.Time { return time.Time(t) }
-
-func (t Time) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(t).UTC().Format(time.RFC3339))
-}
-
-func (t *Time) UnmarshalJSON(b []byte) error {
-	var s string
-	if err := json.Unmarshal(b, &s); err != nil {
-		return err
-	}
-	parsed, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		// NodaTime emits up to 7 fractional digits; Go's RFC3339 parser
-		// accepts up to nanoseconds, so this fallback is defensive.
-		parsed, err = time.Parse("2006-01-02T15:04:05.9999999Z07:00", s)
-		if err != nil {
-			return err
-		}
-	}
-	*t = Time(parsed.UTC())
-	return nil
-}
+// Time is the fleet Instant type (UTC RFC3339, seconds precision), shared via
+// Golaunch pkg/models. Null is represented by a nil *Time and omitted from
+// JSON.
+type Time = models.Time
 
 // NewTime converts a time.Time into a *Time (nil for the zero value).
-func NewTime(t time.Time) *Time {
-	if t.IsZero() {
-		return nil
-	}
-	v := Time(t.UTC())
-	return &v
-}
-
-// Scan implements sql.Scanner so pgx can scan timestamptz columns into
-// *Time fields (and &*Time targets).
-func (t *Time) Scan(v any) error {
-	switch x := v.(type) {
-	case nil:
-		*t = Time{}
-	case time.Time:
-		*t = Time(x.UTC())
-	case string:
-		return t.scanString(x)
-	case []byte:
-		return t.scanString(string(x))
-	default:
-		return fmt.Errorf("cannot scan %T into model.Time", v)
-	}
-	return nil
-}
-
-func (t *Time) scanString(s string) error {
-	parsed, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		parsed, err = time.Parse("2006-01-02T15:04:05.9999999Z07:00", s)
-		if err != nil {
-			return err
-		}
-	}
-	*t = Time(parsed.UTC())
-	return nil
-}
-
-// Value implements driver.Valuer so pgx can encode *Time arguments as
-// timestamptz.
-func (t *Time) Value() (driver.Value, error) {
-	if t == nil {
-		return nil, nil
-	}
-	return time.Time(*t).UTC(), nil
-}
-
-// MarshalText implements encoding.TextMarshaler (RFC3339 UTC).
-func (t Time) MarshalText() ([]byte, error) {
-	return []byte(time.Time(t).UTC().Format(time.RFC3339)), nil
-}
-
-// FromTime converts a *Time back to time.Time (zero when nil).
-func (t *Time) FromTime() time.Time {
-	if t == nil {
-		return time.Time{}
-	}
-	return t.Time()
-}
+func NewTime(t time.Time) *Time { return models.NewTime(t) }
 
 // GeoPoint mirrors the C# GeoPoint jsonb shape.
 type GeoPoint struct {
@@ -109,16 +26,10 @@ type GeoPoint struct {
 	City        string   `json:"city,omitempty"`
 }
 
-// SnCloudFileReferenceObject mirrors DysonNetwork.Shared.CloudFileReferenceObject.
-type SnCloudFileReferenceObject struct {
-	Id       string `json:"id"`
-	Url      string `json:"url,omitempty"`
-	MimeType string `json:"mime_type,omitempty"`
-	Blurhash string `json:"blurhash,omitempty"`
-	Width    *int64 `json:"width,omitempty"`
-	Height   *int64 `json:"height,omitempty"`
-	Size     *int64 `json:"size,omitempty"`
-}
+// SnCloudFileReferenceObject mirrors
+// DysonNetwork.Shared.CloudFileReferenceObject; the shared definition lives
+// in Golaunch pkg/models (the full jsonb file-cache shape).
+type SnCloudFileReferenceObject = models.SnCloudFileReferenceObject
 
 // SnSubscriptionReferenceObject is the perk-subscription reference hydrated
 // from the wallet service (mirrors SnSubscriptionReferenceObject).

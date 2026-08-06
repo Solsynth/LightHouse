@@ -29,12 +29,13 @@ import (
 	"github.com/go-webauthn/webauthn/protocol/webauthncbor"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
+	"src.solsynth.dev/sosys/go/pkg/models"
 	gen "src.solsynth.dev/sosys/go/proto"
 
+	"src.solsynth.dev/sosys/go/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/internal/actionlog"
 	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/config"
-	"src.solsynth.dev/sosys/go/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/internal/grpcclient"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
@@ -1871,24 +1872,8 @@ func appBackground(app *gen.DyCustomApp) *model.SnCloudFileReferenceObject {
 }
 
 func fileRefFromProto(file *gen.DyCloudFile) *model.SnCloudFileReferenceObject {
-	ref := &model.SnCloudFileReferenceObject{
-		Id:       file.Id,
-		Url:      file.Url,
-		MimeType: file.MimeType,
-		Size:     &file.Size,
-	}
-	if file.Width != nil {
-		w := int64(*file.Width)
-		ref.Width = &w
-	}
-	if file.Height != nil {
-		h := int64(*file.Height)
-		ref.Height = &h
-	}
-	if file.Blurhash != nil {
-		ref.Blurhash = *file.Blurhash
-	}
-	return ref
+	ref := models.FromProtoValue(file)
+	return &ref
 }
 
 // nullCoalesce mirrors C# `??`: returns a when non-nil, else b.

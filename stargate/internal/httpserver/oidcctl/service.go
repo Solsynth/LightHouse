@@ -24,6 +24,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"src.solsynth.dev/sosys/go/pkg/models"
 	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/stargate/internal/auth"
@@ -328,29 +329,8 @@ func customAppStatusFromProto(s gen.DyCustomAppStatus) int {
 }
 
 func cloudFileFromProto(f *gen.DyCloudFile) *model.SnCloudFileReferenceObject {
-	ref := &model.SnCloudFileReferenceObject{
-		Id:  f.GetId(),
-		Url: f.GetUrl(),
-	}
-	if mt := f.GetMimeType(); mt != "" {
-		ref.MimeType = mt
-	}
-	if bh := f.GetBlurhash(); bh != "" {
-		ref.Blurhash = bh
-	}
-	if f.Width != nil {
-		w := int64(f.GetWidth())
-		ref.Width = &w
-	}
-	if f.Height != nil {
-		h := int64(f.GetHeight())
-		ref.Height = &h
-	}
-	if f.GetSize() > 0 {
-		sz := f.GetSize()
-		ref.Size = &sz
-	}
-	return ref
+	ref := models.FromProtoValue(f)
+	return &ref
 }
 
 // ValidateClientCredentialsAsync calls Develop's CheckCustomAppSecret with

@@ -135,26 +135,58 @@ func ProfileToProto(p *model.Profile) *gen.DyAccountProfile {
 	return proto
 }
 
-// cloudFileToProto maps the stored file reference to the DyCloudFile wire
-// shape the C# SnCloudFileReferenceObject.FromProtoValue reads (Id/Url are
-// what the clients render).
+// cloudFileToProto maps the stored file reference back to the DyCloudFile
+// wire shape, mirroring SnCloudFileReferenceObject.ToProtoValue.
 func cloudFileToProto(f *model.SnCloudFileReferenceObject) *gen.DyCloudFile {
 	if f == nil {
 		return nil
 	}
-	out := &gen.DyCloudFile{Id: f.Id, Url: f.Url, MimeType: f.MimeType}
-	if f.Size != nil {
-		out.Size = *f.Size
+	out := &gen.DyCloudFile{
+		Id:             f.Id,
+		Name:           f.Name,
+		MimeType:       f.MimeType,
+		Hash:           f.Hash,
+		Size:           f.Size,
+		HasCompression: f.HasCompression,
+		ContentType:    f.MimeType,
+		Url:            f.Url,
+	}
+	if len(f.FileMeta) > 0 {
+		out.FileMeta = mustMarshal(f.FileMeta)
+	}
+	if len(f.UserMeta) > 0 {
+		out.UserMeta = mustMarshal(f.UserMeta)
+	}
+	if len(f.SensitiveMarks) > 0 {
+		out.SensitiveMarks = mustMarshal(f.SensitiveMarks)
 	}
 	if f.Width != nil {
-		w := int32(*f.Width)
-		out.Width = &w
+		out.Width = f.Width
 	}
 	if f.Height != nil {
-		h := int32(*f.Height)
-		out.Height = &h
+		out.Height = f.Height
+	}
+	if f.Blurhash != "" {
+		out.Blurhash = &f.Blurhash
+	}
+	if f.Usage != "" {
+		out.Usage = &f.Usage
+	}
+	if f.ApplicationType != "" {
+		out.ApplicationType = &f.ApplicationType
+	}
+	if f.CreatedAt != nil {
+		out.CreatedAt = toProtoTime(f.CreatedAt)
+	}
+	if f.UpdatedAt != nil {
+		out.UpdatedAt = toProtoTime(f.UpdatedAt)
 	}
 	return out
+}
+
+func mustMarshal(v any) []byte {
+	b, _ := json.Marshal(v)
+	return b
 }
 
 // badgeRefToProto maps the stored active-badge jsonb (C# PascalCase keys) to
