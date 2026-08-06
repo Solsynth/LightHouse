@@ -15,6 +15,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/actionlog"
 	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/config"
+	"src.solsynth.dev/sosys/stargate/internal/httpserver/e2eectl"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
 	"src.solsynth.dev/sosys/stargate/internal/store"
@@ -30,6 +31,7 @@ type Deps struct {
 	JWT   *auth.JWTService
 	Perm  *permission.Service
 	Logs  *actionlog.Service
+	E2ee  *e2eectl.Service
 	Cfg   *config.Config
 	Log   *slog.Logger
 }
@@ -48,6 +50,7 @@ func Register(s *grpc.Server, deps Deps) {
 	gen.RegisterDyPermissionServiceServer(s, &dyPermissionService{d: deps})
 	gen.RegisterDyBotAccountReceiverServiceServer(s, &dyBotAccountReceiverService{d: deps})
 	gen.RegisterDyAuthorizedAppServiceServer(s, &dyAuthorizedAppService{d: deps})
+	gen.RegisterDyMlsServiceServer(s, &dyMlsService{d: deps})
 	gen.RegisterDyCapabilitiesServiceServer(s, &dyCapabilitiesService{})
 
 	hs := health.NewServer()

@@ -218,7 +218,8 @@ func run(log *slog.Logger) error {
 		grpcOpts = append(grpcOpts, grpc.Creds(creds))
 	}
 	grpcSrv := grpc.NewServer(grpcOpts...)
-	registerGrpcServices(grpcSrv, authService, tokenAuth, st, permService, logs, jwtService, rc, cfg, log)
+	registerGrpcServices(grpcSrv, authService, tokenAuth, st, permService, logs, jwtService, rc, cfg, log,
+		e2eectl.NewService(st, nc, clients, log))
 
 	// Blade service discovery: without registration, Blade's /meta capability
 	// aggregator never sees this instance and the Padlock-family capabilities
@@ -399,9 +400,10 @@ func registerGrpcServices(
 	rc *redisclient.Client,
 	cfg *config.Config,
 	log *slog.Logger,
+	e2eeService *e2eectl.Service,
 ) {
 	grpcserver.Register(grpcSrv, grpcserver.Deps{
 		Store: st, Redis: rc, Auth: authService, Token: tokenAuth, JWT: jwtService,
-		Perm: perm, Logs: logs, Cfg: cfg, Log: log,
+		Perm: perm, Logs: logs, E2ee: e2eeService, Cfg: cfg, Log: log,
 	})
 }
