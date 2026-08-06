@@ -20,7 +20,9 @@ board updates indirectly via the profile read-model.
 - `internal/permission` — permission registry + evaluation + seed
 - `internal/grpcclient` — outbound clients (wallet, develop, drive, pass,
   blade, ring)
-- `internal/nats` — JetStream events (`auth.session.revoked`, `websocket_push`)
+- `internal/nats` — thin wrapper over the shared event bus
+  (`src.solsynth.dev/sosys/go/pkg/eventbus`): JetStream events
+  (`auth.session.revoked`, `websocket_push`)
 
 ## Run
 

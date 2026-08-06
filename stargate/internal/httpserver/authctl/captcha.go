@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"src.solsynth.dev/sosys/stargate/internal/errs"
+	"src.solsynth.dev/sosys/go/pkg/errs"
 )
 
 // CaptchaController port (POST /api/auth/captcha/verify + GET
