@@ -138,7 +138,7 @@ func run(log *slog.Logger) error {
 
 	permService := permission.New(pool)
 
-	toucher := middleware.NewLastSeenToucher(pool, log)
+	toucher := middleware.NewLastSeenToucher(st, log)
 	defer toucher.Close()
 
 	if err := seed.Seed(ctx, pool); err != nil {
@@ -165,6 +165,7 @@ func run(log *slog.Logger) error {
 		go consumeAccountActivated(ctx, nc, st, rc, log)
 		go consumeTestPassedGroupGrant(ctx, nc, permService, rc, log)
 		go consumeProfileFieldUpdated(ctx, nc, st, log)
+		go consumeLastActive(ctx, nc, st, log)
 	}
 
 	srv := httpserver.New(cfg, authMw)
@@ -462,5 +463,37 @@ func consumeProfileFieldUpdated(ctx context.Context, nc *nats.Client, st *store.
 		return nil
 	}); err != nil {
 		log.Warn("accounts.profile_updated consumer stopped", "error", err)
+	}
+}
+
+
+// consumeLastActive applies the fleet's last-active signals (published by the
+// shared DysonTokenAuthHandler on accounts.last_active): profile last_seen_at
+// plus the session last_granted_at/keep-alive. Malformed events are acked;
+// DB errors redeliver.
+func consumeLastActive(ctx context.Context, nc *nats.Client, st *store.Store, log *slog.Logger) {
+	if err := nc.ConsumeAccountEvents(ctx, "accounts.last_active", "stargate_lastactiveevent_consumer", func(payload []byte) error {
+		var ev nats.LastActiveEvent
+		if err := json.Unmarshal(payload, &ev); err != nil {
+			log.Warn("malformed accounts.last_active event", "error", err)
+			return nil
+		}
+		if _, err := uuid.Parse(ev.AccountID); err != nil {
+			log.Warn("accounts.last_active event has invalid account id", "account_id", ev.AccountID)
+			return nil
+		}
+		sessionID := ""
+		if ev.SessionID != "" {
+			if _, err := uuid.Parse(ev.SessionID); err == nil {
+				sessionID = ev.SessionID
+			}
+		}
+		if err := st.TouchLastActive(ctx, ev.AccountID, sessionID, ev.SeenAt); err != nil {
+			return err
+		}
+		log.Debug("applied accounts.last_active", "account_id", ev.AccountID)
+		return nil
+	}); err != nil {
+		log.Warn("accounts.last_active consumer stopped", "error", err)
 	}
 }

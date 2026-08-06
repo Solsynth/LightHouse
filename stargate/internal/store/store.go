@@ -4,6 +4,7 @@
 package store
 
 import (
+	"time"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,35 @@ import (
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
+
+
+// TouchLastActive applies a last-active signal — from Stargate's own traffic
+// (the auth middleware toucher) or the fleet's accounts.last_active events —
+// mirroring Padlock's LastActiveFlushHandler: profile last_seen_at (the
+// presented value), the session's last_granted_at and the 7-day keep-alive
+// for expiring sessions.
+func (s *Store) TouchLastActive(ctx context.Context, accountID, sessionID string, seenAt time.Time) error {
+	if accountID != "" {
+		if _, err := s.DB.Exec(ctx,
+			`UPDATE account_profiles SET last_seen_at = $1, updated_at = $1
+			 WHERE account_id = $2 AND deleted_at IS NULL`, seenAt, accountID); err != nil {
+			return err
+		}
+	}
+	if sessionID != "" {
+		if _, err := s.DB.Exec(ctx,
+			`UPDATE auth_sessions SET last_granted_at = $1
+			 WHERE id = $2 AND deleted_at IS NULL`, seenAt, sessionID); err != nil {
+			return err
+		}
+		if _, err := s.DB.Exec(ctx,
+			`UPDATE auth_sessions SET expired_at = $1::timestamptz + INTERVAL '7 days'
+			 WHERE id = $2 AND expired_at IS NOT NULL AND deleted_at IS NULL`, seenAt, sessionID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 var ErrNotFound = errors.New("not found")
 

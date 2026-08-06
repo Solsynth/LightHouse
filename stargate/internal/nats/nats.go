@@ -183,6 +183,18 @@ type ProfileFieldUpdatedEvent struct {
 	Verification     json.RawMessage `json:"Verification"`
 }
 
+
+// LastActiveEvent mirrors the C# LastActiveEvent wire shape (PascalCase
+// keys; NodaTime Instant as ISO-8601 UTC). The fleet's DysonTokenAuthHandler
+// publishes it on accounts.last_active for every authenticated request
+// (throttled per account); Stargate applies profile last_seen_at + session
+// last_granted_at/keep-alive.
+type LastActiveEvent struct {
+	AccountID string    `json:"AccountId"`
+	SessionID string    `json:"SessionId"`
+	SeenAt    time.Time `json:"SeenAt"`
+}
+
 // ConsumeAccountEvents runs a durable JetStream consumer for one subject on
 // the account_events stream, mirroring the C# EventBusBackgroundService
 // defaults (JetStream, DeliverPolicy New). handler returns nil to ack;

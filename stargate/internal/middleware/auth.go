@@ -14,10 +14,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/errs"
+	"src.solsynth.dev/sosys/stargate/internal/store"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
 
@@ -56,38 +56,41 @@ func CurrentTokenType(ctx context.Context) auth.TokenType {
 	return auth.TokenTypeUnknown
 }
 
-// LastSeenToucher debounced-updates account_profiles.last_seen_at, mirroring
-// Padlock's FlushBufferService/LastActiveFlushHandler.
+// LastSeenToucher debounced-updates account_profiles.last_seen_at plus the
+// session's last_granted_at/keep-alive, mirroring Padlock's
+// FlushBufferService/LastActiveFlushHandler (last-active now lands on
+// Stargate's tables).
 type LastSeenToucher struct {
-	db interface {
-		Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
-	}
-	log *slog.Logger
+	st   *store.Store
+	log  *slog.Logger
 
 	mu     sync.Mutex
-	queue  map[string]time.Time
+	queue  map[string]touchEntry
 	stop   chan struct{}
 	done   chan struct{}
 	closed bool
 }
 
+type touchEntry struct {
+	accountID string
+	sessionID string
+}
+
 // NewLastSeenToucher starts the flush loop (5s flush interval).
-func NewLastSeenToucher(db interface {
-	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
-}, log *slog.Logger) *LastSeenToucher {
-	t := &LastSeenToucher{db: db, log: log, queue: map[string]time.Time{}, stop: make(chan struct{}), done: make(chan struct{})}
+func NewLastSeenToucher(st *store.Store, log *slog.Logger) *LastSeenToucher {
+	t := &LastSeenToucher{st: st, log: log, queue: map[string]touchEntry{}, stop: make(chan struct{}), done: make(chan struct{})}
 	go t.loop()
 	return t
 }
 
-// Enqueue records a last-seen update for the account.
-func (t *LastSeenToucher) Enqueue(accountID string) {
+// Enqueue records a last-seen update for the account + session.
+func (t *LastSeenToucher) Enqueue(accountID, sessionID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.closed {
 		return
 	}
-	t.queue[accountID] = time.Now().UTC()
+	t.queue[accountID] = touchEntry{accountID: accountID, sessionID: sessionID}
 }
 
 // Close stops the flush loop.
@@ -125,14 +128,12 @@ func (t *LastSeenToucher) flush() {
 		return
 	}
 	queue := t.queue
-	t.queue = map[string]time.Time{}
+	t.queue = map[string]touchEntry{}
 	t.mu.Unlock()
 	now := time.Now().UTC()
-	for accountID := range queue {
-		if _, err := t.db.Exec(context.Background(),
-			`UPDATE account_profiles SET last_seen_at = $1, updated_at = $1 WHERE account_id = $2`,
-			now, accountID); err != nil {
-			t.log.Warn("flush last_seen", "account", accountID, "error", err)
+	for _, entry := range queue {
+		if err := t.st.TouchLastActive(context.Background(), entry.accountID, entry.sessionID, now); err != nil {
+			t.log.Warn("flush last_active", "account", entry.accountID, "session", entry.sessionID, "error", err)
 		}
 	}
 }
@@ -207,7 +208,7 @@ func Auth(deps AuthDeps) gin.HandlerFunc {
 		ctx = context.WithValue(ctx, ctxKeyCurrentTokenType, tokenType)
 		c.Request = c.Request.WithContext(ctx)
 		if deps.Toucher != nil && session.Account != nil {
-			deps.Toucher.Enqueue(session.Account.Id)
+			deps.Toucher.Enqueue(session.Account.Id, session.Id)
 		}
 		c.Next()
 	}
