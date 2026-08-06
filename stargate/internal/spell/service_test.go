@@ -104,6 +104,32 @@ func TestSubjectFallback(t *testing.T) {
 	}
 }
 
+func TestRenderFactorCodeEmail(t *testing.T) {
+	// The factor-code email carries the one-time code prominently.
+	body, err := renderEmailTemplate("FactorCode", "en", map[string]string{"nick": "Alice", "code": "123456"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body, "Dear Alice,") {
+		t.Errorf("body missing nick substitution: %s", body)
+	}
+	if !strings.Contains(body, "123456") {
+		t.Errorf("body missing code substitution: %s", body)
+	}
+	if !strings.Contains(body, "expire in 30 minutes") {
+		t.Errorf("body missing expiry notice: %s", body)
+	}
+}
+
+func TestSubjectFactorCodeTitle(t *testing.T) {
+	if got := subject("en", "codeEmailTitle"); got != "Your email verification code" {
+		t.Errorf("en codeEmailTitle = %q", got)
+	}
+	if got := subject("zh-hans", "codeEmailTitle"); got != "您的邮箱验证码" {
+		t.Errorf("zh-hans codeEmailTitle = %q", got)
+	}
+}
+
 func TestSpellLink(t *testing.T) {
 	s := &Service{siteURL: "http://localhost:3000/"}
 	spell := &model.MagicSpell{Spell: "abcXYZ123"}

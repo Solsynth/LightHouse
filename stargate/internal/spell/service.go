@@ -173,6 +173,20 @@ func (s *Service) SendWelcomeEmail(ctx context.Context, account *model.Account, 
 	})
 }
 
+// SendFactorCodeEmail renders the FactorCode email (with the one-time code)
+// for the account's language and pushes it through Ring, mirroring
+// EmailService.SendTemplatedEmailAsync("FactorCode", { nick, code }).
+func (s *Service) SendFactorCodeEmail(ctx context.Context, account *model.Account, recipient, code string) error {
+	recipientName := strings.TrimSpace(account.Nick)
+	if recipientName == "" {
+		recipientName = account.Name
+	}
+	return s.sendTemplatedEmail(ctx, account, recipient, "FactorCode", "codeEmailTitle", map[string]string{
+		"nick": recipientName,
+		"code": code,
+	})
+}
+
 // ApplyMagicSpell mirrors MagicSpellService.ApplyMagicSpell for the types
 // Stargate produces (contact verification and the legacy account-activation
 // alias). Applied spells are consumed (deleted).

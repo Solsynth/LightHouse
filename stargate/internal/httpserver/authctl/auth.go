@@ -644,19 +644,41 @@ func (h *handler) sendFactorCode(ctx context.Context, account *model.Account, fa
 		if found, _ := h.d.Redis.Cache.Get(ctx, authFactorCodePrefix+factor.Id+":code", &cached); found && cached != "" {
 			return errors.New("A factor code has been sent and in active duration.")
 		}
-		h.pushNotification(ctx, account.Id, account.Language, "auth.verification",
+		// Mirror AccountService.SendFactorCode: a failed push surfaces as a
+		// 400 AUTH_FACTOR_SEND_FAILED and no code is stored, so the user can
+		// retry instead of being locked out of a code that never arrived.
+		if err := h.pushNotificationErr(ctx, account.Id, account.Language, "auth.verification",
 			"Disposable Verification Code",
-			code+" is your verification code. It expires in 5 minutes.", false)
+			code+" is your verification code. It expires in 5 minutes.", false); err != nil {
+			return err
+		}
 		return h.d.Redis.Cache.Set(ctx, authFactorCodePrefix+factor.Id+":code", code, 5*time.Minute)
 	case model.AuthFactorTypeEmailCode:
 		var cached string
 		if found, _ := h.d.Redis.Cache.Get(ctx, authFactorCodePrefix+factor.Id+":code", &cached); found && cached != "" {
 			return errors.New("A factor code has been sent and in active duration.")
 		}
-		// The C# mailer is not ported; the code is still stored so the
-		// challenge can be completed once email delivery is wired up.
-		if h.d.Log != nil {
-			h.d.Log.Warn("email factor code delivery not ported; storing code for factor", "factor_id", factor.Id)
+		// Deliver via Ring's SendEmail (EmailService.SendTemplatedEmailAsync
+		// with the "FactorCode" template). Mirror AccountService.SendFactorCode:
+		// no verified email contact means the code cannot be delivered, so
+		// nothing is stored and the request still succeeds; a failed send
+		// surfaces as AUTH_FACTOR_SEND_FAILED before any code is stored.
+		contact, err := h.d.Store.GetEmailContactForNotify(ctx, account.Id, true)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				if h.d.Log != nil {
+					h.d.Log.Warn("email factor code not sent: no verified email contact",
+						"factor_id", factor.Id, "account_id", account.Id)
+				}
+				return nil
+			}
+			return err
+		}
+		if h.d.Spells == nil {
+			return errors.New("email factor code delivery is not configured")
+		}
+		if err := h.d.Spells.SendFactorCodeEmail(ctx, account, contact.Content, code); err != nil {
+			return err
 		}
 		return h.d.Redis.Cache.Set(ctx, authFactorCodePrefix+factor.Id+":code", code, 30*time.Minute)
 	default:
@@ -1651,13 +1673,19 @@ func (h *handler) publishWS(ctx context.Context, target, event string, payload a
 }
 
 func (h *handler) pushNotification(ctx context.Context, userID, language, topic, title, body string, savable bool) {
+	_ = h.pushNotificationErr(ctx, userID, language, topic, title, body, savable)
+}
+
+// pushNotificationErr mirrors pushNotification but surfaces delivery failures
+// (Ring unavailable, RPC error) instead of swallowing them.
+func (h *handler) pushNotificationErr(ctx context.Context, userID, language, topic, title, body string, savable bool) error {
 	_ = language
 	if h.d.Clients == nil || h.d.Clients.Ring == nil {
-		return
+		return errors.New("ring service is not configured")
 	}
 	pushCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
-	_, _ = h.d.Clients.Ring.SendPushNotificationToUser(pushCtx, &gen.DySendPushNotificationToUserRequest{
+	_, err := h.d.Clients.Ring.SendPushNotificationToUser(pushCtx, &gen.DySendPushNotificationToUserRequest{
 		UserId: userID,
 		Notification: &gen.DyPushNotification{
 			Topic:     topic,
@@ -1666,6 +1694,7 @@ func (h *handler) pushNotification(ctx context.Context, userID, language, topic,
 			IsSavable: savable,
 		},
 	})
+	return err
 }
 
 func (h *handler) logError(msg string, err error) {

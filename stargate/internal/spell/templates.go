@@ -26,12 +26,14 @@ var emailSubjects = map[string]map[string]string{
 		"welcomeEmailTitle":               "Welcome to Solar Network",
 		"emailAccountDeletionTitle":       "Confirm your account deletion",
 		"passwordResetTitle":              "Reset your password",
+		"codeEmailTitle":                  "Your email verification code",
 	},
 	"zh-hans": {
 		"contractMethodVerificationTitle": "验证您的联系方式",
 		"welcomeEmailTitle":               "欢迎加入 Solar Network",
 		"emailAccountDeletionTitle":       "确认删除您的账户",
 		"passwordResetTitle":              "重置您的密码",
+		"codeEmailTitle":                  "您的邮箱验证码",
 	},
 }
 
