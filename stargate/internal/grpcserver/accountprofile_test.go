@@ -92,3 +92,74 @@ func TestGetAccountBatchHydratesProfiles(t *testing.T) {
 		}
 	}
 }
+
+// TestGetAccountBatchCreatesMissingProfiles covers the chat member hydration
+// path: a batch with accounts that have no profile row yet (or a soft-deleted
+// tombstone) must still return every account WITH a profile — Messager
+// filters out members whose account failed to load.
+func TestGetAccountBatchCreatesMissingProfiles(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(), mlsGrpcDSN)
+	if err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	defer pool.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := pool.Ping(ctx); err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	ctx = context.Background()
+
+	st := store.New(pool)
+	now := time.Now().UTC()
+	seed := func(withProfile bool) string {
+		id := uuid.NewString()
+		if _, err := pool.Exec(ctx, `INSERT INTO accounts (id, name, nick, language, region, is_superuser, created_at, updated_at)
+			VALUES ($1, $2, $2, 'en', 'US', false, $3, $3)`, id, "chat_batch_"+uuid.NewString()[:8], now); err != nil {
+			t.Fatalf("seed account: %v", err)
+		}
+		if withProfile {
+			if _, err := pool.Exec(ctx, `INSERT INTO account_profiles (id, account_id, created_at, updated_at, experience, social_credits)
+				VALUES ($1, $2, $3, $3, 0, 100)`, uuid.NewString(), id, now); err != nil {
+				t.Fatalf("seed profile: %v", err)
+			}
+		}
+		return id
+	}
+	live := seed(true)
+	missing := seed(false)
+	tombstoned := seed(true)
+	if _, err := pool.Exec(ctx, `UPDATE account_profiles SET deleted_at = $1 WHERE account_id = $2`, now, tombstoned); err != nil {
+		t.Fatalf("tombstone profile: %v", err)
+	}
+	defer pool.Exec(ctx, `DELETE FROM accounts WHERE id = ANY($1)`, []string{live, missing, tombstoned})
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	grpcSrv := grpc.NewServer()
+	Register(grpcSrv, Deps{Store: st, E2ee: e2eectl.NewService(st, recordingBus{}, nil, nil)})
+	go grpcSrv.Serve(lis)
+	defer grpcSrv.Stop()
+
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	client := gen.NewDyAccountServiceClient(conn)
+
+	resp, err := client.GetAccountBatch(ctx, &gen.DyGetAccountBatchRequest{Id: []string{live, missing, tombstoned}})
+	if err != nil {
+		t.Fatalf("GetAccountBatch: %v", err)
+	}
+	if len(resp.Accounts) != 3 {
+		t.Fatalf("got %d accounts, want 3 (chat members with missing profiles must not vanish)", len(resp.Accounts))
+	}
+	for _, a := range resp.Accounts {
+		if a.Profile == nil || a.Profile.Id == "" {
+			t.Fatalf("account %s has no profile", a.Id)
+		}
+	}
+}

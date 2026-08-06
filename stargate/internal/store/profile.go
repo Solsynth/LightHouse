@@ -44,10 +44,25 @@ func (s *Store) GetOrCreateAccountProfile(ctx context.Context, accountID uuid.UU
 	}
 
 	profile, err = s.GetProfileByAccount(ctx, accountID)
-	if err != nil {
+	if err == nil {
+		return profile, nil
+	}
+	if !errors.Is(err, ErrNotFound) {
 		return nil, err
 	}
-	return profile, nil
+
+	// A soft-deleted profile row still occupies the (unfiltered) unique index,
+	// so the insert above was a no-op. Hard-delete the tombstone and retry so
+	// the account gets a live profile (mirrors the C# filtered unique index).
+	if _, err := s.DB.Exec(ctx, `DELETE FROM account_profiles WHERE account_id = $1`, accountID); err != nil {
+		return nil, err
+	}
+	if _, err := s.DB.Exec(ctx, `INSERT INTO account_profiles
+		(id, account_id, created_at, updated_at, experience, social_credits)
+		VALUES ($1, $2, $3, $3, 0, 100)`, uuid.NewString(), accountID, now); err != nil {
+		return nil, err
+	}
+	return s.GetProfileByAccount(ctx, accountID)
 }
 
 
