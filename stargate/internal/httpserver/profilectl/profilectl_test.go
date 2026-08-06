@@ -40,14 +40,11 @@ func TestRegisterRouteTable(t *testing.T) {
 		{"PATCH", "/api/accounts/me"},
 		{"DELETE", "/api/accounts/me"},
 		{"PATCH", "/api/accounts/me/profile"},
-		{"GET", "/api/accounts/me/board"},
-		{"PUT", "/api/accounts/me/board"},
 		{"GET", "/api/accounts/id/:id"},
 		{"GET", "/api/accounts/search"},
 		{"GET", "/api/accounts/:name"},
 		{"GET", "/api/accounts/:name/picture"},
 		{"GET", "/api/accounts/:name/background"},
-		{"GET", "/api/accounts/:name/board"},
 		{"GET", "/api/accounts/:name/connections"},
 		{"GET", "/api/accounts/:name/followers"},
 		{"GET", "/api/accounts/:name/following"},
@@ -174,9 +171,6 @@ func TestStatusIntsMatchCSharp(t *testing.T) {
 		int(model.RelationshipMuted) != -50 || int(model.RelationshipBlocked) != -100 ||
 		int(model.RelationshipCloseFriend) != 200 {
 		t.Errorf("relationship status ints do not match C#")
-	}
-	if int(model.BoardItemKindWidget) != 0 || int(model.BoardItemKindApp) != 1 {
-		t.Errorf("board kind ints do not match C# Prebuilt=0, CustomApp=1")
 	}
 }
 

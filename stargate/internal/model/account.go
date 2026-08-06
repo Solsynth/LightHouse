@@ -48,7 +48,6 @@ type Profile struct {
 	SocialCreditsLevel int                         `json:"social_credits_level"`
 	Picture            *SnCloudFileReferenceObject `json:"picture,omitempty"`
 	Background         *SnCloudFileReferenceObject `json:"background,omitempty"`
-	Board              []BoardItem                 `json:"board,omitempty"`
 	AccountId          string                      `json:"account_id,omitempty"`
 	CreatedAt          *Time                       `json:"created_at,omitempty"`
 	UpdatedAt          *Time                       `json:"updated_at,omitempty"`

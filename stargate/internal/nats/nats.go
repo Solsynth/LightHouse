@@ -165,6 +165,24 @@ type AccountTestPassedPermissionGroupEvent struct {
 	GrantedAt          time.Time `json:"GrantedAt"`
 }
 
+
+// ProfileFieldUpdatedEvent mirrors the Passport ProfileFieldUpdatedEvent
+// wire shape (PascalCase keys; NodaTime Instant as ISO-8601 UTC). Passport
+// publishes it on accounts.profile_updated whenever a Passport-owned feature
+// mutates a denormalized account_profiles field that moved to Stargate
+// (last-seen touches, XP deltas, social-credit recomputes, active badge and
+// verification changes). ActiveBadge/Verification are the raw jsonb payloads
+// (or null to clear).
+type ProfileFieldUpdatedEvent struct {
+	AccountID        string          `json:"AccountId"`
+	LastSeenAt       *time.Time      `json:"LastSeenAt"`
+	Experience       *int            `json:"Experience"`
+	ExperienceDelta  *int            `json:"ExperienceDelta"`
+	SocialCredits    *float64        `json:"SocialCredits"`
+	ActiveBadge      json.RawMessage `json:"ActiveBadge"`
+	Verification     json.RawMessage `json:"Verification"`
+}
+
 // ConsumeAccountEvents runs a durable JetStream consumer for one subject on
 // the account_events stream, mirroring the C# EventBusBackgroundService
 // defaults (JetStream, DeliverPolicy New). handler returns nil to ack;

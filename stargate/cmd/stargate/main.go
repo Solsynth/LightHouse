@@ -44,6 +44,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/spellctl"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/wellknownctl"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
+	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/migrate"
 	"src.solsynth.dev/sosys/stargate/internal/nats"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
@@ -163,6 +164,7 @@ func run(log *slog.Logger) error {
 	if nc != nil {
 		go consumeAccountActivated(ctx, nc, st, rc, log)
 		go consumeTestPassedGroupGrant(ctx, nc, permService, rc, log)
+		go consumeProfileFieldUpdated(ctx, nc, st, log)
 	}
 
 	srv := httpserver.New(cfg, authMw)
@@ -406,4 +408,59 @@ func registerGrpcServices(
 		Store: st, Redis: rc, Auth: authService, Token: tokenAuth, JWT: jwtService,
 		Perm: perm, Logs: logs, E2ee: e2eeService, Cfg: cfg, Log: log,
 	})
+}
+
+
+// consumeProfileFieldUpdated applies Passport-published profile field patches
+// (last_seen touches, XP deltas, social-credit recomputes, active badge and
+// verification changes) to Stargate's account_profiles after the profile
+// table moved here. Malformed events are acked; DB errors redeliver.
+func consumeProfileFieldUpdated(ctx context.Context, nc *nats.Client, st *store.Store, log *slog.Logger) {
+	if err := nc.ConsumeAccountEvents(ctx, "accounts.profile_updated", "stargate_profilefieldupdatedevent_consumer", func(payload []byte) error {
+		var ev nats.ProfileFieldUpdatedEvent
+		if err := json.Unmarshal(payload, &ev); err != nil {
+			log.Warn("malformed accounts.profile_updated event", "error", err)
+			return nil
+		}
+		id, err := uuid.Parse(ev.AccountID)
+		if err != nil {
+			log.Warn("accounts.profile_updated event has invalid account id", "account_id", ev.AccountID)
+			return nil
+		}
+		patch := &store.ProfileFieldPatch{
+			LastSeenAt:      ev.LastSeenAt,
+			Experience:      ev.Experience,
+			ExperienceDelta: ev.ExperienceDelta,
+			SocialCredits:   ev.SocialCredits,
+		}
+		if len(ev.ActiveBadge) > 0 {
+			patch.HasActiveBadge = true
+			if string(ev.ActiveBadge) != "null" {
+				var value any
+				if err := json.Unmarshal(ev.ActiveBadge, &value); err != nil {
+					log.Warn("accounts.profile_updated event has malformed active_badge", "account_id", ev.AccountID, "error", err)
+					return nil
+				}
+				patch.ActiveBadge = value
+			}
+		}
+		if len(ev.Verification) > 0 {
+			patch.HasVerification = true
+			if string(ev.Verification) != "null" {
+				var mark model.SnVerificationMark
+				if err := json.Unmarshal(ev.Verification, &mark); err != nil {
+					log.Warn("accounts.profile_updated event has malformed verification", "account_id", ev.AccountID, "error", err)
+					return nil
+				}
+				patch.Verification = &mark
+			}
+		}
+		if err := st.ApplyProfileFieldPatch(ctx, id, patch); err != nil {
+			return err
+		}
+		log.Debug("applied accounts.profile_updated patch", "account_id", ev.AccountID)
+		return nil
+	}); err != nil {
+		log.Warn("accounts.profile_updated consumer stopped", "error", err)
+	}
 }

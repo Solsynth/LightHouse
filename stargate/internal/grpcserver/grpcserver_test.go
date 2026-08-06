@@ -41,7 +41,7 @@ func TestGetCapabilitiesRegistry(t *testing.T) {
 	for _, want := range []string{"auth", "auth.challenge", "accounts.registration", "accounts.factors",
 		"accounts.sessions", "accounts.authorized-apps", "accounts.action-log", "accounts.punishments",
 		"auth.qr-login", "auth.api-keys", "e2ee", "e2ee.mls", "admin.accounts", "admin.permissions",
-		"accounts.board", "relationships", "relationships.friends", "relationships.block", "friends"} {
+		"relationships", "relationships.friends", "relationships.block", "friends"} {
 		if _, ok := byName[want]; !ok {
 			t.Errorf("capability %q missing from registry", want)
 		}

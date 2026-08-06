@@ -141,34 +141,6 @@ func (d Deps) getAccountBackground(c *gin.Context) {
 	c.Redirect(http.StatusFound, fileURL(d.Cfg, account.Profile.Background))
 }
 
-// getPublicBoard ports GetAccountBoard. The plan/assignment specify the
-// public surface returns enabled items only (the C# GetBoardAsync returns
-// all items).
-func (d Deps) getPublicBoard(c *gin.Context) {
-	name := c.Param("name")
-	account, err := d.resolveAccount(c.Request.Context(), name)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			c.JSON(http.StatusNotFound, notFound(name))
-			return
-		}
-		internalError(c, err)
-		return
-	}
-	items, err := d.Store.ListBoardItems(c.Request.Context(), accountIDOf(account))
-	if err != nil {
-		internalError(c, err)
-		return
-	}
-	enabled := make([]model.BoardItem, 0, len(items))
-	for _, item := range items {
-		if item.IsEnabled {
-			enabled = append(enabled, item)
-		}
-	}
-	c.JSON(http.StatusOK, enabled)
-}
-
 // publicConnectionResponse mirrors PublicAccountConnectionResponse.
 type publicConnectionResponse struct {
 	Provider           string `json:"provider"`

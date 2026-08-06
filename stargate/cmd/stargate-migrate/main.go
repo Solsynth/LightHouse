@@ -58,7 +58,6 @@ var padlockTables = []string{
 // passportTables is the copy order for the Passport profile tables.
 var passportTables = []string{
 	"account_profiles",
-	"account_board_items",
 	"account_relationships",
 }
 
@@ -138,7 +137,7 @@ func main() {
 			permission_group_members, permission_nodes, permission_groups,
 			action_logs, auth_challenges, auth_sessions, auth_clients, api_keys,
 			account_contacts, account_connections, authorized_apps, punishments,
-			account_passkeys, account_auth_factors, account_relationships, account_board_items,
+			account_passkeys, account_auth_factors, account_relationships,
 			account_profiles, accounts CASCADE`); err != nil {
 			log.Fatalf("truncate target: %v", err)
 		}
@@ -217,7 +216,6 @@ func targetHasData(ctx context.Context, db querier) (bool, string, error) {
 	rows, err := db.Query(ctx, `SELECT tablename FROM pg_tables
 		WHERE schemaname = 'public' AND tablename = ANY($1)`,
 		[]string{
-			"accounts", "account_profiles", "account_board_items", "account_relationships",
 			"account_contacts", "account_connections", "account_auth_factors", "account_passkeys",
 			"punishments", "auth_sessions", "auth_challenges", "auth_clients", "api_keys",
 			"authorized_apps", "action_logs", "e2ee_devices", "e2ee_key_bundles", "e2ee_one_time_pre_keys",

@@ -25,7 +25,7 @@ type capability struct {
 }
 
 // capabilityRegistry is the static registry: Padlock's ApiFeature list plus
-// the Passport route groups moved to Stargate (accounts.board, friends,
+// the Passport route groups moved to Stargate (friends,
 // relationships*).
 var capabilityRegistry = []capability{
 	// Padlock — Account/
@@ -67,7 +67,6 @@ var capabilityRegistry = []capability{
 	{"admin.permissions", 1, false},
 	{"admin.permissions.groups", 1, false},
 	// Passport route groups moved to Stargate (Phase 8)
-	{"accounts.board", 1, false},
 	{"accounts.connections", 1, false},
 	{"friends", 1, false},
 	{"relationships", 1, false},

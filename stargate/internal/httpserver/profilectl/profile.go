@@ -1,9 +1,9 @@
 // Package profilectl ports Passport's profile + social-graph HTTP surface
 // into Stargate: the merged GET /api/accounts/me identity, the BasicInfo and
-// Profile PATCHes, account-deletion request, board, public accounts,
-// relationships, and followers/following. Account/profile/board/relationship
-// data lives in Stargate's own tables; badges, verification, perk
-// subscription and file references hydrate via outbound gRPC (degrading
+// Profile PATCHes, account-deletion request, public accounts, relationships,
+// and followers/following. Account/profile/relationship data lives in
+// Stargate's own tables (board stays in Passport); badges, verification,
+// perk subscription and file references hydrate via outbound gRPC (degrading
 // gracefully when a target is unset).
 package profilectl
 
@@ -52,7 +52,6 @@ func Register(api *gin.RouterGroup, d Deps) {
 	me.PATCH("", middleware.RequireAuth(), middleware.AskPermission(d.Perm, permission.AccountsManage), d.updateBasicInfo)
 	me.DELETE("", middleware.RequireAuth(), d.requestDeleteAccount)
 	me.PATCH("/profile", middleware.RequireAuth(), d.updateProfile)
-	registerBoard(me, d)
 
 	accounts := api.Group("/accounts")
 	accounts.GET("/id/:id", d.getAccountByID)
@@ -60,7 +59,6 @@ func Register(api *gin.RouterGroup, d Deps) {
 	accounts.GET("/:name", d.getAccountByName)
 	accounts.GET("/:name/picture", d.getAccountPicture)
 	accounts.GET("/:name/background", d.getAccountBackground)
-	accounts.GET("/:name/board", d.getPublicBoard)
 	accounts.GET("/:name/connections", d.getPublicConnections)
 	accounts.GET("/:name/followers", d.getFollowPage(false))
 	accounts.GET("/:name/following", d.getFollowPage(true))
@@ -129,7 +127,7 @@ func (d Deps) logAction(c *gin.Context, accountID string, action model.ActionLog
 // ─────────────────────── hydration (gRPC-backed) ───────────────────────
 
 // enrichOwn hydrates the merged GET /api/accounts/me shape: profile (with
-// board), badges + verification via Passport, perk subscription via Wallet,
+// badges + verification via Passport, perk subscription via Wallet,
 // contacts public-only from the local table. A failure to ensure the profile
 // row is fatal; the optional gRPC hydrations degrade.
 func (d Deps) enrichOwn(ctx context.Context, account *model.Account) error {
@@ -348,7 +346,7 @@ func nonBlank(s *string) bool {
 
 // getCurrentIdentity is the MERGED variant serving both
 // /padlock/accounts/me and /passport/accounts/me: hydrated SnAccount
-// (account + profile + board + badges + verification + perk + contacts).
+// (account + profile + badges + verification + perk + contacts).
 func (d Deps) getCurrentIdentity(c *gin.Context) {
 	user := requireCurrentUser(c)
 	if user == nil {

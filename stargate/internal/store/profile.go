@@ -29,9 +29,6 @@ func (s *Store) GetProfileByAccount(ctx context.Context, accountID uuid.UUID) (*
 func (s *Store) GetOrCreateAccountProfile(ctx context.Context, accountID uuid.UUID) (*model.Profile, error) {
 	profile, err := s.GetProfileByAccount(ctx, accountID)
 	if err == nil {
-		if err := s.hydrateProfileBoard(ctx, profile); err != nil {
-			return nil, err
-		}
 		return profile, nil
 	}
 	if !errors.Is(err, ErrNotFound) {
@@ -50,8 +47,78 @@ func (s *Store) GetOrCreateAccountProfile(ctx context.Context, accountID uuid.UU
 	if err != nil {
 		return nil, err
 	}
-	profile.Board = []model.BoardItem{}
 	return profile, nil
+}
+
+
+// GetProfilesByAccountIDs loads the 1:1 profile rows for the given accounts
+// (missing accounts are absent from the map).
+func (s *Store) GetProfilesByAccountIDs(ctx context.Context, ids []uuid.UUID) (map[string]*model.Profile, error) {
+	profiles := map[string]*model.Profile{}
+	if len(ids) == 0 {
+		return profiles, nil
+	}
+	rows, err := s.DB.Query(ctx, `SELECT `+profileColumns+` FROM account_profiles p
+		WHERE p.account_id = ANY($1) AND p.deleted_at IS NULL`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		profile, err := scanProfile(rows)
+		if err != nil {
+			return nil, err
+		}
+		profiles[profile.AccountId] = profile
+	}
+	return profiles, rows.Err()
+}
+
+// ProfileFieldPatch carries the fields Passport features publish on
+// accounts.profile_updated (the denormalized account_profiles fields that
+// moved to Stargate with the table).
+type ProfileFieldPatch struct {
+	LastSeenAt      *time.Time
+	Experience      *int
+	ExperienceDelta *int
+	SocialCredits   *float64
+	ActiveBadge     any
+	HasActiveBadge  bool
+	Verification    *model.SnVerificationMark
+	HasVerification bool
+}
+
+// ApplyProfileFieldPatch applies a Passport-published profile field patch to
+// the account's profile row (create-on-missing), mirroring the feature
+// writers that used to hit Passport's own account_profiles table.
+func (s *Store) ApplyProfileFieldPatch(ctx context.Context, accountID uuid.UUID, patch *ProfileFieldPatch) error {
+	profile, err := s.GetOrCreateAccountProfile(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	if patch.LastSeenAt != nil {
+		profile.LastSeenAt = model.NewTime(*patch.LastSeenAt)
+	}
+	if patch.Experience != nil {
+		profile.Experience = *patch.Experience
+	}
+	if patch.ExperienceDelta != nil && *patch.ExperienceDelta != 0 {
+		profile.Experience += *patch.ExperienceDelta
+	}
+	if patch.SocialCredits != nil {
+		profile.SocialCredits = *patch.SocialCredits
+	}
+	if patch.HasActiveBadge {
+		profile.ActiveBadge = nil
+		if patch.ActiveBadge != nil {
+			value := patch.ActiveBadge
+			profile.ActiveBadge = &value
+		}
+	}
+	if patch.HasVerification {
+		profile.Verification = patch.Verification
+	}
+	return s.SaveProfile(ctx, profile)
 }
 
 // SaveProfile writes the mutable profile columns (mirrors EF db.Update on
@@ -116,17 +183,6 @@ func (s *Store) UpdateAccountBasicInfo(ctx context.Context, accountID uuid.UUID,
 		}
 	}
 	return s.GetAccountByID(ctx, accountID)
-}
-
-// hydrateProfileBoard attaches the account's board items (ordered) to the
-// profile, mirroring AccountBoardService.HydrateBoardAsync.
-func (s *Store) hydrateProfileBoard(ctx context.Context, profile *model.Profile) error {
-	board, err := s.ListBoardItems(ctx, mustParseUUID(profile.AccountId))
-	if err != nil {
-		return err
-	}
-	profile.Board = board
-	return nil
 }
 
 func scanProfile(row pgx.Row) (*model.Profile, error) {

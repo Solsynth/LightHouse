@@ -1,10 +1,12 @@
 # Stargate
 
 The Go replacement for **DysonNetwork.Padlock** (auth, accounts, OIDC, admin,
-E2EE/MLS) plus the **Passport profile domain** (accounts, board,
+E2EE/MLS) plus the **Passport account/profile domain** (accounts, profiles,
 relationships, followers/following). Serves the same `/api/**` routes the C#
 services served (the Blade gateway adds the `/padlock` and `/passport`
-prefixes) with identical JSON shapes.
+prefixes) with identical JSON shapes. Account **board items stay in
+Passport** (routes + `account_board_items` table); Stargate only consumes
+board updates indirectly via the profile read-model.
 
 ## Layout
 

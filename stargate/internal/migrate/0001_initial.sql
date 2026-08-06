@@ -1,7 +1,7 @@
 -- Stargate initial schema.
 -- Generated from the EF Core model snapshots:
 --   DysonNetwork.Padlock/Migrations/AppDatabaseModelSnapshot.cs  (all 23 tables)
---   DysonNetwork.Passport/Migrations/AppDatabaseModelSnapshot.cs (account_profiles, account_board_items, account_relationships)
+--   DysonNetwork.Passport/Migrations/AppDatabaseModelSnapshot.cs (account_profiles, account_relationships)
 -- plus the trigram search indexes from 20260521152351_AddAccountTrigramSearch.cs.
 -- Naming follows EF Core's snake_case convention; instant columns are timestamp with time zone.
 -- Id columns have no DEFAULT: the application generates UUIDs client-side.
@@ -620,32 +620,6 @@ CREATE UNIQUE INDEX ix_account_profiles_account_id ON account_profiles (account_
 
 DROP INDEX IF EXISTS ix_account_profiles_last_seen_at;
 CREATE INDEX ix_account_profiles_last_seen_at ON account_profiles (last_seen_at);
-
--- ---------------------------------------------------------------------------
--- account_board_items (from Passport)
--- ---------------------------------------------------------------------------
-DROP TABLE IF EXISTS account_board_items CASCADE;
-CREATE TABLE account_board_items (
-    id uuid NOT NULL,
-    account_id uuid NOT NULL,
-    created_at timestamp with time zone NOT NULL,
-    custom_app_id uuid NULL,
-    custom_app_widget_key varchar(256) NULL,
-    deleted_at timestamp with time zone NULL,
-    is_enabled boolean NOT NULL,
-    kind integer NOT NULL,
-    "order" integer NOT NULL,
-    payload jsonb NOT NULL,
-    updated_at timestamp with time zone NOT NULL,
-    widget_key varchar(256) NULL,
-    CONSTRAINT pk_account_board_items PRIMARY KEY (id)
-);
-
-DROP INDEX IF EXISTS ix_account_board_items_account_id_order;
-CREATE UNIQUE INDEX ix_account_board_items_account_id_order ON account_board_items (account_id, "order");
-
-DROP INDEX IF EXISTS ix_account_board_items_account_id_custom_app_id_custom_app_wid;
-CREATE INDEX ix_account_board_items_account_id_custom_app_id_custom_app_wid ON account_board_items (account_id, custom_app_id, custom_app_widget_key);
 
 -- ---------------------------------------------------------------------------
 -- account_relationships (from Passport)

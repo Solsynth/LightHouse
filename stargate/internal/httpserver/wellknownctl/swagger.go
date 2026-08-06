@@ -275,17 +275,15 @@ var padlockSwagger = buildDoc(
 )
 
 // passportSwagger covers the Passport surface moved into Stargate: profile,
-// board, public accounts, relationships and magic spells.
+// public accounts, relationships and magic spells.
 var passportSwagger = buildDoc(
 	"DysonNetwork.Passport",
-	"Passport API — profile, board, public accounts, relationships and magic spells. Ported from DysonNetwork.Passport into Stargate.",
+	"Passport API — profile, public accounts, relationships and magic spells. Ported from DysonNetwork.Passport into Stargate.",
 	[]routeSpec{
 		{path: "/api/accounts/me", method: "GET", tag: "Profile", summary: "Get the current account with hydrated profile, badges, perk subscription and contacts"},
 		{path: "/api/accounts/me", method: "PATCH", tag: "Profile", summary: "Update basic account info (nick, language, region)"},
 		{path: "/api/accounts/me", method: "DELETE", tag: "Profile", summary: "Request deletion of the current account"},
 		{path: "/api/accounts/me/profile", method: "PATCH", tag: "Profile", summary: "Update the account profile (bio, links, picture, background, ...)"},
-		{path: "/api/accounts/me/board", method: "GET", tag: "Board", summary: "Get the current account's board items"},
-		{path: "/api/accounts/me/board", method: "PUT", tag: "Board", summary: "Replace the current account's board items", forbidden: true},
 		{path: "/api/accounts/me/followers", method: "GET", tag: "Followers", summary: "List the current account's followers"},
 		{path: "/api/accounts/me/following", method: "GET", tag: "Followers", summary: "List the accounts the current account follows"},
 
@@ -294,7 +292,6 @@ var passportSwagger = buildDoc(
 		{path: "/api/accounts/search", method: "GET", tag: "Public Accounts", summary: "Search public accounts by name"},
 		{path: "/api/accounts/{name}/picture", method: "GET", tag: "Public Accounts", summary: "Redirect to the account's picture file", params: []string{"name"}, notFound: true},
 		{path: "/api/accounts/{name}/background", method: "GET", tag: "Public Accounts", summary: "Redirect to the account's background file", params: []string{"name"}, notFound: true},
-		{path: "/api/accounts/{name}/board", method: "GET", tag: "Public Accounts", summary: "Get a public account's enabled board items", params: []string{"name"}, notFound: true},
 		{path: "/api/accounts/{name}/connections", method: "GET", tag: "Public Accounts", summary: "Get a public account's public connections", params: []string{"name"}, notFound: true},
 		{path: "/api/accounts/{name}/followers", method: "GET", tag: "Public Accounts", summary: "List an account's followers", params: []string{"name"}, notFound: true},
 		{path: "/api/accounts/{name}/following", method: "GET", tag: "Public Accounts", summary: "List the accounts an account follows", params: []string{"name"}, notFound: true},
