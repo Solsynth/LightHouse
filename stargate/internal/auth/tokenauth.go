@@ -210,7 +210,7 @@ func (t *TokenAuthService) AuthenticateToken(ctx context.Context, token, ipAddre
 	}
 
 	// Perk hydration (wallet).
-	t.hydratePerk(ctx, session.Account)
+	t.HydratePerk(ctx, session.Account)
 
 	proto := SessionToProto(session)
 	group := "auth:account_sessions:" + session.AccountId
@@ -380,7 +380,10 @@ func (t *TokenAuthService) AutoRenewable(token, refreshToken string) bool {
 	return sid != "" && sid == refreshSid
 }
 
-func (t *TokenAuthService) hydratePerk(ctx context.Context, account *model.Account) {
+// HydratePerk populates PerkSubscription/PerkLevel from the wallet service,
+// mirroring Padlock's HydratePerkAsync try/catch (degrade to no perk on
+// failure). A nil provider (wallet target unconfigured) is a no-op.
+func (t *TokenAuthService) HydratePerk(ctx context.Context, account *model.Account) {
 	if account == nil || t.perk == nil {
 		return
 	}

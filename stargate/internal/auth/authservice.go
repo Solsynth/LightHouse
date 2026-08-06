@@ -765,7 +765,7 @@ func (s *AuthService) resolveAccessExpiry(session *model.AuthSession, now time.T
 }
 
 func (s *AuthService) hydratePerk(ctx context.Context, account *model.Account) {
-	s.token.hydratePerk(ctx, account)
+	s.token.HydratePerk(ctx, account)
 }
 
 func deref(s *string) string {

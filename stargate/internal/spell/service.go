@@ -190,6 +190,13 @@ func (s *Service) ApplyMagicSpell(ctx context.Context, spell *model.MagicSpell) 
 		if _, err := s.store.MarkContactVerified(ctx, spell.AccountId, contactID, time.Now().UTC()); err != nil {
 			return err
 		}
+		// Mirror Passport's TestService.TryActivateAfterContactVerification
+		// in the tests-disabled branch: entry tests (exam logic) stay in
+		// Passport and none are required here, so a verified contact
+		// activates the account immediately.
+		if err := s.activateAfterContactVerification(ctx, spell.AccountId); err != nil {
+			return err
+		}
 		return s.store.DeleteMagicSpell(ctx, spell.Id)
 	case model.MagicSpellTypeAuthPasswordReset:
 		return errors.New("for password reset spell, please use the ApplyPasswordReset method instead")
@@ -200,6 +207,39 @@ func (s *Service) ApplyMagicSpell(ctx context.Context, spell *model.MagicSpell) 
 	default:
 		return errors.New("unsupported magic spell type")
 	}
+}
+
+// activateAfterContactVerification mirrors Passport's
+// TestService.TryActivateAfterContactVerification in the tests-disabled
+// branch: entry-test (exam) logic stays in Passport and Stargate requires
+// none, so a verified contact activates the account immediately. Idempotent:
+// an already activated account is left untouched.
+func (s *Service) activateAfterContactVerification(ctx context.Context, accountID string) error {
+	id, err := uuid.Parse(accountID)
+	if err != nil {
+		return errors.New("spell contains an invalid account id")
+	}
+	activated, err := s.store.ActivateAccountAndGrantVerified(ctx, id, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	if !activated {
+		return nil
+	}
+	s.clearActorPermissionCache(ctx, accountID)
+	return nil
+}
+
+// clearActorPermissionCache removes the C#-side permission cache entries for
+// an actor. The Go permission service is DB-backed, but the C# fleet still
+// reads the perm:* keys, so the clear is kept for interop (best-effort).
+func (s *Service) clearActorPermissionCache(ctx context.Context, actor string) {
+	if s.redis == nil || s.redis.Cache == nil {
+		return
+	}
+	_ = s.redis.Cache.Remove(ctx, "perm-cg:"+actor)
+	_ = s.redis.Cache.RemoveGroup(ctx, "perm-g:"+actor)
+	_ = s.redis.Cache.Remove(ctx, "perm-blocked:"+actor)
 }
 
 // ApplyPasswordReset mirrors MagicSpellService.ApplyPasswordReset: replaces

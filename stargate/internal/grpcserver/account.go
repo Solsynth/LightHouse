@@ -24,6 +24,20 @@ type dyAccountService struct {
 	d Deps
 }
 
+// hydratePerks populates PerkSubscription/PerkLevel from the wallet service
+// for each account, mirroring Padlock's PopulatePerkSubscriptionsAsync. A nil
+// Token (or wallet client) degrades to no perk, matching the C# try/catch.
+// Callers hydrate before AccountToProto so the wire contract carries
+// perk_level — DysonFS derives storage base quota from it.
+func (s *dyAccountService) hydratePerks(ctx context.Context, accounts []model.Account) {
+	if s.d.Token == nil || len(accounts) == 0 {
+		return
+	}
+	for i := range accounts {
+		s.d.Token.HydratePerk(ctx, &accounts[i])
+	}
+}
+
 // GetAccount mirrors AccountServiceGrpc.GetAccount.
 func (s *dyAccountService) GetAccount(ctx context.Context, req *gen.DyGetAccountRequest) (*gen.DyAccount, error) {
 	accountID, err := uuid.Parse(req.Id)
@@ -36,6 +50,9 @@ func (s *dyAccountService) GetAccount(ctx context.Context, req *gen.DyGetAccount
 			return nil, status.Errorf(codes.NotFound, "Account %s not found", req.Id)
 		}
 		return nil, err
+	}
+	if s.d.Token != nil {
+		s.d.Token.HydratePerk(ctx, account)
 	}
 	return auth.AccountToProto(account), nil
 }
@@ -53,6 +70,9 @@ func (s *dyAccountService) GetBotAccount(ctx context.Context, req *gen.DyGetBotA
 		}
 		return nil, err
 	}
+	if s.d.Token != nil {
+		s.d.Token.HydratePerk(ctx, account)
+	}
 	return auth.AccountToProto(account), nil
 }
 
@@ -69,6 +89,7 @@ func (s *dyAccountService) GetAccountBatch(ctx context.Context, req *gen.DyGetAc
 	if err != nil {
 		return nil, err
 	}
+	s.hydratePerks(ctx, accounts)
 	response := &gen.DyGetAccountBatchResponse{}
 	for i := range accounts {
 		response.Accounts = append(response.Accounts, auth.AccountToProto(&accounts[i]))
@@ -88,6 +109,7 @@ func (s *dyAccountService) GetBotAccountBatch(ctx context.Context, req *gen.DyGe
 	if err != nil {
 		return nil, err
 	}
+	s.hydratePerks(ctx, accounts)
 	response := &gen.DyGetAccountBatchResponse{}
 	for i := range accounts {
 		response.Accounts = append(response.Accounts, auth.AccountToProto(&accounts[i]))
@@ -101,6 +123,7 @@ func (s *dyAccountService) LookupAccountBatch(ctx context.Context, req *gen.DyLo
 	if err != nil {
 		return nil, err
 	}
+	s.hydratePerks(ctx, accounts)
 	response := &gen.DyGetAccountBatchResponse{}
 	for i := range accounts {
 		response.Accounts = append(response.Accounts, auth.AccountToProto(&accounts[i]))
@@ -119,6 +142,7 @@ func (s *dyAccountService) SearchAccount(ctx context.Context, req *gen.DySearchA
 	if err != nil {
 		return nil, err
 	}
+	s.hydratePerks(ctx, accounts)
 	response := &gen.DyGetAccountBatchResponse{}
 	for i := range accounts {
 		response.Accounts = append(response.Accounts, auth.AccountToProto(&accounts[i]))
@@ -145,6 +169,7 @@ func (s *dyAccountService) ListAccounts(ctx context.Context, req *gen.DyListAcco
 	if err != nil {
 		return nil, err
 	}
+	s.hydratePerks(ctx, accounts)
 	response := &gen.DyListAccountsResponse{TotalSize: int32(total)}
 	if len(accounts) == int(pageSize) {
 		response.NextPageToken = fmt.Sprintf("%d", page+1)
@@ -305,6 +330,9 @@ func (s *dyAccountService) GetAccountByConnection(ctx context.Context, req *gen.
 			return nil, status.Errorf(codes.NotFound, "Account for connection %s:%s not found", req.Provider, req.ProvidedIdentifier)
 		}
 		return nil, err
+	}
+	if s.d.Token != nil {
+		s.d.Token.HydratePerk(ctx, account)
 	}
 	return auth.AccountToProto(account), nil
 }

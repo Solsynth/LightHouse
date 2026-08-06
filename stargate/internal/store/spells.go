@@ -151,6 +151,38 @@ func (s *Store) MarkContactVerified(ctx context.Context, accountID, contactID st
 	return tag.RowsAffected() > 0, nil
 }
 
+// ActivateAccountAndGrantVerified sets activated_at and upserts the
+// `verified` group membership, mirroring the spell-path combination of
+// TestService.TryActivateAfterContactVerification (skip when already
+// activated) and Padlock's ActivateAccountAndGrantDefaultPermissions (set
+// stamp + grant group + clear permission cache). It reports whether the
+// account was newly activated (false when already activated or missing).
+func (s *Store) ActivateAccountAndGrantVerified(ctx context.Context, accountID uuid.UUID, activatedAt time.Time) (bool, error) {
+	tag, err := s.DB.Exec(ctx, `UPDATE accounts
+		SET activated_at = $1, updated_at = now()
+		WHERE id = $2 AND activated_at IS NULL`,
+		activatedAt, accountID)
+	if err != nil {
+		return false, err
+	}
+	if tag.RowsAffected() == 0 {
+		return false, nil
+	}
+	var groupID uuid.UUID
+	if err := s.DB.QueryRow(ctx, `SELECT id FROM permission_groups
+		WHERE "key" = $1 AND deleted_at IS NULL`, "verified").Scan(&groupID); err != nil {
+		return false, err
+	}
+	if _, err := s.DB.Exec(ctx, `INSERT INTO permission_group_members
+		(group_id, actor, affected_at, expired_at, created_at, updated_at)
+		VALUES ($1, $2, NULL, NULL, now(), now())
+		ON CONFLICT (group_id, actor) DO UPDATE SET affected_at = NULL, expired_at = NULL, updated_at = now()`,
+		groupID, accountID.String()); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // ResetPasswordFactor replaces an account's password auth factor secret,
 // mirroring the C# ResetPasswordFactorAsync on the account service.
 func (s *Store) ResetPasswordFactor(ctx context.Context, accountID, passwordHash string) error {

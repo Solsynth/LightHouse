@@ -169,9 +169,12 @@ func (h *handler) afterRegistration(ctx context.Context, account *model.Account,
 			h.logError("consume affiliation spell", err)
 		} else if consumed && skipsTests {
 			// The C# calls TestService.TryActivateAccount for invites that
-			// skip entry tests; Stargate has no TestService (test-mode only).
+			// skip entry tests; that check still requires a verified contact,
+			// which a fresh registration cannot have, so it no-ops here.
+			// Activation happens when the contact-verification spell is
+			// applied (entry-test logic stays in Passport).
 			if h.d.Log != nil {
-				h.d.Log.Info("affiliation invite consumed; test activation skipped", "account_id", account.Id)
+				h.d.Log.Info("affiliation invite consumed; activation deferred to contact verification", "account_id", account.Id)
 			}
 		}
 	}
