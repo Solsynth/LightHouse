@@ -34,7 +34,7 @@ func TestGetAccountBatchHydratesProfiles(t *testing.T) {
 
 	st := store.New(pool)
 	now := time.Now().UTC()
-	seed := func() string {
+	seed := func(badgeJSON string) string {
 		id := uuid.NewString()
 		if _, err := pool.Exec(ctx, `INSERT INTO accounts (id, name, nick, language, region, is_superuser, created_at, updated_at)
 			VALUES ($1, $2, $2, 'en', 'US', false, $3, $3)`, id, "profile_batch_"+uuid.NewString()[:8], now); err != nil {
@@ -44,14 +44,17 @@ func TestGetAccountBatchHydratesProfiles(t *testing.T) {
 			VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $6, 0, 100)`,
 			uuid.NewString(), id, "TestName",
 			`{"Id": "pic-`+id[:8]+`", "Url": "https://example.com/`+id[:8]+`.png"}`,
-			`{"Id": "badge-`+id[:8]+`", "Type": "pioneer", "Label": "Pioneer"}`,
+			badgeJSON,
 			now); err != nil {
 			t.Fatalf("seed profile: %v", err)
 		}
 		return id
 	}
-	alice := seed()
-	bob := seed()
+	// Legacy C# EF rows store PascalCase partial refs; NATS-synced refs are
+	// snake_case (Passport's ProfileFieldUpdatedEvent). Both must map to the
+	// same DyBadgeReferenceObject on the wire.
+	alice := seed(`{"Id": "badge-` + uuid.NewString()[:8] + `", "Type": "pioneer", "Label": "Pioneer"}`)
+	bob := seed(`{"id": "badge-` + uuid.NewString()[:8] + `", "type": "pioneer", "label": "Pioneer", "meta": {}, "activated_at": "2026-08-07T02:33:00Z", "account_id": "00000000-0000-0000-0000-000000000000"}`)
 	defer pool.Exec(ctx, `DELETE FROM accounts WHERE id = ANY($1)`, []string{alice, bob})
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")

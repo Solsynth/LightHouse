@@ -4,11 +4,11 @@
 package store
 
 import (
-	"time"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -16,7 +16,6 @@ import (
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
-
 
 // TouchLastActive applies a last-active signal — from Stargate's own traffic
 // (the auth middleware toucher) or the fleet's accounts.last_active events —
@@ -260,6 +259,7 @@ func scanAccountWithProfile(row pgx.Row) (*model.Account, error) {
 		_ = json.Unmarshal(verification, &profile.Verification)
 		_ = json.Unmarshal(picture, &profile.Picture)
 		_ = json.Unmarshal(background, &profile.Background)
+		_ = decodeActiveBadge(profile, activeBadge)
 		account.Profile = profile
 	}
 	return account, nil

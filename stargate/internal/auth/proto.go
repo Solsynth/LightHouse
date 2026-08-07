@@ -189,8 +189,8 @@ func mustMarshal(v any) []byte {
 	return b
 }
 
-// badgeRefToProto maps the stored active-badge jsonb (C# PascalCase keys) to
-// the DyBadgeReferenceObject wire shape.
+// badgeRefToProto maps the canonical active-badge ref (snake_case keys, see
+// store.decodeActiveBadge) to the DyBadgeReferenceObject wire shape.
 func badgeRefToProto(v *any) *gen.DyBadgeReferenceObject {
 	if v == nil || *v == nil {
 		return nil
@@ -200,14 +200,14 @@ func badgeRefToProto(v *any) *gen.DyBadgeReferenceObject {
 		return nil
 	}
 	var ref struct {
-		Id          string         `json:"Id"`
-		Type        string         `json:"Type"`
-		Label       *string        `json:"Label"`
-		Caption     *string        `json:"Caption"`
-		Meta        map[string]any `json:"Meta"`
-		ActivatedAt *time.Time     `json:"ActivatedAt"`
-		ExpiredAt   *time.Time     `json:"ExpiredAt"`
-		AccountId   string         `json:"AccountId"`
+		Id          string         `json:"id"`
+		Type        string         `json:"type"`
+		Label       *string        `json:"label"`
+		Caption     *string        `json:"caption"`
+		Meta        map[string]any `json:"meta"`
+		ActivatedAt *time.Time     `json:"activated_at"`
+		ExpiredAt   *time.Time     `json:"expired_at"`
+		AccountId   string         `json:"account_id"`
 	}
 	if err := json.Unmarshal(raw, &ref); err != nil {
 		return nil

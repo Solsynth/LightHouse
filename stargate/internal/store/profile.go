@@ -90,7 +90,6 @@ func (s *Store) HealBareProfile(ctx context.Context, accountID uuid.UUID) error 
 	return err
 }
 
-
 // GetProfilesByAccountIDs loads the 1:1 profile rows for the given accounts
 // (missing accounts are absent from the map).
 func (s *Store) GetProfilesByAccountIDs(ctx context.Context, ids []uuid.UUID) (map[string]*model.Profile, error) {
@@ -264,8 +263,96 @@ func scanProfile(row pgx.Row) (*model.Profile, error) {
 	_ = json.Unmarshal(verification, &profile.Verification)
 	_ = json.Unmarshal(picture, &profile.Picture)
 	_ = json.Unmarshal(background, &profile.Background)
-	_ = json.Unmarshal(activeBadge, &profile.ActiveBadge)
+	_ = decodeActiveBadge(profile, activeBadge)
 	return profile, nil
+}
+
+// decodeActiveBadge canonicalizes the stored active-badge jsonb into the
+// snake_case SnAccountBadgeRef wire shape the Island SDK strict-casts
+// (account.g.dart): id/type/meta/account_id/created_at/updated_at must all be
+// present, so the raw column cannot leak. The column holds either legacy C#
+// EF rows (PascalCase partial refs like {"Id","Type","Label"}) or NATS-synced
+// refs (snake_case, from Passport's accounts.profile_updated); both normalize
+// to the same shape the C# Passport served on /accounts/me. Missing ref
+// timestamps default to the profile row's own created_at/updated_at (the C#
+// used ModelBase defaults; the client only parses, never displays them).
+func decodeActiveBadge(profile *model.Profile, raw []byte) error {
+	profile.ActiveBadge = nil
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var stored map[string]any
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return err
+	}
+	// Accept snake_case (NATS) and C# PascalCase (legacy EF) keys.
+	refString := func(key, legacy string) *string {
+		if v, ok := stored[key]; ok {
+			if s, isString := v.(string); isString {
+				return &s
+			}
+		}
+		if v, ok := stored[legacy]; ok {
+			if s, isString := v.(string); isString {
+				return &s
+			}
+		}
+		return nil
+	}
+	// refValue dereferences a stored string, emitting nil (JSON null) when
+	// the key is absent so the wire keeps the C# "null" shape.
+	refValue := func(key, legacy string) any {
+		if s := refString(key, legacy); s != nil {
+			return *s
+		}
+		return nil
+	}
+	refMeta := func() map[string]any {
+		if v, ok := stored["meta"]; ok {
+			if m, isMap := v.(map[string]any); isMap {
+				return m
+			}
+		}
+		if v, ok := stored["Meta"]; ok {
+			if m, isMap := v.(map[string]any); isMap {
+				return m
+			}
+		}
+		return map[string]any{}
+	}
+	// refTime prefers the profile row's own timestamps (the C# served its
+	// ModelBase defaults; the client only parses, never displays them),
+	// falling back to the stored ref values, then an epoch default.
+	refTime := func(t *model.Time, key, legacy string) any {
+		if t != nil {
+			return time.Time(*t).UTC().Format(time.RFC3339)
+		}
+		if v := refString(key, legacy); v != nil {
+			return *v
+		}
+		return time.Time{}.UTC().Format(time.RFC3339)
+	}
+	ref := map[string]any{
+		"id":           refValue("id", "Id"),
+		"type":         refValue("type", "Type"),
+		"label":        refValue("label", "Label"),
+		"caption":      refValue("caption", "Caption"),
+		"meta":         refMeta(),
+		"activated_at": refValue("activated_at", "ActivatedAt"),
+		"expired_at":   refValue("expired_at", "ExpiredAt"),
+		"account_id":   profile.AccountId,
+		"created_at":   refTime(profile.CreatedAt, "created_at", "CreatedAt"),
+		"updated_at":   refTime(profile.UpdatedAt, "updated_at", "UpdatedAt"),
+		"deleted_at":   nil,
+	}
+	if ref["account_id"] == "" {
+		if v := refString("account_id", "AccountId"); v != nil {
+			ref["account_id"] = *v
+		}
+	}
+	value := any(ref)
+	profile.ActiveBadge = &value
+	return nil
 }
 
 // marshalJSONOrNull marshals a value to JSON, emitting SQL NULL for nil.
