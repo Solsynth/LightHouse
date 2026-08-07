@@ -260,7 +260,7 @@ func (s *Store) AdminListActivePunishments(ctx context.Context, accountIDs []uui
 
 // AdminPunishmentGet loads one punishment by id and account.
 func (s *Store) AdminPunishmentGet(ctx context.Context, accountID, punishmentID uuid.UUID) (*model.Punishment, error) {
-	punishments, err := s.adminQueryPunishments(ctx, `WHERE p.id = $1 AND p.account_id = $2 AND p.deleted_at IS NULL`, []uuid.UUID{punishmentID}, accountID)
+	punishments, err := s.adminQueryPunishments(ctx, `WHERE p.id = $1 AND p.account_id = $2 AND p.deleted_at IS NULL`, punishmentID, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +277,7 @@ func (s *Store) AdminPunishmentsCreatedBy(ctx context.Context, creatorID uuid.UU
 		return nil, 0, err
 	}
 	punishments, err := s.adminQueryPunishments(ctx, `WHERE p.creator_id = $1 AND p.deleted_at IS NULL
-		ORDER BY p.created_at DESC LIMIT $2 OFFSET $3`, []uuid.UUID{creatorID}, take, offset)
+		ORDER BY p.created_at DESC LIMIT $2 OFFSET $3`, creatorID, take, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -295,7 +295,7 @@ func (s *Store) AdminActivePunishmentsForAccount(ctx context.Context, accountID 
 	}
 	punishments, err := s.adminQueryPunishments(ctx, `WHERE p.account_id = $1 AND p.deleted_at IS NULL
 		AND (p.expired_at IS NULL OR p.expired_at > $2)
-		ORDER BY p.created_at DESC LIMIT $3 OFFSET $4`, []uuid.UUID{accountID}, now, take, offset)
+		ORDER BY p.created_at DESC LIMIT $3 OFFSET $4`, accountID, now, take, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -310,7 +310,7 @@ func (s *Store) AdminAllPunishmentsForAccount(ctx context.Context, accountID uui
 		return nil, 0, err
 	}
 	punishments, err := s.adminQueryPunishments(ctx, `WHERE p.account_id = $1 AND p.deleted_at IS NULL
-		ORDER BY p.created_at DESC LIMIT $2 OFFSET $3`, []uuid.UUID{accountID}, take, offset)
+		ORDER BY p.created_at DESC LIMIT $2 OFFSET $3`, accountID, take, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -321,7 +321,7 @@ func (s *Store) AdminAllPunishmentsForAccount(ctx context.Context, accountID uui
 // account, mirroring GetActivePunishmentOverview (null when none).
 func (s *Store) AdminPunishmentOverview(ctx context.Context, accountID uuid.UUID, now time.Time) (*model.Punishment, error) {
 	punishments, err := s.adminQueryPunishments(ctx, `WHERE p.account_id = $1 AND p.deleted_at IS NULL
-		AND (p.expired_at IS NULL OR p.expired_at > $2) ORDER BY p.type DESC`, []uuid.UUID{accountID}, now)
+		AND (p.expired_at IS NULL OR p.expired_at > $2) ORDER BY p.type DESC`, accountID, now)
 	if err != nil {
 		return nil, err
 	}

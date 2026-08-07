@@ -14,10 +14,10 @@ import (
 
 // sessionWithAccountColumns mirrors the SELECT list used by
 // GetSessionWithAccount (session columns + account columns joined).
-const sessionWithAccountColumns = `s.id, s.type, s.last_granted_at, s.expired_at, s.audiences, s.scopes, s.ip_address,
+var sessionWithAccountColumns = `s.id, s.type, s.last_granted_at, s.expired_at, s.audiences, s.scopes, s.ip_address,
 	s.user_agent, s.location, s.account_id, s.client_id, s.parent_session_id, s.challenge_id, s.app_id, s.epoch,
 	s.created_at, s.updated_at, s.deleted_at,
-	` + accountColumns
+	` + accountColsPrefixed("a")
 
 // FindValidOauthSession loads the most recent non-expired OAuth-typed session
 // for an account + app pair, mirroring OidcProviderService.FindValidSessionAsync
