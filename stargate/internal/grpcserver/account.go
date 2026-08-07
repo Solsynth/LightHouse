@@ -33,6 +33,9 @@ type dyAccountService struct {
 // hydrateProfiles attaches the account_profiles row (create-on-missing) to
 // each account so the DyAccount proto carries the profile — the fleet's
 // profile reads moved to Stargate with the account_profiles table.
+// NOTE: hydrateProfiles mutates the slice ELEMENTS. Single-account callers
+// must use hydrateProfile below — passing []model.Account{*account} hydrates
+// a throwaway copy and serializes a nil profile.
 func (s *dyAccountService) hydrateProfiles(ctx context.Context, accounts []model.Account) error {
 	if len(accounts) == 0 {
 		return nil
@@ -58,6 +61,18 @@ func (s *dyAccountService) hydrateProfiles(ctx context.Context, accounts []model
 	return nil
 }
 
+// hydrateProfile attaches the profile to a single account. hydrateProfiles
+// mutates slice elements, so the value is copied in and the hydrated element
+// copied back to the caller's account.
+func (s *dyAccountService) hydrateProfile(ctx context.Context, account *model.Account) error {
+	accounts := []model.Account{*account}
+	if err := s.hydrateProfiles(ctx, accounts); err != nil {
+		return err
+	}
+	*account = accounts[0]
+	return nil
+}
+
 func (s *dyAccountService) hydratePerks(ctx context.Context, accounts []model.Account) {
 	if s.d.Token == nil || len(accounts) == 0 {
 		return
@@ -80,7 +95,7 @@ func (s *dyAccountService) GetAccount(ctx context.Context, req *gen.DyGetAccount
 		}
 		return nil, err
 	}
-	if err := s.hydrateProfiles(ctx, []model.Account{*account}); err != nil {
+	if err := s.hydrateProfile(ctx, account); err != nil {
 		return nil, err
 	}
 	if s.d.Token != nil {
@@ -102,7 +117,7 @@ func (s *dyAccountService) GetBotAccount(ctx context.Context, req *gen.DyGetBotA
 		}
 		return nil, err
 	}
-	if err := s.hydrateProfiles(ctx, []model.Account{*account}); err != nil {
+	if err := s.hydrateProfile(ctx, account); err != nil {
 		return nil, err
 	}
 	if s.d.Token != nil {
@@ -381,7 +396,7 @@ func (s *dyAccountService) GetAccountByConnection(ctx context.Context, req *gen.
 		}
 		return nil, err
 	}
-	if err := s.hydrateProfiles(ctx, []model.Account{*account}); err != nil {
+	if err := s.hydrateProfile(ctx, account); err != nil {
 		return nil, err
 	}
 	if s.d.Token != nil {
