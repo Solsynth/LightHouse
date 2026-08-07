@@ -14,6 +14,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/structpb"
 	gen "src.solsynth.dev/sosys/go/proto"
 
@@ -33,6 +34,19 @@ func Dial(target string) (*grpc.ClientConn, error) {
 	)
 }
 
+// DialPlaintext creates a plaintext gRPC connection. Blade is the only
+// sibling that serves gRPC without TLS (its server is started with no
+// credentials), so outbound Blade clients must use this instead of Dial.
+func DialPlaintext(target string) (*grpc.ClientConn, error) {
+	if target == "" {
+		return nil, nil
+	}
+	return grpc.NewClient(target,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(grpc.WaitForReady(false)),
+	)
+}
+
 // Clients holds the outbound connections.
 type Clients struct {
 	Stargate *grpc.ClientConn
@@ -43,18 +57,19 @@ type Clients struct {
 // NewClients dials every configured target.
 func NewClients(cfg *config.Config) (*Clients, error) {
 	c := &Clients{}
-	dial := func(target string) *grpc.ClientConn {
-		conn, err := Dial(target)
+	dial := func(dialFn func(string) (*grpc.ClientConn, error), target string) *grpc.ClientConn {
+		conn, err := dialFn(target)
 		if err != nil {
 			return nil
 		}
 		c.conns = append(c.conns, conn)
 		return conn
 	}
-	if conn := dial(cfg.Services.Stargate.GRPC); conn != nil {
+	if conn := dial(Dial, cfg.Services.Stargate.GRPC); conn != nil {
 		c.Stargate = conn
 	}
-	if conn := dial(cfg.Services.Blade.GRPC); conn != nil {
+	// Blade serves plaintext gRPC, unlike the TLS fleet (stargate et al.).
+	if conn := dial(DialPlaintext, cfg.Services.Blade.GRPC); conn != nil {
 		c.Blade = conn
 	}
 	return c, nil
