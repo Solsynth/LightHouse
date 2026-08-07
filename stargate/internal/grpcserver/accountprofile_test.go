@@ -128,11 +128,22 @@ func TestGetAccountBatchCreatesMissingProfiles(t *testing.T) {
 	}
 	live := seed(true)
 	missing := seed(false)
+	bare := uuid.NewString()
 	tombstoned := seed(true)
 	if _, err := pool.Exec(ctx, `UPDATE account_profiles SET deleted_at = $1 WHERE account_id = $2`, now, tombstoned); err != nil {
 		t.Fatalf("tombstone profile: %v", err)
 	}
-	defer pool.Exec(ctx, `DELETE FROM accounts WHERE id = ANY($1)`, []string{live, missing, tombstoned})
+	// Bare row: exists with zero profile data (migrated account that never
+	// edited its profile) — must be backfilled with the account name.
+	bareName := "chat_bare_" + uuid.NewString()[:8]
+	if _, err := pool.Exec(ctx, `INSERT INTO accounts (id, name, nick, language, region, is_superuser, created_at, updated_at)
+		VALUES ($1, $2, $2, 'en', 'US', false, $3, $3)`, bare, bareName, now); err != nil {
+		t.Fatalf("seed bare account: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE account_profiles SET first_name = '', last_name = '', bio = NULL, picture = NULL WHERE account_id = $1`, bare); err != nil {
+		t.Fatalf("blank bare profile: %v", err)
+	}
+	defer pool.Exec(ctx, `DELETE FROM accounts WHERE id = ANY($1)`, []string{live, missing, bare, tombstoned})
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -150,16 +161,26 @@ func TestGetAccountBatchCreatesMissingProfiles(t *testing.T) {
 	defer conn.Close()
 	client := gen.NewDyAccountServiceClient(conn)
 
-	resp, err := client.GetAccountBatch(ctx, &gen.DyGetAccountBatchRequest{Id: []string{live, missing, tombstoned}})
+	resp, err := client.GetAccountBatch(ctx, &gen.DyGetAccountBatchRequest{Id: []string{live, missing, bare, tombstoned}})
 	if err != nil {
 		t.Fatalf("GetAccountBatch: %v", err)
 	}
-	if len(resp.Accounts) != 3 {
-		t.Fatalf("got %d accounts, want 3 (chat members with missing profiles must not vanish)", len(resp.Accounts))
+	if len(resp.Accounts) != 4 {
+		t.Fatalf("got %d accounts, want 4 (chat members with missing profiles must not vanish)", len(resp.Accounts))
 	}
 	for _, a := range resp.Accounts {
 		if a.Profile == nil || a.Profile.Id == "" {
 			t.Fatalf("account %s has no profile", a.Id)
 		}
+	}
+	byID := map[string]*gen.DyAccount{}
+	for _, a := range resp.Accounts {
+		byID[a.Id] = a
+	}
+	if f := byID[bare].Profile.GetFirstName().GetValue(); f != bareName {
+		t.Fatalf("bare profile first_name = %q, want %q (backfill from account name)", f, bareName)
+	}
+	if f := byID[missing].Profile.GetFirstName().GetValue(); f == "" {
+		t.Fatalf("created profile not backfilled with account name")
 	}
 }

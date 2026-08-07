@@ -26,43 +26,68 @@ func (s *Store) GetProfileByAccount(ctx context.Context, accountID uuid.UUID) (*
 // row when missing. The returned profile always carries the board list
 // (mirrors AccountService.GetOrCreateAccountProfileAsync + board hydration).
 // A concurrent-create race is resolved by re-reading after the insert.
+// Bare rows (no name/bio/picture — the common case for migrated accounts that
+// never edited their profile) are backfilled with the account's name so
+// clients never see a data-less profile for an existing account.
 func (s *Store) GetOrCreateAccountProfile(ctx context.Context, accountID uuid.UUID) (*model.Profile, error) {
-	profile, err := s.GetProfileByAccount(ctx, accountID)
-	if err == nil {
-		return profile, nil
-	}
-	if !errors.Is(err, ErrNotFound) {
+	_, err := s.GetProfileByAccount(ctx, accountID)
+	if err != nil && !errors.Is(err, ErrNotFound) {
 		return nil, err
 	}
 
-	now := time.Now().UTC()
-	if _, err := s.DB.Exec(ctx, `INSERT INTO account_profiles
-		(id, account_id, created_at, updated_at, experience, social_credits)
-		VALUES ($1, $2, $3, $3, 0, 100)
-		ON CONFLICT (account_id) DO NOTHING`, uuid.NewString(), accountID, now); err != nil {
-		return nil, err
+	// Profile row missing entirely (or tombstoned): create (or revive) it.
+	if errors.Is(err, ErrNotFound) {
+		now := time.Now().UTC()
+		if _, err := s.DB.Exec(ctx, `INSERT INTO account_profiles
+			(id, account_id, created_at, updated_at, experience, social_credits)
+			VALUES ($1, $2, $3, $3, 0, 100)
+			ON CONFLICT (account_id) DO NOTHING`, uuid.NewString(), accountID, now); err != nil {
+			return nil, err
+		}
+
+		_, err = s.GetProfileByAccount(ctx, accountID)
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return nil, err
+		}
+		if errors.Is(err, ErrNotFound) {
+			// A soft-deleted profile row still occupies the (unfiltered) unique
+			// index, so the insert above was a no-op. Hard-delete the tombstone
+			// and retry so the account gets a live profile (mirrors the C#
+			// filtered unique index).
+			if _, err := s.DB.Exec(ctx, `DELETE FROM account_profiles WHERE account_id = $1`, accountID); err != nil {
+				return nil, err
+			}
+			if _, err := s.DB.Exec(ctx, `INSERT INTO account_profiles
+				(id, account_id, created_at, updated_at, experience, social_credits)
+				VALUES ($1, $2, $3, $3, 0, 100)`, uuid.NewString(), accountID, now); err != nil {
+				return nil, err
+			}
+		}
 	}
 
-	profile, err = s.GetProfileByAccount(ctx, accountID)
-	if err == nil {
-		return profile, nil
-	}
-	if !errors.Is(err, ErrNotFound) {
-		return nil, err
-	}
-
-	// A soft-deleted profile row still occupies the (unfiltered) unique index,
-	// so the insert above was a no-op. Hard-delete the tombstone and retry so
-	// the account gets a live profile (mirrors the C# filtered unique index).
-	if _, err := s.DB.Exec(ctx, `DELETE FROM account_profiles WHERE account_id = $1`, accountID); err != nil {
-		return nil, err
-	}
-	if _, err := s.DB.Exec(ctx, `INSERT INTO account_profiles
-		(id, account_id, created_at, updated_at, experience, social_credits)
-		VALUES ($1, $2, $3, $3, 0, 100)`, uuid.NewString(), accountID, now); err != nil {
+	// Backfill bare rows with the account's name (the only derivable field).
+	// Condition mirrors the client-side bare check; a no-op once healed.
+	if err := s.HealBareProfile(ctx, accountID); err != nil {
 		return nil, err
 	}
 	return s.GetProfileByAccount(ctx, accountID)
+}
+
+// HealBareProfile copies accounts.name into first_name for profile rows that
+// carry no profile data at all (empty first/last name, no bio, no picture).
+// Such rows are what migrated accounts that never edited their profile end up
+// with — and what the old Passport created on demand — so reads otherwise
+// emit data-less profiles for perfectly real accounts.
+func (s *Store) HealBareProfile(ctx context.Context, accountID uuid.UUID) error {
+	_, err := s.DB.Exec(ctx, `UPDATE account_profiles p SET first_name = a.name, updated_at = now()
+		FROM accounts a
+		WHERE p.account_id = a.id AND p.account_id = $1
+		  AND a.deleted_at IS NULL AND p.deleted_at IS NULL
+		  AND (p.first_name IS NULL OR btrim(p.first_name) = '')
+		  AND (p.last_name IS NULL OR btrim(p.last_name) = '')
+		  AND (p.bio IS NULL OR btrim(p.bio) = '')
+		  AND p.picture IS NULL`, accountID)
+	return err
 }
 
 
