@@ -22,16 +22,14 @@ const (
 )
 
 // lastActivePayload mirrors the C# LastActiveEvent wire shape exactly:
-// EventBase (PascalCase) + AccountId/SessionId/SeenAt (PascalCase, NodaTime
-// ISO instant). Stargate's consumer unmarshals the PascalCase fields.
+// the EventBase envelope (event_id/timestamp/event_type/stream_name) plus
+// account_id/session_id/seen_at (snake_case, NodaTime ISO instant). Stargate
+// and the C# EventBusBackgroundService unmarshal the snake_case fields.
 type lastActivePayload struct {
-	EventID    string    `json:"EventId"`
-	Timestamp  time.Time `json:"Timestamp"`
-	EventType  string    `json:"EventType"`
-	StreamName string    `json:"StreamName"`
-	AccountID  string    `json:"AccountId"`
-	SessionID  string    `json:"SessionId"`
-	SeenAt     time.Time `json:"SeenAt"`
+	eb.Event
+	AccountID string    `json:"account_id"`
+	SessionID string    `json:"session_id"`
+	SeenAt    time.Time `json:"seen_at"`
 }
 
 // LastActivePublisher mirrors the C# TouchProfileLastSeenAsync: a Redis
@@ -72,13 +70,10 @@ func (p *LastActivePublisher) Touch(ctx context.Context, result *auth.AuthResult
 
 	now := time.Now().UTC()
 	payload := lastActivePayload{
-		EventID:    uuid.NewString(),
-		Timestamp:  now,
-		EventType:  lastActiveSubject,
-		StreamName: lastActiveStream,
-		AccountID:  accountID,
-		SessionID:  sessionID,
-		SeenAt:     now,
+		Event:     eb.NewEvent(lastActiveStream, lastActiveSubject),
+		AccountID: accountID,
+		SessionID: sessionID,
+		SeenAt:    now,
 	}
 
 	if p.Bus != nil {
