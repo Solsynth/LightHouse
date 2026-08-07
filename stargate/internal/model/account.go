@@ -128,6 +128,10 @@ type Connection struct {
 	CreatedAt          *Time          `json:"created_at,omitempty"`
 	UpdatedAt          *Time          `json:"updated_at,omitempty"`
 	DeletedAt          *Time          `json:"deleted_at,omitempty"`
+	// RegisteredAt is set when this connection created the account (OIDC
+	// registration); NULL for connections linked after account creation.
+	// Registration connections cannot be removed by the account owner.
+	RegisteredAt *Time `json:"registered_at,omitempty"`
 	// AccessToken/RefreshToken are never serialized.
 	AccessToken  string `json:"-"`
 	RefreshToken string `json:"-"`

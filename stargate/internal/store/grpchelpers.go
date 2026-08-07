@@ -60,7 +60,7 @@ func (s *Store) GetAccountsByNames(ctx context.Context, names []string) ([]model
 
 // ListConnections lists an account's connections (full rows incl. tokens).
 func (s *Store) ListConnectionsWithTokens(ctx context.Context, accountID uuid.UUID, provider *string) ([]model.Connection, error) {
-	query := `SELECT id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, created_at, updated_at, deleted_at
+	query := `SELECT id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, registered_at, created_at, updated_at, deleted_at
 		FROM account_connections WHERE account_id = $1 AND deleted_at IS NULL`
 	args := []any{accountID}
 	if provider != nil {
@@ -85,7 +85,7 @@ func (s *Store) ListConnectionsWithTokens(ctx context.Context, accountID uuid.UU
 
 // GetConnectionFullByID loads a connection by id (full row incl. tokens).
 func (s *Store) GetConnectionFullByID(ctx context.Context, id uuid.UUID) (*model.Connection, error) {
-	row := s.DB.QueryRow(ctx, `SELECT id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, created_at, updated_at, deleted_at
+	row := s.DB.QueryRow(ctx, `SELECT id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, registered_at, created_at, updated_at, deleted_at
 		FROM account_connections WHERE id = $1 AND deleted_at IS NULL`, id)
 	c, err := scanConnectionFull(row)
 	if err != nil {
@@ -99,7 +99,7 @@ func (s *Store) GetConnectionFullByID(ctx context.Context, id uuid.UUID) (*model
 
 // GetConnectionByProviderAndIdentifier loads a connection by provider+identifier.
 func (s *Store) GetConnectionByProviderAndIdentifier(ctx context.Context, provider, providedIdentifier string) (*model.Connection, error) {
-	row := s.DB.QueryRow(ctx, `SELECT id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, created_at, updated_at, deleted_at
+	row := s.DB.QueryRow(ctx, `SELECT id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, registered_at, created_at, updated_at, deleted_at
 		FROM account_connections WHERE LOWER(provider) = LOWER($1) AND provided_identifier = $2 AND deleted_at IS NULL LIMIT 1`, provider, providedIdentifier)
 	c, err := scanConnectionFull(row)
 	if err != nil {
@@ -434,7 +434,7 @@ func scanConnectionFull(row pgx.Row) (*model.Connection, error) {
 	var c model.Connection
 	var meta, accessToken, refreshToken *[]byte
 	err := row.Scan(&c.Id, &c.Provider, &c.ProvidedIdentifier, &meta, &accessToken, &refreshToken,
-		&c.LastUsedAt, &c.IsPublic, &c.AccountId, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt)
+		&c.LastUsedAt, &c.IsPublic, &c.AccountId, &c.RegisteredAt, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt)
 	if err != nil {
 		return nil, err
 	}

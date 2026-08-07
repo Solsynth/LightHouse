@@ -286,7 +286,7 @@ func (d Deps) handleManualConnection(c *gin.Context, svc provider, data *callbac
 		return
 	}
 
-	created, err := d.Store.TouchConnectionTokens(ctx, accountID, providerName, userInfo.UserId, userInfo.AccessToken, userInfo.RefreshToken, userInfo.toMetadata(), time.Now().UTC())
+	created, err := d.Store.TouchConnectionTokens(ctx, accountID, providerName, userInfo.UserId, userInfo.AccessToken, userInfo.RefreshToken, userInfo.toMetadata(), nil, time.Now().UTC())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, errs.New("OIDC_SAVE_CONNECTION_FAILED", fmt.Sprintf("Failed to save %s connection. Please try again.", providerName), http.StatusInternalServerError))
 		return
@@ -367,6 +367,7 @@ func (d Deps) handleLoginOrRegistration(c *gin.Context, svc provider, data *call
 	}
 
 	// Register a new user (or link the provider to an account found by email).
+	var registeredAt *time.Time
 	account, err = d.Store.LookupAccount(ctx, userInfo.Email)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
@@ -378,8 +379,9 @@ func (d Deps) handleLoginOrRegistration(c *gin.Context, svc provider, data *call
 			c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
 			return
 		}
+		registeredAt = &now
 	}
-	if _, err := d.Store.UpsertConnection(ctx, account.Id, providerName, userInfo.UserId, userInfo.AccessToken, userInfo.RefreshToken, userInfo.toMetadata(), now); err != nil {
+	if _, err := d.Store.UpsertConnection(ctx, account.Id, providerName, userInfo.UserId, userInfo.AccessToken, userInfo.RefreshToken, userInfo.toMetadata(), registeredAt, now); err != nil {
 		c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
 		return
 	}
@@ -442,7 +444,7 @@ func (d Deps) connectAppleMobile(c *gin.Context) {
 		return
 	}
 
-	if err := d.Store.InsertConnection(ctx, currentUser.Id, "apple", userInfo.UserId, userInfo.AccessToken, userInfo.RefreshToken, userInfo.toMetadata(), time.Now().UTC()); err != nil {
+	if err := d.Store.InsertConnection(ctx, currentUser.Id, "apple", userInfo.UserId, userInfo.AccessToken, userInfo.RefreshToken, userInfo.toMetadata(), nil, time.Now().UTC()); err != nil {
 		c.JSON(http.StatusInternalServerError, errs.New("OIDC_APPLE_TOKEN_PROCESS_FAILED", "Error processing Apple token: "+err.Error(), http.StatusInternalServerError))
 		return
 	}
@@ -465,7 +467,7 @@ func (d Deps) findOrCreateAccount(ctx context.Context, userInfo *userInfo, provi
 
 	existing, err := d.Store.LookupAccount(ctx, userInfo.Email)
 	if err == nil && existing != nil {
-		created, err := d.Store.UpsertConnection(ctx, existing.Id, provider, userInfo.UserId, userInfo.AccessToken, userInfo.RefreshToken, userInfo.toMetadata(), now)
+		created, err := d.Store.UpsertConnection(ctx, existing.Id, provider, userInfo.UserId, userInfo.AccessToken, userInfo.RefreshToken, userInfo.toMetadata(), nil, now)
 		if err != nil {
 			return nil, err
 		}
@@ -482,7 +484,8 @@ func (d Deps) findOrCreateAccount(ctx context.Context, userInfo *userInfo, provi
 	if err != nil {
 		return nil, err
 	}
-	if _, err := d.Store.UpsertConnection(ctx, account.Id, provider, userInfo.UserId, userInfo.AccessToken, userInfo.RefreshToken, userInfo.toMetadata(), now); err != nil {
+	// This connection created the account — mark it as the registration one.
+	if _, err := d.Store.UpsertConnection(ctx, account.Id, provider, userInfo.UserId, userInfo.AccessToken, userInfo.RefreshToken, userInfo.toMetadata(), &now, now); err != nil {
 		return nil, err
 	}
 	d.actionLogConnectionLink(ctx, account.Id, provider, nil, nil)
@@ -502,7 +505,7 @@ func (d Deps) createSessionForUser(c *gin.Context, svc provider, userInfo *userI
 	// HandleLoginOrRegistration); only insert when it is missing.
 	_, err := d.Store.GetConnectionByAccountAndProvider(ctx, account.Id, providerName)
 	if errors.Is(err, store.ErrNotFound) {
-		if err := d.Store.InsertConnection(ctx, account.Id, providerName, userInfo.UserId, userInfo.AccessToken, userInfo.RefreshToken, userInfo.toMetadata(), now); err != nil {
+		if err := d.Store.InsertConnection(ctx, account.Id, providerName, userInfo.UserId, userInfo.AccessToken, userInfo.RefreshToken, userInfo.toMetadata(), nil, now); err != nil {
 			return nil, err
 		}
 	} else if err != nil {

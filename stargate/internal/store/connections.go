@@ -22,14 +22,14 @@ func (s *Store) GetConnectionWithAccount(ctx context.Context, provider, provided
 	var account model.Account
 	var automatedID *uuid.UUID
 	err := s.DB.QueryRow(ctx, `SELECT c.id, c.provider, c.provided_identifier, c.meta, c.last_used_at,
-		c.is_public, c.account_id, c.created_at, c.updated_at, c.deleted_at,
+		c.is_public, c.account_id, c.registered_at, c.created_at, c.updated_at, c.deleted_at,
 		a.id, a.name, a.nick, a.language, a.region, a.activated_at, a.is_superuser, a.automated_id, a.created_at, a.updated_at, a.deleted_at
 		FROM account_connections c
 		JOIN accounts a ON a.id = c.account_id
 		WHERE LOWER(c.provider) = LOWER($1) AND c.provided_identifier = $2 AND c.deleted_at IS NULL
 		LIMIT 1`, provider, providedIdentifier).Scan(
 		&c.Id, &c.Provider, &c.ProvidedIdentifier, &meta, &c.LastUsedAt,
-		&c.IsPublic, &c.AccountId, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt,
+		&c.IsPublic, &c.AccountId, &c.RegisteredAt, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt,
 		&account.Id, &account.Name, &account.Nick, &account.Language, &account.Region, &account.ActivatedAt,
 		&account.IsSuperuser, &automatedID, &account.CreatedAt, &account.UpdatedAt, &account.DeletedAt)
 	if err != nil {
@@ -49,12 +49,12 @@ func (s *Store) GetConnectionWithAccount(ctx context.Context, provider, provided
 func (s *Store) GetConnectionByProviderIdentifier(ctx context.Context, provider, providedIdentifier string) (*model.Connection, error) {
 	var c model.Connection
 	var meta []byte
-	err := s.DB.QueryRow(ctx, `SELECT id, provider, provided_identifier, meta, last_used_at, is_public, account_id, created_at, updated_at, deleted_at
+	err := s.DB.QueryRow(ctx, `SELECT id, provider, provided_identifier, meta, last_used_at, is_public, account_id, registered_at, created_at, updated_at, deleted_at
 		FROM account_connections
 		WHERE LOWER(provider) = LOWER($1) AND provided_identifier = $2 AND deleted_at IS NULL
 		LIMIT 1`, provider, providedIdentifier).Scan(
 		&c.Id, &c.Provider, &c.ProvidedIdentifier, &meta, &c.LastUsedAt,
-		&c.IsPublic, &c.AccountId, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt)
+		&c.IsPublic, &c.AccountId, &c.RegisteredAt, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -72,12 +72,12 @@ func (s *Store) GetConnectionByProviderIdentifier(ctx context.Context, provider,
 func (s *Store) GetConnectionByAccountAndProvider(ctx context.Context, accountID, provider string) (*model.Connection, error) {
 	var c model.Connection
 	var meta []byte
-	err := s.DB.QueryRow(ctx, `SELECT id, provider, provided_identifier, meta, last_used_at, is_public, account_id, created_at, updated_at, deleted_at
+	err := s.DB.QueryRow(ctx, `SELECT id, provider, provided_identifier, meta, last_used_at, is_public, account_id, registered_at, created_at, updated_at, deleted_at
 		FROM account_connections
 		WHERE account_id = $1 AND LOWER(provider) = LOWER($2) AND deleted_at IS NULL
 		ORDER BY created_at LIMIT 1`, accountID, provider).Scan(
 		&c.Id, &c.Provider, &c.ProvidedIdentifier, &meta, &c.LastUsedAt,
-		&c.IsPublic, &c.AccountId, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt)
+		&c.IsPublic, &c.AccountId, &c.RegisteredAt, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -90,19 +90,21 @@ func (s *Store) GetConnectionByAccountAndProvider(ctx context.Context, accountID
 	return &c, nil
 }
 
-// InsertConnection creates a new connection row.
-func (s *Store) InsertConnection(ctx context.Context, accountID, provider, providedIdentifier, accessToken, refreshToken string, meta map[string]any, now time.Time) error {
+// InsertConnection creates a new connection row. registeredAt is non-nil
+// when this connection created the account (OIDC registration).
+func (s *Store) InsertConnection(ctx context.Context, accountID, provider, providedIdentifier, accessToken, refreshToken string, meta map[string]any, registeredAt *time.Time, now time.Time) error {
 	metaJSON, _ := json.Marshal(meta)
 	_, err := s.DB.Exec(ctx, `INSERT INTO account_connections
-		(id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,false,$8,$9,$9)`,
-		uuid.NewString(), provider, providedIdentifier, metaJSON, nullStr(accessToken), nullStr(refreshToken), now, accountID, now)
+		(id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, registered_at, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,false,$8,$9,$10,$10)`,
+		uuid.NewString(), provider, providedIdentifier, metaJSON, nullStr(accessToken), nullStr(refreshToken), now, accountID, registeredAt, now)
 	return err
 }
 
 // UpsertConnection updates an existing connection or inserts a new one.
-// Returns whether a row was created.
-func (s *Store) UpsertConnection(ctx context.Context, accountID, provider, providedIdentifier, accessToken, refreshToken string, meta map[string]any, now time.Time) (bool, error) {
+// registeredAt is only applied to a newly inserted row (an existing row was
+// never the registration connection). Returns whether a row was created.
+func (s *Store) UpsertConnection(ctx context.Context, accountID, provider, providedIdentifier, accessToken, refreshToken string, meta map[string]any, registeredAt *time.Time, now time.Time) (bool, error) {
 	existing, err := s.GetConnectionByAccountAndProvider(ctx, accountID, provider)
 	if err == nil {
 		// Existing: refresh last_used_at + meta (tokens only when provided).
@@ -114,7 +116,7 @@ func (s *Store) UpsertConnection(ctx context.Context, accountID, provider, provi
 	if !errors.Is(err, ErrNotFound) {
 		return false, err
 	}
-	if err := s.InsertConnection(ctx, accountID, provider, providedIdentifier, accessToken, refreshToken, meta, now); err != nil {
+	if err := s.InsertConnection(ctx, accountID, provider, providedIdentifier, accessToken, refreshToken, meta, registeredAt, now); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -122,7 +124,7 @@ func (s *Store) UpsertConnection(ctx context.Context, accountID, provider, provi
 
 // TouchConnectionTokens updates or inserts a connection with fresh tokens.
 // Returns whether a row was created.
-func (s *Store) TouchConnectionTokens(ctx context.Context, accountID, provider, providedIdentifier, accessToken, refreshToken string, meta map[string]any, now time.Time) (bool, error) {
+func (s *Store) TouchConnectionTokens(ctx context.Context, accountID, provider, providedIdentifier, accessToken, refreshToken string, meta map[string]any, registeredAt *time.Time, now time.Time) (bool, error) {
 	existing, err := s.GetConnectionByAccountAndProvider(ctx, accountID, provider)
 	if err == nil {
 		metaJSON, _ := json.Marshal(meta)
@@ -135,7 +137,7 @@ func (s *Store) TouchConnectionTokens(ctx context.Context, accountID, provider, 
 	if !errors.Is(err, ErrNotFound) {
 		return false, err
 	}
-	if err := s.InsertConnection(ctx, accountID, provider, providedIdentifier, accessToken, refreshToken, meta, now); err != nil {
+	if err := s.InsertConnection(ctx, accountID, provider, providedIdentifier, accessToken, refreshToken, meta, registeredAt, now); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -239,7 +241,7 @@ func nullStr(s string) *string {
 // ListConnections lists an account's connections WITHOUT a soft-delete filter
 // (C# GetConnections has none).
 func (s *Store) ListConnections(ctx context.Context, accountID string) ([]model.Connection, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, provider, provided_identifier, meta, last_used_at, is_public, account_id, created_at, updated_at, deleted_at
+	rows, err := s.DB.Query(ctx, `SELECT id, provider, provided_identifier, meta, last_used_at, is_public, account_id, registered_at, created_at, updated_at, deleted_at
 		FROM account_connections WHERE account_id = $1`, accountID)
 	if err != nil {
 		return nil, err
@@ -250,7 +252,7 @@ func (s *Store) ListConnections(ctx context.Context, accountID string) ([]model.
 		var c model.Connection
 		var meta []byte
 		if err := rows.Scan(&c.Id, &c.Provider, &c.ProvidedIdentifier, &meta, &c.LastUsedAt,
-			&c.IsPublic, &c.AccountId, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt); err != nil {
+			&c.IsPublic, &c.AccountId, &c.RegisteredAt, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt); err != nil {
 			return nil, err
 		}
 		if len(meta) > 0 && string(meta) != "null" {
@@ -265,10 +267,10 @@ func (s *Store) ListConnections(ctx context.Context, accountID string) ([]model.
 func (s *Store) GetConnectionByID(ctx context.Context, accountID string, id uuid.UUID) (*model.Connection, error) {
 	var c model.Connection
 	var meta []byte
-	err := s.DB.QueryRow(ctx, `SELECT id, provider, provided_identifier, meta, last_used_at, is_public, account_id, created_at, updated_at, deleted_at
+	err := s.DB.QueryRow(ctx, `SELECT id, provider, provided_identifier, meta, last_used_at, is_public, account_id, registered_at, created_at, updated_at, deleted_at
 		FROM account_connections WHERE id = $1 AND account_id = $2`, id, accountID).Scan(
 		&c.Id, &c.Provider, &c.ProvidedIdentifier, &meta, &c.LastUsedAt,
-		&c.IsPublic, &c.AccountId, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt)
+		&c.IsPublic, &c.AccountId, &c.RegisteredAt, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound

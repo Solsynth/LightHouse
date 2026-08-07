@@ -49,12 +49,21 @@ func (c *controller) removeConnection(ctx *gin.Context) {
 		ctx.JSON(http.StatusNotFound, connectionNotFound())
 		return
 	}
-	if _, err := c.d.Store.GetConnectionByID(reqCtx, user.Id, id); err != nil {
+	connection, err := c.d.Store.GetConnectionByID(reqCtx, user.Id, id)
+	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			ctx.JSON(http.StatusNotFound, connectionNotFound())
 			return
 		}
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to load connection.", http.StatusInternalServerError))
+		return
+	}
+	if connection.RegisteredAt != nil {
+		// The connection that created the account (OIDC registration) is
+		// immutable for the owner: removing it would leave the account with
+		// no link to its registration identity.
+		ctx.JSON(http.StatusBadRequest, errs.New("CONNECTION_REGISTRATION_IMMUTABLE",
+			"This connection created the account and cannot be removed.", http.StatusBadRequest))
 		return
 	}
 	if err := c.d.Store.DeleteConnectionRow(reqCtx, id); err != nil {

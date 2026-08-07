@@ -8,15 +8,15 @@ import (
 
 // TestAccountActivatedEventPayload pins the C# wire contract: Passport
 // publishes AccountActivatedEvent serialized with System.Text.Json
-// (PascalCase keys) and NodaTime Instant as ISO-8601 UTC. The consumer must
-// parse this exact shape.
+// (snake_case keys via InfraObjectCoder) and NodaTime Instant as ISO-8601
+// UTC. The consumer must parse this exact shape.
 func TestAccountActivatedEventPayload(t *testing.T) {
-	payload := `{"EventId":"11111111-1111-1111-1111-111111111111",` +
-		`"Timestamp":"2026-08-06T06:29:50.123456Z",` +
-		`"EventType":"accounts.activated",` +
-		`"StreamName":"account_events",` +
-		`"AccountId":"22222222-2222-2222-2222-222222222222",` +
-		`"ActivatedAt":"2026-08-06T06:29:50.123456Z"}`
+	payload := `{"event_id":"11111111-1111-1111-1111-111111111111",` +
+		`"timestamp":"2026-08-06T06:29:50.123456Z",` +
+		`"event_type":"accounts.activated",` +
+		`"stream_name":"account_events",` +
+		`"account_id":"22222222-2222-2222-2222-222222222222",` +
+		`"activated_at":"2026-08-06T06:29:50.123456Z"}`
 
 	var ev AccountActivatedEvent
 	if err := json.Unmarshal([]byte(payload), &ev); err != nil {
@@ -34,15 +34,15 @@ func TestAccountActivatedEventPayload(t *testing.T) {
 // TestAccountTestPassedPermissionGroupEventPayload pins the C# wire shape of
 // the test-passed permission-group grant event.
 func TestAccountTestPassedPermissionGroupEventPayload(t *testing.T) {
-	payload := `{"EventId":"11111111-1111-1111-1111-111111111111",` +
-		`"Timestamp":"2026-08-06T06:29:50.123456Z",` +
-		`"EventType":"accounts.tests.permission-group-granted",` +
-		`"StreamName":"account_events",` +
-		`"AccountId":"22222222-2222-2222-2222-222222222222",` +
-		`"TestId":"33333333-3333-3333-3333-333333333333",` +
-		`"AttemptId":"44444444-4444-4444-4444-444444444444",` +
-		`"PermissionGroupKey":"community-member",` +
-		`"GrantedAt":"2026-08-06T06:29:50.123456Z"}`
+	payload := `{"event_id":"11111111-1111-1111-1111-111111111111",` +
+		`"timestamp":"2026-08-06T06:29:50.123456Z",` +
+		`"event_type":"accounts.tests.permission-group-granted",` +
+		`"stream_name":"account_events",` +
+		`"account_id":"22222222-2222-2222-2222-222222222222",` +
+		`"test_id":"33333333-3333-3333-3333-333333333333",` +
+		`"attempt_id":"44444444-4444-4444-4444-444444444444",` +
+		`"permission_group_key":"community-member",` +
+		`"granted_at":"2026-08-06T06:29:50.123456Z"}`
 
 	var ev AccountTestPassedPermissionGroupEvent
 	if err := json.Unmarshal([]byte(payload), &ev); err != nil {

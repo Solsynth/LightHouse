@@ -314,7 +314,7 @@ func consumeAccountActivated(ctx context.Context, nc *nats.Client, st *store.Sto
 		}
 		id, err := uuid.Parse(ev.AccountID)
 		if err != nil {
-			log.Warn("accounts.activated event has invalid account id", "account_id", ev.AccountID)
+			log.Warn("accounts.activated event has invalid account id", "account_id", ev.AccountID, "payload", string(payload))
 			return nil
 		}
 		activated, err := st.ActivateAccountAndGrantVerified(ctx, id, ev.ActivatedAt)
@@ -347,7 +347,7 @@ func consumeTestPassedGroupGrant(ctx context.Context, nc *nats.Client, perm *per
 		}
 		id, err := uuid.Parse(ev.AccountID)
 		if err != nil {
-			log.Warn("accounts.tests.permission-group-granted event has invalid account id", "account_id", ev.AccountID)
+			log.Warn("accounts.tests.permission-group-granted event has invalid account id", "account_id", ev.AccountID, "payload", string(payload))
 			return nil
 		}
 		granted, err := perm.GrantPermissionGroup(ctx, id, ev.PermissionGroupKey)
@@ -425,7 +425,7 @@ func consumeProfileFieldUpdated(ctx context.Context, nc *nats.Client, st *store.
 		}
 		id, err := uuid.Parse(ev.AccountID)
 		if err != nil {
-			log.Warn("accounts.profile_updated event has invalid account id", "account_id", ev.AccountID)
+			log.Warn("accounts.profile_updated event has invalid account id", "account_id", ev.AccountID, "payload", string(payload))
 			return nil
 		}
 		patch := &store.ProfileFieldPatch{
@@ -479,7 +479,7 @@ func consumeLastActive(ctx context.Context, nc *nats.Client, st *store.Store, lo
 			return nil
 		}
 		if _, err := uuid.Parse(ev.AccountID); err != nil {
-			log.Warn("accounts.last_active event has invalid account id", "account_id", ev.AccountID)
+			log.Warn("accounts.last_active event has invalid account id", "account_id", ev.AccountID, "payload", string(payload))
 			return nil
 		}
 		sessionID := ""

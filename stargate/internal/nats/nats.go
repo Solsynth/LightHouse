@@ -117,14 +117,14 @@ func (c *Client) PublishWS(ctx context.Context, target string, event string, pay
 const accountEventsStream = "account_events"
 
 // AccountActivatedEvent mirrors the C# AccountActivatedEvent wire shape
-// (System.Text.Json PascalCase keys; NodaTime Instant as ISO-8601 UTC).
-// Passport publishes it on the subject accounts.activated once activation
-// requirements are satisfied (e.g. required entry tests passed); the old
-// Padlock consumer set activated_at + the verified group, which Stargate now
-// does.
+// (System.Text.Json snake_case keys via InfraObjectCoder; NodaTime Instant
+// as ISO-8601 UTC). Passport publishes it on the subject accounts.activated
+// once activation requirements are satisfied (e.g. required entry tests
+// passed); the old Padlock consumer set activated_at + the verified group,
+// which Stargate now does.
 type AccountActivatedEvent struct {
-	AccountID   string    `json:"AccountId"`
-	ActivatedAt time.Time `json:"ActivatedAt"`
+	AccountID   string    `json:"account_id"`
+	ActivatedAt time.Time `json:"activated_at"`
 }
 
 // AccountTestPassedPermissionGroupEvent mirrors the C#
@@ -133,39 +133,39 @@ type AccountActivatedEvent struct {
 // with granted_permission_group_key; the old Padlock consumer granted the
 // group membership, which Stargate now does.
 type AccountTestPassedPermissionGroupEvent struct {
-	AccountID          string    `json:"AccountId"`
-	TestID             string    `json:"TestId"`
-	AttemptID          string    `json:"AttemptId"`
-	PermissionGroupKey string    `json:"PermissionGroupKey"`
-	GrantedAt          time.Time `json:"GrantedAt"`
+	AccountID          string    `json:"account_id"`
+	TestID             string    `json:"test_id"`
+	AttemptID          string    `json:"attempt_id"`
+	PermissionGroupKey string    `json:"permission_group_key"`
+	GrantedAt          time.Time `json:"granted_at"`
 }
 
 // ProfileFieldUpdatedEvent mirrors the Passport ProfileFieldUpdatedEvent
-// wire shape (PascalCase keys; NodaTime Instant as ISO-8601 UTC). Passport
-// publishes it on accounts.profile_updated whenever a Passport-owned feature
-// mutates a denormalized account_profiles field that moved to Stargate
-// (last-seen touches, XP deltas, social-credit recomputes, active badge and
-// verification changes). ActiveBadge/Verification are the raw jsonb payloads
-// (or null to clear).
+// wire shape (snake_case keys via InfraObjectCoder; NodaTime Instant as
+// ISO-8601 UTC). Passport publishes it on accounts.profile_updated whenever
+// a Passport-owned feature mutates a denormalized account_profiles field
+// that moved to Stargate (last-seen touches, XP deltas, social-credit
+// recomputes, active badge and verification changes). ActiveBadge/
+// Verification are the raw jsonb payloads (or null to clear).
 type ProfileFieldUpdatedEvent struct {
-	AccountID       string          `json:"AccountId"`
-	LastSeenAt      *time.Time      `json:"LastSeenAt"`
-	Experience      *int            `json:"Experience"`
-	ExperienceDelta *int            `json:"ExperienceDelta"`
-	SocialCredits   *float64        `json:"SocialCredits"`
-	ActiveBadge     json.RawMessage `json:"ActiveBadge"`
-	Verification    json.RawMessage `json:"Verification"`
+	AccountID       string          `json:"account_id"`
+	LastSeenAt      *time.Time      `json:"last_seen_at"`
+	Experience      *int            `json:"experience"`
+	ExperienceDelta *int            `json:"experience_delta"`
+	SocialCredits   *float64        `json:"social_credits"`
+	ActiveBadge     json.RawMessage `json:"active_badge"`
+	Verification    json.RawMessage `json:"verification"`
 }
 
-// LastActiveEvent mirrors the C# LastActiveEvent wire shape (PascalCase
-// keys; NodaTime Instant as ISO-8601 UTC). The fleet's DysonTokenAuthHandler
-// publishes it on accounts.last_active for every authenticated request
-// (throttled per account); Stargate applies profile last_seen_at + session
-// last_granted_at/keep-alive.
+// LastActiveEvent mirrors the C# LastActiveEvent wire shape (snake_case
+// keys via InfraObjectCoder; NodaTime Instant as ISO-8601 UTC). The fleet's
+// DysonTokenAuthHandler publishes it on accounts.last_active for every
+// authenticated request (throttled per account); Stargate applies profile
+// last_seen_at + session last_granted_at/keep-alive.
 type LastActiveEvent struct {
-	AccountID string    `json:"AccountId"`
-	SessionID string    `json:"SessionId"`
-	SeenAt    time.Time `json:"SeenAt"`
+	AccountID string    `json:"account_id"`
+	SessionID string    `json:"session_id"`
+	SeenAt    time.Time `json:"seen_at"`
 }
 
 // ConsumeAccountEvents runs a durable JetStream consumer for one subject on
