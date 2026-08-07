@@ -27,6 +27,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
+	"src.solsynth.dev/sosys/stargate/internal/spell"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
 
@@ -47,6 +48,7 @@ type Deps struct {
 	Auth  *auth.AuthService
 	Logs  *actionlog.Service
 	Log   *slog.Logger
+	Spells *spell.Service
 }
 
 // Register wires the social login routes (OidcController +
@@ -560,7 +562,24 @@ func (d Deps) createAccountFromSocial(ctx context.Context, userInfo *userInfo) (
 	if displayName == "" {
 		displayName = name
 	}
-	return d.Store.CreateAccountFromSocial(ctx, name, displayName, userInfo.Email, userInfo.EmailVerified, time.Now().UTC())
+	account, err := d.Store.CreateAccountFromSocial(ctx, name, displayName, userInfo.Email, userInfo.EmailVerified, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	// Mirror the magic-spell path: a provider-verified email (e.g. Google's
+	// email_verified claim) activates the account immediately when no entry
+	// tests are required; with tests required, activation is deferred to
+	// Passport (accounts.activated, consumed in main.go). Failures are
+	// logged, never failing the login — the account is already created and
+	// the connection linked by the caller.
+	if userInfo.EmailVerified && d.Spells != nil {
+		if err := d.Spells.ActivateAccountAfterVerifiedContact(ctx, account.Id); err != nil {
+			if d.Log != nil {
+				d.Log.Error("activate account after social registration", "account_id", account.Id, "error", err)
+			}
+		}
+	}
+	return account, nil
 }
 
 // generateAvailableUsername ports AccountService.GenerateAvailableUsername:

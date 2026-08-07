@@ -180,7 +180,7 @@ func run(log *slog.Logger) error {
 			Perm: permService, Logs: logs, Clients: clients, Log: log, Spells: spellService,
 		})
 		socialctl.Register(api, socialctl.Deps{
-			Store: st, Redis: rc, Cfg: cfg, Auth: authService, Logs: logs, Log: log,
+			Store: st, Redis: rc, Cfg: cfg, Auth: authService, Logs: logs, Log: log, Spells: spellService,
 		})
 		oidcctl.Register(api, oidcctl.Deps{
 			Store: st, Redis: rc, Cfg: cfg, JWT: jwtService, Token: tokenAuth,

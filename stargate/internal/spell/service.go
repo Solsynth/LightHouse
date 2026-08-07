@@ -210,7 +210,7 @@ func (s *Service) ApplyMagicSpell(ctx context.Context, spell *model.MagicSpell) 
 		// in the tests-disabled branch: entry tests (exam logic) stay in
 		// Passport and none are required here, so a verified contact
 		// activates the account immediately.
-		if err := s.activateAfterContactVerification(ctx, spell.AccountId); err != nil {
+		if err := s.ActivateAccountAfterVerifiedContact(ctx, spell.AccountId); err != nil {
 			return err
 		}
 		return s.store.DeleteMagicSpell(ctx, spell.Id)
@@ -225,14 +225,16 @@ func (s *Service) ApplyMagicSpell(ctx context.Context, spell *model.MagicSpell) 
 	}
 }
 
-// activateAfterContactVerification mirrors Passport's
-// TestService.TryActivateAfterContactVerification. Entry-test (exam) logic
-// stays in Passport: when [accountActivation] requires tests, activation is
-// deferred to Passport — it evaluates attempts and publishes
-// accounts.activated, which Stargate consumes. Only the tests-disabled
-// branch activates directly here. Idempotent: an already activated account
-// is left untouched.
-func (s *Service) activateAfterContactVerification(ctx context.Context, accountID string) error {
+// ActivateAccountAfterVerifiedContact mirrors Passport's
+// TestService.TryActivateAfterContactVerification. It is the shared
+// activation entry point for every flow whose email contact is verified:
+// magic-spell apply and OIDC/social registration with a provider-verified
+// email. Entry-test (exam) logic stays in Passport: when [accountActivation]
+// requires tests, activation is deferred to Passport — it evaluates attempts
+// and publishes accounts.activated, which Stargate consumes. Only the
+// tests-disabled branch activates directly here. Idempotent: an already
+// activated account is left untouched.
+func (s *Service) ActivateAccountAfterVerifiedContact(ctx context.Context, accountID string) error {
 	if s.cfg != nil && s.cfg.AccountActivation.TestsEnabled && len(s.cfg.AccountActivation.RequiredTestKeys) > 0 {
 		return nil
 	}
