@@ -29,6 +29,9 @@ func New(st *store.Store, log *slog.Logger) *Service {
 // RecordEmail records an email delivery outcome (RecordEmailAsync). Provider
 // is always "smtp". Errors are logged and swallowed.
 func (s *Service) RecordEmail(ctx context.Context, source string, outcome model.DeliveryOutcome, durationMilliseconds int64, err error) {
+	// Fire-and-forget: detach from the caller's cancellation so the record
+	// lands even when the request/queue context is already done.
+	ctx = context.WithoutCancel(ctx)
 	rec := &model.EmailDeliveryRecord{
 		Source:             source,
 		Provider:           "smtp",
@@ -45,6 +48,9 @@ func (s *Service) RecordEmail(ctx context.Context, source string, outcome model.
 // RecordNotification records a notification delivery outcome
 // (RecordNotificationAsync). Errors are logged and swallowed.
 func (s *Service) RecordNotification(ctx context.Context, n *model.Notification, provider string, outcome model.DeliveryOutcome, durationMilliseconds int64, err error, subscriptionID *uuid.UUID) {
+	// Fire-and-forget: detach from the caller's cancellation so the record
+	// lands even when the request/queue context is already done.
+	ctx = context.WithoutCancel(ctx)
 	var notificationID *uuid.UUID
 	if n != nil {
 		id := n.Id
@@ -69,6 +75,9 @@ func (s *Service) RecordNotification(ctx context.Context, n *model.Notification,
 
 // RecordNotificationSend records a send request (RecordNotificationSendAsync).
 func (s *Service) RecordNotificationSend(ctx context.Context, n *model.Notification, source string) {
+	// Fire-and-forget: detach from the caller's cancellation so the record
+	// lands even when the request/queue context is already done.
+	ctx = context.WithoutCancel(ctx)
 	rec := &model.NotificationSendRecord{
 		Topic:     nTopic(n),
 		AppId:     nAppID(n),
@@ -84,6 +93,9 @@ func (s *Service) RecordNotificationSend(ctx context.Context, n *model.Notificat
 // MarkSopDeliveryRead promotes Held sop delivery records to Success
 // (MarkSopDeliveryReadAsync). Errors are logged and swallowed.
 func (s *Service) MarkSopDeliveryRead(ctx context.Context, subscriptionID uuid.UUID, notificationIDs []uuid.UUID) {
+	// Fire-and-forget: detach from the caller's cancellation so the read
+	// receipt lands even when the SSE client has already disconnected.
+	ctx = context.WithoutCancel(ctx)
 	if _, err := s.st.MarkSopDeliveryRead(ctx, subscriptionID, notificationIDs, time.Now().UTC()); err != nil {
 		s.log.Error("failed to mark SOP notification delivery as read", "error", err)
 	}
