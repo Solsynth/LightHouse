@@ -582,7 +582,7 @@ func (s *Service) SendPushNotification(ctx context.Context, subscription *model.
 		}
 		apnsPushTopic := ""
 		if senders != nil {
-			apnsPushTopic = senders.Topics[apnsTopicKey]
+			apnsPushTopic = topicsLookup(senders.Topics, apnsTopicKey)
 			if apnsPushTopic == "" {
 				apnsPushTopic = senders.DefaultApnsTopic
 			}
@@ -621,7 +621,7 @@ func (s *Service) SendPushNotification(ctx context.Context, subscription *model.
 	case model.PushProviderAppk:
 		appkTopic := ""
 		if senders != nil {
-			appkTopic = senders.Topics["VoIP"]
+			appkTopic = topicsLookup(senders.Topics, "VoIP")
 		}
 		appkApns, ok := senders.apnsFor(appkTopic)
 		if senders == nil || strings.TrimSpace(appkTopic) == "" || !ok {
@@ -682,7 +682,8 @@ func (s *Service) SendPushNotification(ctx context.Context, subscription *model.
 
 	if sendErr != nil {
 		s.log.Error("failed to push notification",
-			"notification_id", notification.Id, "device_id", subscription.DeviceId, "error", sendErr)
+			"notification_id", notification.Id, "device_id", subscription.DeviceId,
+			"provider", subscription.Provider.String(), "error", sendErr)
 	}
 
 	if subscription.Provider != model.PushProviderSop {
@@ -874,6 +875,22 @@ func (a *AppSenders) apnsFor(topic string) (*ApnSender, bool) {
 	}
 	sender, ok := a.ApnsByTopic[topic]
 	return sender, ok
+}
+
+// topicsLookup returns the topic value for key, falling back to a
+// case-insensitive match (configs write "alert"/"voip", the C# lookups use
+// "Alert"/"VoIP").
+func topicsLookup(topics map[string]string, key string) string {
+	if v, ok := topics[key]; ok {
+		return v
+	}
+	lower := strings.ToLower(key)
+	for k, v := range topics {
+		if strings.ToLower(k) == lower {
+			return v
+		}
+	}
+	return ""
 }
 
 func strPtrOrNil(s string) *string {

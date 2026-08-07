@@ -33,7 +33,12 @@ func NewApnSender(privateKey []byte, privateKeyID, teamID, topic string, product
 		TeamID:  teamID,
 	}
 	client := apns2.NewTokenClient(tok)
-	if !production {
+	// apns2 defaults to the development host (api.sandbox.push.apple.com),
+	// so the production host MUST be selected explicitly — otherwise
+	// production device tokens are rejected with 400 BadDeviceToken.
+	if production {
+		client.Production()
+	} else {
 		client.Development()
 	}
 	return &ApnSender{client: client, topic: topic}, nil

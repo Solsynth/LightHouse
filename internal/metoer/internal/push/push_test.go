@@ -1,11 +1,17 @@
 package push
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/sideshow/apns2"
 
 	"src.solsynth.dev/sosys/metoer/internal/model"
 )
@@ -140,5 +146,61 @@ func TestNormalizeSopDeviceId(t *testing.T) {
 	}
 	if got := NormalizeSopDeviceId("abc"); got != "abc" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+// testP8Key returns a freshly generated P-256 p8 PEM key (the format
+// apns2's token.AuthKeyFromBytes parses).
+func testP8Key(t *testing.T) []byte {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
+}
+
+// TestApnSenderEnvironment pins the APNs host selection: apns2 defaults to
+// the development host, so production MUST be selected explicitly — pushing
+// production tokens to the sandbox returns 400 BadDeviceToken.
+func TestApnSenderEnvironment(t *testing.T) {
+	key := testP8Key(t)
+
+	prod, err := NewApnSender(key, "k", "t", "dev.solsynth.solian", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prod.client.Host != apns2.HostProduction {
+		t.Fatalf("production sender host = %q, want %q", prod.client.Host, apns2.HostProduction)
+	}
+
+	dev, err := NewApnSender(key, "k", "t", "dev.solsynth.solian", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dev.client.Host != apns2.HostDevelopment {
+		t.Fatalf("development sender host = %q, want %q", dev.client.Host, apns2.HostDevelopment)
+	}
+}
+
+// TestTopicsLookup pins the case-insensitive topic lookup: configs write
+// "alert"/"voip", the C# lookups use "Alert"/"VoIP".
+func TestTopicsLookup(t *testing.T) {
+	topics := map[string]string{"alert": "dev.solsynth.solian", "voip": "dev.solsynth.solian.voip"}
+	if got := topicsLookup(topics, "Alert"); got != "dev.solsynth.solian" {
+		t.Fatalf("Alert lookup = %q", got)
+	}
+	if got := topicsLookup(topics, "VoIP"); got != "dev.solsynth.solian.voip" {
+		t.Fatalf("VoIP lookup = %q", got)
+	}
+	if got := topicsLookup(topics, "alert"); got != "dev.solsynth.solian" {
+		t.Fatalf("exact alert lookup = %q", got)
+	}
+	if got := topicsLookup(map[string]string{}, "Alert"); got != "" {
+		t.Fatalf("missing lookup = %q", got)
 	}
 }
