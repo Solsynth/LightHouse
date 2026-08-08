@@ -32,6 +32,7 @@ func TestRegisterWiring(t *testing.T) {
 	for service, wantMethods := range map[string]int{
 		"proto.DyAuthService":               3,
 		"proto.DyAccountService":            16,
+		"proto.DyProfileService":            25,
 		"proto.DyActionLogService":          3,
 		"proto.DyPermissionService":         6,
 		"proto.DyBotAccountReceiverService": 9,

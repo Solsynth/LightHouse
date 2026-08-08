@@ -162,6 +162,25 @@ func TestGetAccountHydratesProfile(t *testing.T) {
 	if resp.Profile.ActiveBadge == nil || resp.Profile.ActiveBadge.Id == "" || resp.Profile.ActiveBadge.Type != "pioneer" {
 		t.Fatalf("account %s profile active_badge missing: %+v", resp.Id, resp.Profile.ActiveBadge)
 	}
+
+	profileClient := gen.NewDyProfileServiceClient(conn)
+	profileAccount, err := profileClient.GetAccount(ctx, &gen.DyGetAccountRequest{Id: id})
+	if err != nil {
+		t.Fatalf("DyProfileService.GetAccount: %v", err)
+	}
+	if profileAccount.Profile == nil || profileAccount.Profile.ActiveBadge == nil ||
+		profileAccount.Profile.ActiveBadge.Id == "" ||
+		profileAccount.Profile.ActiveBadge.Type != "pioneer" {
+		t.Fatalf("DyProfileService.GetAccount active_badge missing: %+v", profileAccount.Profile)
+	}
+
+	profile, err := profileClient.GetProfile(ctx, &gen.DyGetProfileRequest{AccountId: id})
+	if err != nil {
+		t.Fatalf("DyProfileService.GetProfile: %v", err)
+	}
+	if profile.ActiveBadge == nil || profile.ActiveBadge.Id == "" || profile.ActiveBadge.Type != "pioneer" {
+		t.Fatalf("DyProfileService.GetProfile active_badge missing: %+v", profile)
+	}
 }
 
 // TestGetAccountBatchCreatesMissingProfiles covers the chat member hydration

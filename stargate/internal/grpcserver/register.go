@@ -37,15 +37,16 @@ type Deps struct {
 }
 
 // Register mounts every inbound gRPC service (the Padlock surface:
-// DyAuthService, DyAccountService, DyActionLogService, DyPermissionService,
-// DyBotAccountReceiverService, DyAuthorizedAppService, DyCapabilitiesService)
-// plus the standard gRPC health service on the given server.
+// DyAuthService, DyAccountService, DyProfileService, DyActionLogService,
+// DyPermissionService, DyBotAccountReceiverService, DyAuthorizedAppService,
+// DyCapabilitiesService) plus the standard gRPC health service.
 func Register(s *grpc.Server, deps Deps) {
 	if deps.Log == nil {
 		deps.Log = slog.Default()
 	}
 	gen.RegisterDyAuthServiceServer(s, &dyAuthService{d: deps})
 	gen.RegisterDyAccountServiceServer(s, &dyAccountService{d: deps})
+	gen.RegisterDyProfileServiceServer(s, &dyProfileService{d: deps})
 	gen.RegisterDyActionLogServiceServer(s, &dyActionLogService{d: deps})
 	gen.RegisterDyPermissionServiceServer(s, &dyPermissionService{d: deps})
 	gen.RegisterDyBotAccountReceiverServiceServer(s, &dyBotAccountReceiverService{d: deps})
