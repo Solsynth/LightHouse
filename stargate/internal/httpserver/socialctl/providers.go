@@ -92,7 +92,7 @@ type provider interface {
 }
 
 // newProvider mirrors OidcService.GetOidcService (apple/google/microsoft/
-// discord/steam/github/afdian).
+// discord/steam/github/afdian/twitter).
 func newProvider(name string, d Deps) (provider, error) {
 	switch strings.ToLower(name) {
 	case "apple":
@@ -109,6 +109,8 @@ func newProvider(name string, d Deps) (provider, error) {
 		return &githubProvider{base: newBaseProvider("github", d)}, nil
 	case "afdian":
 		return &afdianProvider{base: newBaseProvider("afdian", d)}, nil
+	case "twitter":
+		return &twitterProvider{base: newBaseProvider("twitter", d)}, nil
 	default:
 		return nil, fmt.Errorf("Unsupported provider: %s", name)
 	}
@@ -152,6 +154,9 @@ func newBaseProvider(name string, d Deps) *baseProvider {
 	case "afdian":
 		cfg.ClientId = d.Cfg.Oidc.Afdian.ClientId
 		cfg.ClientSecret = d.Cfg.Oidc.Afdian.ClientSecret
+	case "twitter":
+		cfg.ClientId = d.Cfg.Oidc.Twitter.ClientId
+		cfg.ClientSecret = d.Cfg.Oidc.Twitter.ClientSecret
 	}
 	return &baseProvider{d: d, name: name, http: &http.Client{Timeout: 20 * time.Second}, cfg: cfg}
 }

@@ -10,16 +10,17 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"github.com/golang-jwt/jwt/v5"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/golang-jwt/jwt/v5"
 
 	"src.solsynth.dev/sosys/stargate/internal/config"
 )
@@ -275,6 +276,114 @@ func TestSteamAuthorizationURL(t *testing.T) {
 	if _, err := p.processCallback(context.Background(), &callbackData{QueryParameters: map[string]string{
 		"openid.mode": "id_res", "openid.claimed_id": "https://steamcommunity.com/openid/id/notanumber",
 	}}); err == nil || err.Error() != "Invalid Steam ID format" {
+
 		t.Fatalf("bad steam id error = %v", err)
+	}
+}
+
+func TestTwitterProviderFactoryAndRedirect(t *testing.T) {
+	cfg := config.Default()
+	cfg.SiteUrl = "https://example.com"
+	cfg.Oidc.Twitter.ClientId = "client-id"
+	svc, err := newProvider("twitter", testDeps(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if svc.name() != "twitter" {
+		t.Fatalf("provider name = %q", svc.name())
+	}
+	twitter, ok := svc.(*twitterProvider)
+	if !ok {
+		t.Fatalf("provider type = %T", svc)
+	}
+	if twitter.base.cfg.RedirectUri != "https://example.com/auth/callback/twitter" {
+		t.Fatalf("redirect URI = %q", twitter.base.cfg.RedirectUri)
+	}
+	if twitter.base.cfg.ClientId != "client-id" {
+		t.Fatalf("client ID = %q", twitter.base.cfg.ClientId)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
+func TestTwitterProviderOAuthExchangeAndUser(t *testing.T) {
+	cfg := config.Default()
+	cfg.SiteUrl = "https://example.com"
+	cfg.Oidc.Twitter.ClientId = "client-id"
+	cfg.Oidc.Twitter.ClientSecret = "client-secret"
+	b := newBaseProvider("twitter", testDeps(cfg))
+	requests := 0
+	b.http = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		requests++
+		switch requests {
+		case 1:
+			if r.URL.String() != "https://api.x.com/2/oauth2/token" {
+				t.Fatalf("token URL = %s", r.URL)
+			}
+			if id, secret, ok := r.BasicAuth(); !ok || id != "client-id" || secret != "client-secret" {
+				t.Fatalf("unexpected token authorization: %q %q %v", id, secret, ok)
+			}
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			form, err := url.ParseQuery(string(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for key, want := range map[string]string{
+				"code":          "auth-code",
+				"code_verifier": "verifier",
+				"grant_type":    "authorization_code",
+				"redirect_uri":  "https://example.com/auth/callback/twitter",
+			} {
+				if got := form.Get(key); got != want {
+					t.Errorf("%s = %q, want %q", key, got, want)
+				}
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"access_token":"access","refresh_token":"refresh"}`)),
+				Header:     make(http.Header),
+			}, nil
+		case 2:
+			if r.URL.Host != "api.x.com" || r.URL.Path != "/2/users/me" {
+				t.Fatalf("user URL = %s", r.URL)
+			}
+			if got := r.URL.Query().Get("user.fields"); got != "confirmed_email,profile_image_url" {
+				t.Fatalf("user.fields = %q", got)
+			}
+			if got := r.Header.Get("Authorization"); got != "Bearer access" {
+				t.Fatalf("authorization = %q", got)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"data":{"id":"123","name":"Example","username":"example","confirmed_email":"e@example.com","profile_image_url":"https://img.example/avatar"}}`)),
+				Header:     make(http.Header),
+			}, nil
+		default:
+			t.Fatalf("unexpected request %d", requests)
+			return nil, nil
+		}
+	})}
+	p := &twitterProvider{base: b}
+
+	tokens, err := p.exchangeCode(context.Background(), "auth-code", "verifier")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tokens.AccessToken != "access" || tokens.RefreshToken != "refresh" {
+		t.Fatalf("tokens = %+v", tokens)
+	}
+	user, err := p.getUserInfo(context.Background(), tokens.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.UserId != "123" || user.Email != "e@example.com" || !user.EmailVerified || user.PreferredUsername != "example" {
+		t.Fatalf("user = %+v", user)
 	}
 }

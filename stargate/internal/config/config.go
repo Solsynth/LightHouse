@@ -123,10 +123,10 @@ type Config struct {
 		Discord   DiscordClient   `toml:"discord"`
 		GitHub    GitHubClient    `toml:"github"`
 		Afdian    AfdianClient    `toml:"afdian"`
+		Twitter   TwitterClient   `toml:"twitter"`
 	} `toml:"oidc"`
 }
 
-// ServiceTarget is an outbound gRPC target.
 type ServiceTarget struct {
 	GRPC string `toml:"grpc"`
 }
@@ -164,6 +164,11 @@ type GitHubClient struct {
 }
 
 type AfdianClient struct {
+	ClientId     string `toml:"clientId"`
+	ClientSecret string `toml:"clientSecret"`
+}
+
+type TwitterClient struct {
 	ClientId     string `toml:"clientId"`
 	ClientSecret string `toml:"clientSecret"`
 }
@@ -240,6 +245,8 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("STARGATE_AUTH_ACCESS_TOKEN_LIFETIME", &cfg.Auth.AccessTokenLifetime)
 	setStr("STARGATE_AUTH_REFRESH_TOKEN_LIFETIME", &cfg.Auth.RefreshTokenLifetime)
 	setStr("STARGATE_OIDC_PROVIDER_ISSUER", &cfg.OidcProvider.IssuerUri)
+	setStr("STARGATE_OIDC_TWITTER_CLIENT_ID", &cfg.Oidc.Twitter.ClientId)
+	setStr("STARGATE_OIDC_TWITTER_CLIENT_SECRET", &cfg.Oidc.Twitter.ClientSecret)
 	setStr("STARGATE_SERVICES_DRIVE__GRPC", &cfg.Services.Drive.GRPC)
 	setStr("STARGATE_SERVICES_WALLET__GRPC", &cfg.Services.Wallet.GRPC)
 	setStr("STARGATE_SERVICES_PASS__GRPC", &cfg.Services.Pass.GRPC)

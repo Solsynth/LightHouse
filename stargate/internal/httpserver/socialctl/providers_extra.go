@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // GitHub + Afdian providers, ported from GitHubOidcService.cs and
@@ -207,6 +208,132 @@ func (p *afdianProvider) processCallback(ctx context.Context, data *callbackData
 		UserId:            str("user_id"),
 		DisplayName:       str("name"),
 		ProfilePictureUrl: str("avatar"),
+		Provider:          p.base.name,
+	}, nil
+}
+
+// --- X (Twitter) ---
+
+type twitterProvider struct{ base *baseProvider }
+
+func (p *twitterProvider) name() string { return p.base.name }
+
+func (p *twitterProvider) authorizationURL(ctx context.Context, state, nonce string) (string, error) {
+	codeVerifier := generateCodeVerifier()
+	codeChallenge := generateCodeChallenge(codeVerifier)
+	if err := p.base.d.cacheSet(ctx, "pkce:"+state, codeVerifier, 15*time.Minute); err != nil {
+		return "", err
+	}
+
+	q := url.Values{}
+	q.Set("response_type", "code")
+	q.Set("client_id", p.base.cfg.ClientId)
+	q.Set("redirect_uri", p.base.cfg.RedirectUri)
+	q.Set("scope", "users.read users.email tweet.write offline.access")
+	q.Set("state", state)
+	q.Set("code_challenge", codeChallenge)
+	q.Set("code_challenge_method", "S256")
+	return "https://x.com/i/oauth2/authorize?" + q.Encode(), nil
+}
+
+func (p *twitterProvider) processCallback(ctx context.Context, data *callbackData) (*userInfo, error) {
+	var codeVerifier string
+	found, err := p.base.d.cacheGet(ctx, "pkce:"+data.State, &codeVerifier)
+	if err != nil || !found || codeVerifier == "" {
+		return nil, errors.New("PKCE code verifier not found or expired")
+	}
+	p.base.d.cacheRemove(ctx, "pkce:"+data.State)
+
+	tokens, err := p.exchangeCode(ctx, data.Code, codeVerifier)
+	if err != nil {
+		return nil, err
+	}
+	if tokens == nil || tokens.AccessToken == "" {
+		return nil, errors.New("Failed to obtain access token from X")
+	}
+	user, err := p.getUserInfo(ctx, tokens.AccessToken)
+	if err != nil {
+		return nil, err
+	}
+	user.AccessToken = tokens.AccessToken
+	user.RefreshToken = tokens.RefreshToken
+	return user, nil
+}
+
+func (p *twitterProvider) exchangeCode(ctx context.Context, code, codeVerifier string) (*tokenResponse, error) {
+	form := url.Values{}
+	form.Set("code", code)
+	form.Set("grant_type", "authorization_code")
+	form.Set("redirect_uri", p.base.cfg.RedirectUri)
+	form.Set("code_verifier", codeVerifier)
+	if p.base.cfg.ClientSecret == "" {
+		form.Set("client_id", p.base.cfg.ClientId)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.x.com/2/oauth2/token", strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if p.base.cfg.ClientSecret != "" {
+		req.SetBasicAuth(p.base.cfg.ClientId, p.base.cfg.ClientSecret)
+	}
+
+	resp, err := p.base.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("X token endpoint returned %s", resp.Status)
+	}
+	var tokens tokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tokens); err != nil {
+		return nil, err
+	}
+	return &tokens, nil
+}
+
+func (p *twitterProvider) getUserInfo(ctx context.Context, accessToken string) (*userInfo, error) {
+	q := url.Values{}
+	q.Set("user.fields", "confirmed_email,profile_image_url")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.x.com/2/users/me?"+q.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := p.base.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("X user endpoint returned %s", resp.Status)
+	}
+
+	var body struct {
+		Data struct {
+			Id              string `json:"id"`
+			Name            string `json:"name"`
+			Username        string `json:"username"`
+			ConfirmedEmail  string `json:"confirmed_email"`
+			ProfileImageURL string `json:"profile_image_url"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, err
+	}
+	if body.Data.Id == "" {
+		return nil, errors.New("X user endpoint returned no user id")
+	}
+	return &userInfo{
+		UserId:            body.Data.Id,
+		Email:             body.Data.ConfirmedEmail,
+		EmailVerified:     body.Data.ConfirmedEmail != "",
+		DisplayName:       body.Data.Name,
+		PreferredUsername: body.Data.Username,
+		ProfilePictureUrl: body.Data.ProfileImageURL,
 		Provider:          p.base.name,
 	}, nil
 }

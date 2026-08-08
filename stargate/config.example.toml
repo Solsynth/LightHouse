@@ -109,3 +109,4 @@ steam = { apiKey = "" }
 discord = { clientId = "", clientSecret = "" }
 github = { clientId = "", clientSecret = "" }
 afdian = { clientId = "", clientSecret = "" }
+twitter = { clientId = "", clientSecret = "" }
