@@ -41,18 +41,18 @@ type Enqueuer func(ctx context.Context, notification *model.Notification, userID
 
 // Service is the push delivery engine (PushService).
 type Service struct {
-	apps         *PushService
-	st           *store.Store
-	enqueuer     Enqueuer
-	streams      *SopStreams
-	replay       *SopNotificationReplayBuffer
-	ws           *events.WebSocketService
-	obs          *observability.Service
-	logs         *grpcclient.ActionLogService
-	prefs        *preferences
-	httpClient   *http.Client
+	apps          *PushService
+	st            *store.Store
+	enqueuer      Enqueuer
+	streams       *SopStreams
+	replay        *SopNotificationReplayBuffer
+	ws            *events.WebSocketService
+	obs           *observability.Service
+	logs          *grpcclient.ActionLogService
+	prefs         *preferences
+	httpClient    *http.Client
 	removalBuffer *FlushBuffer[PushSubRemovalRequest]
-	log          *slog.Logger
+	log           *slog.Logger
 }
 
 // preferences is a thin wrapper for the preference store calls the service
@@ -339,10 +339,12 @@ func (s *Service) SendNotification(ctx context.Context, accountID uuid.UUID, top
 		}
 	}
 
-	if !isSilent && preference == model.NotificationPreferenceNormal && s.enqueuer != nil {
+	if !isSilent && preference == model.NotificationPreferenceNormal {
+		if s.enqueuer == nil {
+			return errors.New("push queue unavailable: enqueuer not configured")
+		}
 		if err := s.enqueuer(ctx, notification, accountID, nil, save); err != nil {
-			s.log.Error("failed to enqueue push notification",
-				"notification_id", notification.Id, "account_id", accountID, "error", err)
+			return fmt.Errorf("enqueue push notification: %w", err)
 		}
 	}
 	return nil
@@ -396,15 +398,23 @@ func (s *Service) DeliverPushNotification(ctx context.Context, notification *mod
 	}
 
 	var wg sync.WaitGroup
+	deliveryErrs := make(chan error, len(subscriptionByDevice))
 	for _, sub := range subscriptionByDevice {
 		wg.Add(1)
 		go func(sub *model.PushSubscription) {
 			defer wg.Done()
-			s.SendPushNotification(ctx, sub, notification)
+			if err := s.SendPushNotification(ctx, sub, notification); err != nil {
+				deliveryErrs <- fmt.Errorf("device %s: %w", sub.DeviceId, err)
+			}
 		}(sub)
 	}
 	wg.Wait()
-	return nil
+	close(deliveryErrs)
+	var errs []error
+	for err := range deliveryErrs {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 // MarkNotificationsViewed mirrors PushService.MarkNotificationsViewed.
@@ -467,6 +477,7 @@ func (s *Service) SendNotificationBatch(ctx context.Context, notification *model
 
 	s.log.Info("delivering notification in batch", "topic", notification.Topic, "notification_id", notification.Id, "meta", notification.Meta)
 
+	var deliveryErrors []error
 	for _, account := range recipients {
 		notification.AccountId = account
 		if preferences[account] == model.NotificationPreferenceSilent {
@@ -518,20 +529,27 @@ func (s *Service) SendNotificationBatch(ctx context.Context, notification *model
 		}
 
 		var wg sync.WaitGroup
+		deliveryErrs := make(chan error, len(subscriptionByDevice))
 		for _, sub := range subscriptionByDevice {
 			wg.Add(1)
 			go func(sub *model.PushSubscription) {
 				defer wg.Done()
-				s.SendPushNotification(ctx, sub, notification)
+				if err := s.SendPushNotification(ctx, sub, notification); err != nil {
+					deliveryErrs <- fmt.Errorf("account %s device %s: %w", account, sub.DeviceId, err)
+				}
 			}(sub)
 		}
 		wg.Wait()
+		close(deliveryErrs)
+		for err := range deliveryErrs {
+			deliveryErrors = append(deliveryErrors, err)
+		}
 	}
-	return nil
+	return errors.Join(deliveryErrors...)
 }
 
 // SendPushNotification mirrors PushService.SendPushNotificationAsync.
-func (s *Service) SendPushNotification(ctx context.Context, subscription *model.PushSubscription, notification *model.Notification) {
+func (s *Service) SendPushNotification(ctx context.Context, subscription *model.PushSubscription, notification *model.Notification) error {
 	startedAt := time.Now()
 	outcome := model.DeliveryOutcomeFailure
 	var sendErr error
@@ -644,7 +662,7 @@ func (s *Service) SendPushNotification(ctx context.Context, subscription *model.
 		}
 
 	case model.PushProviderSop:
-		return
+		return nil
 
 	case model.PushProviderUnifiedPush:
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, subscription.DeviceToken, nil)
@@ -694,6 +712,7 @@ func (s *Service) SendPushNotification(ctx context.Context, subscription *model.
 		s.log.Info("successfully pushed notification",
 			"notification_id", notification.Id, "device_id", subscription.DeviceId, "provider", subscription.Provider)
 	}
+	return sendErr
 }
 
 func (s *Service) enqueueRemoval(subscription *model.PushSubscription) {

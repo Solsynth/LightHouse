@@ -21,9 +21,9 @@ import (
 
 // Names mirror QueueBackgroundService constants verbatim.
 const (
-	QueueName   = "pusher_queue"
-	StreamName  = "pusher_queue"
-	QueueGroup  = "pusher_workers"
+	QueueName    = "pusher_queue"
+	StreamName   = "pusher_queue"
+	QueueGroup   = "pusher_workers"
 	ConsumerName = "pusher_workers"
 )
 
@@ -82,17 +82,17 @@ func (s *Service) EnqueuePushNotification(ctx context.Context, notification *mod
 	}
 	target := userID.String()
 	return s.publish(ctx, &model.QueueMessage{
-		Type:                      model.QueueMessageTypePushNotification,
-		TargetId:                  &target,
-		Data:                      string(data),
+		Type:                       model.QueueMessageTypePushNotification,
+		TargetId:                   &target,
+		Data:                       string(data),
 		ExcludedWebSocketDeviceIds: excludedWebSocketDeviceIDs,
-		IsSavable:                 isSavable,
+		IsSavable:                  isSavable,
 	})
 }
 
 func (s *Service) publish(ctx context.Context, msg *model.QueueMessage) error {
 	if s.bus == nil || s.bus.Conn == nil {
-		return nil
+		return fmt.Errorf("pusher queue unavailable: NATS is not connected")
 	}
 	if err := s.ensureStream(ctx); err != nil {
 		return fmt.Errorf("ensure pusher_queue stream: %w", err)
