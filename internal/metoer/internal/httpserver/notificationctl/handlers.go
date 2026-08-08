@@ -71,13 +71,16 @@ func list(deps Deps) gin.HandlerFunc {
 
 		c.Header("X-Total", strconv.Itoa(totalCount))
 
+		// Snapshot the response before marking the page viewed. The list endpoint
+		// returns the unread state as it was when the page was selected.
+		response := notificationsResponse(notifications)
 		if !unmark {
 			if err := deps.Push.MarkNotificationsViewed(c.Request.Context(), notifications, time.Now().UTC()); err != nil {
 				c.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to mark notifications viewed.", http.StatusInternalServerError))
 				return
 			}
 		}
-		c.JSON(http.StatusOK, notificationsResponse(notifications))
+		c.JSON(http.StatusOK, response)
 	}
 }
 
