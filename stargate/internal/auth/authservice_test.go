@@ -33,3 +33,24 @@ func TestScopesWithFullScope(t *testing.T) {
 		})
 	}
 }
+
+func TestMergeAuthorizedAppScopesOnlyExpands(t *testing.T) {
+	existing := []string{"openid", "profile"}
+	requested := []string{" profile ", "email", ""}
+
+	got := mergeAuthorizedAppScopes(existing, requested)
+	want := []string{"openid", "profile", "email"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("mergeAuthorizedAppScopes(%v, %v) = %v, want %v", existing, requested, got, want)
+	}
+	if !slices.Equal(existing, []string{"openid", "profile"}) {
+		t.Fatalf("existing scopes mutated: %v", existing)
+	}
+	if !slices.Equal(requested, []string{" profile ", "email", ""}) {
+		t.Fatalf("requested scopes mutated: %v", requested)
+	}
+
+	if got := mergeAuthorizedAppScopes([]string{"openid"}, nil); !slices.Equal(got, []string{"openid"}) {
+		t.Fatalf("fewer requested scopes removed stored scope: %v", got)
+	}
+}

@@ -219,6 +219,31 @@ func (s *AuthService) RotateApiKeyToken(ctx context.Context, key *model.ApiKey) 
 
 // --- Authorized apps ---
 
+func mergeAuthorizedAppScopes(existing, requested []string) []string {
+	if len(existing) == 0 && len(requested) == 0 {
+		return []string{}
+	}
+
+	merged := make([]string, 0, len(existing)+len(requested))
+	seen := make(map[string]struct{}, len(existing)+len(requested))
+	for _, scope := range existing {
+		merged = append(merged, scope)
+		seen[scope] = struct{}{}
+	}
+	for _, scope := range requested {
+		scope = strings.TrimSpace(scope)
+		if scope == "" {
+			continue
+		}
+		if _, dup := seen[scope]; dup {
+			continue
+		}
+		seen[scope] = struct{}{}
+		merged = append(merged, scope)
+	}
+	return merged
+}
+
 // UpsertAuthorizedAppAsync creates or updates an authorized-app record.
 func (s *AuthService) UpsertAuthorizedAppAsync(ctx context.Context, accountID, appID string, appType model.AuthorizedAppType, appSlug, appName *string, scopes []string) (*model.AuthorizedApp, error) {
 	now := time.Now().UTC()
@@ -247,15 +272,15 @@ func (s *AuthService) UpsertAuthorizedAppAsync(ctx context.Context, accountID, a
 			AppId:            appID,
 			AppSlug:          appSlug,
 			AppName:          appName,
-			Scopes:           normalized,
+			Scopes:           mergeAuthorizedAppScopes(nil, normalized),
 			LastAuthorizedAt: model.NewTime(now),
 			LastUsedAt:       model.NewTime(now),
 		}
 		var id string
 		if err := s.store.DB.QueryRow(ctx, `INSERT INTO authorized_apps
-			(type, account_id, app_id, app_slug, app_name, scopes, last_authorized_at, last_used_at, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$7,$8,$8) RETURNING id`,
-			int(appType), accountID, appID, appSlug, appName, normalized, now, now).Scan(&id); err != nil {
+			(id, type, account_id, app_id, app_slug, app_name, scopes, last_authorized_at, last_used_at, created_at, updated_at)
+			VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$7,$8,$8) RETURNING id`,
+			int(appType), accountID, appID, appSlug, appName, existing.Scopes, now, now).Scan(&id); err != nil {
 			return nil, err
 		}
 		existing.Id = id
@@ -272,9 +297,7 @@ func (s *AuthService) UpsertAuthorizedAppAsync(ctx context.Context, accountID, a
 	if appName != nil && *appName != "" {
 		existing.AppName = appName
 	}
-	if normalized != nil {
-		existing.Scopes = normalized
-	}
+	existing.Scopes = mergeAuthorizedAppScopes(existing.Scopes, normalized)
 	existing.LastAuthorizedAt = model.NewTime(now)
 	existing.LastUsedAt = model.NewTime(now)
 	existing.UpdatedAt = model.NewTime(now)

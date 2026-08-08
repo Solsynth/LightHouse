@@ -309,8 +309,8 @@ func (s *Store) InsertAuthFactor(ctx context.Context, f *model.AuthFactor) (*mod
 	}
 	var id uuid.UUID
 	err := s.DB.QueryRow(ctx, `INSERT INTO account_auth_factors
-		(type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8) RETURNING id`,
+		(id, type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at)
+		VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$8) RETURNING id`,
 		int(f.Type), secret, config, f.Trustworthy, f.EnabledAt, f.ExpiredAt, f.AccountId, now).Scan(&id)
 	if err != nil {
 		return nil, err
