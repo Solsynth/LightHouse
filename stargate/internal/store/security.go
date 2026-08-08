@@ -401,9 +401,9 @@ func (s *Store) InsertPasskey(ctx context.Context, p *model.Passkey) (*model.Pas
 	now := time.Now().UTC()
 	var id uuid.UUID
 	err := s.DB.QueryRow(ctx, `INSERT INTO account_passkeys
-		(account_id, label, credential_id, credential, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$5) RETURNING id`,
-		p.AccountId, p.Label, p.CredentialId, p.Credential).Scan(&id)
+		(id, account_id, label, credential_id, credential, created_at, updated_at)
+		VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$5) RETURNING id`,
+		p.AccountId, p.Label, p.CredentialId, p.Credential, now).Scan(&id)
 	if err != nil {
 		return nil, err
 	}

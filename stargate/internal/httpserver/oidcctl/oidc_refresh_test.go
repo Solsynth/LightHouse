@@ -29,6 +29,7 @@ import (
 
 	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/config"
+	"src.solsynth.dev/sosys/stargate/internal/geo"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
 	"src.solsynth.dev/sosys/stargate/internal/store"
@@ -95,18 +96,55 @@ func newRefreshTestService(t *testing.T) (*service, *store.Store, *auth.JWTServi
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	tokenSvc := auth.NewTokenAuthService(st, rc, jwtSvc, nil, stubAppProvider{slug: "maidkit"}, log)
+	authSvc := auth.NewAuthService(st, rc, cfg, geo.NewService(""), jwtSvc, tokenSvc, nil, nil, log)
 	svc, err := newService(Deps{
 		Store: st,
 		Redis: rc,
 		Cfg:   cfg,
 		JWT:   jwtSvc,
 		Token: tokenSvc,
+		Auth:  authSvc,
 		Log:   log,
 	})
 	if err != nil {
 		t.Fatalf("oidc service: %v", err)
 	}
 	return svc, st, jwtSvc
+}
+
+func TestAuthorizationCodeFlowCreatesSessionWithJSONArrays(t *testing.T) {
+	ctx := context.Background()
+	svc, st, _ := newRefreshTestService(t)
+
+	var accountID string
+	if err := st.DB.QueryRow(ctx, `SELECT id FROM accounts ORDER BY created_at LIMIT 1`).Scan(&accountID); err != nil {
+		t.Skipf("no local account to attach the session: %v", err)
+	}
+
+	clientID := uuid.NewString()
+	session, _, scopes, err := svc.handleAuthorizationCodeFlow(ctx, &authorizationCodeInfo{
+		ClientId:  clientID,
+		AccountId: &accountID,
+		Scopes:    []string{"openid", "profile"},
+	}, clientID, "", "")
+	if err != nil {
+		t.Fatalf("handle authorization code flow: %v", err)
+	}
+	if len(scopes) != 2 {
+		t.Fatalf("authorization code scopes = %v, want [openid profile]", scopes)
+	}
+	sessionID := uuid.MustParse(session.Id)
+	t.Cleanup(func() {
+		_, _ = st.DB.Exec(ctx, `DELETE FROM auth_sessions WHERE id = $1`, sessionID)
+	})
+
+	var audiences, storedScopes []string
+	if err := st.DB.QueryRow(ctx, `SELECT audiences, scopes FROM auth_sessions WHERE id = $1`, sessionID).Scan(&audiences, &storedScopes); err != nil {
+		t.Fatalf("load created OIDC session: %v", err)
+	}
+	if audiences == nil || storedScopes == nil {
+		t.Fatalf("created OIDC session has nil JSON arrays: audiences=%v scopes=%v", audiences, storedScopes)
+	}
 }
 
 func TestOidcRefreshTokenFlow(t *testing.T) {

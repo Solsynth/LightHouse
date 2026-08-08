@@ -55,12 +55,16 @@ func (s *AuthService) CreateSessionForOidc(ctx context.Context, db *pgxpool.Pool
 		ParentSessionId: parentSessionID,
 		CreatedAt:       model.NewTime(now),
 		LastGrantedAt:   model.NewTime(now),
+		Audiences:       []string{},
+		Scopes:          []string{},
 	}
 	var sessionID uuid.UUID
 	err := db.QueryRow(ctx, `INSERT INTO auth_sessions
-		(id, type, created_at, last_granted_at, account_id, ip_address, user_agent, location, app_id, parent_session_id, epoch, updated_at)
-		VALUES (gen_random_uuid(),$1,$2,$2,$3,$4,$5,$6,$7,$8,0,$2) RETURNING id`,
-		int(sessionType), now, accountID, ipPtr, uaPtr, locationJSON, appIDUUID, parentUUID).Scan(&sessionID)
+		(id, type, created_at, last_granted_at, account_id, ip_address, user_agent, location, app_id,
+		 parent_session_id, audiences, scopes, epoch, updated_at)
+		VALUES (gen_random_uuid(),$1,$2,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,$2) RETURNING id`,
+		int(sessionType), now, accountID, ipPtr, uaPtr, locationJSON, appIDUUID, parentUUID,
+		session.Audiences, session.Scopes).Scan(&sessionID)
 	if err != nil {
 		return nil, err
 	}
