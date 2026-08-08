@@ -72,6 +72,25 @@ func (s *Store) GetOrCreateAccountProfile(ctx context.Context, accountID uuid.UU
 	return s.GetProfileByAccount(ctx, accountID)
 }
 
+// HydrateAccountProfile attaches the account profile used by authenticated
+// session contexts. It creates a profile for legacy accounts that predate the
+// account_profiles migration, matching the account gRPC read behavior.
+func (s *Store) HydrateAccountProfile(ctx context.Context, account *model.Account) error {
+	if account == nil {
+		return errors.New("account is required")
+	}
+	accountID, err := uuid.Parse(account.Id)
+	if err != nil {
+		return err
+	}
+	profile, err := s.GetOrCreateAccountProfile(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	account.Profile = profile
+	return nil
+}
+
 // HealBareProfile copies accounts.name into first_name for profile rows that
 // carry no profile data at all (empty first/last name, no bio, no picture).
 // Such rows are what migrated accounts that never edited their profile end up

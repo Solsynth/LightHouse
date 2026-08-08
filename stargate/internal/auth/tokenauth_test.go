@@ -108,3 +108,22 @@ func TestHydratePerkWireContract(t *testing.T) {
 		}
 	})
 }
+
+func TestAccountFromProtoCarriesProfile(t *testing.T) {
+	account := accountFromProto(&gen.DyAccount{
+		Id: "acct-1",
+		Profile: &gen.DyAccountProfile{
+			Id:         "profile-1",
+			AccountId:  "acct-1",
+			Level:      42,
+			Experience: 12345,
+		},
+	})
+	if account.Profile == nil {
+		t.Fatal("account profile = nil, want hydrated profile")
+	}
+	if account.Profile.Id != "profile-1" || account.Profile.AccountId != "acct-1" ||
+		account.Profile.Level != 42 || account.Profile.Experience != 12345 {
+		t.Fatalf("account profile = %+v, want id/profile level data", account.Profile)
+	}
+}

@@ -13,6 +13,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
+	sharedmodels "src.solsynth.dev/sosys/go/pkg/models"
 	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
@@ -135,8 +137,8 @@ func normalizeAuthHeader(raw string) string {
 	return value
 }
 
-// AuthenticateToken validates a token and returns the session (with account)
-// plus the token use. Errors are returned as (false, nil, message, use).
+// AuthenticateToken validates a token and returns the session (with account
+// and profile) plus the token use. Errors are returned as (false, nil, message, use).
 func (t *TokenAuthService) AuthenticateToken(ctx context.Context, token, ipAddress string) (bool, *model.AuthSession, string, string) {
 	if strings.TrimSpace(token) == "" {
 		return false, nil, "No token provided.", ""
@@ -188,8 +190,14 @@ func (t *TokenAuthService) AuthenticateToken(ctx context.Context, token, ipAddre
 			}
 		}
 		session := sessionFromProto(&cached)
-		applyScopesFromToken(session, claims)
-		return true, session, "", tokenUse
+		// Older session cache entries predate profile hydration. Drop them
+		// through the normal DB path so the refreshed entry carries Profile.
+		if session.Account == nil || session.Account.Profile == nil {
+			_ = t.redis.Cache.Remove(ctx, cacheKey)
+		} else {
+			applyScopesFromToken(session, claims)
+			return true, session, "", tokenUse
+		}
 	}
 
 	// DB path.
@@ -209,7 +217,14 @@ func (t *TokenAuthService) AuthenticateToken(ctx context.Context, token, ipAddre
 		return false, nil, "Session has been expired.", tokenUse
 	}
 
-	// Perk hydration (wallet).
+	if session.Account == nil {
+		log.Error("load session account", "error", "account missing")
+		return false, nil, "Authentication error.", ""
+	}
+	if err := t.store.HydrateAccountProfile(ctx, session.Account); err != nil {
+		log.Error("load account profile", "error", err)
+		return false, nil, "Authentication error.", ""
+	}
 	t.HydratePerk(ctx, session.Account)
 
 	proto := SessionToProto(session)
@@ -513,7 +528,77 @@ func accountFromProto(p *gen.DyAccount) *model.Account {
 			CreatedAt:   protoTimeToModel(sub.CreatedAt),
 		}
 	}
+	if p.Profile != nil && (p.Profile.Id != "" || p.Profile.AccountId != "") {
+		a.Profile = profileFromProto(p.Profile)
+	}
 	return a
+}
+
+func profileFromProto(p *gen.DyAccountProfile) *model.Profile {
+	profile := &model.Profile{
+		Id:                 p.Id,
+		FirstName:          wrapperString(p.FirstName),
+		MiddleName:         wrapperString(p.MiddleName),
+		LastName:           wrapperString(p.LastName),
+		Bio:                wrapperString(p.Bio),
+		Gender:             wrapperString(p.Gender),
+		Pronouns:           wrapperString(p.Pronouns),
+		TimeZone:           wrapperString(p.TimeZone),
+		Location:           wrapperString(p.Location),
+		Birthday:           protoTimeToModel(p.Birthday),
+		LastSeenAt:         protoTimeToModel(p.LastSeenAt),
+		Experience:         int(p.Experience),
+		Level:              int(p.Level),
+		LevelingProgress:   p.LevelingProgress,
+		SocialCredits:      p.SocialCredits,
+		SocialCreditsLevel: int(p.SocialCreditsLevel),
+		AccountId:          p.AccountId,
+		CreatedAt:          protoTimeToModel(p.CreatedAt),
+		UpdatedAt:          protoTimeToModel(p.UpdatedAt),
+	}
+	for _, link := range p.Links {
+		profile.Links = append(profile.Links, model.Link{Name: link.Name, Url: link.Url})
+	}
+	if p.UsernameColor != nil {
+		profile.UsernameColor = &model.UsernameColor{
+			Type:      p.UsernameColor.Type,
+			Value:     wrapperString(p.UsernameColor.Value),
+			Direction: wrapperString(p.UsernameColor.Direction),
+			Colors:    p.UsernameColor.Colors,
+		}
+	}
+	if p.Verification != nil {
+		profile.Verification = &model.SnVerificationMark{
+			Type:        int(p.Verification.Type),
+			Title:       stringOrNil(p.Verification.Title),
+			Description: stringOrNil(p.Verification.Description),
+			VerifiedBy:  stringOrNil(p.Verification.VerifiedBy),
+		}
+	}
+	if p.Picture != nil {
+		picture := sharedmodels.FromProtoValue(p.Picture)
+		profile.Picture = &picture
+	}
+	if p.Background != nil {
+		background := sharedmodels.FromProtoValue(p.Background)
+		profile.Background = &background
+	}
+	return profile
+}
+
+func wrapperString(value *wrapperspb.StringValue) *string {
+	if value == nil {
+		return nil
+	}
+	result := value.Value
+	return &result
+}
+
+func stringOrNil(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 // GetAccountVersion reads auth:account_ver:{id} (0 when absent).
