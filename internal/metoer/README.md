@@ -11,9 +11,9 @@ port, following the house pattern established by the
 ```
 cmd/metoer/            entrypoint (HTTP :8080 + gRPC :9090, TLS optional)
 internal/config        TOML config + METOER_* env overrides
-internal/db, migrate   pgx pool + embedded SQL migrations (non-destructive)
-internal/store         Postgres access layer (mirrors EF Core queries incl.
-                       the global soft-delete filter)
+internal/db, migrate   GORM PostgreSQL handle + embedded SQL migrations
+internal/store         GORM-backed Postgres access layer (mirrors EF Core
+                       queries incl. the global soft-delete filter)
 internal/model         entity + wire models (snake_case JSON, nulls included)
 internal/queue         pusher_queue JetStream producer + durable consumer
 internal/push          PushService port: senders, SOP streams, replay,

@@ -20,10 +20,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	gen "src.solsynth.dev/sosys/go/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/go/pkg/auth"
 
@@ -91,13 +91,13 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := db.Connect(ctx, cfg.Database.DSN)
+	database, err := db.Connect(ctx, cfg.Database.DSN)
 	if err != nil {
 		return err
 	}
-	defer pool.Close()
+	defer db.Close(database)
 
-	if err := migrate.Run(ctx, pool); err != nil {
+	if err := migrate.Run(ctx, database); err != nil {
 		return err
 	}
 
@@ -113,7 +113,7 @@ func run(log *slog.Logger) error {
 		nc = nil
 	}
 
-	st := store.New(pool)
+	st := store.New(database)
 
 	clients, err := grpcclient.NewClients(cfg)
 	if err != nil {

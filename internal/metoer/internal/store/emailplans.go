@@ -3,256 +3,165 @@ package store
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/metoer/internal/model"
-	"src.solsynth.dev/sosys/go/pkg/models"
 )
 
-// CreateEmailPlan inserts the plan and its recipients in one transaction
-// (CreatePlanAsync's SaveChanges).
 func (s *Store) CreateEmailPlan(ctx context.Context, plan *model.EmailSendingPlan, recipients []*model.EmailSendingPlanRecipient) error {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	_, err = tx.Exec(ctx, `INSERT INTO email_sending_plans
-		(id, sending_plan_key, created_by_account_id, subject, html_body, broadcast_to_all, recipient_count,
-		 max_emails_per_interval, interval_minutes, max_emails_per_day, status, advanced_intervals_count,
-		 planned_start_at, next_interval_at, last_advanced_at, paused_at, completed_at, created_at, updated_at, deleted_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $18, $19)`,
-		plan.Id, plan.SendingPlanKey, plan.CreatedByAccountId, plan.Subject, plan.HtmlBody, plan.BroadcastToAll,
-		plan.RecipientCount, plan.MaxEmailsPerInterval, plan.IntervalMinutes, plan.MaxEmailsPerDay,
-		int(plan.Status), plan.AdvancedIntervalsCount, plan.PlannedStartAt, plan.NextIntervalAt,
-		plan.LastAdvancedAt, plan.PausedAt, plan.CompletedAt, plan.CreatedAt, plan.DeletedAt)
-	if err != nil {
-		return err
-	}
-
-	for _, r := range recipients {
-		_, err = tx.Exec(ctx, `INSERT INTO email_sending_plan_recipients
-			(id, plan_id, account_id, recipient_name_snapshot, status, attempt_count, last_interval_number,
-			 last_resolved_email, last_error, processed_at, created_at, updated_at, deleted_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $12)`,
-			r.Id, r.PlanId, r.AccountId, r.RecipientNameSnapshot, int(r.Status), r.AttemptCount,
-			r.LastIntervalNumber, r.LastResolvedEmail, r.LastError, r.ProcessedAt, r.CreatedAt, r.DeletedAt)
-		if err != nil {
+	return s.db(ctx).Transaction(func(tx *gorm.DB) error {
+		entity := planEntityFromModel(plan)
+		if err := tx.Create(&entity).Error; err != nil {
 			return err
 		}
-	}
-
-	return tx.Commit(ctx)
+		for _, recipient := range recipients {
+			item := recipientEntityFromModel(recipient)
+			if err := tx.Create(&item).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
-// GetEmailPlan loads one plan (nil when missing; the global soft-delete
-// filter applies).
 func (s *Store) GetEmailPlan(ctx context.Context, planID uuid.UUID) (*model.EmailSendingPlan, error) {
-	row := s.pool.QueryRow(ctx,
-		`SELECT `+emailPlanColumns+` FROM email_sending_plans WHERE id = $1 AND deleted_at IS NULL`, planID)
-	plan, err := scanEmailPlan(row)
+	var entity EmailSendingPlanEntity
+	err := s.db(ctx).Where("id = ?", planID).First(&entity).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, nil
-		}
 		return nil, err
 	}
-	return plan, nil
+	return planFromEntity(&entity), nil
 }
 
-// ListEmailPlans returns one page of plans (created_at DESC) plus the total
-// count, with an optional status filter (ListPlansAsync).
 func (s *Store) ListEmailPlans(ctx context.Context, offset, take int, status *model.EmailSendingPlanStatus) ([]*model.EmailSendingPlan, int, error) {
-	where := `WHERE deleted_at IS NULL`
-	args := []any{}
+	query := s.db(ctx).Model(&EmailSendingPlanEntity{})
 	if status != nil {
-		where += ` AND status = $1`
-		args = append(args, int(*status))
+		query = query.Where("status = ?", int(*status))
 	}
-	var total int
-	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM email_sending_plans `+where, args...).Scan(&total); err != nil {
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	pageArgs := append(append([]any{}, args...), offset, take)
-	query := `SELECT ` + emailPlanColumns + ` FROM email_sending_plans ` + where + ` ORDER BY created_at DESC OFFSET $`
-	query += fmt.Sprint(len(args) + 1) + ` LIMIT $` + fmt.Sprint(len(args) + 2)
-	rows, err := s.pool.Query(ctx, query, pageArgs...)
-	if err != nil {
+	var entities []EmailSendingPlanEntity
+	if err := query.Order("created_at DESC").Offset(offset).Limit(take).Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
-	var items []*model.EmailSendingPlan
-	for rows.Next() {
-		plan, err := scanEmailPlan(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		items = append(items, plan)
+	items := make([]*model.EmailSendingPlan, 0, len(entities))
+	for i := range entities {
+		items = append(items, planFromEntity(&entities[i]))
 	}
-	return items, total, rows.Err()
+	return items, int(total), nil
 }
 
-// CountRecipientsByStatus groups recipient counts per plan by status
-// (BuildPlanViewsAsync's countRows).
+type recipientStatusCount struct {
+	PlanID uuid.UUID
+	Status int
+	Count  int64
+}
+
 func (s *Store) CountRecipientsByStatus(ctx context.Context, planIDs []uuid.UUID) (map[uuid.UUID]model.EmailSendingPlanCounts, error) {
+	counts := map[uuid.UUID]model.EmailSendingPlanCounts{}
 	if len(planIDs) == 0 {
-		return map[uuid.UUID]model.EmailSendingPlanCounts{}, nil
+		return counts, nil
 	}
-	rows, err := s.pool.Query(ctx,
-		`SELECT plan_id, status, count(*) FROM email_sending_plan_recipients
-		 WHERE plan_id = ANY($1) AND deleted_at IS NULL GROUP BY plan_id, status`, planIDs)
+	var rows []recipientStatusCount
+	err := s.db(ctx).Model(&EmailSendingPlanRecipientEntity{}).Select("plan_id, status, count(*) AS count").Where("plan_id IN ?", planIDs).Group("plan_id, status").Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	counts := map[uuid.UUID]model.EmailSendingPlanCounts{}
-	for rows.Next() {
-		var planID uuid.UUID
-		var status, count int
-		if err := rows.Scan(&planID, &status, &count); err != nil {
-			return nil, err
-		}
-		c := counts[planID]
-		c.Total += count
-		switch model.EmailSendingPlanRecipientStatus(status) {
+	for _, row := range rows {
+		value := counts[row.PlanID]
+		value.Total += int(row.Count)
+		switch model.EmailSendingPlanRecipientStatus(row.Status) {
 		case model.EmailSendingPlanRecipientPending:
-			c.Pending += count
+			value.Pending += int(row.Count)
 		case model.EmailSendingPlanRecipientSent:
-			c.Sent += count
+			value.Sent += int(row.Count)
 		case model.EmailSendingPlanRecipientSkipped:
-			c.Skipped += count
+			value.Skipped += int(row.Count)
 		case model.EmailSendingPlanRecipientFailed:
-			c.Failed += count
+			value.Failed += int(row.Count)
 		}
-		counts[planID] = c
+		counts[row.PlanID] = value
 	}
-	return counts, rows.Err()
+	return counts, nil
 }
 
-// ListAdvancesByPlans loads advances for the plans, newest interval first
-// (BuildPlanViewsAsync's advances fetch).
 func (s *Store) ListAdvancesByPlans(ctx context.Context, planIDs []uuid.UUID) ([]*model.EmailSendingPlanAdvance, error) {
 	if len(planIDs) == 0 {
 		return nil, nil
 	}
-	rows, err := s.pool.Query(ctx,
-		`SELECT `+advanceColumns+` FROM email_sending_plan_advances
-		 WHERE plan_id = ANY($1) AND deleted_at IS NULL ORDER BY interval_number DESC`, planIDs)
-	if err != nil {
+	var entities []EmailSendingPlanAdvanceEntity
+	if err := s.db(ctx).Where("plan_id IN ?", planIDs).Order("interval_number DESC").Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var items []*model.EmailSendingPlanAdvance
-	for rows.Next() {
-		a, err := scanAdvance(rows)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, a)
+	items := make([]*model.EmailSendingPlanAdvance, 0, len(entities))
+	for i := range entities {
+		items = append(items, advanceFromEntity(&entities[i]))
 	}
-	return items, rows.Err()
+	return items, nil
 }
 
-// UpdateEmailPlanStatus writes the plan's status transitions (pause/resume/
-// advance completion). Only non-deleted rows are updated.
 func (s *Store) UpdateEmailPlanStatus(ctx context.Context, plan *model.EmailSendingPlan) error {
-	_, err := s.pool.Exec(ctx, `UPDATE email_sending_plans SET
-		status = $1, advanced_intervals_count = $2, next_interval_at = $3, last_advanced_at = $4,
-		paused_at = $5, completed_at = $6, updated_at = $7
-		WHERE id = $8 AND deleted_at IS NULL`,
-		int(plan.Status), plan.AdvancedIntervalsCount, plan.NextIntervalAt, plan.LastAdvancedAt,
-		plan.PausedAt, plan.CompletedAt, plan.UpdatedAt, plan.Id)
-	return err
+	return s.db(ctx).Model(&EmailSendingPlanEntity{}).Where("id = ?", plan.Id).Updates(map[string]any{
+		"status": int(plan.Status), "advanced_intervals_count": plan.AdvancedIntervalsCount,
+		"next_interval_at": timePtr(plan.NextIntervalAt), "last_advanced_at": timePtr(plan.LastAdvancedAt),
+		"paused_at": timePtr(plan.PausedAt), "completed_at": timePtr(plan.CompletedAt),
+		"updated_at": time.Time(plan.UpdatedAt),
+	}).Error
 }
 
-// CountPendingRecipients counts pending recipients of a plan.
 func (s *Store) CountPendingRecipients(ctx context.Context, planID uuid.UUID) (int, error) {
-	var count int
-	if err := s.pool.QueryRow(ctx,
-		`SELECT count(*) FROM email_sending_plan_recipients WHERE plan_id = $1 AND status = 0 AND deleted_at IS NULL`, planID).Scan(&count); err != nil {
-		return 0, err
-	}
-	return count, nil
+	var count int64
+	err := s.db(ctx).Model(&EmailSendingPlanRecipientEntity{}).Where("plan_id = ? AND status = ?", planID, int(model.EmailSendingPlanRecipientPending)).Count(&count).Error
+	return int(count), err
 }
 
-// ListPendingRecipients loads pending recipients ordered by created_at, id
-// (the advance loop's recipient fetch).
 func (s *Store) ListPendingRecipients(ctx context.Context, planID uuid.UUID) ([]*model.EmailSendingPlanRecipient, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT `+recipientColumns+` FROM email_sending_plan_recipients
-		 WHERE plan_id = $1 AND status = 0 AND deleted_at IS NULL ORDER BY created_at, id`, planID)
-	if err != nil {
+	var entities []EmailSendingPlanRecipientEntity
+	if err := s.db(ctx).Where("plan_id = ? AND status = ?", planID, int(model.EmailSendingPlanRecipientPending)).Order("created_at, id").Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var items []*model.EmailSendingPlanRecipient
-	for rows.Next() {
-		r, err := scanRecipient(rows)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, r)
+	items := make([]*model.EmailSendingPlanRecipient, 0, len(entities))
+	for i := range entities {
+		items = append(items, recipientFromEntity(&entities[i]))
 	}
-	return items, rows.Err()
+	return items, nil
 }
 
-// UpdateRecipient writes the advance-loop recipient state.
-func (s *Store) UpdateRecipient(ctx context.Context, r *model.EmailSendingPlanRecipient) error {
-	_, err := s.pool.Exec(ctx, `UPDATE email_sending_plan_recipients SET
-		status = $1, attempt_count = $2, last_interval_number = $3, last_resolved_email = $4,
-		last_error = $5, processed_at = $6, updated_at = $7
-		WHERE id = $8 AND deleted_at IS NULL`,
-		int(r.Status), r.AttemptCount, r.LastIntervalNumber, r.LastResolvedEmail,
-		r.LastError, r.ProcessedAt, r.UpdatedAt, r.Id)
-	return err
+func (s *Store) UpdateRecipient(ctx context.Context, recipient *model.EmailSendingPlanRecipient) error {
+	return s.db(ctx).Model(&EmailSendingPlanRecipientEntity{}).Where("id = ?", recipient.Id).Updates(map[string]any{
+		"status": int(recipient.Status), "attempt_count": recipient.AttemptCount, "last_interval_number": recipient.LastIntervalNumber,
+		"last_resolved_email": recipient.LastResolvedEmail, "last_error": recipient.LastError, "processed_at": timePtr(recipient.ProcessedAt),
+		"updated_at": time.Time(recipient.UpdatedAt),
+	}).Error
 }
 
-// InsertAdvance inserts an email_sending_plan_advances row.
-func (s *Store) InsertAdvance(ctx context.Context, a *model.EmailSendingPlanAdvance) error {
-	_, err := s.pool.Exec(ctx, `INSERT INTO email_sending_plan_advances
-		(id, plan_id, interval_number, is_manual, attempted_count, sent_count, skipped_count, failed_count,
-		 pending_count_after, started_at, completed_at, created_at, updated_at, deleted_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, $13)`,
-		a.Id, a.PlanId, a.IntervalNumber, a.IsManual, a.AttemptedCount, a.SentCount, a.SkippedCount,
-		a.FailedCount, a.PendingCountAfter, a.StartedAt, a.CompletedAt, a.CreatedAt, a.DeletedAt)
-	return err
+func (s *Store) InsertAdvance(ctx context.Context, advance *model.EmailSendingPlanAdvance) error {
+	entity := advanceEntityFromModel(advance)
+	return s.db(ctx).Create(&entity).Error
 }
 
-// SumAttemptedToday sums attempted_count of advances started in the current
-// UTC day (GetRemainingDailyCapacityAsync).
 func (s *Store) SumAttemptedToday(ctx context.Context, planID uuid.UUID, startOfDay, endOfDay time.Time) (int, error) {
-	var sum int
-	if err := s.pool.QueryRow(ctx,
-		`SELECT COALESCE(sum(attempted_count), 0) FROM email_sending_plan_advances
-		 WHERE plan_id = $1 AND started_at >= $2 AND started_at < $3 AND deleted_at IS NULL`,
-		planID, models.Time(startOfDay.UTC()), models.Time(endOfDay.UTC())).Scan(&sum); err != nil {
-		return 0, err
-	}
-	return sum, nil
+	var sum int64
+	err := s.db(ctx).Model(&EmailSendingPlanAdvanceEntity{}).Select("COALESCE(SUM(attempted_count), 0)").Where("plan_id = ? AND started_at >= ? AND started_at < ?", planID, startOfDay.UTC(), endOfDay.UTC()).Scan(&sum).Error
+	return int(sum), err
 }
 
-// ListDuePlans loads scheduled plans whose next_interval_at <= now, ordered
-// by next_interval_at (AdvanceDuePlansAsync).
 func (s *Store) ListDuePlans(ctx context.Context, now time.Time) ([]*model.EmailSendingPlan, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT `+emailPlanColumns+` FROM email_sending_plans
-		 WHERE status = 0 AND next_interval_at IS NOT NULL AND next_interval_at <= $1 AND deleted_at IS NULL
-		 ORDER BY next_interval_at`, models.Time(now.UTC()))
-	if err != nil {
+	var entities []EmailSendingPlanEntity
+	if err := s.db(ctx).Where("status = ? AND next_interval_at IS NOT NULL AND next_interval_at <= ?", int(model.EmailSendingPlanScheduled), now.UTC()).Order("next_interval_at").Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var items []*model.EmailSendingPlan
-	for rows.Next() {
-		plan, err := scanEmailPlan(rows)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, plan)
+	items := make([]*model.EmailSendingPlan, 0, len(entities))
+	for i := range entities {
+		items = append(items, planFromEntity(&entities[i]))
 	}
-	return items, rows.Err()
+	return items, nil
 }

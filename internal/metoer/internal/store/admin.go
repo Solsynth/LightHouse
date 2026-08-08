@@ -2,32 +2,27 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"gorm.io/gorm"
 	"src.solsynth.dev/sosys/metoer/internal/model"
-	"src.solsynth.dev/sosys/go/pkg/models"
 )
 
-// OutcomeCount is one GROUP BY outcome row.
 type OutcomeCount struct {
 	Outcome model.DeliveryOutcome
 	Count   int64
 }
-
-// KeyOutcomeCount is one GROUP BY key + outcome row.
 type KeyOutcomeCount struct {
 	Key     string
 	Outcome model.DeliveryOutcome
 	Count   int64
 }
-
-// KeyCount is one GROUP BY key row.
 type KeyCount struct {
 	Key   string
 	Count int64
 }
 
-// NotificationStats holds the /api/admin/stats counters.
 type NotificationStats struct {
 	CalculatedAt            time.Time
 	TotalNotifications      int64
@@ -41,116 +36,129 @@ type NotificationStats struct {
 	TotalDeliveryAttempts   int64
 }
 
-// GetNotificationStats computes every admin stats counter. All counts honor
-// the global soft-delete filter, mirroring the C# LongCountAsync queries.
+func countEntity(db *gorm.DB, entity any, conditions ...any) (int64, error) {
+	var count int64
+	query := db.Model(entity)
+	if len(conditions) > 0 {
+		query = query.Where(conditions[0], conditions[1:]...)
+	}
+	return count, query.Count(&count).Error
+}
+
 func (s *Store) GetNotificationStats(ctx context.Context, now time.Time) (*NotificationStats, error) {
 	stats := &NotificationStats{CalculatedAt: now}
-	day := now.Add(-24 * time.Hour)
-	week := now.Add(-7 * 24 * time.Hour)
-	month := now.Add(-30 * 24 * time.Hour)
-	counts := []struct {
-		dst *int64
-		sql string
-		arg any
-	}{
-		{&stats.TotalNotifications, `SELECT count(*) FROM notifications WHERE deleted_at IS NULL`, nil},
-		{&stats.UnreadNotifications, `SELECT count(*) FROM notifications WHERE viewed_at IS NULL AND deleted_at IS NULL`, nil},
-		{&stats.NotificationsLastDay, `SELECT count(*) FROM notifications WHERE created_at >= $1 AND deleted_at IS NULL`, models.Time(day.UTC())},
-		{&stats.NotificationsLastWeek, `SELECT count(*) FROM notifications WHERE created_at >= $1 AND deleted_at IS NULL`, models.Time(week.UTC())},
-		{&stats.NotificationsLastMonth, `SELECT count(*) FROM notifications WHERE created_at >= $1 AND deleted_at IS NULL`, models.Time(month.UTC())},
-		{&stats.TotalPushSubscriptions, `SELECT count(*) FROM push_subscriptions WHERE deleted_at IS NULL`, nil},
-		{&stats.ActivePushSubscriptions, `SELECT count(*) FROM push_subscriptions WHERE is_activated AND deleted_at IS NULL`, nil},
-		{&stats.TotalSendRequests, `SELECT count(*) FROM notification_send_records WHERE deleted_at IS NULL`, nil},
-		{&stats.TotalDeliveryAttempts, `SELECT count(*) FROM notification_delivery_records WHERE deleted_at IS NULL`, nil},
+	var err error
+	if stats.TotalNotifications, err = countEntity(s.db(ctx), &NotificationEntity{}); err != nil {
+		return nil, err
 	}
-	for _, c := range counts {
-		var value int64
-		if c.arg == nil {
-			if err := s.pool.QueryRow(ctx, c.sql).Scan(&value); err != nil {
-				return nil, err
-			}
-		} else {
-			if err := s.pool.QueryRow(ctx, c.sql, c.arg).Scan(&value); err != nil {
-				return nil, err
-			}
-		}
-		*c.dst = value
+	if stats.UnreadNotifications, err = countEntity(s.db(ctx), &NotificationEntity{}, "viewed_at IS NULL"); err != nil {
+		return nil, err
+	}
+	if stats.NotificationsLastDay, err = countEntity(s.db(ctx), &NotificationEntity{}, "created_at >= ?", now.Add(-24*time.Hour).UTC()); err != nil {
+		return nil, err
+	}
+	if stats.NotificationsLastWeek, err = countEntity(s.db(ctx), &NotificationEntity{}, "created_at >= ?", now.Add(-7*24*time.Hour).UTC()); err != nil {
+		return nil, err
+	}
+	if stats.NotificationsLastMonth, err = countEntity(s.db(ctx), &NotificationEntity{}, "created_at >= ?", now.Add(-30*24*time.Hour).UTC()); err != nil {
+		return nil, err
+	}
+	if stats.TotalPushSubscriptions, err = countEntity(s.db(ctx), &PushSubscriptionEntity{}); err != nil {
+		return nil, err
+	}
+	if stats.ActivePushSubscriptions, err = countEntity(s.db(ctx), &PushSubscriptionEntity{}, "is_activated"); err != nil {
+		return nil, err
+	}
+	if stats.TotalSendRequests, err = countEntity(s.db(ctx), &NotificationSendRecordEntity{}); err != nil {
+		return nil, err
+	}
+	if stats.TotalDeliveryAttempts, err = countEntity(s.db(ctx), &NotificationDeliveryRecordEntity{}); err != nil {
+		return nil, err
 	}
 	return stats, nil
 }
 
-// CountDeliveryOutcomes groups delivery records by outcome within [from, to]
-// (BuildSummaryAsync).
+func deliveryEntity(table string) (any, error) {
+	switch table {
+	case "email_delivery_records":
+		return &EmailDeliveryRecordEntity{}, nil
+	case "notification_delivery_records":
+		return &NotificationDeliveryRecordEntity{}, nil
+	default:
+		return nil, fmt.Errorf("unsupported delivery table %q", table)
+	}
+}
+
 func (s *Store) CountDeliveryOutcomes(ctx context.Context, table string, from, to time.Time) ([]OutcomeCount, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT outcome, count(*) FROM `+table+` WHERE created_at >= $1 AND created_at <= $2 AND deleted_at IS NULL GROUP BY outcome`,
-		models.Time(from.UTC()), models.Time(to.UTC()))
+	entity, err := deliveryEntity(table)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var items []OutcomeCount
-	for rows.Next() {
-		var outcome, count int
-		if err := rows.Scan(&outcome, &count); err != nil {
-			return nil, err
-		}
-		items = append(items, OutcomeCount{Outcome: model.DeliveryOutcome(outcome), Count: int64(count)})
+	type row struct {
+		Outcome int
+		Count   int64
 	}
-	return items, rows.Err()
+	var rows []row
+	err = s.db(ctx).Model(entity).Select("outcome, count(*) AS count").Where("created_at >= ? AND created_at <= ?", from.UTC(), to.UTC()).Group("outcome").Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	items := make([]OutcomeCount, 0, len(rows))
+	for _, item := range rows {
+		items = append(items, OutcomeCount{Outcome: model.DeliveryOutcome(item.Outcome), Count: item.Count})
+	}
+	return items, nil
 }
 
-// CountDeliveryByKeyOutcome groups delivery records by key + outcome within
-// the range (BuildBreakdownAsync).
+func allowedDeliveryKey(table, key string) bool {
+	if table == "notification_delivery_records" {
+		return key == "topic" || key == "provider" || key == "push_type" || key == "app_id"
+	}
+	return table == "email_delivery_records" && key == "provider"
+}
+
 func (s *Store) CountDeliveryByKeyOutcome(ctx context.Context, table, keyColumn string, from, to time.Time) ([]KeyOutcomeCount, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT `+keyColumn+`, outcome, count(*) FROM `+table+` WHERE created_at >= $1 AND created_at <= $2 AND deleted_at IS NULL GROUP BY `+keyColumn+`, outcome`,
-		models.Time(from.UTC()), models.Time(to.UTC()))
+	entity, err := deliveryEntity(table)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var items []KeyOutcomeCount
-	for rows.Next() {
-		var key string
-		var outcome, count int
-		if err := rows.Scan(&key, &outcome, &count); err != nil {
-			return nil, err
-		}
-		items = append(items, KeyOutcomeCount{Key: key, Outcome: model.DeliveryOutcome(outcome), Count: int64(count)})
+	if !allowedDeliveryKey(table, keyColumn) {
+		return nil, fmt.Errorf("unsupported delivery key %q", keyColumn)
 	}
-	return items, rows.Err()
+	type row struct {
+		Key     string
+		Outcome int
+		Count   int64
+	}
+	var rows []row
+	err = s.db(ctx).Model(entity).Select(keyColumn+" AS key, outcome, count(*) AS count").Where("created_at >= ? AND created_at <= ?", from.UTC(), to.UTC()).Group(keyColumn + ", outcome").Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	items := make([]KeyOutcomeCount, 0, len(rows))
+	for _, item := range rows {
+		items = append(items, KeyOutcomeCount{Key: item.Key, Outcome: model.DeliveryOutcome(item.Outcome), Count: item.Count})
+	}
+	return items, nil
 }
 
-// CountSendByTopic groups send records by topic within the range
-// (BuildSendBreakdownAsync).
 func (s *Store) CountSendByTopic(ctx context.Context, from, to time.Time) ([]KeyCount, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT topic, count(*) FROM notification_send_records WHERE created_at >= $1 AND created_at <= $2 AND deleted_at IS NULL GROUP BY topic`,
-		models.Time(from.UTC()), models.Time(to.UTC()))
+	type row struct {
+		Key   string
+		Count int64
+	}
+	var rows []row
+	err := s.db(ctx).Model(&NotificationSendRecordEntity{}).Select("topic AS key, count(*) AS count").Where("created_at >= ? AND created_at <= ?", from.UTC(), to.UTC()).Group("topic").Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var items []KeyCount
-	for rows.Next() {
-		var key string
-		var count int
-		if err := rows.Scan(&key, &count); err != nil {
-			return nil, err
-		}
-		items = append(items, KeyCount{Key: key, Count: int64(count)})
+	items := make([]KeyCount, 0, len(rows))
+	for _, item := range rows {
+		items = append(items, KeyCount{Key: item.Key, Count: item.Count})
 	}
-	return items, rows.Err()
+	return items, nil
 }
 
-// CountSendRecords counts send records within the range.
 func (s *Store) CountSendRecords(ctx context.Context, from, to time.Time) (int64, error) {
-	var count int64
-	if err := s.pool.QueryRow(ctx,
-		`SELECT count(*) FROM notification_send_records WHERE created_at >= $1 AND created_at <= $2 AND deleted_at IS NULL`,
-		models.Time(from.UTC()), models.Time(to.UTC())).Scan(&count); err != nil {
-		return 0, err
-	}
-	return count, nil
+	return countEntity(s.db(ctx), &NotificationSendRecordEntity{}, "created_at >= ? AND created_at <= ?", from.UTC(), to.UTC())
 }

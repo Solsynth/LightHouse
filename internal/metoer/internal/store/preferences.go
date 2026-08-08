@@ -2,104 +2,69 @@ package store
 
 import (
 	"context"
+	"errors"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 	"time"
 
-	"github.com/google/uuid"
-
 	"src.solsynth.dev/sosys/metoer/internal/model"
-	"src.solsynth.dev/sosys/go/pkg/models"
 )
 
-// ListPreferences lists an account's preferences ordered by topic
-// (NotificationPreferenceService.GetPreferencesAsync).
 func (s *Store) ListPreferences(ctx context.Context, accountID uuid.UUID) ([]*model.NotificationPreference, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT `+preferenceColumns+` FROM notification_preferences
-		 WHERE account_id = $1 AND deleted_at IS NULL ORDER BY topic`, accountID)
-	if err != nil {
+	var entities []NotificationPreferenceEntity
+	if err := s.db(ctx).Where("account_id = ?", accountID).Order("topic").Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var items []*model.NotificationPreference
-	for rows.Next() {
-		p, err := scanPreference(rows)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, p)
+	items := make([]*model.NotificationPreference, 0, len(entities))
+	for i := range entities {
+		items = append(items, preferenceFromEntity(&entities[i]))
 	}
-	return items, rows.Err()
+	return items, nil
 }
 
-// GetPreference loads one preference (nil when missing; the C# default is
-// Normal).
 func (s *Store) GetPreference(ctx context.Context, accountID uuid.UUID, topic string) (*model.NotificationPreference, error) {
-	row := s.pool.QueryRow(ctx,
-		`SELECT `+preferenceColumns+` FROM notification_preferences
-		 WHERE account_id = $1 AND topic = $2 AND deleted_at IS NULL
-		 ORDER BY created_at LIMIT 1`, accountID, topic)
-	p, err := scanPreference(row)
+	var entity NotificationPreferenceEntity
+	err := s.db(ctx).Where("account_id = ? AND topic = ?", accountID, topic).Order("created_at").First(&entity).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
 	if err != nil {
-		if err == ErrNotFound {
-			return nil, nil
-		}
 		return nil, err
 	}
-	return p, nil
+	return preferenceFromEntity(&entity), nil
 }
 
-// SetPreference inserts or updates a preference (SetPreferenceAsync).
 func (s *Store) SetPreference(ctx context.Context, accountID uuid.UUID, topic string, level model.NotificationPreferenceLevel, now time.Time) error {
 	existing, err := s.GetPreference(ctx, accountID, topic)
 	if err != nil {
 		return err
 	}
 	if existing != nil {
-		_, err = s.pool.Exec(ctx,
-			`UPDATE notification_preferences SET preference = $1, updated_at = $2 WHERE id = $3`,
-			int(level), models.Time(now.UTC()), existing.Id)
-		return err
+		return s.db(ctx).Model(&NotificationPreferenceEntity{}).Where("id = ?", existing.Id).Updates(map[string]any{"preference": int(level), "updated_at": now.UTC()}).Error
 	}
-	_, err = s.pool.Exec(ctx,
-		`INSERT INTO notification_preferences (id, account_id, topic, preference, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $5)`,
-		uuid.New(), accountID, topic, int(level), models.Time(now.UTC()))
-	return err
+	entity := NotificationPreferenceEntity{ID: uuid.New(), EntityBase: EntityBase{CreatedAt: now.UTC(), UpdatedAt: now.UTC()}, AccountID: accountID, Topic: topic, Preference: int(level)}
+	return s.db(ctx).Create(&entity).Error
 }
 
-// DeletePreference soft-deletes the preference (DeletePreferenceAsync).
 func (s *Store) DeletePreference(ctx context.Context, accountID uuid.UUID, topic string, now time.Time) error {
 	existing, err := s.GetPreference(ctx, accountID, topic)
 	if err != nil || existing == nil {
 		return err
 	}
-	_, err = s.pool.Exec(ctx,
-		`UPDATE notification_preferences SET deleted_at = $1, updated_at = $1 WHERE id = $2`,
-		models.Time(now.UTC()), existing.Id)
-	return err
+	return s.db(ctx).Model(&NotificationPreferenceEntity{}).Where("id = ?", existing.Id).Updates(map[string]any{"deleted_at": now.UTC(), "updated_at": now.UTC()}).Error
 }
 
-// GetPreferencesByTopics loads preferences for a set of accounts and one
-// topic (SendNotificationBatch's preference dictionary).
 func (s *Store) GetPreferencesByTopics(ctx context.Context, accounts []uuid.UUID, topic string) (map[uuid.UUID]model.NotificationPreferenceLevel, error) {
+	result := map[uuid.UUID]model.NotificationPreferenceLevel{}
 	if len(accounts) == 0 {
-		return map[uuid.UUID]model.NotificationPreferenceLevel{}, nil
+		return result, nil
 	}
-	rows, err := s.pool.Query(ctx,
-		`SELECT account_id, preference FROM notification_preferences
-		 WHERE account_id = ANY($1) AND topic = $2 AND deleted_at IS NULL`, accounts, topic)
-	if err != nil {
+	var entities []NotificationPreferenceEntity
+	if err := s.db(ctx).Where("account_id IN ? AND topic = ?", accounts, topic).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	result := map[uuid.UUID]model.NotificationPreferenceLevel{}
-	for rows.Next() {
-		var account uuid.UUID
-		var level int
-		if err := rows.Scan(&account, &level); err != nil {
-			return nil, err
-		}
-		result[account] = model.NotificationPreferenceLevel(level)
+	for _, entity := range entities {
+		result[entity.AccountID] = model.NotificationPreferenceLevel(entity.Preference)
 	}
-	return result, rows.Err()
+	return result, nil
 }

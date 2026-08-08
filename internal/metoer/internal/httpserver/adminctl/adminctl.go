@@ -15,7 +15,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	gen "src.solsynth.dev/sosys/go/proto"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"src.solsynth.dev/sosys/go/pkg/errs"
 	"src.solsynth.dev/sosys/go/pkg/models"
@@ -54,7 +53,7 @@ func Register(api *gin.RouterGroup, deps Deps) {
 
 // createEmailSendingPlanRequest mirrors CreateEmailSendingPlanRequest.
 type createEmailSendingPlanRequest struct {
-	AccountId            *uuid.UUID `json:"account_id"`
+	AccountId            *uuid.UUID  `json:"account_id"`
 	AccountIds           []uuid.UUID `json:"account_ids"`
 	BroadcastToAll       bool        `json:"broadcast_to_all"`
 	SendingPlanKey       *string     `json:"sending_plan_key"`
@@ -116,8 +115,8 @@ func createPlan(deps Deps) gin.HandlerFunc {
 			MaxEmailsPerDay:      request.MaxEmailsPerDay,
 		}, createdBy)
 		if err != nil {
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			var dbErr interface{ SQLState() string }
+			if errors.As(err, &dbErr) && dbErr.SQLState() == "23505" {
 				c.JSON(http.StatusConflict, errs.New("EMAIL_PLAN_KEY_CONFLICT", "The sending plan key already exists.", http.StatusConflict))
 				return
 			}
@@ -306,9 +305,9 @@ type emailDeliveryOverview struct {
 
 // notificationDeliveryOverview mirrors NotificationDeliveryOverview.
 type notificationDeliveryOverview struct {
-	SendRequests        int64              `json:"send_requests"`
+	SendRequests        int64               `json:"send_requests"`
 	SendRequestsByTopic []deliveryBreakdown `json:"send_requests_by_topic"`
-	Summary             deliverySummary    `json:"summary"`
+	Summary             deliverySummary     `json:"summary"`
 	ByProvider          []deliveryBreakdown `json:"by_provider"`
 	ByTopic             []deliveryBreakdown `json:"by_topic"`
 }

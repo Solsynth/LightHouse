@@ -1,4 +1,4 @@
-// Package db provides the Postgres pool and shared query helpers.
+// Package db provides the shared GORM PostgreSQL handle.
 package db
 
 import (
@@ -6,75 +6,38 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
-
-	"src.solsynth.dev/sosys/go/pkg/models"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-// Connect creates a pgxpool from the DSN with sane production defaults. The
-// type map wraps models.Time so it encodes as a plain time.Time
-// (timestamptz) — pgx cannot encode the defined type directly.
-func Connect(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
-	poolCfg, err := pgxpool.ParseConfig(dsn)
+// Connect opens PostgreSQL through GORM with the service's connection limits.
+func Connect(ctx context.Context, dsn string) (*gorm.DB, error) {
+	database, err := gorm.Open(postgres.Open(dsn), &gorm.Config{SkipDefaultTransaction: true})
 	if err != nil {
-		return nil, fmt.Errorf("parse database dsn: %w", err)
+		return nil, fmt.Errorf("open database: %w", err)
 	}
-	poolCfg.MaxConns = 20
-	poolCfg.MaxConnLifetime = 60 * time.Second
-	poolCfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
-		conn.TypeMap().TryWrapEncodePlanFuncs = append(conn.TypeMap().TryWrapEncodePlanFuncs, wrapModelsTime)
-		return nil
-	}
-	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
+	sqlDB, err := database.DB()
 	if err != nil {
-		return nil, fmt.Errorf("create database pool: %w", err)
+		return nil, fmt.Errorf("get database handle: %w", err)
 	}
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
+	sqlDB.SetMaxOpenConns(20)
+	sqlDB.SetMaxIdleConns(20)
+	sqlDB.SetConnMaxLifetime(time.Minute)
+	if err := sqlDB.PingContext(ctx); err != nil {
+		_ = sqlDB.Close()
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
-	return pool, nil
+	return database, nil
 }
 
-// wrapModelsTime converts models.Time values to time.Time before pgx plans
-// the encode (the shared SDK type implements driver.Valuer on the pointer
-// receiver only; wrapping keeps every store call site unchanged).
-func wrapModelsTime(value any) (pgtype.WrappedEncodePlanNextSetter, any, bool) {
-	switch v := value.(type) {
-	case models.Time:
-		return &timeWrapPlan{}, time.Time(v), true
-	case *models.Time:
-		if v == nil {
-			return &timeWrapPlan{}, (*time.Time)(nil), true
-		}
-		t := time.Time(*v)
-		return &timeWrapPlan{}, &t, true
-	default:
-		return nil, nil, false
+// Close closes the exact underlying SQL handle owned by database.
+func Close(database *gorm.DB) error {
+	if database == nil {
+		return nil
 	}
-}
-
-type timeWrapPlan struct {
-	next pgtype.EncodePlan
-}
-
-func (p *timeWrapPlan) SetNext(next pgtype.EncodePlan) { p.next = next }
-
-// Encode receives the ORIGINAL value (models.Time) and converts it before
-// delegating to the time.Time codec plan.
-func (p *timeWrapPlan) Encode(value any, buf []byte) ([]byte, error) {
-	switch v := value.(type) {
-	case models.Time:
-		return p.next.Encode(time.Time(v), buf)
-	case *models.Time:
-		if v == nil {
-			return p.next.Encode((*time.Time)(nil), buf)
-		}
-		t := time.Time(*v)
-		return p.next.Encode(&t, buf)
-	default:
-		return p.next.Encode(value, buf)
+	sqlDB, err := database.DB()
+	if err != nil {
+		return err
 	}
+	return sqlDB.Close()
 }
