@@ -117,7 +117,7 @@ func TestAuthorizationCodeFlowCreatesSessionWithJSONArrays(t *testing.T) {
 	svc, st, _ := newRefreshTestService(t)
 
 	var accountID string
-	if err := st.DB.QueryRow(ctx, `SELECT id FROM accounts ORDER BY created_at LIMIT 1`).Scan(&accountID); err != nil {
+	if err := st.QueryRow(ctx, `SELECT id FROM accounts ORDER BY created_at LIMIT 1`).Scan(&accountID); err != nil {
 		t.Skipf("no local account to attach the session: %v", err)
 	}
 
@@ -135,11 +135,11 @@ func TestAuthorizationCodeFlowCreatesSessionWithJSONArrays(t *testing.T) {
 	}
 	sessionID := uuid.MustParse(session.Id)
 	t.Cleanup(func() {
-		_, _ = st.DB.Exec(ctx, `DELETE FROM auth_sessions WHERE id = $1`, sessionID)
+		_, _ = st.Exec(ctx, `DELETE FROM auth_sessions WHERE id = $1`, sessionID)
 	})
 
 	var audiences, storedScopes []string
-	if err := st.DB.QueryRow(ctx, `SELECT audiences, scopes FROM auth_sessions WHERE id = $1`, sessionID).Scan(&audiences, &storedScopes); err != nil {
+	if err := st.QueryRow(ctx, `SELECT audiences, scopes FROM auth_sessions WHERE id = $1`, sessionID).Scan(&audiences, &storedScopes); err != nil {
 		t.Fatalf("load created OIDC session: %v", err)
 	}
 	if audiences == nil || storedScopes == nil {
@@ -153,7 +153,7 @@ func TestOidcRefreshTokenFlow(t *testing.T) {
 
 	// Any local account satisfies the accounts JOIN in GetSessionWithAccount.
 	var accountID string
-	if err := st.DB.QueryRow(ctx, `SELECT id FROM accounts ORDER BY created_at LIMIT 1`).Scan(&accountID); err != nil {
+	if err := st.QueryRow(ctx, `SELECT id FROM accounts ORDER BY created_at LIMIT 1`).Scan(&accountID); err != nil {
 		t.Skipf("no local account to attach the session: %v", err)
 	}
 
@@ -169,15 +169,14 @@ func TestOidcRefreshTokenFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal scopes: %v", err)
 	}
-	if _, err := st.DB.Exec(ctx, `INSERT INTO auth_sessions
+	if _, err := st.Exec(ctx, `INSERT INTO auth_sessions
 		(id, type, created_at, last_granted_at, account_id, app_id, audiences, scopes, epoch, updated_at)
 		VALUES ($1, $2, $3, $3, $4, $5, '[]', $6::jsonb, 0, $3)`,
-		sessionID, int(model.SessionTypeOAuth), now, accountID, clientID, string(scopesJSON),
-	); err != nil {
+		sessionID, int(model.SessionTypeOAuth), now, accountID, clientID, string(scopesJSON)); err != nil {
 		t.Fatalf("seed oauth session: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = st.DB.Exec(ctx, `DELETE FROM auth_sessions WHERE id = $1`, sessionID)
+		_, _ = st.Exec(ctx, `DELETE FROM auth_sessions WHERE id = $1`, sessionID)
 	})
 
 	version, err := svc.token.GetAccountVersion(ctx, accountID)

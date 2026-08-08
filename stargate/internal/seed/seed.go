@@ -6,14 +6,11 @@ package seed
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/stargate/internal/permission"
 )
 
-// Seed ensures the permission nodes and the default/verified/moderator/
-// developer groups (with their member enrollments) exist. It is idempotent:
-// missing keys and members are inserted, existing rows are preserved.
-func Seed(ctx context.Context, db *pgxpool.Pool) error {
-	return permission.New(db).EnsureSeeded(ctx)
+func Seed(ctx context.Context, database *gorm.DB) error {
+	return permission.New(database).EnsureSeeded(ctx)
 }

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
@@ -73,11 +72,11 @@ func (s *Store) PermissionGroupList(ctx context.Context, query string, take, off
 		where += ` AND g."key" ILIKE '%' || $1 || '%'`
 	}
 	var total int
-	if err := s.DB.QueryRow(ctx, `SELECT count(*) FROM permission_groups g `+where, args...).Scan(&total); err != nil {
+	if err := s.queryRow(ctx, `SELECT count(*) FROM permission_groups g `+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	args = append(args, take, offset)
-	rows, err := s.DB.Query(ctx, `SELECT g.id, g."key", g.created_at, g.updated_at, g.deleted_at,
+	rows, err := s.query(ctx, `SELECT g.id, g."key", g.created_at, g.updated_at, g.deleted_at,
 		(SELECT count(*) FROM permission_nodes n WHERE n.group_id = g.id AND n.deleted_at IS NULL) AS node_count,
 		(SELECT count(*) FROM permission_group_members m WHERE m.group_id = g.id AND m.deleted_at IS NULL) AS member_count
 		FROM permission_groups g `+where+` ORDER BY g."key" LIMIT $`+itoa(len(args)-1)+` OFFSET $`+itoa(len(args)), args...)
@@ -99,10 +98,10 @@ func (s *Store) PermissionGroupList(ctx context.Context, query string, take, off
 // PermissionGroupGet loads a group by id.
 func (s *Store) PermissionGroupGet(ctx context.Context, groupID uuid.UUID) (*PermissionGroup, error) {
 	var g PermissionGroup
-	err := s.DB.QueryRow(ctx, `SELECT id, "key", created_at, updated_at, deleted_at FROM permission_groups WHERE id = $1 AND deleted_at IS NULL`, groupID).
+	err := s.queryRow(ctx, `SELECT id, "key", created_at, updated_at, deleted_at FROM permission_groups WHERE id = $1 AND deleted_at IS NULL`, groupID).
 		Scan(&g.Id, &g.Key, &g.CreatedAt, &g.UpdatedAt, &g.DeletedAt)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -113,10 +112,10 @@ func (s *Store) PermissionGroupGet(ctx context.Context, groupID uuid.UUID) (*Per
 // PermissionGroupByKey loads a group by key.
 func (s *Store) PermissionGroupByKey(ctx context.Context, key string) (*PermissionGroup, error) {
 	var g PermissionGroup
-	err := s.DB.QueryRow(ctx, `SELECT id, "key", created_at, updated_at, deleted_at FROM permission_groups WHERE "key" = $1 AND deleted_at IS NULL`, key).
+	err := s.queryRow(ctx, `SELECT id, "key", created_at, updated_at, deleted_at FROM permission_groups WHERE "key" = $1 AND deleted_at IS NULL`, key).
 		Scan(&g.Id, &g.Key, &g.CreatedAt, &g.UpdatedAt, &g.DeletedAt)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -134,14 +133,14 @@ func (s *Store) PermissionGroupKeyExists(ctx context.Context, key string, exclud
 	}
 	query += `)`
 	var exists bool
-	err := s.DB.QueryRow(ctx, query, args...).Scan(&exists)
+	err := s.queryRow(ctx, query, args...).Scan(&exists)
 	return exists, err
 }
 
 // PermissionGroupCreate inserts a group.
 func (s *Store) PermissionGroupCreate(ctx context.Context, key string) (*PermissionGroup, error) {
 	var g PermissionGroup
-	err := s.DB.QueryRow(ctx, `INSERT INTO permission_groups (id, "key", created_at, updated_at)
+	err := s.queryRow(ctx, `INSERT INTO permission_groups (id, "key", created_at, updated_at)
 		VALUES (gen_random_uuid(), $1, now(), now()) RETURNING id, "key", created_at, updated_at, deleted_at`, key).
 		Scan(&g.Id, &g.Key, &g.CreatedAt, &g.UpdatedAt, &g.DeletedAt)
 	if err != nil {
@@ -152,7 +151,7 @@ func (s *Store) PermissionGroupCreate(ctx context.Context, key string) (*Permiss
 
 // PermissionGroupUpdateKey renames a group and rewrites its nodes' actors.
 func (s *Store) PermissionGroupUpdateKey(ctx context.Context, groupID uuid.UUID, key string) (*PermissionGroup, error) {
-	tx, err := s.DB.Begin(ctx)
+	tx, err := s.begin(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +172,7 @@ func (s *Store) PermissionGroupUpdateKey(ctx context.Context, groupID uuid.UUID,
 // PermissionGroupDelete soft-deletes a group, its nodes and members; returns
 // the member actors (for notification).
 func (s *Store) PermissionGroupDelete(ctx context.Context, groupID uuid.UUID) ([]string, error) {
-	rows, err := s.DB.Query(ctx, `SELECT actor FROM permission_group_members WHERE group_id = $1 AND deleted_at IS NULL`, groupID)
+	rows, err := s.query(ctx, `SELECT actor FROM permission_group_members WHERE group_id = $1 AND deleted_at IS NULL`, groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +189,7 @@ func (s *Store) PermissionGroupDelete(ctx context.Context, groupID uuid.UUID) ([
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	tx, err := s.DB.Begin(ctx)
+	tx, err := s.begin(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -213,10 +212,10 @@ func (s *Store) PermissionGroupDelete(ctx context.Context, groupID uuid.UUID) ([
 // PermissionNodeList pages a group's nodes.
 func (s *Store) PermissionNodeList(ctx context.Context, groupID uuid.UUID, take, offset int) ([]PermissionNode, int, error) {
 	var total int
-	if err := s.DB.QueryRow(ctx, `SELECT count(*) FROM permission_nodes WHERE group_id = $1 AND deleted_at IS NULL`, groupID).Scan(&total); err != nil {
+	if err := s.queryRow(ctx, `SELECT count(*) FROM permission_nodes WHERE group_id = $1 AND deleted_at IS NULL`, groupID).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.DB.Query(ctx, `SELECT id, type, actor, "key", value, expired_at, affected_at, group_id, created_at, updated_at, deleted_at
+	rows, err := s.query(ctx, `SELECT id, type, actor, "key", value, expired_at, affected_at, group_id, created_at, updated_at, deleted_at
 		FROM permission_nodes WHERE group_id = $1 AND deleted_at IS NULL
 		ORDER BY "key" LIMIT $2 OFFSET $3`, groupID, take, offset)
 	if err != nil {
@@ -236,11 +235,11 @@ func (s *Store) PermissionNodeList(ctx context.Context, groupID uuid.UUID, take,
 
 // PermissionNodeGet loads one node by group+key.
 func (s *Store) PermissionNodeGet(ctx context.Context, groupID uuid.UUID, key string) (*PermissionNode, error) {
-	row := s.DB.QueryRow(ctx, `SELECT id, type, actor, "key", value, expired_at, affected_at, group_id, created_at, updated_at, deleted_at
+	row := s.queryRow(ctx, `SELECT id, type, actor, "key", value, expired_at, affected_at, group_id, created_at, updated_at, deleted_at
 		FROM permission_nodes WHERE group_id = $1 AND "key" = $2 AND deleted_at IS NULL`, groupID, key)
 	n, err := scanPermissionNode(row)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -251,14 +250,14 @@ func (s *Store) PermissionNodeGet(ctx context.Context, groupID uuid.UUID, key st
 // PermissionNodeUpsert inserts or updates a node.
 func (s *Store) PermissionNodeUpsert(ctx context.Context, groupID uuid.UUID, key string, value []byte, actor string, nodeType int, expiredAt, affectedAt *model.Time) (*PermissionNode, error) {
 	var n PermissionNode
-	err := s.DB.QueryRow(ctx, `INSERT INTO permission_nodes (id, type, actor, "key", value, expired_at, affected_at, group_id, created_at, updated_at)
+	err := s.queryRow(ctx, `INSERT INTO permission_nodes (id, type, actor, "key", value, expired_at, affected_at, group_id, created_at, updated_at)
 		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, now(), now())
 		ON CONFLICT DO NOTHING
 		RETURNING id, type, actor, "key", value, expired_at, affected_at, group_id, created_at, updated_at, deleted_at`,
 		nodeType, actor, key, value, expiredAt, affectedAt, groupID).Scan(
 		&n.Id, &n.Type, &n.Actor, &n.Key, &n.Value, &n.ExpiredAt, &n.AffectedAt, &n.GroupId, &n.CreatedAt, &n.UpdatedAt, &n.DeletedAt)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			// Conflict: update the existing row.
 			return s.updatePermissionNode(ctx, groupID, key, value, expiredAt, affectedAt)
 		}
@@ -268,7 +267,7 @@ func (s *Store) PermissionNodeUpsert(ctx context.Context, groupID uuid.UUID, key
 }
 
 func (s *Store) updatePermissionNode(ctx context.Context, groupID uuid.UUID, key string, value []byte, expiredAt, affectedAt *model.Time) (*PermissionNode, error) {
-	row := s.DB.QueryRow(ctx, `UPDATE permission_nodes SET value = $1, expired_at = $2, affected_at = $3, updated_at = now()
+	row := s.queryRow(ctx, `UPDATE permission_nodes SET value = $1, expired_at = $2, affected_at = $3, updated_at = now()
 		WHERE group_id = $4 AND "key" = $5 AND deleted_at IS NULL
 		RETURNING id, type, actor, "key", value, expired_at, affected_at, group_id, created_at, updated_at, deleted_at`,
 		value, expiredAt, affectedAt, groupID, key)
@@ -281,7 +280,7 @@ func (s *Store) updatePermissionNode(ctx context.Context, groupID uuid.UUID, key
 
 // PermissionNodeDelete soft-deletes a node.
 func (s *Store) PermissionNodeDelete(ctx context.Context, groupID uuid.UUID, key string) error {
-	_, err := s.DB.Exec(ctx, `UPDATE permission_nodes SET deleted_at = now(), updated_at = now()
+	_, err := s.exec(ctx, `UPDATE permission_nodes SET deleted_at = now(), updated_at = now()
 		WHERE group_id = $1 AND "key" = $2 AND deleted_at IS NULL`, groupID, key)
 	return err
 }
@@ -289,10 +288,10 @@ func (s *Store) PermissionNodeDelete(ctx context.Context, groupID uuid.UUID, key
 // PermissionMemberList pages a group's members.
 func (s *Store) PermissionMemberList(ctx context.Context, groupID uuid.UUID, take, offset int) ([]PermissionMember, int, error) {
 	var total int
-	if err := s.DB.QueryRow(ctx, `SELECT count(*) FROM permission_group_members WHERE group_id = $1 AND deleted_at IS NULL`, groupID).Scan(&total); err != nil {
+	if err := s.queryRow(ctx, `SELECT count(*) FROM permission_group_members WHERE group_id = $1 AND deleted_at IS NULL`, groupID).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.DB.Query(ctx, `SELECT group_id, actor, expired_at, affected_at, created_at, updated_at, deleted_at
+	rows, err := s.query(ctx, `SELECT group_id, actor, expired_at, affected_at, created_at, updated_at, deleted_at
 		FROM permission_group_members WHERE group_id = $1 AND deleted_at IS NULL ORDER BY actor LIMIT $2 OFFSET $3`, groupID, take, offset)
 	if err != nil {
 		return nil, 0, err
@@ -312,11 +311,11 @@ func (s *Store) PermissionMemberList(ctx context.Context, groupID uuid.UUID, tak
 // PermissionMemberGet loads one member.
 func (s *Store) PermissionMemberGet(ctx context.Context, groupID uuid.UUID, actor string) (*PermissionMember, error) {
 	var m PermissionMember
-	err := s.DB.QueryRow(ctx, `SELECT group_id, actor, expired_at, affected_at, created_at, updated_at, deleted_at
+	err := s.queryRow(ctx, `SELECT group_id, actor, expired_at, affected_at, created_at, updated_at, deleted_at
 		FROM permission_group_members WHERE group_id = $1 AND actor = $2 AND deleted_at IS NULL`, groupID, actor).
 		Scan(&m.GroupId, &m.Actor, &m.ExpiredAt, &m.AffectedAt, &m.CreatedAt, &m.UpdatedAt, &m.DeletedAt)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -327,7 +326,7 @@ func (s *Store) PermissionMemberGet(ctx context.Context, groupID uuid.UUID, acto
 // PermissionMemberUpsert inserts or revives a membership.
 func (s *Store) PermissionMemberUpsert(ctx context.Context, groupID uuid.UUID, actor string, expiredAt, affectedAt *model.Time) (*PermissionMember, error) {
 	var m PermissionMember
-	err := s.DB.QueryRow(ctx, `INSERT INTO permission_group_members (group_id, actor, expired_at, affected_at, created_at, updated_at)
+	err := s.queryRow(ctx, `INSERT INTO permission_group_members (group_id, actor, expired_at, affected_at, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, now(), now())
 		ON CONFLICT (group_id, actor) DO UPDATE SET expired_at = EXCLUDED.expired_at, affected_at = EXCLUDED.affected_at, deleted_at = NULL, updated_at = now()
 		RETURNING group_id, actor, expired_at, affected_at, created_at, updated_at, deleted_at`,
@@ -341,14 +340,14 @@ func (s *Store) PermissionMemberUpsert(ctx context.Context, groupID uuid.UUID, a
 
 // PermissionMemberDelete soft-deletes a membership.
 func (s *Store) PermissionMemberDelete(ctx context.Context, groupID uuid.UUID, actor string) error {
-	_, err := s.DB.Exec(ctx, `UPDATE permission_group_members SET deleted_at = now(), updated_at = now()
+	_, err := s.exec(ctx, `UPDATE permission_group_members SET deleted_at = now(), updated_at = now()
 		WHERE group_id = $1 AND actor = $2 AND deleted_at IS NULL`, groupID, actor)
 	return err
 }
 
 // PermissionGroupMemberActors lists a group's member actors.
 func (s *Store) PermissionGroupMemberActors(ctx context.Context, groupID uuid.UUID) ([]string, error) {
-	rows, err := s.DB.Query(ctx, `SELECT actor FROM permission_group_members WHERE group_id = $1 AND deleted_at IS NULL ORDER BY actor`, groupID)
+	rows, err := s.query(ctx, `SELECT actor FROM permission_group_members WHERE group_id = $1 AND deleted_at IS NULL ORDER BY actor`, groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -366,7 +365,7 @@ func (s *Store) PermissionGroupMemberActors(ctx context.Context, groupID uuid.UU
 
 // PermissionMembersForActor lists an actor's memberships with group keys.
 func (s *Store) PermissionMembersForActor(ctx context.Context, actor string) ([]PermissionMemberWithGroup, error) {
-	rows, err := s.DB.Query(ctx, `SELECT m.group_id, m.actor, m.expired_at, m.affected_at, m.created_at, m.updated_at, m.deleted_at, g."key"
+	rows, err := s.query(ctx, `SELECT m.group_id, m.actor, m.expired_at, m.affected_at, m.created_at, m.updated_at, m.deleted_at, g."key"
 		FROM permission_group_members m
 		JOIN permission_groups g ON g.id = m.group_id AND g.deleted_at IS NULL
 		WHERE m.actor = $1 AND m.deleted_at IS NULL ORDER BY g."key"`, actor)
@@ -387,7 +386,7 @@ func (s *Store) PermissionMembersForActor(ctx context.Context, actor string) ([]
 
 // PermissionDirectNodes lists an actor's direct nodes.
 func (s *Store) PermissionDirectNodes(ctx context.Context, actor string) ([]PermissionNode, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, type, actor, "key", value, expired_at, affected_at, group_id, created_at, updated_at, deleted_at
+	rows, err := s.query(ctx, `SELECT id, type, actor, "key", value, expired_at, affected_at, group_id, created_at, updated_at, deleted_at
 		FROM permission_nodes WHERE actor = $1 AND group_id IS NULL AND deleted_at IS NULL ORDER BY "key"`, actor)
 	if err != nil {
 		return nil, err
@@ -406,7 +405,7 @@ func (s *Store) PermissionDirectNodes(ctx context.Context, actor string) ([]Perm
 
 // PermissionEffectiveNodes lists the actor's effective nodes (direct + group).
 func (s *Store) PermissionEffectiveNodes(ctx context.Context, actor string, now time.Time) ([]PermissionNode, error) {
-	rows, err := s.DB.Query(ctx, `SELECT n.id, n.type, n.actor, n."key", n.value, n.expired_at, n.affected_at, n.group_id, n.created_at, n.updated_at, n.deleted_at
+	rows, err := s.query(ctx, `SELECT n.id, n.type, n.actor, n."key", n.value, n.expired_at, n.affected_at, n.group_id, n.created_at, n.updated_at, n.deleted_at
 		FROM permission_nodes n
 		WHERE n.deleted_at IS NULL
 		AND (n.expired_at IS NULL OR n.expired_at > $2)
@@ -436,7 +435,7 @@ func (s *Store) PermissionEffectiveNodes(ctx context.Context, actor string, now 
 	return nodes, rows.Err()
 }
 
-func scanPermissionNode(row pgx.Row) (*PermissionNode, error) {
+func scanPermissionNode(row rowScanner) (*PermissionNode, error) {
 	var n PermissionNode
 	err := row.Scan(&n.Id, &n.Type, &n.Actor, &n.Key, &n.Value, &n.ExpiredAt, &n.AffectedAt, &n.GroupId, &n.CreatedAt, &n.UpdatedAt, &n.DeletedAt)
 	if err != nil {
@@ -449,7 +448,7 @@ func scanPermissionNode(row pgx.Row) (*PermissionNode, error) {
 // mirroring PermissionService.AddPermissionNode.
 func (s *Store) InsertPermissionNode(ctx context.Context, actor string, nodeType int, key string, value []byte, expiredAt, affectedAt *model.Time) (*PermissionNode, error) {
 	var n PermissionNode
-	err := s.DB.QueryRow(ctx, `INSERT INTO permission_nodes (id, type, actor, "key", value, expired_at, affected_at, created_at, updated_at)
+	err := s.queryRow(ctx, `INSERT INTO permission_nodes (id, type, actor, "key", value, expired_at, affected_at, created_at, updated_at)
 		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, now(), now())
 		RETURNING id, type, actor, "key", value, expired_at, affected_at, group_id, created_at, updated_at, deleted_at`,
 		nodeType, actor, key, value, expiredAt, affectedAt).Scan(
@@ -470,14 +469,14 @@ func (s *Store) RemovePermissionNode(ctx context.Context, actor, key string, nod
 		query += ` AND type = $4`
 		args = append(args, *nodeType)
 	}
-	_, err := s.DB.Exec(ctx, query, args...)
+	_, err := s.exec(ctx, query, args...)
 	return err
 }
 
 // RemovePermissionNodeFromGroup soft-deletes a group node by actor+key
 // (type pinned to Group), mirroring PermissionService.RemovePermissionNodeFromGroup.
 func (s *Store) RemovePermissionNodeFromGroup(ctx context.Context, groupID uuid.UUID, actor, key string, now time.Time) error {
-	_, err := s.DB.Exec(ctx, `UPDATE permission_nodes SET deleted_at = $1, updated_at = $1
+	_, err := s.exec(ctx, `UPDATE permission_nodes SET deleted_at = $1, updated_at = $1
 		WHERE group_id = $2 AND actor = $3 AND "key" = $4 AND type = 1 AND deleted_at IS NULL`,
 		now, groupID, actor, key)
 	return err

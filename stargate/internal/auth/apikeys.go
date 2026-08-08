@@ -2,11 +2,11 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"github.com/google/uuid"
 	"strings"
 	"time"
-
-	"github.com/google/uuid"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/store"
@@ -29,7 +29,7 @@ func (s *AuthService) GetApiKey(ctx context.Context, id uuid.UUID, accountID *uu
 		query += ` AND account_id = $2`
 		args = append(args, *accountID)
 	}
-	err := s.store.DB.QueryRow(ctx, query, args...).Scan(
+	err := s.store.QueryRow(ctx, query, args...).Scan(
 		&key.Id, &key.Label, &key.AccountId, &appID, &sessionID, &key.CreatedAt, &key.UpdatedAt, &deletedAt)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) || err.Error() == "no rows in result set" {
@@ -63,7 +63,7 @@ func (s *AuthService) CreateApiKey(ctx context.Context, accountID string, label 
 		parentID = &parentSession.Id
 	}
 
-	tx, err := s.store.DB.Begin(ctx)
+	tx, err := s.store.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func (s *AuthService) IssueApiKeyToken(ctx context.Context, key *model.ApiKey) (
 		return "", errors.New("API key session is not available.")
 	}
 	now := time.Now().UTC()
-	tag, err := s.store.DB.Exec(ctx, `UPDATE auth_sessions SET last_granted_at = $1, updated_at = $1
+	tag, err := s.store.Exec(ctx, `UPDATE auth_sessions SET last_granted_at = $1, updated_at = $1
 		WHERE id = $2 AND (expired_at IS NULL OR expired_at > $1)`, now, sessionID)
 	if err != nil {
 		return "", err
@@ -131,7 +131,7 @@ func (s *AuthService) IssueApiKeyToken(ctx context.Context, key *model.ApiKey) (
 // RevokeApiKeyToken soft-deletes the key and revokes its session.
 func (s *AuthService) RevokeApiKeyToken(ctx context.Context, key *model.ApiKey) error {
 	now := time.Now().UTC()
-	tx, err := s.store.DB.Begin(ctx)
+	tx, err := s.store.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -156,7 +156,7 @@ func (s *AuthService) RevokeApiKeyToken(ctx context.Context, key *model.ApiKey) 
 // epoch bump).
 func (s *AuthService) RotateApiKeyToken(ctx context.Context, key *model.ApiKey) (*model.ApiKey, error) {
 	now := time.Now().UTC()
-	tx, err := s.store.DB.Begin(ctx)
+	tx, err := s.store.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -261,11 +261,19 @@ func (s *AuthService) UpsertAuthorizedAppAsync(ctx context.Context, accountID, a
 	}
 	var existing model.AuthorizedApp
 	var slug, name *string
-	err := s.store.DB.QueryRow(ctx, `SELECT id, app_slug, app_name, scopes FROM authorized_apps
+	var scopesRaw []byte
+	err := s.store.QueryRow(ctx, `SELECT id, app_slug, app_name, scopes FROM authorized_apps
 		WHERE account_id = $1 AND app_id = $2 AND type = $3 AND deleted_at IS NULL`,
-		accountID, appID, int(appType)).Scan(&existing.Id, &slug, &name, &existing.Scopes)
+		accountID, appID, int(appType)).Scan(&existing.Id, &slug, &name, &scopesRaw)
+	if err == nil {
+		if decodeErr := json.Unmarshal(scopesRaw, &existing.Scopes); decodeErr != nil {
+			return nil, decodeErr
+		}
+	}
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return nil, err
+	}
 	if err != nil {
-		// Create.
 		existing = model.AuthorizedApp{
 			Type:             appType,
 			AccountId:        accountID,
@@ -277,7 +285,7 @@ func (s *AuthService) UpsertAuthorizedAppAsync(ctx context.Context, accountID, a
 			LastUsedAt:       model.NewTime(now),
 		}
 		var id string
-		if err := s.store.DB.QueryRow(ctx, `INSERT INTO authorized_apps
+		if err := s.store.QueryRow(ctx, `INSERT INTO authorized_apps
 			(id, type, account_id, app_id, app_slug, app_name, scopes, last_authorized_at, last_used_at, created_at, updated_at)
 			VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$7,$8,$8) RETURNING id`,
 			int(appType), accountID, appID, appSlug, appName, existing.Scopes, now, now).Scan(&id); err != nil {
@@ -301,7 +309,7 @@ func (s *AuthService) UpsertAuthorizedAppAsync(ctx context.Context, accountID, a
 	existing.LastAuthorizedAt = model.NewTime(now)
 	existing.LastUsedAt = model.NewTime(now)
 	existing.UpdatedAt = model.NewTime(now)
-	_, err = s.store.DB.Exec(ctx, `UPDATE authorized_apps SET last_authorized_at = $1, last_used_at = $1, updated_at = $1,
+	_, err = s.store.Exec(ctx, `UPDATE authorized_apps SET last_authorized_at = $1, last_used_at = $1, updated_at = $1,
 		app_slug = $2, app_name = $3, scopes = $4 WHERE id = $5`,
 		now, existing.AppSlug, existing.AppName, existing.Scopes, existing.Id)
 	if err != nil {
@@ -319,7 +327,7 @@ func (s *AuthService) RevokeAuthorizedAppAccessByIdAsync(ctx context.Context, ac
 		args = append(args, int(*appType))
 	}
 	var appID string
-	err := s.store.DB.QueryRow(ctx, query, args...).Scan(&appID)
+	err := s.store.QueryRow(ctx, query, args...).Scan(&appID)
 	if err != nil {
 		return 0, nil
 	}
@@ -337,7 +345,7 @@ func (s *AuthService) RevokeAuthorizedAppAccessAsync(ctx context.Context, accoun
 		query += ` AND type = $4`
 		args = append(args, int(*appType))
 	}
-	tag, err := s.store.DB.Exec(ctx, query, args...)
+	tag, err := s.store.Exec(ctx, query, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -347,7 +355,7 @@ func (s *AuthService) RevokeAuthorizedAppAccessAsync(ctx context.Context, accoun
 	}
 
 	// Revoke the app's sessions.
-	sessionRows, err := s.store.DB.Query(ctx, `SELECT id FROM auth_sessions
+	sessionRows, err := s.store.Query(ctx, `SELECT id FROM auth_sessions
 		WHERE account_id = $1 AND app_id = $2 AND (expired_at IS NULL OR expired_at > $3)`, accountID, appID, now)
 	if err != nil {
 		return count, err
@@ -367,7 +375,7 @@ func (s *AuthService) RevokeAuthorizedAppAccessAsync(ctx context.Context, accoun
 	}
 
 	// Revoke the app's API keys.
-	keyRows, err := s.store.DB.Query(ctx, `SELECT id, session_id FROM api_keys
+	keyRows, err := s.store.Query(ctx, `SELECT id, session_id FROM api_keys
 		WHERE account_id = $1 AND app_id = $2 AND deleted_at IS NULL`, accountID, appID)
 	if err != nil {
 		return count, err

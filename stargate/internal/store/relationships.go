@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
@@ -45,14 +44,14 @@ func (s *Store) GetRelationship(ctx context.Context, accountID, relatedID uuid.U
 		q += ` AND status = $3`
 		args = append(args, *status)
 	}
-	return scanRelationship(s.DB.QueryRow(ctx, q, args...))
+	return scanRelationship(s.queryRow(ctx, q, args...))
 }
 
 // HasExistingRelationship reports whether a non-deleted relationship exists
 // in either direction (mirrors RelationshipService.HasExistingRelationship).
 func (s *Store) HasExistingRelationship(ctx context.Context, accountID, relatedID uuid.UUID) (bool, error) {
 	var count int
-	err := s.DB.QueryRow(ctx, `SELECT COUNT(*) FROM account_relationships
+	err := s.queryRow(ctx, `SELECT COUNT(*) FROM account_relationships
 		WHERE deleted_at IS NULL AND (
 			(account_id = $1 AND related_id = $2) OR
 			(account_id = $2 AND related_id = $1))`, accountID, relatedID).Scan(&count)
@@ -63,7 +62,7 @@ func (s *Store) HasExistingRelationship(ctx context.Context, accountID, relatedI
 // server-side like the C# SaveChanges auditable interceptor).
 func (s *Store) InsertRelationship(ctx context.Context, r *model.Relationship) error {
 	now := time.Now().UTC()
-	_, err := s.DB.Exec(ctx, `INSERT INTO account_relationships
+	_, err := s.exec(ctx, `INSERT INTO account_relationships
 		(account_id, related_id, alias, created_at, updated_at, expired_at, status, degrade_to_status)
 		VALUES ($1, $2, $3, $4, $4, $5, $6, $7)`,
 		r.AccountId, r.RelatedId, r.Alias, now, r.ExpiredAt, r.Status, r.DegradeToStatus)
@@ -78,7 +77,7 @@ func (s *Store) InsertRelationship(ctx context.Context, r *model.Relationship) e
 // SaveRelationship writes the mutable columns of an existing row
 // (alias, expired_at, status, degrade_to_status, deleted_at, updated_at).
 func (s *Store) SaveRelationship(ctx context.Context, r *model.Relationship) error {
-	_, err := s.DB.Exec(ctx, `UPDATE account_relationships SET
+	_, err := s.exec(ctx, `UPDATE account_relationships SET
 		alias = $3, expired_at = $4, status = $5, degrade_to_status = $6,
 		deleted_at = $7, updated_at = $8
 		WHERE account_id = $1 AND related_id = $2`,
@@ -96,7 +95,7 @@ func (s *Store) HardDeleteRelationship(ctx context.Context, accountID, relatedID
 		q += ` AND status = $3`
 		args = append(args, *status)
 	}
-	tag, err := s.DB.Exec(ctx, q, args...)
+	tag, err := s.exec(ctx, q, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -108,12 +107,12 @@ func (s *Store) HardDeleteRelationship(ctx context.Context, accountID, relatedID
 // returns the total count for X-Total.
 func (s *Store) ListRelationshipsPage(ctx context.Context, accountID uuid.UUID, offset, take int) ([]model.Relationship, int, error) {
 	var total int
-	if err := s.DB.QueryRow(ctx, `SELECT COUNT(*) FROM account_relationships
+	if err := s.queryRow(ctx, `SELECT COUNT(*) FROM account_relationships
 		WHERE account_id = $1 AND deleted_at IS NULL AND status != $2`,
 		accountID, model.RelationshipPending).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.DB.Query(ctx, `SELECT `+relationshipColumns+` FROM account_relationships
+	rows, err := s.query(ctx, `SELECT `+relationshipColumns+` FROM account_relationships
 		WHERE account_id = $1 AND deleted_at IS NULL AND status != $2
 		ORDER BY created_at DESC OFFSET $3 LIMIT $4`,
 		accountID, model.RelationshipPending, offset, take)
@@ -128,7 +127,7 @@ func (s *Store) ListRelationshipsPage(ctx context.Context, accountID uuid.UUID, 
 // ListRelationshipRequests lists pending relationships where the account is
 // either side (mirrors ListRelationshipRequests).
 func (s *Store) ListRelationshipRequests(ctx context.Context, accountID uuid.UUID) ([]model.Relationship, error) {
-	rows, err := s.DB.Query(ctx, `SELECT `+relationshipColumns+` FROM account_relationships
+	rows, err := s.query(ctx, `SELECT `+relationshipColumns+` FROM account_relationships
 		WHERE deleted_at IS NULL AND status = $1 AND (account_id = $2 OR related_id = $2)
 		ORDER BY created_at`, model.RelationshipPending, accountID)
 	if err != nil {
@@ -142,7 +141,7 @@ func (s *Store) ListRelationshipRequests(ctx context.Context, accountID uuid.UUI
 // (used for the 200 close-friend cap).
 func (s *Store) CountRelationshipsByStatus(ctx context.Context, accountID uuid.UUID, status model.RelationshipStatus) (int, error) {
 	var count int
-	err := s.DB.QueryRow(ctx, `SELECT COUNT(*) FROM account_relationships
+	err := s.queryRow(ctx, `SELECT COUNT(*) FROM account_relationships
 		WHERE account_id = $1 AND deleted_at IS NULL AND status = $2`, accountID, status).Scan(&count)
 	return count, err
 }
@@ -166,7 +165,7 @@ func (s *Store) ListRelatedAccountIDs(ctx context.Context, accountID uuid.UUID, 
 		q += ` AND status = $2`
 		args = append(args, status)
 	}
-	rows, err := s.DB.Query(ctx, q, args...)
+	rows, err := s.query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +184,7 @@ func (s *Store) ListRelatedAccountIDs(ctx context.Context, accountID uuid.UUID, 
 // ListAllBlockedAccountIDs returns the distinct non-expired account IDs
 // blocked in either direction (mirrors ListAllBlockedAccountIds).
 func (s *Store) ListAllBlockedAccountIDs(ctx context.Context, accountID uuid.UUID) ([]string, error) {
-	rows, err := s.DB.Query(ctx, `SELECT DISTINCT
+	rows, err := s.query(ctx, `SELECT DISTINCT
 			CASE WHEN account_id = $1 THEN related_id ELSE account_id END
 		FROM account_relationships
 		WHERE deleted_at IS NULL AND status = $2
@@ -211,7 +210,7 @@ func (s *Store) ListAllBlockedAccountIDs(ctx context.Context, accountID uuid.UUI
 func (s *Store) GetRelationshipDelta(ctx context.Context, accountID uuid.UUID, since time.Time) (*RelationshipDelta, error) {
 	delta := &RelationshipDelta{ServerTimestamp: time.Now().UTC()}
 
-	addedRows, err := s.DB.Query(ctx, `SELECT `+relationshipColumns+` FROM account_relationships
+	addedRows, err := s.query(ctx, `SELECT `+relationshipColumns+` FROM account_relationships
 		WHERE account_id = $1 AND deleted_at IS NULL AND created_at > $2`, accountID, since)
 	if err != nil {
 		return nil, err
@@ -222,7 +221,7 @@ func (s *Store) GetRelationshipDelta(ctx context.Context, accountID uuid.UUID, s
 		return nil, err
 	}
 
-	updatedRows, err := s.DB.Query(ctx, `SELECT `+relationshipColumns+` FROM account_relationships
+	updatedRows, err := s.query(ctx, `SELECT `+relationshipColumns+` FROM account_relationships
 		WHERE account_id = $1 AND deleted_at IS NULL AND updated_at > $2 AND created_at <= $2`,
 		accountID, since)
 	if err != nil {
@@ -234,7 +233,7 @@ func (s *Store) GetRelationshipDelta(ctx context.Context, accountID uuid.UUID, s
 		return nil, err
 	}
 
-	removedRows, err := s.DB.Query(ctx, `SELECT related_id FROM account_relationships
+	removedRows, err := s.query(ctx, `SELECT related_id FROM account_relationships
 		WHERE account_id = $1 AND deleted_at IS NOT NULL AND deleted_at > $2`, accountID, since)
 	if err != nil {
 		return nil, err
@@ -253,7 +252,7 @@ func (s *Store) GetRelationshipDelta(ctx context.Context, accountID uuid.UUID, s
 // ListOutgoingRelationships lists all non-deleted outgoing rows for an
 // account (mirrors the inspect query — no status/expiry filter).
 func (s *Store) ListOutgoingRelationships(ctx context.Context, accountID uuid.UUID) ([]model.Relationship, error) {
-	rows, err := s.DB.Query(ctx, `SELECT `+relationshipColumns+` FROM account_relationships
+	rows, err := s.query(ctx, `SELECT `+relationshipColumns+` FROM account_relationships
 		WHERE account_id = $1 AND deleted_at IS NULL`, accountID)
 	if err != nil {
 		return nil, err
@@ -284,13 +283,13 @@ func (s *Store) listFollowPage(ctx context.Context, accountID uuid.UUID, offset,
 		joinCol, whereCol = "related_id", "account_id"
 	}
 	var total int
-	if err := s.DB.QueryRow(ctx, `SELECT COUNT(*) FROM account_relationships r
+	if err := s.queryRow(ctx, `SELECT COUNT(*) FROM account_relationships r
 		WHERE r.deleted_at IS NULL AND (r.expired_at IS NULL OR r.expired_at > now())
 			AND r.`+whereCol+` = $1 AND (r.status = $2 OR r.status = $3)`,
 		accountID, model.RelationshipFriends, model.RelationshipCloseFriend).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.DB.Query(ctx, `SELECT `+accountJoinColumns+` FROM account_relationships r
+	rows, err := s.query(ctx, `SELECT `+accountJoinColumns+` FROM account_relationships r
 		JOIN accounts a ON a.id = r.`+joinCol+`
 		WHERE r.deleted_at IS NULL AND (r.expired_at IS NULL OR r.expired_at > now())
 			AND r.`+whereCol+` = $1 AND (r.status = $2 OR r.status = $3)
@@ -312,12 +311,12 @@ func (s *Store) listFollowPage(ctx context.Context, accountID uuid.UUID, offset,
 	return accounts, total, rows.Err()
 }
 
-func scanRelationship(row pgx.Row) (*model.Relationship, error) {
+func scanRelationship(row rowScanner) (*model.Relationship, error) {
 	r := &model.Relationship{}
 	err := row.Scan(&r.AccountId, &r.RelatedId, &r.Alias, &r.CreatedAt, &r.UpdatedAt,
 		&r.DeletedAt, &r.ExpiredAt, &r.Status, &r.DegradeToStatus)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -325,7 +324,7 @@ func scanRelationship(row pgx.Row) (*model.Relationship, error) {
 	return r, nil
 }
 
-func collectRelationships(rows pgx.Rows) ([]model.Relationship, error) {
+func collectRelationships(rows rowsScanner) ([]model.Relationship, error) {
 	var rels []model.Relationship
 	for rows.Next() {
 		r, err := scanRelationship(rows)
@@ -337,7 +336,7 @@ func collectRelationships(rows pgx.Rows) ([]model.Relationship, error) {
 	return rels, rows.Err()
 }
 
-func scanAccountJoin(row pgx.Row) (*model.Account, error) {
+func scanAccountJoin(row rowScanner) (*model.Account, error) {
 	account := &model.Account{}
 	var automatedID *uuid.UUID
 	err := row.Scan(&account.Id, &account.Name, &account.Nick, &account.Language, &account.Region,

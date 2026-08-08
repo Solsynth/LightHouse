@@ -21,8 +21,8 @@ import (
 	"github.com/google/uuid"
 	gen "src.solsynth.dev/sosys/go/proto"
 
-	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/go/pkg/errs"
+	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
@@ -1803,17 +1803,17 @@ func activateAccount(d Deps) gin.HandlerFunc {
 // activateAccountFlow mirrors ActivateAccountAndGrantDefaultPermissions:
 // set activated_at and (re)grant the `verified` group membership.
 func activateAccountFlow(c *gin.Context, d Deps, accountID uuid.UUID, activatedAt time.Time) error {
-	if _, err := d.Store.DB.Exec(c.Request.Context(),
+	if _, err := d.Store.Exec(c.Request.Context(),
 		`UPDATE accounts SET activated_at = $1, updated_at = now()
 		 WHERE id = $2 AND (activated_at IS NULL OR activated_at < $1)`, activatedAt, accountID); err != nil {
 		return err
 	}
 	var groupID uuid.UUID
-	if err := d.Store.DB.QueryRow(c.Request.Context(),
+	if err := d.Store.QueryRow(c.Request.Context(),
 		`SELECT id FROM permission_groups WHERE "key" = $1 AND deleted_at IS NULL`, "verified").Scan(&groupID); err != nil {
 		return err
 	}
-	if _, err := d.Store.DB.Exec(c.Request.Context(),
+	if _, err := d.Store.Exec(c.Request.Context(),
 		`INSERT INTO permission_group_members (group_id, actor, affected_at, expired_at, created_at, updated_at)
 		 VALUES ($1, $2, NULL, NULL, now(), now())
 		 ON CONFLICT (group_id, actor) DO UPDATE SET affected_at = NULL, expired_at = NULL, updated_at = now()`,
@@ -1836,12 +1836,12 @@ func adminDeleteAccount(d Deps) gin.HandlerFunc {
 			return
 		}
 		now := time.Now().UTC()
-		if _, err := d.Store.DB.Exec(c.Request.Context(),
+		if _, err := d.Store.Exec(c.Request.Context(),
 			`UPDATE auth_sessions SET deleted_at = $1, updated_at = $1 WHERE account_id = $2`, now, accountID); err != nil {
 			serverError(c, err, d)
 			return
 		}
-		if _, err := d.Store.DB.Exec(c.Request.Context(),
+		if _, err := d.Store.Exec(c.Request.Context(),
 			`UPDATE accounts SET deleted_at = $1, updated_at = $1 WHERE id = $2 AND deleted_at IS NULL`, now, accountID); err != nil {
 			serverError(c, err, d)
 			return

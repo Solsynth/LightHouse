@@ -44,8 +44,8 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/spellctl"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/wellknownctl"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
-	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/migrate"
+	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/nats"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
 	redisclient "src.solsynth.dev/sosys/stargate/internal/redis"
@@ -94,13 +94,17 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := db.Connect(ctx, cfg.Database.DSN)
+	database, err := db.Connect(ctx, cfg.Database.DSN)
 	if err != nil {
 		return err
 	}
-	defer pool.Close()
+	defer func() {
+		if err := db.Close(database); err != nil {
+			log.Error("close database", "error", err)
+		}
+	}()
 
-	if err := migrate.Run(ctx, pool); err != nil {
+	if err := migrate.Run(ctx, database); err != nil {
 		return err
 	}
 
@@ -109,13 +113,12 @@ func run(log *slog.Logger) error {
 		log.Warn("redis unavailable; starting without cache", "error", err)
 		rc = &redisclient.Client{}
 	}
-
 	nc, err := nats.Connect(ctx, cfg)
 	if err != nil {
 		log.Warn("nats unavailable; events disabled", "error", err)
 	}
 
-	st := store.New(pool)
+	st := store.New(database)
 
 	jwtService, err := auth.NewJWTService(cfg)
 	if err != nil {
@@ -132,16 +135,16 @@ func run(log *slog.Logger) error {
 	appProvider := &grpcclient.DevelopAppProvider{Client: clients.Develop, Log: log}
 
 	tokenAuth := auth.NewTokenAuthService(st, rc, jwtService, perkProvider, appProvider, log)
-	logs := actionlog.New(pool)
+	logs := actionlog.New(database)
 	geoService := geo.NewService(cfg.GeoIP.DatabasePath)
 	authService := auth.NewAuthService(st, rc, cfg, geoService, jwtService, tokenAuth, nc, logs, log)
 
-	permService := permission.New(pool)
+	permService := permission.New(database)
 
 	toucher := middleware.NewLastSeenToucher(st, log)
 	defer toucher.Close()
 
-	if err := seed.Seed(ctx, pool); err != nil {
+	if err := seed.Seed(ctx, database); err != nil {
 		return err
 	}
 
@@ -411,7 +414,6 @@ func registerGrpcServices(
 	})
 }
 
-
 // consumeProfileFieldUpdated applies Passport-published profile field patches
 // (last_seen touches, XP deltas, social-credit recomputes, active badge and
 // verification changes) to Stargate's account_profiles after the profile
@@ -465,7 +467,6 @@ func consumeProfileFieldUpdated(ctx context.Context, nc *nats.Client, st *store.
 		log.Warn("accounts.profile_updated consumer stopped", "error", err)
 	}
 }
-
 
 // consumeLastActive applies the fleet's last-active signals (published by the
 // shared DysonTokenAuthHandler on accounts.last_active): profile last_seen_at

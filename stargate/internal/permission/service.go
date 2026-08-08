@@ -2,15 +2,17 @@ package permission
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 // Evaluation semantics (mirroring PermissionService.cs):
@@ -40,12 +42,33 @@ import (
 // HasPermission, GetPermission, AddPermissionNode, AddPermissionNodeToGroup,
 // RemovePermissionNode, RemovePermissionNodeFromGroup.
 type Service struct {
-	DB *pgxpool.Pool
+	DB *gorm.DB
 }
 
-// New returns a permission Service backed by the given pool.
-func New(db *pgxpool.Pool) *Service {
-	return &Service{DB: db}
+func New(database any) *Service {
+	if handle, ok := database.(*gorm.DB); ok {
+		return &Service{DB: handle}
+	}
+	value := reflect.ValueOf(database)
+	method := value.MethodByName("Config")
+	if method.IsValid() {
+		results := method.Call(nil)
+		if len(results) == 1 {
+			config := results[0]
+			connConfig := config.Elem().FieldByName("ConnConfig")
+			if connConfig.IsValid() {
+				connString := connConfig.MethodByName("ConnString")
+				if connString.IsValid() {
+					dsn := connString.Call(nil)[0].String()
+					handle, err := gorm.Open(postgres.Open(dsn), &gorm.Config{SkipDefaultTransaction: true})
+					if err == nil {
+						return &Service{DB: handle}
+					}
+				}
+			}
+		}
+	}
+	panic("permission.New requires *gorm.DB")
 }
 
 // PermissionNodeActorType mirrors the C# PermissionNodeActorType enum.
@@ -98,7 +121,7 @@ func (s *Service) ListPermissionKeys(ctx context.Context, accountID uuid.UUID) (
 	actor := accountID.String()
 	now := time.Now().UTC()
 
-	rows, err := s.DB.Query(ctx, `
+	rows, err := s.Query(ctx, `
 		SELECT n.key
 		FROM permission_nodes n
 		WHERE n.deleted_at IS NULL
@@ -153,7 +176,7 @@ const actorScopeSQL = `(
 // filters type, expiry and the global soft-delete filter, and flattens the
 // blocked_permissions jsonb arrays with an OrdinalIgnoreCase comparer.
 func (s *Service) blockedPermissions(ctx context.Context, actor string, now time.Time) (map[string]struct{}, error) {
-	rows, err := s.DB.Query(ctx, `
+	rows, err := s.Query(ctx, `
 		SELECT blocked_permissions
 		FROM punishments
 		WHERE account_id = $1
@@ -252,7 +275,7 @@ func (s *Service) findPermissionNode(ctx context.Context, actor, key string, now
 	}
 
 	// Wildcard candidates.
-	rows, err := s.DB.Query(ctx, `
+	rows, err := s.Query(ctx, `
 		SELECT n.key, n.value
 		FROM permission_nodes n
 		WHERE n.deleted_at IS NULL
@@ -292,11 +315,11 @@ func (s *Service) findPermissionNode(ctx context.Context, actor, key string, now
 // queryPermissionValue runs a SELECT returning a single jsonb value column
 // and scans it into a bool (seeded nodes store `true`; other JSON values are
 // decoded like the C# DeserializePermissionValue<bool>).
-func (s *Service) queryPermissionValue(ctx context.Context, sql string, args ...any) (bool, bool, error) {
-	row := s.DB.QueryRow(ctx, sql, args...)
+func (s *Service) queryPermissionValue(ctx context.Context, query string, args ...any) (bool, bool, error) {
+	row := s.QueryRow(ctx, query, args...)
 	var value bool
 	err := row.Scan(&value)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return false, false, nil
 	}
 	if err != nil {
@@ -592,15 +615,15 @@ func (s *Service) GrantPermissionGroup(ctx context.Context, accountID uuid.UUID,
 		return false, nil
 	}
 	var groupID uuid.UUID
-	if err := s.DB.QueryRow(ctx, `SELECT id FROM permission_groups
+	if err := s.QueryRow(ctx, `SELECT id FROM permission_groups
 		WHERE "key" = $1 AND deleted_at IS NULL`, groupKey).Scan(&groupID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
 		}
 		return false, fmt.Errorf("permission: lookup group %q: %w", groupKey, err)
 	}
 	actor := accountID.String()
-	if _, err := s.DB.Exec(ctx, `INSERT INTO permission_group_members
+	if _, err := s.Exec(ctx, `INSERT INTO permission_group_members
 		(group_id, actor, affected_at, expired_at, created_at, updated_at)
 		VALUES ($1, $2, NULL, NULL, now(), now())
 		ON CONFLICT (group_id, actor) DO UPDATE SET affected_at = NULL, expired_at = NULL, updated_at = now()`,
@@ -617,7 +640,7 @@ func (s *Service) GrantPermissionGroup(ctx context.Context, accountID uuid.UUID,
 // every account is enrolled in `default` while activated accounts are
 // enrolled in `verified`. Idempotent and safe to run on every boot.
 func (s *Service) EnsureSeeded(ctx context.Context) error {
-	tx, err := s.DB.Begin(ctx)
+	tx, err := s.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("permission: seed begin: %w", err)
 	}
@@ -658,11 +681,9 @@ func (s *Service) EnsureSeeded(ctx context.Context) error {
 		{groupKey: VerifiedGroupKey, whereClause: "AND a.activated_at IS NOT NULL"},
 	}
 	for _, ms := range memberSets {
-		// ON CONFLICT makes the insert idempotent; the C# computes the
-		// missing set then inserts, which is equivalent for the target set.
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO permission_group_members (group_id, actor, created_at, updated_at)
-			SELECT g.id, a.id::text, now(), now()
+			INSERT INTO permission_group_members (group_id, actor, affected_at, expired_at, created_at, updated_at)
+			SELECT g.id, a.id::text, NULL, NULL, now(), now()
 			FROM accounts a
 			JOIN permission_groups g ON g.key = $1 AND g.deleted_at IS NULL
 			WHERE a.deleted_at IS NULL `+ms.whereClause+`
@@ -670,8 +691,8 @@ func (s *Service) EnsureSeeded(ctx context.Context) error {
 		`, ms.groupKey); err != nil {
 			return fmt.Errorf("permission: seed members for %q: %w", ms.groupKey, err)
 		}
-	}
 
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("permission: seed commit: %w", err)
 	}
@@ -682,12 +703,16 @@ func (s *Service) EnsureSeeded(ctx context.Context) error {
 // the group, then insert nodes for the keys it does not already have
 // (actor "group:{key}", type Group, value true). Nodes are soft-delete
 // filtered, matching the EF global query filter.
-func ensureGroup(ctx context.Context, tx pgx.Tx, key string, keys []string) error {
+func ensureGroup(ctx context.Context, tx interface {
+	Query(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRow(context.Context, string, ...any) rowScanner
+	Exec(context.Context, string, ...any) (commandTag, error)
+}, key string, keys []string) error {
 	var groupID uuid.UUID
 	err := tx.QueryRow(ctx, `
 		SELECT id FROM permission_groups WHERE key = $1 AND deleted_at IS NULL
 	`, key).Scan(&groupID)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) {
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO permission_groups (id, key, created_at, updated_at)
 			VALUES (gen_random_uuid(), $1, now(), now())

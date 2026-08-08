@@ -206,7 +206,7 @@ func (s *AuthService) collectSessionsToRevoke(ctx context.Context, root uuid.UUI
 			}
 			collected[id] = struct{}{}
 		}
-		rows, err := s.store.DB.Query(ctx,
+		rows, err := s.store.Query(ctx,
 			`SELECT id FROM auth_sessions WHERE parent_session_id = ANY($1)`, frontier)
 		if err != nil {
 			return nil, err
@@ -332,11 +332,11 @@ func (s *AuthService) CreateSessionAndIssueTokens(ctx context.Context, challenge
 
 	// Reuse an existing session bound to this challenge.
 	var existingSessionID *uuid.UUID
-	err := s.store.DB.QueryRow(ctx,
+	err := s.store.QueryRow(ctx,
 		`SELECT id FROM auth_sessions WHERE challenge_id = $1 AND account_id = $2 LIMIT 1`,
 		challenge.Id, challenge.AccountId).Scan(&existingSessionID)
 	if err == nil && existingSessionID != nil {
-		_, _ = s.store.DB.Exec(ctx,
+		_, _ = s.store.Exec(ctx,
 			`UPDATE auth_sessions SET last_granted_at = $1 WHERE id = $2`, now, *existingSessionID)
 		session, err := s.store.GetSessionWithAccount(ctx, *existingSessionID)
 		if err == nil {
@@ -344,7 +344,7 @@ func (s *AuthService) CreateSessionAndIssueTokens(ctx context.Context, challenge
 		}
 	}
 
-	tx, err := s.store.DB.Begin(ctx)
+	tx, err := s.store.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -480,7 +480,7 @@ func (s *AuthService) RefreshSessionAndIssueTokens(ctx context.Context, refreshT
 	}
 
 	newExpiry := now.Add(s.cfg.RefreshTokenLifetime())
-	_, err = s.store.DB.Exec(ctx,
+	_, err = s.store.Exec(ctx,
 		`UPDATE auth_sessions SET last_granted_at = $1, expired_at = $2, epoch = epoch + 1 WHERE id = $3`,
 		now, newExpiry, sessionID)
 	if err != nil {
@@ -589,7 +589,7 @@ func (s *AuthService) RecoverAccountWithRecoveryCode(ctx context.Context, accoun
 		return nil, &ErrInvalid{Message: "Invalid recovery code."}
 	}
 
-	tx, err := s.store.DB.Begin(ctx)
+	tx, err := s.store.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -637,7 +637,7 @@ func (s *AuthService) RecoverAccountWithRecoveryCode(ctx context.Context, accoun
 		ClientId:      &device.Id,
 	}
 	var sessionID uuid.UUID
-	err = s.store.DB.QueryRow(ctx, `INSERT INTO auth_sessions
+	err = s.store.QueryRow(ctx, `INSERT INTO auth_sessions
 		(id, type, created_at, last_granted_at, expired_at, account_id, ip_address, user_agent, location, client_id, epoch, updated_at)
 		VALUES (gen_random_uuid(),$1,$2,$2,$3,$4,$5,$6,$7,$8,0,$2) RETURNING id`,
 		int(session.Type), now, session.ExpiredAt, session.AccountId, session.IpAddress,
@@ -664,13 +664,13 @@ func (s *AuthService) RecoverAccountWithRecoveryCode(ctx context.Context, accoun
 func (s *AuthService) GetOrCreateDevice(ctx context.Context, accountID, deviceID string, deviceName *string, platform model.ClientPlatform) (*model.AuthClient, error) {
 	now := time.Now().UTC()
 	var device model.AuthClient
-	err := s.store.DB.QueryRow(ctx, `SELECT id, device_id, device_name, device_label, account_id, platform, created_at, updated_at, deleted_at
+	err := s.store.QueryRow(ctx, `SELECT id, device_id, device_name, device_label, account_id, platform, created_at, updated_at, deleted_at
 		FROM auth_clients WHERE device_id = $1 AND account_id = $2`,
 		deviceID, accountID).Scan(&device.Id, &device.DeviceId, &device.DeviceName, &device.DeviceLabel,
 		&device.AccountId, &device.Platform, &device.CreatedAt, &device.UpdatedAt, &device.DeletedAt)
 	if err == nil {
 		if device.DeletedAt != nil {
-			_, _ = s.store.DB.Exec(ctx,
+			_, _ = s.store.Exec(ctx,
 				`UPDATE auth_clients SET deleted_at = NULL, updated_at = $1 WHERE id = $2`, now, device.Id)
 		}
 		return &device, nil
@@ -684,12 +684,12 @@ func (s *AuthService) GetOrCreateDevice(ctx context.Context, accountID, deviceID
 		device.DeviceName = *deviceName
 	}
 	device.Id = uuid.NewString()
-	err = s.store.DB.QueryRow(ctx, `INSERT INTO auth_clients (id, platform, device_id, account_id, device_name, created_at, updated_at)
+	err = s.store.QueryRow(ctx, `INSERT INTO auth_clients (id, platform, device_id, account_id, device_name, created_at, updated_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$6) RETURNING id`,
 		device.Id, int(platform), deviceID, accountID, device.DeviceName, now).Scan(&device.Id)
 	if err != nil {
 		// Unique violation race: re-read including soft-deleted rows.
-		row := s.store.DB.QueryRow(ctx, `SELECT id, device_id, device_name, device_label, account_id, platform, created_at, updated_at, deleted_at
+		row := s.store.QueryRow(ctx, `SELECT id, device_id, device_name, device_label, account_id, platform, created_at, updated_at, deleted_at
 			FROM auth_clients WHERE device_id = $1 AND account_id = $2`,
 			deviceID, accountID)
 		err2 := row.Scan(&device.Id, &device.DeviceId, &device.DeviceName, &device.DeviceLabel,
@@ -698,7 +698,7 @@ func (s *AuthService) GetOrCreateDevice(ctx context.Context, accountID, deviceID
 			return nil, err
 		}
 		if device.DeletedAt != nil {
-			_, _ = s.store.DB.Exec(ctx,
+			_, _ = s.store.Exec(ctx,
 				`UPDATE auth_clients SET deleted_at = NULL, updated_at = $1 WHERE id = $2`, now, device.Id)
 		}
 	}
@@ -742,13 +742,12 @@ func (s *AuthService) CreateSessionFromParent(ctx context.Context, parentSession
 	}
 	var sessionID uuid.UUID
 	locJSON, _ := json.Marshal(session.Location)
-	err = s.store.DB.QueryRow(ctx, `INSERT INTO auth_sessions
+	err = s.store.QueryRow(ctx, `INSERT INTO auth_sessions
 		(id, type, created_at, last_granted_at, expired_at, account_id, ip_address, user_agent, location,
 		 parent_session_id, client_id, audiences, scopes, app_id, epoch, updated_at)
 		VALUES (gen_random_uuid(),$1,$2,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,0,$2) RETURNING id`,
 		int(session.Type), now, session.ExpiredAt, session.AccountId, session.IpAddress, session.UserAgent,
-		locJSON, session.ParentSessionId, session.ClientId, session.Audiences, session.Scopes, session.AppId,
-	).Scan(&sessionID)
+		locJSON, session.ParentSessionId, session.ClientId, session.Audiences, session.Scopes, session.AppId,).Scan(&sessionID)
 	if err != nil {
 		return nil, err
 	}

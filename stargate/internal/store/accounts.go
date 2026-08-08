@@ -6,29 +6,27 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
+	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
 
-// Account lookup helpers for the public accounts surface (search, contacts,
-// connections, batch loads).
-
-// GetAccountWithProfileByNameFold resolves an account by name with the
-// case-insensitive semantics of Passport's LookupAccount (the Padlock gRPC
-// search is matched with OrdinalIgnoreCase on Name).
 func (s *Store) GetAccountWithProfileByNameFold(ctx context.Context, name string) (*model.Account, error) {
-	q := `SELECT ` + accountColsPrefixed("a") + `, ` + profileColsPrefixed("p") + ` FROM accounts a
-		LEFT JOIN account_profiles p ON p.account_id = a.id AND p.deleted_at IS NULL
-		WHERE LOWER(a.name) = LOWER($1) AND a.deleted_at IS NULL`
-	return scanAccountWithProfile(s.DB.QueryRow(ctx, q, name))
+	var entity AccountEntity
+	if err := s.DB.WithContext(ctx).Where("LOWER(name) = LOWER(?)", name).First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	account := accountFromEntity(&entity)
+	var profile ProfileEntity
+	result := s.DB.WithContext(ctx).Where("account_id = ?", entity.ID).First(&profile)
+	if result.Error == nil {
+		account.Profile = profileFromEntity(&profile)
+	} else if !isNotFound(result.Error) {
+		return nil, result.Error
+	}
+	return account, nil
 }
 
-// SearchAccounts runs the Padlock account search ported locally: exact
-// ILIKE %query% on name/nick, plus pg_trgm similarity when the query has at
-// least 3 characters (CreateSearchContext). Results are ordered like the C#
-// gRPC SearchAccount: ILIKE hits first, then similarity(name), similarity
-// (nick), then name. The result is capped like the C# transport (100).
 func (s *Store) SearchAccounts(ctx context.Context, query string, limit int) ([]model.Account, error) {
 	normalized := strings.TrimSpace(query)
 	if normalized == "" {
@@ -38,118 +36,84 @@ func (s *Store) SearchAccounts(ctx context.Context, query string, limit int) ([]
 		limit = 100
 	}
 	pattern := "%" + normalized + "%"
-
-	var (
-		rows pgx.Rows
-		err  error
-	)
-	if len(normalized) < 3 {
-		rows, err = s.DB.Query(ctx, `SELECT `+accountColumns+` FROM accounts
-			WHERE deleted_at IS NULL AND (name ILIKE $1 OR nick ILIKE $1)
-			ORDER BY name LIMIT $2`, pattern, limit)
-	} else {
-		rows, err = s.DB.Query(ctx, `SELECT `+accountColumns+` FROM accounts
-			WHERE deleted_at IS NULL AND (
-				name ILIKE $1 OR nick ILIKE $1 OR name % $2 OR nick % $2)
-			ORDER BY (name ILIKE $1 OR nick ILIKE $1) DESC,
-				similarity(name, $2) DESC, similarity(nick, $2) DESC, name
-			LIMIT $3`, pattern, normalized, limit)
+	statement := s.DB.WithContext(ctx).Where("name ILIKE ? OR nick ILIKE ?", pattern, pattern)
+	if len(normalized) >= 3 {
+		statement = statement.Or("name % ? OR nick % ?", normalized, normalized).
+			Order(gorm.Expr("(name ILIKE ? OR nick ILIKE ?) DESC", pattern, pattern)).
+			Order(gorm.Expr("similarity(name, ?) DESC", normalized)).
+			Order(gorm.Expr("similarity(nick, ?) DESC", normalized))
 	}
-	if err != nil {
+	var entities []AccountEntity
+	if err := statement.Order("name").Limit(limit).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var accounts []model.Account
-	for rows.Next() {
-		account, err := scanAccount(rows)
-		if err != nil {
-			return nil, err
-		}
-		accounts = append(accounts, *account)
+	accounts := make([]model.Account, 0, len(entities))
+	for i := range entities {
+		accounts = append(accounts, *accountFromEntity(&entities[i]))
 	}
-	return accounts, rows.Err()
+	return accounts, nil
 }
 
-// GetAccountsByIDs loads accounts by id, preserving the requested order and
-// skipping missing/deleted rows (used for close-friends and mutual-friends
-// lists).
 func (s *Store) GetAccountsByIDs(ctx context.Context, ids []uuid.UUID) ([]model.Account, error) {
 	if len(ids) == 0 {
 		return []model.Account{}, nil
 	}
-	rows, err := s.DB.Query(ctx, `SELECT `+accountColumns+` FROM accounts
-		WHERE id = ANY($1) AND deleted_at IS NULL ORDER BY created_at`, ids)
-	if err != nil {
+	var entities []AccountEntity
+	if err := s.DB.WithContext(ctx).Where("id IN ?", ids).Order("created_at").Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var accounts []model.Account
-	for rows.Next() {
-		account, err := scanAccount(rows)
-		if err != nil {
-			return nil, err
-		}
-		accounts = append(accounts, *account)
+	accounts := make([]model.Account, 0, len(entities))
+	for i := range entities {
+		accounts = append(accounts, *accountFromEntity(&entities[i]))
 	}
-	return accounts, rows.Err()
+	return accounts, nil
 }
 
-// ListPublicContacts lists the account's public contacts (is_public = true).
 func (s *Store) ListPublicContacts(ctx context.Context, accountID uuid.UUID) ([]model.Contact, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at
-		FROM account_contacts WHERE account_id = $1 AND is_public AND deleted_at IS NULL
-		ORDER BY created_at`, accountID)
-	if err != nil {
+	var entities []ContactEntity
+	if err := s.DB.WithContext(ctx).Where("account_id = ? AND is_public = ?", accountID, true).
+		Order("created_at").Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var contacts []model.Contact
-	for rows.Next() {
-		var c model.Contact
-		if err := rows.Scan(&c.Id, &c.Type, &c.VerifiedAt, &c.IsPrimary, &c.IsPublic, &c.Content,
-			&c.AccountId, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt); err != nil {
-			return nil, err
-		}
-		contacts = append(contacts, c)
+	contacts := make([]model.Contact, 0, len(entities))
+	for i := range entities {
+		entity := &entities[i]
+		contacts = append(contacts, model.Contact{Id: entity.ID.String(), Type: entity.Type,
+			VerifiedAt: timePtr(entity.VerifiedAt), IsPrimary: entity.IsPrimary, IsPublic: entity.IsPublic,
+			Content: entity.Content, AccountId: entity.AccountID.String(), CreatedAt: timePtr(&entity.CreatedAt),
+			UpdatedAt: timePtr(&entity.UpdatedAt), DeletedAt: deletedTime(entity.DeletedAt)})
 	}
-	return contacts, rows.Err()
+	return contacts, nil
 }
 
-// ListPublicConnections lists the account's public connections
-// (is_public = true) with the secret token columns excluded.
 func (s *Store) ListPublicConnections(ctx context.Context, accountID uuid.UUID) ([]model.Connection, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, provider, provided_identifier, meta, last_used_at, is_public, account_id, created_at, updated_at, deleted_at
-		FROM account_connections WHERE account_id = $1 AND is_public AND deleted_at IS NULL
-		ORDER BY created_at`, accountID)
-	if err != nil {
+	var entities []ConnectionEntity
+	if err := s.DB.WithContext(ctx).Where("account_id = ? AND is_public = ?", accountID, true).
+		Order("created_at").Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var connections []model.Connection
-	for rows.Next() {
-		var c model.Connection
-		var meta []byte
-		if err := rows.Scan(&c.Id, &c.Provider, &c.ProvidedIdentifier, &meta, &c.LastUsedAt,
-			&c.IsPublic, &c.AccountId, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt); err != nil {
-			return nil, err
-		}
-		_ = unmarshalMeta(meta, &c.Meta)
-		connections = append(connections, c)
+	connections := make([]model.Connection, 0, len(entities))
+	for i := range entities {
+		entity := &entities[i]
+		connection := model.Connection{Id: entity.ID.String(), Provider: entity.Provider,
+			ProvidedIdentifier: entity.ProvidedIdentifier, LastUsedAt: timePtr(entity.LastUsedAt),
+			IsPublic: entity.IsPublic, AccountId: entity.AccountID.String(),
+			CreatedAt: timePtr(&entity.CreatedAt), UpdatedAt: timePtr(&entity.UpdatedAt),
+			DeletedAt: deletedTime(entity.DeletedAt)}
+		_ = decodeJSONValue(entity.Meta, &connection.Meta)
+		connections = append(connections, connection)
 	}
-	return connections, rows.Err()
+	return connections, nil
 }
 
-// unmarshalMeta decodes a jsonb column into a map, tolerating NULL/empty.
 func unmarshalMeta(raw []byte, dest *map[string]any) error {
 	if len(raw) == 0 || string(raw) == "null" {
 		*dest = map[string]any{}
 		return nil
 	}
-	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil {
+	if err := json.Unmarshal(raw, dest); err != nil {
 		*dest = map[string]any{}
 		return err
 	}
-	*dest = m
 	return nil
 }

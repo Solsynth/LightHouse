@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
@@ -23,7 +22,7 @@ var sessionWithAccountColumns = `s.id, s.type, s.last_granted_at, s.expired_at, 
 // for an account + app pair, mirroring OidcProviderService.FindValidSessionAsync
 // (s.Type == SessionType.OAuth, app_id == client id, not expired, newest first).
 func (s *Store) FindValidOauthSession(ctx context.Context, accountID, appID string) (*model.AuthSession, error) {
-	row := s.DB.QueryRow(ctx, `SELECT `+sessionWithAccountColumns+`
+	row := s.queryRow(ctx, `SELECT `+sessionWithAccountColumns+`
 		FROM auth_sessions s
 		JOIN accounts a ON a.id = s.account_id
 		WHERE s.account_id = $1 AND s.app_id = $2
@@ -37,7 +36,7 @@ func (s *Store) FindValidOauthSession(ctx context.Context, accountID, appID stri
 // GetEmailContact returns the first email contact of an account (primary
 // first), mirroring the AccountContacts email lookups in the OIDC provider.
 func (s *Store) GetEmailContact(ctx context.Context, accountID string) (*model.Contact, error) {
-	row := s.DB.QueryRow(ctx, `SELECT id, type, verified_at, is_primary, is_public, content, account_id,
+	row := s.queryRow(ctx, `SELECT id, type, verified_at, is_primary, is_public, content, account_id,
 		created_at, updated_at, deleted_at
 		FROM account_contacts
 		WHERE account_id = $1 AND type = $2 AND deleted_at IS NULL
@@ -47,7 +46,7 @@ func (s *Store) GetEmailContact(ctx context.Context, accountID string) (*model.C
 	err := row.Scan(&contact.Id, &contact.Type, &contact.VerifiedAt, &contact.IsPrimary, &contact.IsPublic,
 		&contact.Content, &contact.AccountId, &contact.CreatedAt, &contact.UpdatedAt, &contact.DeletedAt)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -60,12 +59,12 @@ func (s *Store) GetEmailContact(ctx context.Context, accountID string) (*model.C
 // fallback in OidcProviderService.HandleRefreshTokenFlowAsync.
 func (s *Store) GetAuthorizedAppScopes(ctx context.Context, accountID, appID string) ([]string, error) {
 	var scopes []string
-	err := s.DB.QueryRow(ctx, `SELECT scopes FROM authorized_apps
+	err := s.queryRow(ctx, `SELECT scopes FROM authorized_apps
 		WHERE account_id = $1 AND app_id = $2 AND type = $3 AND deleted_at IS NULL
 		ORDER BY last_authorized_at DESC LIMIT 1`,
 		accountID, appID, int(model.AuthorizedAppTypeOidc)).Scan(&scopes)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -76,7 +75,7 @@ func (s *Store) GetAuthorizedAppScopes(ctx context.Context, accountID, appID str
 // UpdateSessionScopes persists a session's scope list, mirroring the UPDATE
 // in OidcProviderService.SetSessionScopesAsync.
 func (s *Store) UpdateSessionScopes(ctx context.Context, sessionID string, scopes []string) error {
-	_, err := s.DB.Exec(ctx, `UPDATE auth_sessions SET scopes = $1, updated_at = $2 WHERE id = $3`,
+	_, err := s.exec(ctx, `UPDATE auth_sessions SET scopes = $1, updated_at = $2 WHERE id = $3`,
 		scopes, time.Now().UTC(), sessionID)
 	return err
 }
@@ -84,13 +83,13 @@ func (s *Store) UpdateSessionScopes(ctx context.Context, sessionID string, scope
 // UpdateSessionRefresh bumps a session's grant time, expiry and epoch on an
 // OIDC refresh-token rotation (mirrors HandleRefreshTokenFlowAsync).
 func (s *Store) UpdateSessionRefresh(ctx context.Context, sessionID string, lastGrantedAt, expiredAt time.Time) error {
-	_, err := s.DB.Exec(ctx, `UPDATE auth_sessions
+	_, err := s.exec(ctx, `UPDATE auth_sessions
 		SET last_granted_at = $1, expired_at = $2, epoch = epoch + 1, updated_at = $1 WHERE id = $3`,
 		lastGrantedAt, expiredAt, sessionID)
 	return err
 }
 
-func scanSessionWithAccount(row pgx.Row) (*model.AuthSession, error) {
+func scanSessionWithAccount(row rowScanner) (*model.AuthSession, error) {
 	session := &model.AuthSession{}
 	var (
 		audiences, scopes                             []string
@@ -109,7 +108,7 @@ func scanSessionWithAccount(row pgx.Row) (*model.AuthSession, error) {
 		&account.IsSuperuser, &automatedID, &account.CreatedAt, &account.UpdatedAt, &account.DeletedAt,
 	)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err

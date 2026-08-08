@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
@@ -75,12 +74,12 @@ func (s *Store) AdminListAccounts(ctx context.Context, query, orderBy string, ta
 	}
 
 	var total int
-	if err := s.DB.QueryRow(ctx, `SELECT count(*) FROM accounts a `+where, args...).Scan(&total); err != nil {
+	if err := s.queryRow(ctx, `SELECT count(*) FROM accounts a `+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
 	args = append(args, take, offset)
-	rows, err := s.DB.Query(ctx, `SELECT `+accountColumns+` FROM accounts a `+where+` ORDER BY `+order+` LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
+	rows, err := s.query(ctx, `SELECT `+accountColumns+` FROM accounts a `+where+` ORDER BY `+order+` LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -108,7 +107,7 @@ func (s *Store) AdminLookupAccount(ctx context.Context, identifier string) (*mod
 		return s.GetAccountByID(ctx, id)
 	}
 	probe := strings.TrimSpace(identifier)
-	row := s.DB.QueryRow(ctx, `SELECT `+accountColumns+` FROM accounts WHERE name ILIKE $1 AND deleted_at IS NULL`, probe)
+	row := s.queryRow(ctx, `SELECT `+accountColumns+` FROM accounts WHERE name ILIKE $1 AND deleted_at IS NULL`, probe)
 	account, err := scanAccount(row)
 	if err == nil {
 		return account, nil
@@ -117,7 +116,7 @@ func (s *Store) AdminLookupAccount(ctx context.Context, identifier string) (*mod
 		return nil, err
 	}
 	// Fall back to an email/phone contact lookup (contact.Account included).
-	row = s.DB.QueryRow(ctx, `SELECT a.id, a.name, a.nick, a.language, a.region, a.activated_at, a.is_superuser,
+	row = s.queryRow(ctx, `SELECT a.id, a.name, a.nick, a.language, a.region, a.activated_at, a.is_superuser,
 		a.automated_id, a.created_at, a.updated_at, a.deleted_at
 		FROM account_contacts c
 		JOIN accounts a ON a.id = c.account_id
@@ -126,7 +125,7 @@ func (s *Store) AdminLookupAccount(ctx context.Context, identifier string) (*mod
 		LIMIT 1`, probe)
 	contactAccount, err := scanAccount(row)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -140,7 +139,7 @@ func (s *Store) AdminContactSummaries(ctx context.Context, accountIDs []uuid.UUI
 	if len(accountIDs) == 0 {
 		return result, nil
 	}
-	rows, err := s.DB.Query(ctx, `SELECT account_id, is_primary, verified_at, content FROM account_contacts
+	rows, err := s.query(ctx, `SELECT account_id, is_primary, verified_at, content FROM account_contacts
 		WHERE account_id = ANY($1) AND deleted_at IS NULL`, accountIDs)
 	if err != nil {
 		return nil, err
@@ -176,7 +175,7 @@ func (s *Store) AdminFactorSummaries(ctx context.Context, accountIDs []uuid.UUID
 	if len(accountIDs) == 0 {
 		return result, nil
 	}
-	rows, err := s.DB.Query(ctx, `SELECT account_id, type, enabled_at FROM account_auth_factors
+	rows, err := s.query(ctx, `SELECT account_id, type, enabled_at FROM account_auth_factors
 		WHERE account_id = ANY($1) AND deleted_at IS NULL`, accountIDs)
 	if err != nil {
 		return nil, err
@@ -206,7 +205,7 @@ func (s *Store) AdminActiveSessionCounts(ctx context.Context, accountIDs []uuid.
 	if len(accountIDs) == 0 {
 		return result, nil
 	}
-	rows, err := s.DB.Query(ctx, `SELECT account_id, count(*) FROM auth_sessions
+	rows, err := s.query(ctx, `SELECT account_id, count(*) FROM auth_sessions
 		WHERE account_id = ANY($1) AND (expired_at IS NULL OR expired_at > $2)
 		GROUP BY account_id`, accountIDs, now)
 	if err != nil {
@@ -230,7 +229,7 @@ func (s *Store) AdminActiveDeviceCounts(ctx context.Context, accountIDs []uuid.U
 	if len(accountIDs) == 0 {
 		return result, nil
 	}
-	rows, err := s.DB.Query(ctx, `SELECT account_id, count(*) FROM auth_clients
+	rows, err := s.query(ctx, `SELECT account_id, count(*) FROM auth_clients
 		WHERE account_id = ANY($1) AND deleted_at IS NULL
 		GROUP BY account_id`, accountIDs)
 	if err != nil {
@@ -273,7 +272,7 @@ func (s *Store) AdminPunishmentGet(ctx context.Context, accountID, punishmentID 
 // AdminPunishmentsCreatedBy lists punishments created by the given admin.
 func (s *Store) AdminPunishmentsCreatedBy(ctx context.Context, creatorID uuid.UUID, take, offset int) ([]model.Punishment, int, error) {
 	var total int
-	if err := s.DB.QueryRow(ctx, `SELECT count(*) FROM punishments WHERE creator_id = $1 AND deleted_at IS NULL`, creatorID).Scan(&total); err != nil {
+	if err := s.queryRow(ctx, `SELECT count(*) FROM punishments WHERE creator_id = $1 AND deleted_at IS NULL`, creatorID).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	punishments, err := s.adminQueryPunishments(ctx, `WHERE p.creator_id = $1 AND p.deleted_at IS NULL
@@ -289,7 +288,7 @@ func (s *Store) AdminPunishmentsCreatedBy(ctx context.Context, creatorID uuid.UU
 // AccountPunishmentController).
 func (s *Store) AdminActivePunishmentsForAccount(ctx context.Context, accountID uuid.UUID, now time.Time, take, offset int) ([]model.Punishment, int, error) {
 	var total int
-	if err := s.DB.QueryRow(ctx, `SELECT count(*) FROM punishments
+	if err := s.queryRow(ctx, `SELECT count(*) FROM punishments
 		WHERE account_id = $1 AND deleted_at IS NULL AND (expired_at IS NULL OR expired_at > $2)`, accountID, now).Scan(&total); err != nil {
 		return nil, 0, err
 	}
@@ -306,7 +305,7 @@ func (s *Store) AdminActivePunishmentsForAccount(ctx context.Context, accountID 
 // (me/punishments), most recent first.
 func (s *Store) AdminAllPunishmentsForAccount(ctx context.Context, accountID uuid.UUID, take, offset int) ([]model.Punishment, int, error) {
 	var total int
-	if err := s.DB.QueryRow(ctx, `SELECT count(*) FROM punishments WHERE account_id = $1 AND deleted_at IS NULL`, accountID).Scan(&total); err != nil {
+	if err := s.queryRow(ctx, `SELECT count(*) FROM punishments WHERE account_id = $1 AND deleted_at IS NULL`, accountID).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	punishments, err := s.adminQueryPunishments(ctx, `WHERE p.account_id = $1 AND p.deleted_at IS NULL
@@ -361,7 +360,7 @@ func (s *Store) adminQueryPunishments(ctx context.Context, where string, args ..
 	query := `SELECT p.id, p.reason, p.expired_at, p.type, p.blocked_permissions, p.account_id,
 		p.creator_id, p.created_at, p.updated_at, p.deleted_at
 		FROM punishments p ` + where
-	rows, err := s.DB.Query(ctx, query, args...)
+	rows, err := s.query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -387,7 +386,7 @@ func (s *Store) AdminPunishmentCreate(ctx context.Context, accountID, creatorID 
 	if blocked == nil {
 		blocked = []string{}
 	}
-	row := s.DB.QueryRow(ctx, `INSERT INTO punishments (id, account_id, creator_id, reason, expired_at, type, blocked_permissions, created_at, updated_at)
+	row := s.queryRow(ctx, `INSERT INTO punishments (id, account_id, creator_id, reason, expired_at, type, blocked_permissions, created_at, updated_at)
 		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, now(), now())
 		RETURNING id, reason, expired_at, type, blocked_permissions, account_id, creator_id, created_at, updated_at, deleted_at`,
 		accountID, creatorID, reason, expiredAt, ptype, blocked)
@@ -425,12 +424,12 @@ func (s *Store) AdminPunishmentUpdate(ctx context.Context, punishmentID uuid.UUI
 		fields = append(fields, "creator_id = $"+strconv.Itoa(len(args)))
 	}
 	args = append(args, punishmentID)
-	row := s.DB.QueryRow(ctx, `UPDATE punishments SET `+strings.Join(fields, ", ")+`
+	row := s.queryRow(ctx, `UPDATE punishments SET `+strings.Join(fields, ", ")+`
 		WHERE id = $`+strconv.Itoa(len(args))+` AND deleted_at IS NULL
 		RETURNING id, reason, expired_at, type, blocked_permissions, account_id, creator_id, created_at, updated_at, deleted_at`, args...)
 	p, err := scanPunishment(row)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -440,12 +439,12 @@ func (s *Store) AdminPunishmentUpdate(ctx context.Context, punishmentID uuid.UUI
 
 // AdminPunishmentDelete soft-deletes a punishment (EF Remove semantics).
 func (s *Store) AdminPunishmentDelete(ctx context.Context, accountID, punishmentID uuid.UUID) (*model.Punishment, error) {
-	row := s.DB.QueryRow(ctx, `UPDATE punishments SET deleted_at = now(), updated_at = now()
+	row := s.queryRow(ctx, `UPDATE punishments SET deleted_at = now(), updated_at = now()
 		WHERE id = $1 AND account_id = $2 AND deleted_at IS NULL
 		RETURNING id, reason, expired_at, type, blocked_permissions, account_id, creator_id, created_at, updated_at, deleted_at`, punishmentID, accountID)
 	p, err := scanPunishment(row)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -453,14 +452,14 @@ func (s *Store) AdminPunishmentDelete(ctx context.Context, accountID, punishment
 	return p, nil
 }
 
-func scanPunishment(row pgx.Row) (*model.Punishment, error) {
+func scanPunishment(row rowScanner) (*model.Punishment, error) {
 	var p model.Punishment
 	var blocked []string
 	var creatorID *uuid.UUID
 	err := row.Scan(&p.Id, &p.Reason, &p.ExpiredAt, &p.Type, &blocked, &p.AccountId,
 		&creatorID, &p.CreatedAt, &p.UpdatedAt, &p.DeletedAt)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -478,10 +477,10 @@ func (s *Store) AdminListDevices(ctx context.Context, accountID uuid.UUID, inclu
 		where += ` AND deleted_at IS NULL`
 	}
 	var total int
-	if err := s.DB.QueryRow(ctx, `SELECT count(*) FROM auth_clients `+where, accountID).Scan(&total); err != nil {
+	if err := s.queryRow(ctx, `SELECT count(*) FROM auth_clients `+where, accountID).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.DB.Query(ctx, `SELECT id, device_id, device_name, device_label, account_id, platform, created_at, updated_at, deleted_at
+	rows, err := s.query(ctx, `SELECT id, device_id, device_name, device_label, account_id, platform, created_at, updated_at, deleted_at
 		FROM auth_clients `+where+` ORDER BY created_at DESC LIMIT $2 OFFSET $3`, accountID, take, offset)
 	if err != nil {
 		return nil, 0, err
@@ -506,7 +505,7 @@ func (s *Store) AdminListDeviceSessions(ctx context.Context, clientIDs []uuid.UU
 	if len(clientIDs) == 0 {
 		return result, nil
 	}
-	rows, err := s.DB.Query(ctx, `SELECT s.id, s.type, s.last_granted_at, s.expired_at, s.audiences, s.scopes,
+	rows, err := s.query(ctx, `SELECT s.id, s.type, s.last_granted_at, s.expired_at, s.audiences, s.scopes,
 		s.ip_address, s.user_agent, s.location, s.account_id, s.client_id, s.parent_session_id, s.challenge_id,
 		s.app_id, s.epoch, s.created_at, s.updated_at, s.deleted_at
 		FROM auth_sessions s WHERE s.client_id = ANY($1)
@@ -529,13 +528,13 @@ func (s *Store) AdminListDeviceSessions(ctx context.Context, clientIDs []uuid.UU
 
 // AdminGetDeviceByDeviceId loads an auth client by its stable device id.
 func (s *Store) AdminGetDeviceByDeviceId(ctx context.Context, accountID uuid.UUID, deviceID string) (*model.AuthClient, error) {
-	row := s.DB.QueryRow(ctx, `SELECT id, device_id, device_name, device_label, account_id, platform, created_at, updated_at, deleted_at
+	row := s.queryRow(ctx, `SELECT id, device_id, device_name, device_label, account_id, platform, created_at, updated_at, deleted_at
 		FROM auth_clients WHERE account_id = $1 AND device_id = $2 AND deleted_at IS NULL`, accountID, deviceID)
 	var d model.AuthClient
 	err := row.Scan(&d.Id, &d.DeviceId, &d.DeviceName, &d.DeviceLabel, &d.AccountId, &d.Platform,
 		&d.CreatedAt, &d.UpdatedAt, &d.DeletedAt)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -546,7 +545,7 @@ func (s *Store) AdminGetDeviceByDeviceId(ctx context.Context, accountID uuid.UUI
 // AdminUpdateDeviceLabel renames the device (device_name column, mirroring
 // UpdateDeviceName).
 func (s *Store) AdminUpdateDeviceLabel(ctx context.Context, accountID uuid.UUID, deviceID, label string) error {
-	tag, err := s.DB.Exec(ctx, `UPDATE auth_clients SET device_name = $1, updated_at = now()
+	tag, err := s.exec(ctx, `UPDATE auth_clients SET device_name = $1, updated_at = now()
 		WHERE account_id = $2 AND device_id = $3 AND deleted_at IS NULL`, label, accountID, deviceID)
 	if err != nil {
 		return err
@@ -564,11 +563,11 @@ func (s *Store) AdminDeleteDevice(ctx context.Context, accountID uuid.UUID, devi
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.DB.Exec(ctx, `UPDATE auth_sessions SET expired_at = $1, updated_at = $1
+	if _, err := s.exec(ctx, `UPDATE auth_sessions SET expired_at = $1, updated_at = $1
 		WHERE client_id = $2`, now, device.Id); err != nil {
 		return nil, err
 	}
-	if _, err := s.DB.Exec(ctx, `UPDATE auth_clients SET deleted_at = $1, updated_at = $1 WHERE id = $2`, now, device.Id); err != nil {
+	if _, err := s.exec(ctx, `UPDATE auth_clients SET deleted_at = $1, updated_at = $1 WHERE id = $2`, now, device.Id); err != nil {
 		return nil, err
 	}
 	return device, nil
@@ -595,11 +594,11 @@ func (s *Store) AdminListSessions(ctx context.Context, accountID uuid.UUID, typ 
 		where += ` AND (s.expired_at IS NULL OR s.expired_at > $` + strconv.Itoa(len(args)) + `)`
 	}
 	var total int
-	if err := s.DB.QueryRow(ctx, `SELECT count(*) FROM auth_sessions s `+where, args...).Scan(&total); err != nil {
+	if err := s.queryRow(ctx, `SELECT count(*) FROM auth_sessions s `+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	args = append(args, take, offset)
-	rows, err := s.DB.Query(ctx, `SELECT s.id, s.type, s.last_granted_at, s.expired_at, s.audiences, s.scopes,
+	rows, err := s.query(ctx, `SELECT s.id, s.type, s.last_granted_at, s.expired_at, s.audiences, s.scopes,
 		s.ip_address, s.user_agent, s.location, s.account_id, s.client_id, s.parent_session_id, s.challenge_id,
 		s.app_id, s.epoch, s.created_at, s.updated_at, s.deleted_at
 		FROM auth_sessions s `+where+` ORDER BY s.last_granted_at DESC LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
@@ -622,11 +621,11 @@ func (s *Store) AdminListSessions(ctx context.Context, accountID uuid.UUID, typ 
 // mirroring ListAccountSessionChildren.
 func (s *Store) AdminListSessionChildren(ctx context.Context, accountID, parentID uuid.UUID, take, offset int) ([]model.AuthSession, int, error) {
 	var total int
-	if err := s.DB.QueryRow(ctx, `SELECT count(*) FROM auth_sessions
+	if err := s.queryRow(ctx, `SELECT count(*) FROM auth_sessions
 		WHERE parent_session_id = $1 AND account_id = $2`, parentID, accountID).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.DB.Query(ctx, `SELECT s.id, s.type, s.last_granted_at, s.expired_at, s.audiences, s.scopes,
+	rows, err := s.query(ctx, `SELECT s.id, s.type, s.last_granted_at, s.expired_at, s.audiences, s.scopes,
 		s.ip_address, s.user_agent, s.location, s.account_id, s.client_id, s.parent_session_id, s.challenge_id,
 		s.app_id, s.epoch, s.created_at, s.updated_at, s.deleted_at
 		FROM auth_sessions s WHERE s.parent_session_id = $1 AND s.account_id = $2
@@ -648,7 +647,7 @@ func (s *Store) AdminListSessionChildren(ctx context.Context, accountID, parentI
 
 // AdminGetSession loads one session belonging to the account.
 func (s *Store) AdminGetSession(ctx context.Context, accountID, sessionID uuid.UUID) (*model.AuthSession, error) {
-	row := s.DB.QueryRow(ctx, `SELECT s.id, s.type, s.last_granted_at, s.expired_at, s.audiences, s.scopes,
+	row := s.queryRow(ctx, `SELECT s.id, s.type, s.last_granted_at, s.expired_at, s.audiences, s.scopes,
 		s.ip_address, s.user_agent, s.location, s.account_id, s.client_id, s.parent_session_id, s.challenge_id,
 		s.app_id, s.epoch, s.created_at, s.updated_at, s.deleted_at
 		FROM auth_sessions s WHERE s.id = $1 AND s.account_id = $2`, sessionID, accountID)
@@ -658,7 +657,7 @@ func (s *Store) AdminGetSession(ctx context.Context, accountID, sessionID uuid.U
 // AdminRevokeSession expires a single session and bumps its epoch (mirroring
 // AccountService.DeleteSession).
 func (s *Store) AdminRevokeSession(ctx context.Context, accountID, sessionID uuid.UUID, now time.Time) (*model.AuthSession, error) {
-	row := s.DB.QueryRow(ctx, `UPDATE auth_sessions SET expired_at = $1, epoch = epoch + 1, updated_at = $1
+	row := s.queryRow(ctx, `UPDATE auth_sessions SET expired_at = $1, epoch = epoch + 1, updated_at = $1
 		WHERE id = $2 AND account_id = $3 AND deleted_at IS NULL
 		RETURNING id, type, last_granted_at, expired_at, audiences, scopes, ip_address, user_agent, location,
 		account_id, client_id, parent_session_id, challenge_id, app_id, epoch, created_at, updated_at, deleted_at`, now, sessionID, accountID)
@@ -668,7 +667,7 @@ func (s *Store) AdminRevokeSession(ctx context.Context, accountID, sessionID uui
 // AdminRevokeAllSessions expires every live session of the account (mirroring
 // AccountService.DeleteAllSessions) and returns the revoked sessions.
 func (s *Store) AdminRevokeAllSessions(ctx context.Context, accountID uuid.UUID, now time.Time) ([]model.AuthSession, error) {
-	rows, err := s.DB.Query(ctx, `UPDATE auth_sessions SET expired_at = $1, epoch = epoch + 1, updated_at = $1
+	rows, err := s.query(ctx, `UPDATE auth_sessions SET expired_at = $1, epoch = epoch + 1, updated_at = $1
 		WHERE account_id = $2 AND expired_at IS NULL AND deleted_at IS NULL
 		RETURNING id, type, last_granted_at, expired_at, audiences, scopes, ip_address, user_agent, location,
 		account_id, client_id, parent_session_id, challenge_id, app_id, epoch, created_at, updated_at, deleted_at`, now, accountID)
@@ -693,7 +692,7 @@ func (s *Store) AdminCountSessionChildren(ctx context.Context, sessionIDs []uuid
 	if len(sessionIDs) == 0 {
 		return result, nil
 	}
-	rows, err := s.DB.Query(ctx, `SELECT parent_session_id, count(*) FROM auth_sessions
+	rows, err := s.query(ctx, `SELECT parent_session_id, count(*) FROM auth_sessions
 		WHERE parent_session_id = ANY($1) GROUP BY parent_session_id`, sessionIDs)
 	if err != nil {
 		return nil, err
@@ -710,7 +709,7 @@ func (s *Store) AdminCountSessionChildren(ctx context.Context, sessionIDs []uuid
 	return result, rows.Err()
 }
 
-func scanAdminSession(row pgx.Row) (*model.AuthSession, error) {
+func scanAdminSession(row rowScanner) (*model.AuthSession, error) {
 	session := &model.AuthSession{}
 	var (
 		audiences, scopes                             []string
@@ -725,7 +724,7 @@ func scanAdminSession(row pgx.Row) (*model.AuthSession, error) {
 		&session.CreatedAt, &session.UpdatedAt, &session.DeletedAt,
 	)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -749,7 +748,7 @@ func scanAdminSession(row pgx.Row) (*model.AuthSession, error) {
 // AdminListContacts lists an account's contacts, mirroring the admin ordering
 // (primary first, then type, then content).
 func (s *Store) AdminListContacts(ctx context.Context, accountID uuid.UUID) ([]model.Contact, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at
+	rows, err := s.query(ctx, `SELECT id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at
 		FROM account_contacts WHERE account_id = $1 AND deleted_at IS NULL
 		ORDER BY is_primary DESC, type, content`, accountID)
 	if err != nil {
@@ -770,13 +769,13 @@ func (s *Store) AdminListContacts(ctx context.Context, accountID uuid.UUID) ([]m
 
 // AdminGetContact loads one contact of the account.
 func (s *Store) AdminGetContact(ctx context.Context, accountID, contactID uuid.UUID) (*model.Contact, error) {
-	row := s.DB.QueryRow(ctx, `SELECT id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at
+	row := s.queryRow(ctx, `SELECT id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at
 		FROM account_contacts WHERE id = $1 AND account_id = $2 AND deleted_at IS NULL`, contactID, accountID)
 	var c model.Contact
 	err := row.Scan(&c.Id, &c.Type, &c.VerifiedAt, &c.IsPrimary, &c.IsPublic, &c.Content, &c.AccountId,
 		&c.CreatedAt, &c.UpdatedAt, &c.DeletedAt)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -786,7 +785,7 @@ func (s *Store) AdminGetContact(ctx context.Context, accountID, contactID uuid.U
 
 // AdminCreateContact inserts a non-primary contact (CreateContactMethod).
 func (s *Store) AdminCreateContact(ctx context.Context, accountID uuid.UUID, ctype int, content string) (*model.Contact, error) {
-	row := s.DB.QueryRow(ctx, `INSERT INTO account_contacts (id, account_id, type, content, is_primary, is_public, created_at, updated_at)
+	row := s.queryRow(ctx, `INSERT INTO account_contacts (id, account_id, type, content, is_primary, is_public, created_at, updated_at)
 		VALUES (gen_random_uuid(), $1, $2, $3, false, false, now(), now())
 		RETURNING id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at`,
 		accountID, ctype, content)
@@ -797,7 +796,7 @@ func (s *Store) AdminCreateContact(ctx context.Context, accountID uuid.UUID, cty
 // either changed (UpdateAccountContact semantics).
 func (s *Store) AdminUpdateContact(ctx context.Context, accountID, contactID uuid.UUID, ctype *int, content *string) (*model.Contact, error) {
 	var current model.Contact
-	row := s.DB.QueryRow(ctx, `SELECT id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at
+	row := s.queryRow(ctx, `SELECT id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at
 		FROM account_contacts WHERE id = $1 AND account_id = $2 AND deleted_at IS NULL`, contactID, accountID)
 	cur, err := scanContact(row)
 	if err != nil {
@@ -816,7 +815,7 @@ func (s *Store) AdminUpdateContact(ctx context.Context, accountID, contactID uui
 	if typeChanged || contentChanged {
 		current.VerifiedAt = nil
 	}
-	updated := s.DB.QueryRow(ctx, `UPDATE account_contacts SET type = $1, content = $2, verified_at = $3, updated_at = now()
+	updated := s.queryRow(ctx, `UPDATE account_contacts SET type = $1, content = $2, verified_at = $3, updated_at = now()
 		WHERE id = $4 AND account_id = $5 AND deleted_at IS NULL
 		RETURNING id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at`,
 		current.Type, current.Content, current.VerifiedAt, contactID, accountID)
@@ -826,7 +825,7 @@ func (s *Store) AdminUpdateContact(ctx context.Context, accountID, contactID uui
 // AdminSetContactVerified marks a contact verified at the given instant,
 // keeping the latest verification when one exists (MarkContactMethodVerified).
 func (s *Store) AdminSetContactVerified(ctx context.Context, accountID, contactID uuid.UUID, verifiedAt time.Time) (*model.Contact, error) {
-	row := s.DB.QueryRow(ctx, `UPDATE account_contacts SET verified_at = CASE
+	row := s.queryRow(ctx, `UPDATE account_contacts SET verified_at = CASE
 			WHEN verified_at IS NULL OR verified_at < $1 THEN $1 ELSE verified_at END,
 			updated_at = now()
 		WHERE id = $2 AND account_id = $3 AND deleted_at IS NULL
@@ -834,7 +833,7 @@ func (s *Store) AdminSetContactVerified(ctx context.Context, accountID, contactI
 		verifiedAt, contactID, accountID)
 	c, err := scanContact(row)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -844,13 +843,13 @@ func (s *Store) AdminSetContactVerified(ctx context.Context, accountID, contactI
 
 // AdminClearContactVerified nulls the verified_at timestamp.
 func (s *Store) AdminClearContactVerified(ctx context.Context, accountID, contactID uuid.UUID) (*model.Contact, error) {
-	row := s.DB.QueryRow(ctx, `UPDATE account_contacts SET verified_at = NULL, updated_at = now()
+	row := s.queryRow(ctx, `UPDATE account_contacts SET verified_at = NULL, updated_at = now()
 		WHERE id = $1 AND account_id = $2 AND deleted_at IS NULL
 		RETURNING id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at`,
 		contactID, accountID)
 	c, err := scanContact(row)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -865,11 +864,11 @@ func (s *Store) AdminSetContactPrimary(ctx context.Context, accountID, contactID
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.DB.Exec(ctx, `UPDATE account_contacts SET is_primary = false, updated_at = now()
+	if _, err := s.exec(ctx, `UPDATE account_contacts SET is_primary = false, updated_at = now()
 		WHERE account_id = $1 AND type = $2 AND deleted_at IS NULL`, accountID, contact.Type); err != nil {
 		return nil, err
 	}
-	row := s.DB.QueryRow(ctx, `UPDATE account_contacts SET is_primary = true, updated_at = now()
+	row := s.queryRow(ctx, `UPDATE account_contacts SET is_primary = true, updated_at = now()
 		WHERE id = $1 AND account_id = $2 AND deleted_at IS NULL
 		RETURNING id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at`,
 		contactID, accountID)
@@ -878,13 +877,13 @@ func (s *Store) AdminSetContactPrimary(ctx context.Context, accountID, contactID
 
 // AdminSetContactPublic flips the is_public flag.
 func (s *Store) AdminSetContactPublic(ctx context.Context, accountID, contactID uuid.UUID, isPublic bool) (*model.Contact, error) {
-	row := s.DB.QueryRow(ctx, `UPDATE account_contacts SET is_public = $1, updated_at = now()
+	row := s.queryRow(ctx, `UPDATE account_contacts SET is_public = $1, updated_at = now()
 		WHERE id = $2 AND account_id = $3 AND deleted_at IS NULL
 		RETURNING id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at`,
 		isPublic, contactID, accountID)
 	c, err := scanContact(row)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -894,7 +893,7 @@ func (s *Store) AdminSetContactPublic(ctx context.Context, accountID, contactID 
 
 // AdminDeleteContact soft-deletes a contact (EF Remove semantics).
 func (s *Store) AdminDeleteContact(ctx context.Context, accountID, contactID uuid.UUID) error {
-	tag, err := s.DB.Exec(ctx, `UPDATE account_contacts SET deleted_at = now(), updated_at = now()
+	tag, err := s.exec(ctx, `UPDATE account_contacts SET deleted_at = now(), updated_at = now()
 		WHERE id = $1 AND account_id = $2 AND deleted_at IS NULL`, contactID, accountID)
 	if err != nil {
 		return err
@@ -905,12 +904,12 @@ func (s *Store) AdminDeleteContact(ctx context.Context, accountID, contactID uui
 	return nil
 }
 
-func scanContact(row pgx.Row) (*model.Contact, error) {
+func scanContact(row rowScanner) (*model.Contact, error) {
 	var c model.Contact
 	err := row.Scan(&c.Id, &c.Type, &c.VerifiedAt, &c.IsPrimary, &c.IsPublic, &c.Content, &c.AccountId,
 		&c.CreatedAt, &c.UpdatedAt, &c.DeletedAt)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -921,7 +920,7 @@ func scanContact(row pgx.Row) (*model.Contact, error) {
 // AdminListAuthFactors lists all factors of an account (admin view), ordered
 // by type then enabled_at desc, mirroring ListAccountAuthFactors.
 func (s *Store) AdminListAuthFactors(ctx context.Context, accountID uuid.UUID) ([]model.AuthFactor, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at, deleted_at
+	rows, err := s.query(ctx, `SELECT id, type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at, deleted_at
 		FROM account_auth_factors WHERE account_id = $1 AND deleted_at IS NULL
 		ORDER BY type, enabled_at DESC`, accountID)
 	if err != nil {
@@ -941,7 +940,7 @@ func (s *Store) AdminListAuthFactors(ctx context.Context, accountID uuid.UUID) (
 
 // AdminGetAuthFactor loads one factor of the account.
 func (s *Store) AdminGetAuthFactor(ctx context.Context, accountID, factorID uuid.UUID) (*model.AuthFactor, error) {
-	row := s.DB.QueryRow(ctx, `SELECT id, type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at, deleted_at
+	row := s.queryRow(ctx, `SELECT id, type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at, deleted_at
 		FROM account_auth_factors WHERE id = $1 AND account_id = $2 AND deleted_at IS NULL`, factorID, accountID)
 	return scanAdminAuthFactor(row)
 }
@@ -950,7 +949,7 @@ func (s *Store) AdminGetAuthFactor(ctx context.Context, accountID, factorID uuid
 // type (any state), mirroring CheckAuthFactorExists.
 func (s *Store) AdminCheckAuthFactorExists(ctx context.Context, accountID uuid.UUID, ftype int) (bool, error) {
 	var exists bool
-	err := s.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM account_auth_factors
+	err := s.queryRow(ctx, `SELECT EXISTS(SELECT 1 FROM account_auth_factors
 		WHERE account_id = $1 AND type = $2 AND deleted_at IS NULL)`, accountID, ftype).Scan(&exists)
 	return exists, err
 }
@@ -958,7 +957,7 @@ func (s *Store) AdminCheckAuthFactorExists(ctx context.Context, accountID uuid.U
 // AdminInsertAuthFactor inserts a factor row and returns it.
 func (s *Store) AdminInsertAuthFactor(ctx context.Context, f *model.AuthFactor) (*model.AuthFactor, error) {
 	config, _ := json.Marshal(f.Config)
-	row := s.DB.QueryRow(ctx, `INSERT INTO account_auth_factors (id, account_id, type, secret, config, trustworthy, enabled_at, expired_at, created_at, updated_at)
+	row := s.queryRow(ctx, `INSERT INTO account_auth_factors (id, account_id, type, secret, config, trustworthy, enabled_at, expired_at, created_at, updated_at)
 		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, now(), now())
 		RETURNING id, type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at, deleted_at`,
 		f.AccountId, int(f.Type), f.Secret, config, f.Trustworthy, f.EnabledAt, f.ExpiredAt)
@@ -970,7 +969,7 @@ func (s *Store) AdminInsertAuthFactor(ctx context.Context, f *model.AuthFactor) 
 // by the handler and stored via the columns below).
 func (s *Store) AdminUpdateAuthFactor(ctx context.Context, f *model.AuthFactor) error {
 	config, _ := json.Marshal(f.Config)
-	tag, err := s.DB.Exec(ctx, `UPDATE account_auth_factors
+	tag, err := s.exec(ctx, `UPDATE account_auth_factors
 		SET secret = $1, config = $2, trustworthy = $3, enabled_at = $4, expired_at = $5, updated_at = now()
 		WHERE id = $6 AND account_id = $7 AND deleted_at IS NULL`,
 		f.Secret, config, f.Trustworthy, f.EnabledAt, f.ExpiredAt, f.Id, f.AccountId)
@@ -985,7 +984,7 @@ func (s *Store) AdminUpdateAuthFactor(ctx context.Context, f *model.AuthFactor) 
 
 // AdminDeleteAuthFactor soft-deletes a factor (EF Remove semantics).
 func (s *Store) AdminDeleteAuthFactor(ctx context.Context, accountID, factorID uuid.UUID) error {
-	tag, err := s.DB.Exec(ctx, `UPDATE account_auth_factors SET deleted_at = now(), updated_at = now()
+	tag, err := s.exec(ctx, `UPDATE account_auth_factors SET deleted_at = now(), updated_at = now()
 		WHERE id = $1 AND account_id = $2 AND deleted_at IS NULL`, factorID, accountID)
 	if err != nil {
 		return err
@@ -1000,21 +999,21 @@ func (s *Store) AdminDeleteAuthFactor(ctx context.Context, accountID, factorID u
 // mirroring ResetPasswordFactor (bcrypt hash supplied by the caller).
 func (s *Store) AdminUpsertPasswordFactor(ctx context.Context, accountID uuid.UUID, hash string, now time.Time) (*model.AuthFactor, error) {
 	var existingID uuid.UUID
-	err := s.DB.QueryRow(ctx, `SELECT id FROM account_auth_factors
+	err := s.queryRow(ctx, `SELECT id FROM account_auth_factors
 		WHERE account_id = $1 AND type = 0 AND deleted_at IS NULL LIMIT 1`, accountID).Scan(&existingID)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, ErrNotFound) {
 		return nil, err
 	}
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, ErrNotFound) {
 		// No password factor yet: insert enabled.
-		row := s.DB.QueryRow(ctx, `INSERT INTO account_auth_factors (id, account_id, type, secret, trustworthy, enabled_at, created_at, updated_at)
+		row := s.queryRow(ctx, `INSERT INTO account_auth_factors (id, account_id, type, secret, trustworthy, enabled_at, created_at, updated_at)
 			VALUES (gen_random_uuid(), $1, 0, $2, 1, $3, now(), now())
 			RETURNING id, type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at, deleted_at`,
 			accountID, hash, now)
 		return scanAdminAuthFactor(row)
 	}
 	// Existing factor: reset secret + enable.
-	row := s.DB.QueryRow(ctx, `UPDATE account_auth_factors
+	row := s.queryRow(ctx, `UPDATE account_auth_factors
 		SET secret = $1, enabled_at = COALESCE(enabled_at, $2), expired_at = NULL, updated_at = now()
 		WHERE id = $3 AND account_id = $4 AND deleted_at IS NULL
 		RETURNING id, type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at, deleted_at`,
@@ -1022,14 +1021,14 @@ func (s *Store) AdminUpsertPasswordFactor(ctx context.Context, accountID uuid.UU
 	return scanAdminAuthFactor(row)
 }
 
-func scanAdminAuthFactor(row pgx.Row) (*model.AuthFactor, error) {
+func scanAdminAuthFactor(row rowScanner) (*model.AuthFactor, error) {
 	var f model.AuthFactor
 	var secret *string
 	var config []byte
 	err := row.Scan(&f.Id, &f.Type, &secret, &config, &f.Trustworthy, &f.EnabledAt, &f.ExpiredAt,
 		&f.AccountId, &f.CreatedAt, &f.UpdatedAt, &f.DeletedAt)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -1056,7 +1055,7 @@ func (s *Store) AdminResolveTargetAccountIDs(ctx context.Context, requested []uu
 		args = append(args, requested)
 		query += ` AND id = ANY($1)`
 	}
-	rows, err := s.DB.Query(ctx, query, args...)
+	rows, err := s.query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1092,7 +1091,7 @@ func (s *Store) AdminListEmailContacts(ctx context.Context, accountIDs []uuid.UU
 	if verifiedOnly {
 		query += ` AND c.verified_at IS NOT NULL`
 	}
-	rows, err := s.DB.Query(ctx, query, accountIDs)
+	rows, err := s.query(ctx, query, accountIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -1155,7 +1154,7 @@ func (s *Store) AdminListEmailContacts(ctx context.Context, accountIDs []uuid.UU
 // AdminLatestAccountLocations returns each account's most recent session
 // location since the cutoff, mirroring the geography stats query.
 func (s *Store) AdminLatestAccountLocations(ctx context.Context, since time.Time) ([]AdminAccountLocation, error) {
-	rows, err := s.DB.Query(ctx, `SELECT DISTINCT ON (session.account_id) session.account_id, session.location,
+	rows, err := s.query(ctx, `SELECT DISTINCT ON (session.account_id) session.account_id, session.location,
 		session.last_granted_at
 		FROM auth_sessions session
 		WHERE session.last_granted_at IS NOT NULL AND session.last_granted_at >= $1
@@ -1193,7 +1192,7 @@ func (s *Store) AdminLoadProfiles(ctx context.Context, accountIDs []uuid.UUID) (
 	if len(accountIDs) == 0 {
 		return result, nil
 	}
-	rows, err := s.DB.Query(ctx, `SELECT `+profileColumns+` FROM account_profiles p
+	rows, err := s.query(ctx, `SELECT `+profileColumns+` FROM account_profiles p
 		WHERE p.account_id = ANY($1) AND p.deleted_at IS NULL`, accountIDs)
 	if err != nil {
 		return nil, err
@@ -1255,7 +1254,7 @@ func (s *Store) AdminLoadAccountsByIds(ctx context.Context, ids []uuid.UUID) (ma
 	if len(ids) == 0 {
 		return result, nil
 	}
-	rows, err := s.DB.Query(ctx, `SELECT `+accountColumns+` FROM accounts WHERE id = ANY($1) AND deleted_at IS NULL`, ids)
+	rows, err := s.query(ctx, `SELECT `+accountColumns+` FROM accounts WHERE id = ANY($1) AND deleted_at IS NULL`, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -1282,11 +1281,11 @@ func (s *Store) AdminListOwnActionLogs(ctx context.Context, accountID uuid.UUID,
 		where += ` AND action = $` + strconv.Itoa(len(args))
 	}
 	var total int
-	if err := s.DB.QueryRow(ctx, `SELECT count(*) FROM action_logs `+where, args...).Scan(&total); err != nil {
+	if err := s.queryRow(ctx, `SELECT count(*) FROM action_logs `+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	args = append(args, take, offset)
-	rows, err := s.DB.Query(ctx, `SELECT id, action, meta, user_agent, ip_address, location, account_id, session_id, created_at, updated_at, deleted_at
+	rows, err := s.query(ctx, `SELECT id, action, meta, user_agent, ip_address, location, account_id, session_id, created_at, updated_at, deleted_at
 		FROM action_logs `+where+` ORDER BY created_at DESC LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
 	if err != nil {
 		return nil, 0, err
@@ -1303,7 +1302,7 @@ func (s *Store) AdminListOwnActionLogs(ctx context.Context, accountID uuid.UUID,
 	return logs, total, rows.Err()
 }
 
-func scanAdminActionLog(row pgx.Row) (*model.ActionLog, error) {
+func scanAdminActionLog(row rowScanner) (*model.ActionLog, error) {
 	var log model.ActionLog
 	var meta []byte
 	var location []byte
@@ -1311,7 +1310,7 @@ func scanAdminActionLog(row pgx.Row) (*model.ActionLog, error) {
 	err := row.Scan(&log.Id, &log.Action, &meta, &log.UserAgent, &log.IpAddress, &location, &log.AccountId,
 		&sessionID, &log.CreatedAt, &log.UpdatedAt, &log.DeletedAt)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err

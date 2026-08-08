@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
@@ -17,7 +16,7 @@ import (
 
 // GetProfileByAccount loads an account's 1:1 profile row.
 func (s *Store) GetProfileByAccount(ctx context.Context, accountID uuid.UUID) (*model.Profile, error) {
-	row := s.DB.QueryRow(ctx, `SELECT `+profileColumns+` FROM account_profiles p
+	row := s.queryRow(ctx, `SELECT `+profileColumns+` FROM account_profiles p
 		WHERE p.account_id = $1 AND p.deleted_at IS NULL`, accountID)
 	return scanProfile(row)
 }
@@ -38,7 +37,7 @@ func (s *Store) GetOrCreateAccountProfile(ctx context.Context, accountID uuid.UU
 	// Profile row missing entirely (or tombstoned): create (or revive) it.
 	if errors.Is(err, ErrNotFound) {
 		now := time.Now().UTC()
-		if _, err := s.DB.Exec(ctx, `INSERT INTO account_profiles
+		if _, err := s.exec(ctx, `INSERT INTO account_profiles
 			(id, account_id, created_at, updated_at, experience, social_credits)
 			VALUES ($1, $2, $3, $3, 0, 100)
 			ON CONFLICT (account_id) DO NOTHING`, uuid.NewString(), accountID, now); err != nil {
@@ -54,10 +53,10 @@ func (s *Store) GetOrCreateAccountProfile(ctx context.Context, accountID uuid.UU
 			// index, so the insert above was a no-op. Hard-delete the tombstone
 			// and retry so the account gets a live profile (mirrors the C#
 			// filtered unique index).
-			if _, err := s.DB.Exec(ctx, `DELETE FROM account_profiles WHERE account_id = $1`, accountID); err != nil {
+			if _, err := s.exec(ctx, `DELETE FROM account_profiles WHERE account_id = $1`, accountID); err != nil {
 				return nil, err
 			}
-			if _, err := s.DB.Exec(ctx, `INSERT INTO account_profiles
+			if _, err := s.exec(ctx, `INSERT INTO account_profiles
 				(id, account_id, created_at, updated_at, experience, social_credits)
 				VALUES ($1, $2, $3, $3, 0, 100)`, uuid.NewString(), accountID, now); err != nil {
 				return nil, err
@@ -79,7 +78,7 @@ func (s *Store) GetOrCreateAccountProfile(ctx context.Context, accountID uuid.UU
 // with — and what the old Passport created on demand — so reads otherwise
 // emit data-less profiles for perfectly real accounts.
 func (s *Store) HealBareProfile(ctx context.Context, accountID uuid.UUID) error {
-	_, err := s.DB.Exec(ctx, `UPDATE account_profiles p SET first_name = a.name, updated_at = now()
+	_, err := s.exec(ctx, `UPDATE account_profiles p SET first_name = a.name, updated_at = now()
 		FROM accounts a
 		WHERE p.account_id = a.id AND p.account_id = $1
 		  AND a.deleted_at IS NULL AND p.deleted_at IS NULL
@@ -97,7 +96,7 @@ func (s *Store) GetProfilesByAccountIDs(ctx context.Context, ids []uuid.UUID) (m
 	if len(ids) == 0 {
 		return profiles, nil
 	}
-	rows, err := s.DB.Query(ctx, `SELECT `+profileColumns+` FROM account_profiles p
+	rows, err := s.query(ctx, `SELECT `+profileColumns+` FROM account_profiles p
 		WHERE p.account_id = ANY($1) AND p.deleted_at IS NULL`, ids)
 	if err != nil {
 		return nil, err
@@ -187,7 +186,7 @@ func (s *Store) SaveProfile(ctx context.Context, p *model.Profile) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.DB.Exec(ctx, `UPDATE account_profiles SET
+	_, err = s.exec(ctx, `UPDATE account_profiles SET
 		first_name = $1, middle_name = $2, last_name = $3, bio = $4, gender = $5,
 		pronouns = $6, time_zone = $7, location = $8, links = $9, username_color = $10,
 		birthday = $11, last_seen_at = $12, verification = $13, active_badge = $14,
@@ -207,24 +206,24 @@ func (s *Store) SaveProfile(ctx context.Context, p *model.Profile) error {
 func (s *Store) UpdateAccountBasicInfo(ctx context.Context, accountID uuid.UUID, nick, language, region *string) (*model.Account, error) {
 	now := time.Now().UTC()
 	if nick != nil {
-		if _, err := s.DB.Exec(ctx, `UPDATE accounts SET nick = $1, updated_at = $2 WHERE id = $3 AND deleted_at IS NULL`, *nick, now, accountID); err != nil {
+		if _, err := s.exec(ctx, `UPDATE accounts SET nick = $1, updated_at = $2 WHERE id = $3 AND deleted_at IS NULL`, *nick, now, accountID); err != nil {
 			return nil, err
 		}
 	}
 	if language != nil {
-		if _, err := s.DB.Exec(ctx, `UPDATE accounts SET language = $1, updated_at = $2 WHERE id = $3 AND deleted_at IS NULL`, *language, now, accountID); err != nil {
+		if _, err := s.exec(ctx, `UPDATE accounts SET language = $1, updated_at = $2 WHERE id = $3 AND deleted_at IS NULL`, *language, now, accountID); err != nil {
 			return nil, err
 		}
 	}
 	if region != nil {
-		if _, err := s.DB.Exec(ctx, `UPDATE accounts SET region = $1, updated_at = $2 WHERE id = $3 AND deleted_at IS NULL`, *region, now, accountID); err != nil {
+		if _, err := s.exec(ctx, `UPDATE accounts SET region = $1, updated_at = $2 WHERE id = $3 AND deleted_at IS NULL`, *region, now, accountID); err != nil {
 			return nil, err
 		}
 	}
 	return s.GetAccountByID(ctx, accountID)
 }
 
-func scanProfile(row pgx.Row) (*model.Profile, error) {
+func scanProfile(row rowScanner) (*model.Profile, error) {
 	profile := &model.Profile{}
 	var (
 		links, usernameColor, verification, activeBadge, picture, background []byte
@@ -240,7 +239,7 @@ func scanProfile(row pgx.Row) (*model.Profile, error) {
 		&picture, &background, &profile.AccountId, &profile.CreatedAt, &profile.UpdatedAt, &profile.DeletedAt,
 	)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err

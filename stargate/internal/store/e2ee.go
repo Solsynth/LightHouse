@@ -12,8 +12,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // LegacyDeviceID mirrors E2EeService.LegacyDeviceId ("legacy-account"), used
@@ -188,12 +186,11 @@ const (
 	mlsDeviceMembershipColumns = `id, mls_group_id, account_id, device_id, joined_epoch, last_seen_epoch, last_reshare_required_at, last_reshare_completed_at, created_at, updated_at, deleted_at`
 )
 
-// queryer is satisfied by both *pgxpool.Pool and pgx.Tx so query helpers can
-// run inside transactions.
+// queryer is implemented by Store and sqlTx for transaction-scoped helpers.
 type queryer interface {
-	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
-	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
-	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, statement string, args ...any) (rowsScanner, error)
+	QueryRow(ctx context.Context, statement string, args ...any) rowScanner
+	Exec(ctx context.Context, statement string, args ...any) (commandTag, error)
 }
 
 // --- Devices ---
@@ -202,14 +199,14 @@ type queryer interface {
 // soft-deleted rows (the EF global query filter). Returns (nil, nil) when
 // absent.
 func (s *Store) GetE2eeDevice(ctx context.Context, accountID, deviceID string) (*E2eeDevice, error) {
-	row := s.DB.QueryRow(ctx, `SELECT `+e2eeDeviceColumns+` FROM e2ee_devices
+	row := s.queryRow(ctx, `SELECT `+e2eeDeviceColumns+` FROM e2ee_devices
 		WHERE account_id = $1 AND device_id = $2 AND deleted_at IS NULL`, accountID, deviceID)
 	return scanE2eeDevice(row)
 }
 
 // ListActiveE2eeDevices lists the non-revoked devices of an account.
 func (s *Store) ListActiveE2eeDevices(ctx context.Context, accountID string) ([]E2eeDevice, error) {
-	rows, err := s.DB.Query(ctx, `SELECT `+e2eeDeviceColumns+` FROM e2ee_devices
+	rows, err := s.query(ctx, `SELECT `+e2eeDeviceColumns+` FROM e2ee_devices
 		WHERE account_id = $1 AND is_revoked = false AND deleted_at IS NULL ORDER BY created_at`, accountID)
 	if err != nil {
 		return nil, err
@@ -229,7 +226,7 @@ func (s *Store) ListActiveE2eeDevices(ctx context.Context, accountID string) ([]
 // ListActiveE2eeDeviceIDs returns the device ids of an account's non-revoked
 // devices.
 func (s *Store) ListActiveE2eeDeviceIDs(ctx context.Context, accountID string) ([]string, error) {
-	rows, err := s.DB.Query(ctx, `SELECT device_id FROM e2ee_devices
+	rows, err := s.query(ctx, `SELECT device_id FROM e2ee_devices
 		WHERE account_id = $1 AND is_revoked = false AND deleted_at IS NULL`, accountID)
 	if err != nil {
 		return nil, err
@@ -263,7 +260,7 @@ func (s *Store) UpsertE2eeDevice(ctx context.Context, accountID, deviceID string
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		}
-		_, err := s.DB.Exec(ctx, `INSERT INTO e2ee_devices (id, account_id, device_id, device_label, is_revoked, last_bundle_at, revoked_at, created_at, updated_at, deleted_at)
+		_, err := s.exec(ctx, `INSERT INTO e2ee_devices (id, account_id, device_id, device_label, is_revoked, last_bundle_at, revoked_at, created_at, updated_at, deleted_at)
 			VALUES ($1, $2, $3, $4, false, $5, NULL, $6, $6, NULL)`,
 			device.Id, device.AccountId, device.DeviceId, device.DeviceLabel, now, now)
 		if err != nil {
@@ -277,7 +274,7 @@ func (s *Store) UpsertE2eeDevice(ctx context.Context, accountID, deviceID string
 	if deviceLabel != nil && *deviceLabel != "" {
 		label = deviceLabel
 	}
-	_, err = s.DB.Exec(ctx, `UPDATE e2ee_devices
+	_, err = s.exec(ctx, `UPDATE e2ee_devices
 		SET device_label = $2, is_revoked = false, revoked_at = NULL, last_bundle_at = $3, updated_at = $3
 		WHERE id = $1`, device.Id, label, now)
 	if err != nil {
@@ -324,7 +321,7 @@ func (s *Store) UpsertE2eeKeyBundle(ctx context.Context, accountID, deviceID str
 	}
 	if bundle == nil {
 		bundle = &E2eeKeyBundle{Id: uuid.NewString(), AccountId: accountID, DeviceId: deviceID, CreatedAt: now, UpdatedAt: now}
-		if _, err := s.DB.Exec(ctx, `INSERT INTO e2ee_key_bundles (id, account_id, device_id, algorithm, identity_key, signed_pre_key_id, signed_pre_key, signed_pre_key_signature, signed_pre_key_expires_at, meta, created_at, updated_at, deleted_at)
+		if _, err := s.exec(ctx, `INSERT INTO e2ee_key_bundles (id, account_id, device_id, algorithm, identity_key, signed_pre_key_id, signed_pre_key, signed_pre_key_signature, signed_pre_key_expires_at, meta, created_at, updated_at, deleted_at)
 			VALUES ($1, $2, $3, '', NULL, NULL, NULL, NULL, NULL, NULL, $4, $4, NULL)`,
 			bundle.Id, bundle.AccountId, bundle.DeviceId, now); err != nil {
 			return nil, err
@@ -342,7 +339,7 @@ func (s *Store) UpsertE2eeKeyBundle(ctx context.Context, accountID, deviceID str
 	bundle.SignedPreKeyExpiresAt = req.SignedPreKeyExpiresAt
 	bundle.Meta = req.Meta
 	bundle.UpdatedAt = now
-	_, err = s.DB.Exec(ctx, `UPDATE e2ee_key_bundles
+	_, err = s.exec(ctx, `UPDATE e2ee_key_bundles
 		SET algorithm = $2, identity_key = $3, signed_pre_key_id = $4, signed_pre_key = $5,
 			signed_pre_key_signature = $6, signed_pre_key_expires_at = $7, meta = $8, updated_at = $9
 		WHERE id = $1`,
@@ -361,7 +358,7 @@ func (s *Store) UpsertE2eeKeyBundle(ctx context.Context, accountID, deviceID str
 			if existing[k.KeyId] {
 				continue
 			}
-			if _, err := s.DB.Exec(ctx, `INSERT INTO e2ee_one_time_pre_keys (id, key_bundle_id, account_id, device_id, key_id, public_key, is_claimed, claimed_at, claimed_by_account_id, created_at, updated_at, deleted_at)
+			if _, err := s.exec(ctx, `INSERT INTO e2ee_one_time_pre_keys (id, key_bundle_id, account_id, device_id, key_id, public_key, is_claimed, claimed_at, claimed_by_account_id, created_at, updated_at, deleted_at)
 				VALUES ($1, $2, $3, $4, $5, $6, false, NULL, NULL, $7, $7, NULL)`,
 				uuid.NewString(), bundle.Id, accountID, deviceID, k.KeyId, k.PublicKey, now); err != nil {
 				return nil, err
@@ -448,19 +445,19 @@ func (s *Store) GetPublicE2eeDeviceBundles(ctx context.Context, accountID, reque
 }
 
 func (s *Store) getE2eeKeyBundle(ctx context.Context, accountID, deviceID string) (*E2eeKeyBundle, error) {
-	row := s.DB.QueryRow(ctx, `SELECT `+e2eeKeyBundleColumns+` FROM e2ee_key_bundles
+	row := s.queryRow(ctx, `SELECT `+e2eeKeyBundleColumns+` FROM e2ee_key_bundles
 		WHERE account_id = $1 AND device_id = $2 AND deleted_at IS NULL`, accountID, deviceID)
 	return scanE2eeKeyBundle(row)
 }
 
 func (s *Store) getLatestE2eeKeyBundle(ctx context.Context, accountID string) (*E2eeKeyBundle, error) {
-	row := s.DB.QueryRow(ctx, `SELECT `+e2eeKeyBundleColumns+` FROM e2ee_key_bundles
+	row := s.queryRow(ctx, `SELECT `+e2eeKeyBundleColumns+` FROM e2ee_key_bundles
 		WHERE account_id = $1 AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1`, accountID)
 	return scanE2eeKeyBundle(row)
 }
 
 func (s *Store) listE2eeKeyBundles(ctx context.Context, accountID string) ([]E2eeKeyBundle, error) {
-	rows, err := s.DB.Query(ctx, `SELECT `+e2eeKeyBundleColumns+` FROM e2ee_key_bundles
+	rows, err := s.query(ctx, `SELECT `+e2eeKeyBundleColumns+` FROM e2ee_key_bundles
 		WHERE account_id = $1 AND deleted_at IS NULL`, accountID)
 	if err != nil {
 		return nil, err
@@ -478,7 +475,7 @@ func (s *Store) listE2eeKeyBundles(ctx context.Context, accountID string) ([]E2e
 }
 
 func (s *Store) listOneTimePreKeyIDs(ctx context.Context, keyBundleID string) (map[int]bool, error) {
-	rows, err := s.DB.Query(ctx, `SELECT key_id FROM e2ee_one_time_pre_keys
+	rows, err := s.query(ctx, `SELECT key_id FROM e2ee_one_time_pre_keys
 		WHERE key_bundle_id = $1 AND deleted_at IS NULL`, keyBundleID)
 	if err != nil {
 		return nil, err
@@ -499,7 +496,7 @@ func (s *Store) listOneTimePreKeyIDs(ctx context.Context, keyBundleID string) (m
 // SERIALIZABLE transaction (the C# serializes claiming reads so concurrent
 // claims cannot hand out the same pre key twice).
 func (s *Store) claimOneTimePreKey(ctx context.Context, keyBundleID, accountID, deviceID, requesterID string) (*E2eeOneTimePreKey, error) {
-	tx, err := s.DB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	tx, err := s.beginSerializable(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -536,7 +533,7 @@ func (s *Store) claimOneTimePreKey(ctx context.Context, keyBundleID, accountID, 
 // PurgeExpiredMlsKeyPackages deletes key packages older than the retention
 // cutoff (mirrors PurgeExpiredMlsKeyPackagesAsync; 30 days).
 func (s *Store) PurgeExpiredMlsKeyPackages(ctx context.Context, accountID string, cutoff time.Time) error {
-	_, err := s.DB.Exec(ctx, `DELETE FROM mls_key_packages WHERE account_id = $1 AND created_at < $2`, accountID, cutoff)
+	_, err := s.exec(ctx, `DELETE FROM mls_key_packages WHERE account_id = $1 AND created_at < $2`, accountID, cutoff)
 	return err
 }
 
@@ -544,14 +541,14 @@ func (s *Store) PurgeExpiredMlsKeyPackages(ctx context.Context, accountID string
 // (used for the 10-per-account-per-24h upload limit).
 func (s *Store) CountMlsKeyPackagesUploadedSince(ctx context.Context, accountID string, since time.Time) (int64, error) {
 	var count int64
-	err := s.DB.QueryRow(ctx, `SELECT COUNT(*) FROM mls_key_packages
+	err := s.queryRow(ctx, `SELECT COUNT(*) FROM mls_key_packages
 		WHERE account_id = $1 AND created_at >= $2`, accountID, since).Scan(&count)
 	return count, err
 }
 
 // InsertMlsKeyPackage stores a published key package.
 func (s *Store) InsertMlsKeyPackage(ctx context.Context, kp *MlsKeyPackage) error {
-	_, err := s.DB.Exec(ctx, `INSERT INTO mls_key_packages (id, account_id, device_id, device_label, key_package, ciphersuite, is_consumed, consumed_at, consumed_by_account_id, meta, created_at, updated_at, deleted_at)
+	_, err := s.exec(ctx, `INSERT INTO mls_key_packages (id, account_id, device_id, device_label, key_package, ciphersuite, is_consumed, consumed_at, consumed_by_account_id, meta, created_at, updated_at, deleted_at)
 		VALUES ($1, $2, $3, $4, $5, $6, false, NULL, NULL, $7, $8, $8, NULL)`,
 		kp.Id, kp.AccountId, kp.DeviceId, kp.DeviceLabel, kp.KeyPackage, kp.Ciphersuite, jsonBytes(kp.Meta), kp.CreatedAt)
 	return err
@@ -561,7 +558,7 @@ func (s *Store) InsertMlsKeyPackage(ctx context.Context, kp *MlsKeyPackage) erro
 // device (KP-depleted check).
 func (s *Store) CountUnconsumedMlsKeyPackages(ctx context.Context, accountID, deviceID string) (int64, error) {
 	var count int64
-	err := s.DB.QueryRow(ctx, `SELECT COUNT(*) FROM mls_key_packages
+	err := s.queryRow(ctx, `SELECT COUNT(*) FROM mls_key_packages
 		WHERE account_id = $1 AND device_id = $2 AND is_consumed = false AND deleted_at IS NULL`,
 		accountID, deviceID).Scan(&count)
 	return count, err
@@ -573,11 +570,11 @@ func (s *Store) CountUnconsumedMlsKeyPackages(ctx context.Context, accountID, de
 // concurrent claims cannot return the same package twice; the consumed
 // devices are returned for the KP-depleted notification.
 func (s *Store) ListMlsDeviceKeyPackages(ctx context.Context, accountID string, requesterID *string, consume bool) ([]DeviceKeyPackage, []ConsumedDevice, error) {
-	q := queryer(s.DB)
-	var tx pgx.Tx
+	q := queryer(s)
+	var tx *sqlTx
 	if consume {
 		var err error
-		tx, err = s.DB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+		tx, err = s.beginSerializable(ctx)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -649,7 +646,7 @@ type MlsKeyPackageStatus struct {
 // MlsKeyPackageStatusPerDevice returns the devices with fewer than 3
 // non-consumed key packages (mirrors GetMlsKeyPackageStatusAsync).
 func (s *Store) MlsKeyPackageStatusPerDevice(ctx context.Context, accountID string) ([]MlsKeyPackageStatus, error) {
-	rows, err := s.DB.Query(ctx, `SELECT d.device_id, d.device_label, COUNT(k.id)::int
+	rows, err := s.query(ctx, `SELECT d.device_id, d.device_label, COUNT(k.id)::int
 		FROM e2ee_devices d
 		LEFT JOIN mls_key_packages k ON k.account_id = d.account_id AND k.device_id = d.device_id
 			AND k.is_consumed = false AND k.deleted_at IS NULL
@@ -674,7 +671,7 @@ func (s *Store) MlsKeyPackageStatusPerDevice(ctx context.Context, accountID stri
 // GetCapableDevices returns the oldest unconsumed key package per group member
 // device (mirrors GetCapableDevicesAsync).
 func (s *Store) GetCapableDevices(ctx context.Context, groupID string) ([]MlsKeyPackage, error) {
-	rows, err := s.DB.Query(ctx, `SELECT `+mlsKeyPackageColumns+` FROM mls_device_memberships m
+	rows, err := s.query(ctx, `SELECT `+mlsKeyPackageColumns+` FROM mls_device_memberships m
 		JOIN LATERAL (
 			SELECT k.* FROM mls_key_packages k
 			WHERE k.account_id = m.account_id AND k.device_id = m.device_id
@@ -702,7 +699,7 @@ func (s *Store) GetCapableDevices(ctx context.Context, groupID string) ([]MlsKey
 // GetMlsGroupStateByGroupID loads the group state, returning (nil, nil) when
 // absent (FirstOrDefaultAsync semantics).
 func (s *Store) GetMlsGroupStateByGroupID(ctx context.Context, groupID string) (*MlsGroupState, error) {
-	row := s.DB.QueryRow(ctx, `SELECT `+mlsGroupStateColumns+` FROM mls_group_states
+	row := s.queryRow(ctx, `SELECT `+mlsGroupStateColumns+` FROM mls_group_states
 		WHERE mls_group_id = $1 AND deleted_at IS NULL ORDER BY created_at LIMIT 1`, groupID)
 	return scanMlsGroupState(row)
 }
@@ -711,7 +708,7 @@ func (s *Store) GetMlsGroupStateByGroupID(ctx context.Context, groupID string) (
 // transaction; replaying a bootstrap returns the existing state unchanged
 // (mirrors BootstrapMlsGroupAsync).
 func (s *Store) BootstrapMlsGroup(ctx context.Context, accountID, groupID string, epoch, stateVersion int64, meta map[string]any, now time.Time) (*MlsGroupState, error) {
-	tx, err := s.DB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	tx, err := s.beginSerializable(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -753,7 +750,7 @@ func (s *Store) BootstrapMlsGroup(ctx context.Context, accountID, groupID string
 
 // UpdateMlsGroupState persists a mutated group state row.
 func (s *Store) UpdateMlsGroupState(ctx context.Context, state *MlsGroupState) error {
-	_, err := s.DB.Exec(ctx, `UPDATE mls_group_states
+	_, err := s.exec(ctx, `UPDATE mls_group_states
 		SET epoch = $2, state_version = $3, last_commit_at = $4, group_info = $5, ratchet_tree = $6, meta = $7, updated_at = $8
 		WHERE id = $1`,
 		state.Id, state.Epoch, state.StateVersion, state.LastCommitAt, state.GroupInfo,
@@ -775,7 +772,7 @@ func (s *Store) CreateMlsGroup(ctx context.Context, groupID string, epoch, state
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
-	if _, err := s.DB.Exec(ctx, `INSERT INTO mls_group_states (id, mls_group_id, epoch, state_version, last_commit_at, group_info, ratchet_tree, meta, created_at, updated_at, deleted_at)
+	if _, err := s.exec(ctx, `INSERT INTO mls_group_states (id, mls_group_id, epoch, state_version, last_commit_at, group_info, ratchet_tree, meta, created_at, updated_at, deleted_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8, $8, NULL)`,
 		state.Id, state.MlsGroupId, state.Epoch, state.StateVersion, state.LastCommitAt,
 		state.GroupInfo, state.RatchetTree, now); err != nil {
@@ -787,7 +784,7 @@ func (s *Store) CreateMlsGroup(ctx context.Context, groupID string, epoch, state
 // UploadGroupInfo writes the GroupInfo/RatchetTree for the expected epoch
 // inside a SERIALIZABLE transaction (mirrors UploadGroupInfoAsync).
 func (s *Store) UploadGroupInfo(ctx context.Context, groupID string, groupInfo, ratchetTree []byte, expectedEpoch *int64, now time.Time) (*UploadGroupInfoResult, error) {
-	tx, err := s.DB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	tx, err := s.beginSerializable(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -845,12 +842,12 @@ func (s *Store) UploadGroupInfo(ctx context.Context, groupID string, groupInfo, 
 // group (EF RemoveRange + the soft-delete save interceptor), returning the
 // number of deleted states.
 func (s *Store) DeleteMlsGroup(ctx context.Context, groupID string, now time.Time) (int64, error) {
-	tag, err := s.DB.Exec(ctx, `UPDATE mls_group_states SET deleted_at = $2, updated_at = $2
+	tag, err := s.exec(ctx, `UPDATE mls_group_states SET deleted_at = $2, updated_at = $2
 		WHERE mls_group_id = $1 AND deleted_at IS NULL`, groupID, now)
 	if err != nil {
 		return 0, err
 	}
-	if _, err := s.DB.Exec(ctx, `UPDATE mls_device_memberships SET deleted_at = $2, updated_at = $2
+	if _, err := s.exec(ctx, `UPDATE mls_device_memberships SET deleted_at = $2, updated_at = $2
 		WHERE mls_group_id = $1 AND deleted_at IS NULL`, groupID, now); err != nil {
 		return 0, err
 	}
@@ -862,7 +859,7 @@ func (s *Store) DeleteMlsGroup(ctx context.Context, groupID string, now time.Tim
 // ListMlsMembershipsByGroup lists the member devices of a group (excludes
 // soft-deleted rows).
 func (s *Store) ListMlsMembershipsByGroup(ctx context.Context, groupID string) ([]MlsDeviceMembership, error) {
-	rows, err := s.DB.Query(ctx, `SELECT `+mlsDeviceMembershipColumns+` FROM mls_device_memberships
+	rows, err := s.query(ctx, `SELECT `+mlsDeviceMembershipColumns+` FROM mls_device_memberships
 		WHERE mls_group_id = $1 AND deleted_at IS NULL`, groupID)
 	if err != nil {
 		return nil, err
@@ -882,7 +879,7 @@ func (s *Store) ListMlsMembershipsByGroup(ctx context.Context, groupID string) (
 // ListMlsGroupMemberAccountIDs returns the distinct member account ids of a
 // group (group reset notification).
 func (s *Store) ListMlsGroupMemberAccountIDs(ctx context.Context, groupID string) ([]string, error) {
-	rows, err := s.DB.Query(ctx, `SELECT DISTINCT account_id FROM mls_device_memberships
+	rows, err := s.query(ctx, `SELECT DISTINCT account_id FROM mls_device_memberships
 		WHERE mls_group_id = $1 AND deleted_at IS NULL`, groupID)
 	if err != nil {
 		return nil, err
@@ -902,7 +899,7 @@ func (s *Store) ListMlsGroupMemberAccountIDs(ctx context.Context, groupID string
 // IsMlsGroupMember reports whether (account, device) is a member of the group.
 func (s *Store) IsMlsGroupMember(ctx context.Context, accountID, deviceID, groupID string) (bool, error) {
 	var exists bool
-	err := s.DB.QueryRow(ctx, `SELECT EXISTS(
+	err := s.queryRow(ctx, `SELECT EXISTS(
 		SELECT 1 FROM mls_device_memberships
 		WHERE mls_group_id = $1 AND account_id = $2 AND device_id = $3 AND deleted_at IS NULL)`,
 		groupID, accountID, deviceID).Scan(&exists)
@@ -912,7 +909,7 @@ func (s *Store) IsMlsGroupMember(ctx context.Context, accountID, deviceID, group
 // MarkMlsReshareRequired creates or updates the membership with
 // last_reshare_required_at set (mirrors MarkMlsReshareRequiredAsync).
 func (s *Store) MarkMlsReshareRequired(ctx context.Context, groupID, accountID, deviceID string, epoch int64, now time.Time) (*MlsDeviceMembership, error) {
-	row := s.DB.QueryRow(ctx, `SELECT `+mlsDeviceMembershipColumns+` FROM mls_device_memberships
+	row := s.queryRow(ctx, `SELECT `+mlsDeviceMembershipColumns+` FROM mls_device_memberships
 		WHERE mls_group_id = $1 AND account_id = $2 AND device_id = $3 AND deleted_at IS NULL
 		LIMIT 1`, groupID, accountID, deviceID)
 	membership, err := scanMlsDeviceMembership(row)
@@ -930,7 +927,7 @@ func (s *Store) MarkMlsReshareRequired(ctx context.Context, groupID, accountID, 
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		}
-		if _, err := s.DB.Exec(ctx, `INSERT INTO mls_device_memberships (id, mls_group_id, account_id, device_id, joined_epoch, last_seen_epoch, last_reshare_required_at, last_reshare_completed_at, created_at, updated_at, deleted_at)
+		if _, err := s.exec(ctx, `INSERT INTO mls_device_memberships (id, mls_group_id, account_id, device_id, joined_epoch, last_seen_epoch, last_reshare_required_at, last_reshare_completed_at, created_at, updated_at, deleted_at)
 			VALUES ($1, $2, $3, $4, $5, $5, $6, NULL, $7, $7, NULL)`,
 			membership.Id, membership.MlsGroupId, membership.AccountId, membership.DeviceId,
 			membership.JoinedEpoch, now, now); err != nil {
@@ -941,7 +938,7 @@ func (s *Store) MarkMlsReshareRequired(ctx context.Context, groupID, accountID, 
 		return membership, nil
 	}
 	lastSeen := epoch
-	if _, err := s.DB.Exec(ctx, `UPDATE mls_device_memberships
+	if _, err := s.exec(ctx, `UPDATE mls_device_memberships
 		SET last_seen_epoch = $2, last_reshare_required_at = $3, updated_at = $3
 		WHERE id = $1`, membership.Id, epoch, now); err != nil {
 		return nil, err
@@ -957,7 +954,7 @@ func (s *Store) MarkMlsReshareRequired(ctx context.Context, groupID, accountID, 
 // IgnoreQueryFilters) and clears the reshare markers (mirrors
 // AddMlsDeviceMembershipAsync).
 func (s *Store) UpsertMlsDeviceMembership(ctx context.Context, groupID, accountID, deviceID string, epoch int64, now time.Time) (*MlsDeviceMembership, error) {
-	row := s.DB.QueryRow(ctx, `SELECT `+mlsDeviceMembershipColumns+` FROM mls_device_memberships
+	row := s.queryRow(ctx, `SELECT `+mlsDeviceMembershipColumns+` FROM mls_device_memberships
 		WHERE mls_group_id = $1 AND account_id = $2 AND device_id = $3 LIMIT 1`, groupID, accountID, deviceID)
 	membership, err := scanMlsDeviceMembership(row)
 	if err != nil {
@@ -975,7 +972,7 @@ func (s *Store) UpsertMlsDeviceMembership(ctx context.Context, groupID, accountI
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		}
-		_, err := s.DB.Exec(ctx, `INSERT INTO mls_device_memberships (id, mls_group_id, account_id, device_id, joined_epoch, last_seen_epoch, last_reshare_required_at, last_reshare_completed_at, created_at, updated_at, deleted_at)
+		_, err := s.exec(ctx, `INSERT INTO mls_device_memberships (id, mls_group_id, account_id, device_id, joined_epoch, last_seen_epoch, last_reshare_required_at, last_reshare_completed_at, created_at, updated_at, deleted_at)
 			VALUES ($1, $2, $3, $4, $5, $5, NULL, NULL, $6, $6, NULL)`,
 			membership.Id, membership.MlsGroupId, membership.AccountId, membership.DeviceId,
 			membership.JoinedEpoch, now)
@@ -985,7 +982,7 @@ func (s *Store) UpsertMlsDeviceMembership(ctx context.Context, groupID, accountI
 		return membership, nil
 	}
 	lastSeen := epoch
-	if _, err := s.DB.Exec(ctx, `UPDATE mls_device_memberships
+	if _, err := s.exec(ctx, `UPDATE mls_device_memberships
 		SET deleted_at = NULL, last_seen_epoch = $2, last_reshare_required_at = NULL, last_reshare_completed_at = NULL, updated_at = $3
 		WHERE id = $1`, membership.Id, epoch, now); err != nil {
 		return nil, err
@@ -1001,7 +998,7 @@ func (s *Store) UpsertMlsDeviceMembership(ctx context.Context, groupID, accountI
 // ListDeviceReshareStatus lists the pending reshare memberships of a device
 // (last_reshare_required_at set, last_reshare_completed_at null).
 func (s *Store) ListDeviceReshareStatus(ctx context.Context, accountID, deviceID string) ([]MlsDeviceMembership, error) {
-	rows, err := s.DB.Query(ctx, `SELECT `+mlsDeviceMembershipColumns+` FROM mls_device_memberships
+	rows, err := s.query(ctx, `SELECT `+mlsDeviceMembershipColumns+` FROM mls_device_memberships
 		WHERE account_id = $1 AND device_id = $2
 			AND last_reshare_required_at IS NOT NULL AND last_reshare_completed_at IS NULL
 			AND deleted_at IS NULL`, accountID, deviceID)
@@ -1022,7 +1019,7 @@ func (s *Store) ListDeviceReshareStatus(ctx context.Context, accountID, deviceID
 
 // CompleteMlsReshare sets last_reshare_completed_at on the membership.
 func (s *Store) CompleteMlsReshare(ctx context.Context, accountID, deviceID, groupID string, now time.Time) (bool, error) {
-	tag, err := s.DB.Exec(ctx, `UPDATE mls_device_memberships
+	tag, err := s.exec(ctx, `UPDATE mls_device_memberships
 		SET last_reshare_completed_at = $2, updated_at = $2
 		WHERE account_id = $1 AND device_id = $2 AND mls_group_id = $3 AND deleted_at IS NULL`,
 		accountID, deviceID, groupID, now)
@@ -1035,7 +1032,7 @@ func (s *Store) CompleteMlsReshare(ctx context.Context, accountID, deviceID, gro
 // MarkAllDevicesReshareRequired flags every group member device for reshare
 // (group reset), returning the number of memberships updated.
 func (s *Store) MarkAllDevicesReshareRequired(ctx context.Context, groupID string, now time.Time) (int64, error) {
-	tag, err := s.DB.Exec(ctx, `UPDATE mls_device_memberships
+	tag, err := s.exec(ctx, `UPDATE mls_device_memberships
 		SET last_reshare_required_at = $2, last_reshare_completed_at = NULL, updated_at = $2
 		WHERE mls_group_id = $1 AND deleted_at IS NULL`, groupID, now)
 	if err != nil {
@@ -1049,14 +1046,14 @@ func (s *Store) MarkAllDevicesReshareRequired(ctx context.Context, groupID strin
 // AccountExists reports whether the account row exists.
 func (s *Store) AccountExists(ctx context.Context, accountID string) (bool, error) {
 	var exists bool
-	err := s.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM accounts WHERE id = $1 AND deleted_at IS NULL)`, accountID).Scan(&exists)
+	err := s.queryRow(ctx, `SELECT EXISTS(SELECT 1 FROM accounts WHERE id = $1 AND deleted_at IS NULL)`, accountID).Scan(&exists)
 	return exists, err
 }
 
 // TouchE2eeSession bumps the session's last_message_at (fanout with a session
 // id).
 func (s *Store) TouchE2eeSession(ctx context.Context, sessionID string, now time.Time) error {
-	_, err := s.DB.Exec(ctx, `UPDATE e2ee_sessions SET last_message_at = $2, updated_at = $2
+	_, err := s.exec(ctx, `UPDATE e2ee_sessions SET last_message_at = $2, updated_at = $2
 		WHERE id = $1 AND deleted_at IS NULL`, sessionID, now)
 	return err
 }
@@ -1068,7 +1065,7 @@ func (s *Store) TouchE2eeSession(ctx context.Context, sessionID string, now time
 // nothing is inserted.
 func (s *Store) InsertEnvelope(ctx context.Context, env *E2eeEnvelope) (*E2eeEnvelope, error) {
 	if env.ClientMessageId != nil && *env.ClientMessageId != "" {
-		row := s.DB.QueryRow(ctx, `SELECT `+e2eeEnvelopeColumns+` FROM e2ee_envelopes
+		row := s.queryRow(ctx, `SELECT `+e2eeEnvelopeColumns+` FROM e2ee_envelopes
 			WHERE sender_id = $1 AND sender_device_id IS NOT DISTINCT FROM $2
 				AND recipient_account_id = $3 AND recipient_device_id IS NOT DISTINCT FROM $4
 				AND client_message_id = $5 AND deleted_at IS NULL
@@ -1083,13 +1080,13 @@ func (s *Store) InsertEnvelope(ctx context.Context, env *E2eeEnvelope) (*E2eeEnv
 		}
 	}
 	var seq int64
-	if err := s.DB.QueryRow(ctx, `SELECT COALESCE(MAX(sequence),0)+1 FROM e2ee_envelopes
+	if err := s.queryRow(ctx, `SELECT COALESCE(MAX(sequence),0)+1 FROM e2ee_envelopes
 		WHERE recipient_account_id = $1 AND recipient_device_id IS NOT DISTINCT FROM $2`,
 		env.RecipientAccountId, env.RecipientDeviceId).Scan(&seq); err != nil {
 		return nil, err
 	}
 	env.Sequence = seq
-	_, err := s.DB.Exec(ctx, `INSERT INTO e2ee_envelopes (id, sender_id, sender_device_id, recipient_id, recipient_account_id, recipient_device_id, session_id, type, group_id, client_message_id, sequence, ciphertext, header, signature, delivery_status, delivered_at, acked_at, expires_at, legacy_account_scoped, meta, created_at, updated_at, deleted_at)
+	_, err := s.exec(ctx, `INSERT INTO e2ee_envelopes (id, sender_id, sender_device_id, recipient_id, recipient_account_id, recipient_device_id, session_id, type, group_id, client_message_id, sequence, ciphertext, header, signature, delivery_status, delivered_at, acked_at, expires_at, legacy_account_scoped, meta, created_at, updated_at, deleted_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 0, NULL, NULL, $15, $16, $17, $18, $18, NULL)`,
 		env.Id, env.SenderId, env.SenderDeviceId, env.RecipientId, env.RecipientAccountId, env.RecipientDeviceId,
 		env.SessionId, env.Type, env.GroupId, env.ClientMessageId, env.Sequence, env.Ciphertext, env.Header,
@@ -1106,7 +1103,7 @@ func (s *Store) InsertEnvelope(ctx context.Context, env *E2eeEnvelope) (*E2eeEnv
 // an empty slice when the device is not active.
 func (s *Store) GetPendingEnvelopesByDevice(ctx context.Context, accountID, deviceID string, take int, now time.Time) ([]E2eeEnvelope, error) {
 	var active bool
-	if err := s.DB.QueryRow(ctx, `SELECT EXISTS(
+	if err := s.queryRow(ctx, `SELECT EXISTS(
 		SELECT 1 FROM e2ee_devices WHERE account_id = $1 AND device_id = $2 AND is_revoked = false AND deleted_at IS NULL)`,
 		accountID, deviceID).Scan(&active); err != nil {
 		return nil, err
@@ -1115,7 +1112,7 @@ func (s *Store) GetPendingEnvelopesByDevice(ctx context.Context, accountID, devi
 		return nil, nil
 	}
 
-	rows, err := s.DB.Query(ctx, `SELECT `+e2eeEnvelopeColumns+` FROM e2ee_envelopes
+	rows, err := s.query(ctx, `SELECT `+e2eeEnvelopeColumns+` FROM e2ee_envelopes
 		WHERE recipient_account_id = $1 AND recipient_device_id = $2
 			AND delivery_status <> 2
 			AND (expires_at IS NULL OR expires_at > $3)
@@ -1142,7 +1139,7 @@ func (s *Store) GetPendingEnvelopesByDevice(ctx context.Context, accountID, devi
 		return nil, err
 	}
 	if len(pendingIDs) > 0 {
-		if _, err := s.DB.Exec(ctx, `UPDATE e2ee_envelopes SET delivery_status = 1, delivered_at = $2, updated_at = $2
+		if _, err := s.exec(ctx, `UPDATE e2ee_envelopes SET delivery_status = 1, delivered_at = $2, updated_at = $2
 			WHERE id = ANY($1)`, pendingIDs, now); err != nil {
 			return nil, err
 		}
@@ -1155,7 +1152,7 @@ func (s *Store) GetPendingEnvelopesByDevice(ctx context.Context, accountID, devi
 // result).
 func (s *Store) AckEnvelopeByDevice(ctx context.Context, accountID, deviceID, envelopeID string, now time.Time) (*E2eeEnvelope, error) {
 	var active bool
-	if err := s.DB.QueryRow(ctx, `SELECT EXISTS(
+	if err := s.queryRow(ctx, `SELECT EXISTS(
 		SELECT 1 FROM e2ee_devices WHERE account_id = $1 AND device_id = $2 AND is_revoked = false AND deleted_at IS NULL)`,
 		accountID, deviceID).Scan(&active); err != nil {
 		return nil, err
@@ -1163,7 +1160,7 @@ func (s *Store) AckEnvelopeByDevice(ctx context.Context, accountID, deviceID, en
 	if !active {
 		return nil, nil
 	}
-	row := s.DB.QueryRow(ctx, `SELECT `+e2eeEnvelopeColumns+` FROM e2ee_envelopes
+	row := s.queryRow(ctx, `SELECT `+e2eeEnvelopeColumns+` FROM e2ee_envelopes
 		WHERE id = $1 AND recipient_account_id = $2 AND recipient_device_id = $3 AND deleted_at IS NULL`,
 		envelopeID, accountID, deviceID)
 	env, err := scanE2eeEnvelope(row)
@@ -1173,7 +1170,7 @@ func (s *Store) AckEnvelopeByDevice(ctx context.Context, accountID, deviceID, en
 	if env == nil {
 		return nil, nil
 	}
-	if _, err := s.DB.Exec(ctx, `UPDATE e2ee_envelopes SET delivery_status = 2, acked_at = $2, updated_at = $2 WHERE id = $1`,
+	if _, err := s.exec(ctx, `UPDATE e2ee_envelopes SET delivery_status = 2, acked_at = $2, updated_at = $2 WHERE id = $1`,
 		env.Id, now); err != nil {
 		return nil, err
 	}
@@ -1185,7 +1182,7 @@ func (s *Store) AckEnvelopeByDevice(ctx context.Context, accountID, deviceID, en
 
 // MarkEnvelopeDelivered flips a pushed envelope to Delivered.
 func (s *Store) MarkEnvelopeDelivered(ctx context.Context, envelopeID string, now time.Time) error {
-	_, err := s.DB.Exec(ctx, `UPDATE e2ee_envelopes SET delivery_status = 1, delivered_at = $2, updated_at = $2
+	_, err := s.exec(ctx, `UPDATE e2ee_envelopes SET delivery_status = 1, delivered_at = $2, updated_at = $2
 		WHERE id = $1`, envelopeID, now)
 	return err
 }
@@ -1196,7 +1193,7 @@ func (s *Store) MarkEnvelopeDelivered(ctx context.Context, envelopeID string, no
 // SaveChanges transaction wraps the same steps).
 func (s *Store) RevokeDevice(ctx context.Context, accountID, deviceID string, now time.Time) (*RevokeDeviceResult, error) {
 	result := &RevokeDeviceResult{}
-	tx, err := s.DB.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := s.beginSerializable(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1297,11 +1294,11 @@ func (s *Store) RevokeDevice(ctx context.Context, accountID, deviceID string, no
 
 // --- scan helpers ---
 
-func scanE2eeDevice(row pgx.Row) (*E2eeDevice, error) {
+func scanE2eeDevice(row rowScanner) (*E2eeDevice, error) {
 	var d E2eeDevice
 	err := row.Scan(&d.Id, &d.AccountId, &d.DeviceId, &d.DeviceLabel, &d.IsRevoked,
 		&d.LastBundleAt, &d.RevokedAt, &d.CreatedAt, &d.UpdatedAt, &d.DeletedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, ErrNotFound) {
 		return nil, nil
 	}
 	if err != nil {
@@ -1310,13 +1307,13 @@ func scanE2eeDevice(row pgx.Row) (*E2eeDevice, error) {
 	return &d, nil
 }
 
-func scanE2eeKeyBundle(row pgx.Row) (*E2eeKeyBundle, error) {
+func scanE2eeKeyBundle(row rowScanner) (*E2eeKeyBundle, error) {
 	var b E2eeKeyBundle
 	var meta []byte
 	err := row.Scan(&b.Id, &b.AccountId, &b.DeviceId, &b.Algorithm, &b.IdentityKey, &b.SignedPreKeyId,
 		&b.SignedPreKey, &b.SignedPreKeySignature, &b.SignedPreKeyExpiresAt, &meta,
 		&b.CreatedAt, &b.UpdatedAt, &b.DeletedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, ErrNotFound) {
 		return nil, nil
 	}
 	if err != nil {
@@ -1326,11 +1323,11 @@ func scanE2eeKeyBundle(row pgx.Row) (*E2eeKeyBundle, error) {
 	return &b, nil
 }
 
-func scanE2eeOneTimePreKey(row pgx.Row) (*E2eeOneTimePreKey, error) {
+func scanE2eeOneTimePreKey(row rowScanner) (*E2eeOneTimePreKey, error) {
 	var k E2eeOneTimePreKey
 	err := row.Scan(&k.Id, &k.KeyBundleId, &k.AccountId, &k.DeviceId, &k.KeyId, &k.PublicKey,
 		&k.IsClaimed, &k.ClaimedAt, &k.ClaimedByAccountId, &k.CreatedAt, &k.UpdatedAt, &k.DeletedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, ErrNotFound) {
 		return nil, nil
 	}
 	if err != nil {
@@ -1339,14 +1336,14 @@ func scanE2eeOneTimePreKey(row pgx.Row) (*E2eeOneTimePreKey, error) {
 	return &k, nil
 }
 
-func scanE2eeEnvelope(row pgx.Row) (*E2eeEnvelope, error) {
+func scanE2eeEnvelope(row rowScanner) (*E2eeEnvelope, error) {
 	var e E2eeEnvelope
 	var meta []byte
 	err := row.Scan(&e.Id, &e.SenderId, &e.SenderDeviceId, &e.RecipientId, &e.RecipientAccountId,
 		&e.RecipientDeviceId, &e.SessionId, &e.Type, &e.GroupId, &e.ClientMessageId, &e.Sequence,
 		&e.Ciphertext, &e.Header, &e.Signature, &e.DeliveryStatus, &e.DeliveredAt, &e.AckedAt,
 		&e.ExpiresAt, &e.LegacyAccountScoped, &meta, &e.CreatedAt, &e.UpdatedAt, &e.DeletedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, ErrNotFound) {
 		return nil, nil
 	}
 	if err != nil {
@@ -1356,12 +1353,12 @@ func scanE2eeEnvelope(row pgx.Row) (*E2eeEnvelope, error) {
 	return &e, nil
 }
 
-func scanMlsKeyPackage(row pgx.Row) (*MlsKeyPackage, error) {
+func scanMlsKeyPackage(row rowScanner) (*MlsKeyPackage, error) {
 	var k MlsKeyPackage
 	var meta []byte
 	err := row.Scan(&k.Id, &k.AccountId, &k.DeviceId, &k.DeviceLabel, &k.KeyPackage, &k.Ciphersuite,
 		&k.IsConsumed, &k.ConsumedAt, &k.ConsumedByAccountId, &meta, &k.CreatedAt, &k.UpdatedAt, &k.DeletedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, ErrNotFound) {
 		return nil, nil
 	}
 	if err != nil {
@@ -1371,12 +1368,12 @@ func scanMlsKeyPackage(row pgx.Row) (*MlsKeyPackage, error) {
 	return &k, nil
 }
 
-func scanMlsGroupState(row pgx.Row) (*MlsGroupState, error) {
+func scanMlsGroupState(row rowScanner) (*MlsGroupState, error) {
 	var st MlsGroupState
 	var meta []byte
 	err := row.Scan(&st.Id, &st.MlsGroupId, &st.Epoch, &st.StateVersion, &st.LastCommitAt,
 		&st.GroupInfo, &st.RatchetTree, &meta, &st.CreatedAt, &st.UpdatedAt, &st.DeletedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, ErrNotFound) {
 		return nil, nil
 	}
 	if err != nil {
@@ -1386,11 +1383,11 @@ func scanMlsGroupState(row pgx.Row) (*MlsGroupState, error) {
 	return &st, nil
 }
 
-func scanMlsDeviceMembership(row pgx.Row) (*MlsDeviceMembership, error) {
+func scanMlsDeviceMembership(row rowScanner) (*MlsDeviceMembership, error) {
 	var m MlsDeviceMembership
 	err := row.Scan(&m.Id, &m.MlsGroupId, &m.AccountId, &m.DeviceId, &m.JoinedEpoch, &m.LastSeenEpoch,
 		&m.LastReshareRequiredAt, &m.LastReshareCompletedAt, &m.CreatedAt, &m.UpdatedAt, &m.DeletedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, ErrNotFound) {
 		return nil, nil
 	}
 	if err != nil {

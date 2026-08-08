@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
@@ -18,13 +17,13 @@ import (
 
 // GetAccountByAutomatedID loads a bot account by automated_id.
 func (s *Store) GetAccountByAutomatedID(ctx context.Context, automatedID uuid.UUID) (*model.Account, error) {
-	row := s.DB.QueryRow(ctx, `SELECT `+accountColumns+` FROM accounts WHERE automated_id = $1 AND deleted_at IS NULL`, automatedID)
+	row := s.queryRow(ctx, `SELECT `+accountColumns+` FROM accounts WHERE automated_id = $1 AND deleted_at IS NULL`, automatedID)
 	return scanAccount(row)
 }
 
 // GetAccountsByAutomatedIDs loads bot accounts by automated ids.
 func (s *Store) GetAccountsByAutomatedIDs(ctx context.Context, ids []uuid.UUID) ([]model.Account, error) {
-	rows, err := s.DB.Query(ctx, `SELECT `+accountColumns+` FROM accounts WHERE automated_id = ANY($1) AND deleted_at IS NULL`, ids)
+	rows, err := s.query(ctx, `SELECT `+accountColumns+` FROM accounts WHERE automated_id = ANY($1) AND deleted_at IS NULL`, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +41,7 @@ func (s *Store) GetAccountsByAutomatedIDs(ctx context.Context, ids []uuid.UUID) 
 
 // GetAccountsByNames loads accounts by name.
 func (s *Store) GetAccountsByNames(ctx context.Context, names []string) ([]model.Account, error) {
-	rows, err := s.DB.Query(ctx, `SELECT `+accountColumns+` FROM accounts WHERE name = ANY($1) AND deleted_at IS NULL`, names)
+	rows, err := s.query(ctx, `SELECT `+accountColumns+` FROM accounts WHERE name = ANY($1) AND deleted_at IS NULL`, names)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +66,7 @@ func (s *Store) ListConnectionsWithTokens(ctx context.Context, accountID uuid.UU
 		query += ` AND provider = $2`
 		args = append(args, *provider)
 	}
-	rows, err := s.DB.Query(ctx, query, args...)
+	rows, err := s.query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -85,11 +84,11 @@ func (s *Store) ListConnectionsWithTokens(ctx context.Context, accountID uuid.UU
 
 // GetConnectionFullByID loads a connection by id (full row incl. tokens).
 func (s *Store) GetConnectionFullByID(ctx context.Context, id uuid.UUID) (*model.Connection, error) {
-	row := s.DB.QueryRow(ctx, `SELECT id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, registered_at, created_at, updated_at, deleted_at
+	row := s.queryRow(ctx, `SELECT id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, registered_at, created_at, updated_at, deleted_at
 		FROM account_connections WHERE id = $1 AND deleted_at IS NULL`, id)
 	c, err := scanConnectionFull(row)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -99,11 +98,11 @@ func (s *Store) GetConnectionFullByID(ctx context.Context, id uuid.UUID) (*model
 
 // GetConnectionByProviderAndIdentifier loads a connection by provider+identifier.
 func (s *Store) GetConnectionByProviderAndIdentifier(ctx context.Context, provider, providedIdentifier string) (*model.Connection, error) {
-	row := s.DB.QueryRow(ctx, `SELECT id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, registered_at, created_at, updated_at, deleted_at
+	row := s.queryRow(ctx, `SELECT id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, registered_at, created_at, updated_at, deleted_at
 		FROM account_connections WHERE LOWER(provider) = LOWER($1) AND provided_identifier = $2 AND deleted_at IS NULL LIMIT 1`, provider, providedIdentifier)
 	c, err := scanConnectionFull(row)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
@@ -113,14 +112,14 @@ func (s *Store) GetConnectionByProviderAndIdentifier(ctx context.Context, provid
 
 // UpdateConnectionAccessToken refreshes a connection's access token.
 func (s *Store) UpdateConnectionAccessToken(ctx context.Context, id string, accessToken string, now time.Time) error {
-	_, err := s.DB.Exec(ctx, `UPDATE account_connections SET access_token = $1, last_used_at = $2, updated_at = $2 WHERE id = $3`,
+	_, err := s.exec(ctx, `UPDATE account_connections SET access_token = $1, last_used_at = $2, updated_at = $2 WHERE id = $3`,
 		accessToken, now, id)
 	return err
 }
 
 // GetSuperuserActorIDs returns actors of superuser/root groups.
 func (s *Store) GetSuperuserActorIDs(ctx context.Context) ([]string, error) {
-	rows, err := s.DB.Query(ctx, `SELECT DISTINCT m.actor FROM permission_group_members m
+	rows, err := s.query(ctx, `SELECT DISTINCT m.actor FROM permission_group_members m
 		JOIN permission_groups g ON g.id = m.group_id AND g.deleted_at IS NULL
 		WHERE g."key" IN ('superuser', 'root') AND m.deleted_at IS NULL`)
 	if err != nil {
@@ -140,7 +139,7 @@ func (s *Store) GetSuperuserActorIDs(ctx context.Context) ([]string, error) {
 
 // ListApiKeysByAccount lists an account's keys with session ids.
 func (s *Store) ListApiKeysByAccount(ctx context.Context, accountID string) ([]model.ApiKey, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, label, account_id, app_id, session_id, created_at, updated_at, expired_at, deleted_at
+	rows, err := s.query(ctx, `SELECT id, label, account_id, app_id, session_id, created_at, updated_at, expired_at, deleted_at
 		FROM api_keys WHERE account_id = $1 AND deleted_at IS NULL ORDER BY created_at`, accountID)
 	if err != nil {
 		return nil, err
@@ -163,7 +162,7 @@ func (s *Store) ListApiKeysByAccount(ctx context.Context, accountID string) ([]m
 
 // UpdateApiKeyLabel renames an api key.
 func (s *Store) UpdateApiKeyLabel(ctx context.Context, id string, label string, now time.Time) error {
-	_, err := s.DB.Exec(ctx, `UPDATE api_keys SET label = $1, updated_at = $2 WHERE id = $3`, label, now, id)
+	_, err := s.exec(ctx, `UPDATE api_keys SET label = $1, updated_at = $2 WHERE id = $3`, label, now, id)
 	return err
 }
 
@@ -175,7 +174,7 @@ func (s *Store) UpdateApiKeyLabel(ctx context.Context, id string, label string, 
 func (s *Store) FindPermissionNodeValue(ctx context.Context, actor string, nodeType int, key string, now time.Time) ([]byte, string, bool, error) {
 	var value []byte
 	var matched string
-	err := s.DB.QueryRow(ctx, `SELECT n.value, n."key" FROM permission_nodes n
+	err := s.queryRow(ctx, `SELECT n.value, n."key" FROM permission_nodes n
 		WHERE n.deleted_at IS NULL
 		AND (n.expired_at IS NULL OR n.expired_at > $3)
 		AND (n.affected_at IS NULL OR n.affected_at <= $3)
@@ -193,12 +192,12 @@ func (s *Store) FindPermissionNodeValue(ctx context.Context, actor string, nodeT
 	if err == nil {
 		return value, matched, true, nil
 	}
-	if !errors.Is(err, pgx.ErrNoRows) {
+	if !errors.Is(err, ErrNotFound) {
 		return nil, "", false, err
 	}
 
 	// Best wildcard match among 100 candidates (C# takes 100 ordered by key).
-	rows, err := s.DB.Query(ctx, `SELECT n.value, n."key" FROM permission_nodes n
+	rows, err := s.query(ctx, `SELECT n.value, n."key" FROM permission_nodes n
 		WHERE n.deleted_at IS NULL
 		AND (n.expired_at IS NULL OR n.expired_at > $3)
 		AND (n.affected_at IS NULL OR n.affected_at <= $3)
@@ -276,7 +275,7 @@ func wildcardMatch(pattern, target string) bool {
 
 // GetBlockedPermissionKeys returns an actor's punishment-blocked keys.
 func (s *Store) GetBlockedPermissionKeys(ctx context.Context, actor string, now time.Time) ([]string, error) {
-	rows, err := s.DB.Query(ctx, `SELECT blocked_permissions FROM punishments
+	rows, err := s.query(ctx, `SELECT blocked_permissions FROM punishments
 		WHERE account_id = $1 AND type = 0 AND deleted_at IS NULL AND (expired_at IS NULL OR expired_at > $2)`, actor, now)
 	if err != nil {
 		return nil, err
@@ -300,7 +299,7 @@ func (s *Store) GetBlockedPermissionKeys(ctx context.Context, actor string, now 
 // UpsertDefaultGroupMember enrolls an account in the `default` group,
 // reviving soft-deleted memberships.
 func (s *Store) UpsertDefaultGroupMember(ctx context.Context, accountID string, now time.Time) (bool, error) {
-	tag, err := s.DB.Exec(ctx, `INSERT INTO permission_group_members (group_id, actor, created_at, updated_at)
+	tag, err := s.exec(ctx, `INSERT INTO permission_group_members (group_id, actor, created_at, updated_at)
 		SELECT id, $1, $2, $2 FROM permission_groups WHERE "key" = 'default' AND deleted_at IS NULL
 		ON CONFLICT (group_id, actor) DO UPDATE SET deleted_at = NULL, updated_at = $2`, accountID, now)
 	if err != nil {
@@ -314,20 +313,20 @@ func (s *Store) UpsertDefaultGroupMember(ctx context.Context, accountID string, 
 // CountAccountsByAutomatedID counts bot accounts with the automated id.
 func (s *Store) CountAccountsByAutomatedID(ctx context.Context, automatedID uuid.UUID) (int, error) {
 	var n int
-	err := s.DB.QueryRow(ctx, `SELECT count(*) FROM accounts WHERE automated_id = $1 AND deleted_at IS NULL`, automatedID).Scan(&n)
+	err := s.queryRow(ctx, `SELECT count(*) FROM accounts WHERE automated_id = $1 AND deleted_at IS NULL`, automatedID).Scan(&n)
 	return n, err
 }
 
 // CountAccountsByNameCI counts accounts with the name (case-insensitive).
 func (s *Store) CountAccountsByNameCI(ctx context.Context, name string) (int, error) {
 	var n int
-	err := s.DB.QueryRow(ctx, `SELECT count(*) FROM accounts WHERE LOWER(name) = LOWER($1) AND deleted_at IS NULL`, name).Scan(&n)
+	err := s.queryRow(ctx, `SELECT count(*) FROM accounts WHERE LOWER(name) = LOWER($1) AND deleted_at IS NULL`, name).Scan(&n)
 	return n, err
 }
 
 // InsertAccountWithProfile inserts an account with its profile row.
 func (s *Store) InsertAccountWithProfile(ctx context.Context, account *model.Account, now time.Time) error {
-	tx, err := s.DB.Begin(ctx)
+	tx, err := s.begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -364,7 +363,7 @@ func (s *Store) UpdateAccountWithProfile(ctx context.Context, account *model.Acc
 			automatedID = &id
 		}
 	}
-	_, err := s.DB.Exec(ctx, `UPDATE accounts SET
+	_, err := s.exec(ctx, `UPDATE accounts SET
 		name = $2, nick = $3, language = $4, region = $5, activated_at = $6, is_superuser = $7, automated_id = $8, updated_at = $9
 		WHERE id = $1`,
 		account.Id, account.Name, account.Nick, account.Language, account.Region,
@@ -374,7 +373,7 @@ func (s *Store) UpdateAccountWithProfile(ctx context.Context, account *model.Acc
 
 // SoftDeleteAccountAndSessions soft-deletes an account and revokes sessions.
 func (s *Store) SoftDeleteAccountAndSessions(ctx context.Context, accountID string, now time.Time) error {
-	tx, err := s.DB.Begin(ctx)
+	tx, err := s.begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -413,7 +412,7 @@ func (s *Store) SearchActionLogs(ctx context.Context, accountID *uuid.UUID, acti
 		order = `ORDER BY created_at ASC, id ASC`
 	}
 	args = append(args, limit, offset)
-	rows, err := s.DB.Query(ctx, `SELECT id, action, meta, user_agent, ip_address, location, account_id, session_id, created_at, updated_at, deleted_at
+	rows, err := s.query(ctx, `SELECT id, action, meta, user_agent, ip_address, location, account_id, session_id, created_at, updated_at, deleted_at
 		FROM action_logs `+where+` `+order+` LIMIT $`+itoa(len(args)-1)+` OFFSET $`+itoa(len(args)), args...)
 	if err != nil {
 		return nil, err
@@ -430,7 +429,7 @@ func (s *Store) SearchActionLogs(ctx context.Context, accountID *uuid.UUID, acti
 	return logs, rows.Err()
 }
 
-func scanConnectionFull(row pgx.Row) (*model.Connection, error) {
+func scanConnectionFull(row rowScanner) (*model.Connection, error) {
 	var c model.Connection
 	var meta, accessToken, refreshToken *[]byte
 	err := row.Scan(&c.Id, &c.Provider, &c.ProvidedIdentifier, &meta, &accessToken, &refreshToken,
@@ -450,7 +449,7 @@ func scanConnectionFull(row pgx.Row) (*model.Connection, error) {
 	return &c, nil
 }
 
-func scanActionLog(row pgx.Row) (*model.ActionLog, error) {
+func scanActionLog(row rowScanner) (*model.ActionLog, error) {
 	var l model.ActionLog
 	var meta []byte
 	var location []byte
