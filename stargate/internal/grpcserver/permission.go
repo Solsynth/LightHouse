@@ -120,6 +120,7 @@ func (s *dyPermissionService) AddPermissionNode(ctx context.Context, req *gen.Dy
 		s.d.Log.Error("failed to add permission node", "error", err)
 		return nil, status.Error(codes.Internal, "Failed to add permission node")
 	}
+	s.d.Redis.ClearActorPermissionCache(ctx, req.Actor)
 	return &gen.DyAddPermissionNodeResponse{Node: permissionNodeToProto(node)}, nil
 }
 
@@ -144,6 +145,7 @@ func (s *dyPermissionService) AddPermissionNodeToGroup(ctx context.Context, req 
 		s.d.Log.Error("failed to add permission node to group", "error", err)
 		return nil, status.Error(codes.Internal, "Failed to add permission node to group")
 	}
+	clearPermissionGroupCaches(ctx, s.d, groupID, req.Actor)
 	return &gen.DyAddPermissionNodeToGroupResponse{Node: permissionNodeToProto(node)}, nil
 }
 
@@ -157,6 +159,7 @@ func (s *dyPermissionService) RemovePermissionNode(ctx context.Context, req *gen
 		s.d.Log.Error("failed to remove permission node", "error", err)
 		return nil, status.Error(codes.Internal, "Failed to remove permission node")
 	}
+	s.d.Redis.ClearActorPermissionCache(ctx, req.Actor)
 	return &gen.DyRemovePermissionNodeResponse{Success: true}, nil
 }
 
@@ -176,6 +179,7 @@ func (s *dyPermissionService) RemovePermissionNodeFromGroup(ctx context.Context,
 		s.d.Log.Error("failed to remove permission node from group", "error", err)
 		return nil, status.Error(codes.Internal, "Failed to remove permission node from group")
 	}
+	clearPermissionGroupCaches(ctx, s.d, groupID, req.Actor)
 	return &gen.DyRemovePermissionNodeFromGroupResponse{Success: true}, nil
 }
 
@@ -225,6 +229,22 @@ func actorTypeToProto(t int) gen.DyPermissionNodeActorType {
 		return gen.DyPermissionNodeActorType_DY_GROUP
 	}
 	return gen.DyPermissionNodeActorType_DY_ACCOUNT
+}
+
+// clearPermissionGroupCaches removes permission decisions cached for the group
+// actor and every current member after one of its nodes changes.
+func clearPermissionGroupCaches(ctx context.Context, d Deps, groupID uuid.UUID, groupActor string) {
+	if groupActor != "" {
+		d.Redis.ClearActorPermissionCache(ctx, groupActor)
+	}
+	actors, err := d.Store.PermissionGroupMemberActors(ctx, groupID)
+	if err != nil {
+		d.Log.Warn("failed to list permission group members for cache clear", "group_id", groupID, "error", err)
+		return
+	}
+	for _, actor := range actors {
+		d.Redis.ClearActorPermissionCache(ctx, actor)
+	}
 }
 
 // isBlockedKey mirrors PermissionService.IsPermissionBlocked: exact

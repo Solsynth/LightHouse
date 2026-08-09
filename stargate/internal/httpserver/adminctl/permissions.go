@@ -225,6 +225,10 @@ func updatePermissionGroup(d Deps) gin.HandlerFunc {
 			return
 		}
 		clearGroupMemberCaches(c, d, groupID)
+		clearActorPermissionCache(d, c, "group:"+group.Key)
+		if updated.Key != group.Key {
+			clearActorPermissionCache(d, c, "group:"+updated.Key)
+		}
 		c.JSON(http.StatusOK, updated)
 	}
 }
@@ -255,6 +259,7 @@ func deletePermissionGroup(d Deps) gin.HandlerFunc {
 			return
 		}
 		clearActorCaches(c, d, actors)
+		clearActorPermissionCache(d, c, "group:"+group.Key)
 		c.Status(http.StatusNoContent)
 	}
 }
@@ -295,6 +300,7 @@ func upsertGroupPermission(d Deps) gin.HandlerFunc {
 			return
 		}
 		clearGroupMemberCaches(c, d, groupID)
+		clearActorPermissionCache(d, c, "group:"+group.Key)
 		c.JSON(http.StatusOK, node)
 	}
 }
@@ -307,6 +313,15 @@ func deleteGroupPermission(d Deps) gin.HandlerFunc {
 			return
 		}
 		key := c.Param("key")
+		group, err := d.Store.PermissionGroupGet(c.Request.Context(), groupID)
+		if err != nil {
+			if err == store.ErrNotFound {
+				permissionGroupNotFound(c)
+				return
+			}
+			serverError(c, err, d)
+			return
+		}
 		if err := d.Store.PermissionNodeDelete(c.Request.Context(), groupID, key); err != nil {
 			if err == store.ErrNotFound {
 				permissionNodeNotFound(c)
@@ -316,6 +331,7 @@ func deleteGroupPermission(d Deps) gin.HandlerFunc {
 			return
 		}
 		clearGroupMemberCaches(c, d, groupID)
+		clearActorPermissionCache(d, c, "group:"+group.Key)
 		c.Status(http.StatusNoContent)
 	}
 }
