@@ -83,6 +83,9 @@ type qrStatusResponse struct {
 }
 
 func (h *handler) generateQrChallenge(c *gin.Context) {
+	if !h.requireCache(c) {
+		return
+	}
 	ctx := c.Request.Context()
 	var req qrGenerateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -150,6 +153,9 @@ func (h *handler) generateQrChallenge(c *gin.Context) {
 }
 
 func (h *handler) getQrStatus(c *gin.Context) {
+	if !h.requireCache(c) {
+		return
+	}
 	ctx := c.Request.Context()
 	id, ok := parseUUIDParam(c, "id")
 	if !ok {
@@ -174,6 +180,9 @@ func (h *handler) getQrStatus(c *gin.Context) {
 }
 
 func (h *handler) scanQrChallenge(c *gin.Context) {
+	if !h.requireCache(c) {
+		return
+	}
 	ctx := c.Request.Context()
 	user := middleware.CurrentUser(ctx)
 	if user == nil {
@@ -221,6 +230,9 @@ func (h *handler) scanQrChallenge(c *gin.Context) {
 }
 
 func (h *handler) approveQrChallenge(c *gin.Context) {
+	if !h.requireCache(c) {
+		return
+	}
 	ctx := c.Request.Context()
 	user := middleware.CurrentUser(ctx)
 	session := middleware.CurrentSession(ctx)
@@ -294,6 +306,9 @@ func (h *handler) approveQrChallenge(c *gin.Context) {
 }
 
 func (h *handler) declineQrChallenge(c *gin.Context) {
+	if !h.requireCache(c) {
+		return
+	}
 	ctx := c.Request.Context()
 	user := middleware.CurrentUser(ctx)
 	session := middleware.CurrentSession(ctx)

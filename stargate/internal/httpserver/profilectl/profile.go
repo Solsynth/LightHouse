@@ -548,6 +548,10 @@ func (d Deps) requestDeleteAccount(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
+	if d.Redis == nil || !d.Redis.Available() {
+		c.JSON(http.StatusServiceUnavailable, errs.New("SERVICE_UNAVAILABLE", "This feature requires the cache service.", http.StatusServiceUnavailable))
+		return
+	}
 	key := "accounts:deletion:" + user.Id
 	found, err := d.Redis.Cache.HasFlag(ctx, key)
 	if err != nil {

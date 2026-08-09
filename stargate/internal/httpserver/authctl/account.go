@@ -10,8 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/go/pkg/errs"
+	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/spell"
@@ -66,7 +66,7 @@ func (h *handler) createAccount(c *gin.Context) {
 	if len(req.Language) > 32 {
 		fieldErrors["language"] = []string{"The field Language must be a string or array type with a maximum length of 32."}
 	}
-	if len(req.CaptchaToken) == 0 {
+	if h.d.Cfg != nil && h.d.Cfg.CaptchaEnabled() && len(req.CaptchaToken) == 0 {
 		fieldErrors["captcha_token"] = []string{"The CaptchaToken field is required."}
 	}
 	if len(fieldErrors) > 0 {

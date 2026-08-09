@@ -110,8 +110,8 @@ func run(log *slog.Logger) error {
 
 	rc, err := redisclient.Connect(ctx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
 	if err != nil {
-		log.Warn("redis unavailable; starting without cache", "error", err)
-		rc = &redisclient.Client{}
+		log.Warn("redis unavailable; cache-backed features disabled", "error", err)
+		rc = nil
 	}
 	nc, err := nats.Connect(ctx, cfg)
 	if err != nil {
@@ -231,7 +231,7 @@ func run(log *slog.Logger) error {
 	// aggregator never sees this instance and the Padlock-family capabilities
 	// (auth.*, e2ee, permissions, admin.*, accounts.*) disappear from /meta.
 	var discoveryReg *discovery.Registration
-	if cfg.Discovery.Enabled {
+	if cfg.Discovery.Enabled && strings.TrimSpace(cfg.Discovery.Target) != "" {
 		opts := discovery.Options{
 			Service:           cfg.Discovery.Service,
 			InstanceID:        cfg.Discovery.InstanceID,
@@ -255,13 +255,16 @@ func run(log *slog.Logger) error {
 		}
 		conn, err := grpc.NewClient(cfg.Discovery.Target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
-			return fmt.Errorf("dial blade discovery %s: %w", cfg.Discovery.Target, err)
+			log.Warn("blade discovery unavailable; registration disabled", "target", cfg.Discovery.Target, "error", err)
+		} else {
+			defer conn.Close()
+			discoveryReg = discovery.New(gen.NewDyServiceDiscoveryServiceClient(conn), opts, log)
+			go discoveryReg.Run(ctx)
+			log.Info("blade service discovery enabled",
+				"service", opts.Service, "instance_id", opts.InstanceID, "target", cfg.Discovery.Target)
 		}
-		defer conn.Close()
-		discoveryReg = discovery.New(gen.NewDyServiceDiscoveryServiceClient(conn), opts, log)
-		go discoveryReg.Run(ctx)
-		log.Info("blade service discovery enabled",
-			"service", opts.Service, "instance_id", opts.InstanceID, "target", cfg.Discovery.Target)
+	} else if cfg.Discovery.Enabled {
+		log.Warn("blade discovery enabled without a target; registration disabled")
 	}
 
 	errCh := make(chan error, 2)

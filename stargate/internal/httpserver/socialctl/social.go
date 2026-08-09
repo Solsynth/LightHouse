@@ -20,10 +20,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"src.solsynth.dev/sosys/go/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/internal/actionlog"
 	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/config"
-	"src.solsynth.dev/sosys/go/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
@@ -42,12 +42,12 @@ const (
 
 // Deps carries the dependencies used by the social-login routes.
 type Deps struct {
-	Store *store.Store
-	Redis *redis.Client
-	Cfg   *config.Config
-	Auth  *auth.AuthService
-	Logs  *actionlog.Service
-	Log   *slog.Logger
+	Store  *store.Store
+	Redis  *redis.Client
+	Cfg    *config.Config
+	Auth   *auth.AuthService
+	Logs   *actionlog.Service
+	Log    *slog.Logger
 	Spells *spell.Service
 }
 
@@ -113,6 +113,10 @@ func (d Deps) oidcLogin(c *gin.Context) {
 	svc, err := newProvider(provider, d)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, errs.New("OIDC_INIT_FLOW_FAILED", "Error initiating OpenID Connect flow: "+err.Error(), http.StatusBadRequest))
+		return
+	}
+	if !providerAvailable(provider, d) {
+		c.JSON(http.StatusServiceUnavailable, errs.New("OIDC_PROVIDER_UNAVAILABLE", "The requested OIDC provider is not configured.", http.StatusServiceUnavailable))
 		return
 	}
 	state := uuid.NewString()
@@ -211,8 +215,6 @@ func (d Deps) appleMobileLogin(c *gin.Context) {
 	})
 }
 
-// ─────────────────────────── GET|POST /api/auth/callback/{provider} ───────────────────────────
-
 func (d Deps) handleCallback(c *gin.Context) {
 	provider := c.Param("provider")
 	svc, err := newProvider(provider, d)
@@ -220,7 +222,10 @@ func (d Deps) handleCallback(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.New("OIDC_PROVIDER_NOT_SUPPORTED", fmt.Sprintf("Provider '%s' is not supported.", provider), http.StatusBadRequest))
 		return
 	}
-
+	if !providerAvailable(provider, d) {
+		c.JSON(http.StatusServiceUnavailable, errs.New("OIDC_PROVIDER_UNAVAILABLE", "The requested OIDC provider is not configured.", http.StatusServiceUnavailable))
+		return
+	}
 	data := extractCallbackData(c)
 	if data.State == "" {
 		c.JSON(http.StatusBadRequest, errs.New("OIDC_STATE_MISSING", "State parameter is missing.", http.StatusBadRequest))
@@ -776,8 +781,42 @@ func (d Deps) actionLogConnectionLink(ctx context.Context, accountID, provider s
 	_ = d.Logs.Create(ctx, accountID, model.ActionLogAccountConnectionLink, map[string]any{"provider": provider}, derefStr(userAgent), derefStr(ipAddress), nil, nil)
 }
 
+func providerAvailable(name string, d Deps) bool {
+	if d.Cfg == nil {
+		return false
+	}
+	switch strings.ToLower(name) {
+	case "google":
+		return strings.TrimSpace(d.Cfg.Oidc.Google.ClientId) != ""
+	case "apple":
+		return d.appleAvailable()
+	case "microsoft":
+		return strings.TrimSpace(d.Cfg.Oidc.Microsoft.ClientId) != "" &&
+			strings.TrimSpace(d.Cfg.Oidc.Microsoft.ClientSecret) != "" &&
+			strings.TrimSpace(d.Cfg.Oidc.Microsoft.DiscoveryEndpoint) != ""
+	case "steam":
+		return strings.TrimSpace(d.Cfg.Oidc.Steam.APIKey) != ""
+	case "discord":
+		return strings.TrimSpace(d.Cfg.Oidc.Discord.ClientId) != "" &&
+			strings.TrimSpace(d.Cfg.Oidc.Discord.ClientSecret) != ""
+	case "github":
+		return strings.TrimSpace(d.Cfg.Oidc.GitHub.ClientId) != "" &&
+			strings.TrimSpace(d.Cfg.Oidc.GitHub.ClientSecret) != ""
+	case "afdian":
+		return strings.TrimSpace(d.Cfg.Oidc.Afdian.ClientId) != "" &&
+			strings.TrimSpace(d.Cfg.Oidc.Afdian.ClientSecret) != ""
+	case "twitter":
+		return strings.TrimSpace(d.Cfg.Oidc.Twitter.ClientId) != "" &&
+			strings.TrimSpace(d.Cfg.Oidc.Twitter.ClientSecret) != ""
+	default:
+		return false
+	}
+}
+
 func (d Deps) appleAvailable() bool {
-	return d.Cfg.Oidc.Apple.ClientId != "" && d.Cfg.Oidc.Apple.TeamId != ""
+	return d.Cfg != nil &&
+		strings.TrimSpace(d.Cfg.Oidc.Apple.ClientId) != "" &&
+		strings.TrimSpace(d.Cfg.Oidc.Apple.TeamId) != ""
 }
 
 // ─────────────────────────── cache helpers (nil-safe when Redis is down) ───────────────────────────

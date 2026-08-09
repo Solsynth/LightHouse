@@ -27,9 +27,9 @@ import (
 	"github.com/google/uuid"
 	gen "src.solsynth.dev/sosys/go/proto"
 
+	"src.solsynth.dev/sosys/go/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/config"
-	"src.solsynth.dev/sosys/go/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/internal/geo"
 	"src.solsynth.dev/sosys/stargate/internal/grpcclient"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
@@ -56,6 +56,15 @@ type Deps struct {
 
 type handler struct {
 	d Deps
+}
+
+func (h *handler) requireCache(c *gin.Context) bool {
+	if h.d.Redis != nil && h.d.Redis.Available() {
+		return true
+	}
+	c.JSON(http.StatusServiceUnavailable, errs.New(
+		"SERVICE_UNAVAILABLE", "This feature requires the cache service.", http.StatusServiceUnavailable))
+	return false
 }
 
 // Register wires every Phase 4 auth/account route onto the /api group.
@@ -619,6 +628,9 @@ const authFactorCodePrefix = "authfactor:"
 func (h *handler) verifyFactorCode(ctx context.Context, factor *model.AuthFactor, code string) (bool, error) {
 	switch model.AuthFactorType(factor.Type) {
 	case model.AuthFactorTypeEmailCode, model.AuthFactorTypeInAppCode:
+		if h.d.Redis == nil || !h.d.Redis.Available() {
+			return false, nil
+		}
 		var cached string
 		found, err := h.d.Redis.Cache.Get(ctx, authFactorCodePrefix+factor.Id+":code", &cached)
 		if err != nil || !found || cached != code {
@@ -640,13 +652,13 @@ func (h *handler) sendFactorCode(ctx context.Context, account *model.Account, fa
 	code := fmt.Sprintf("%06d", mathrand.IntN(900000)+100000)
 	switch model.AuthFactorType(factor.Type) {
 	case model.AuthFactorTypeInAppCode:
+		if h.d.Redis == nil || !h.d.Redis.Available() {
+			return errors.New("in-app factor code service is unavailable")
+		}
 		var cached string
 		if found, _ := h.d.Redis.Cache.Get(ctx, authFactorCodePrefix+factor.Id+":code", &cached); found && cached != "" {
 			return errors.New("A factor code has been sent and in active duration.")
 		}
-		// Mirror AccountService.SendFactorCode: a failed push surfaces as a
-		// 400 AUTH_FACTOR_SEND_FAILED and no code is stored, so the user can
-		// retry instead of being locked out of a code that never arrived.
 		if err := h.pushNotificationErr(ctx, account.Id, account.Language, "auth.verification",
 			"Disposable Verification Code",
 			code+" is your verification code. It expires in 5 minutes.", false); err != nil {
@@ -654,15 +666,13 @@ func (h *handler) sendFactorCode(ctx context.Context, account *model.Account, fa
 		}
 		return h.d.Redis.Cache.Set(ctx, authFactorCodePrefix+factor.Id+":code", code, 5*time.Minute)
 	case model.AuthFactorTypeEmailCode:
+		if h.d.Redis == nil || !h.d.Redis.Available() {
+			return errors.New("email factor code service is unavailable")
+		}
 		var cached string
 		if found, _ := h.d.Redis.Cache.Get(ctx, authFactorCodePrefix+factor.Id+":code", &cached); found && cached != "" {
 			return errors.New("A factor code has been sent and in active duration.")
 		}
-		// Deliver via Ring's SendEmail (EmailService.SendTemplatedEmailAsync
-		// with the "FactorCode" template). Mirror AccountService.SendFactorCode:
-		// no verified email contact means the code cannot be delivered, so
-		// nothing is stored and the request still succeeds; a failed send
-		// surfaces as AUTH_FACTOR_SEND_FAILED before any code is stored.
 		contact, err := h.d.Store.GetEmailContactForNotify(ctx, account.Id, true)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
@@ -682,7 +692,6 @@ func (h *handler) sendFactorCode(ctx context.Context, account *model.Account, fa
 		}
 		return h.d.Redis.Cache.Set(ctx, authFactorCodePrefix+factor.Id+":code", code, 30*time.Minute)
 	default:
-		// No side effect needed (password, timed code, ...).
 		return nil
 	}
 }
@@ -751,6 +760,9 @@ func parsePasskeyCredential(credentialJSON string) *model.PasskeyCredential {
 }
 
 func (h *handler) generatePasskeyAssertionChallenge(ctx context.Context, challengeID string) (string, error) {
+	if h.d.Redis == nil || !h.d.Redis.Available() {
+		return "", errors.New("passkey service is unavailable")
+	}
 	challengeBytes := make([]byte, 32)
 	if _, err := rand.Read(challengeBytes); err != nil {
 		return "", err
@@ -763,6 +775,9 @@ func (h *handler) generatePasskeyAssertionChallenge(ctx context.Context, challen
 }
 
 func (h *handler) verifyPasskeyAssertion(ctx context.Context, cred *model.PasskeyCredential, challengeID, credentialID, clientDataJson, authenticatorData, signature string) bool {
+	if h.d.Redis == nil || !h.d.Redis.Available() {
+		return false
+	}
 	var storedChallenge string
 	found, err := h.d.Redis.Cache.Get(ctx, "passkey:assertion:"+challengeID, &storedChallenge)
 	if err != nil || !found || storedChallenge == "" {
@@ -777,7 +792,7 @@ func (h *handler) verifyPasskeyAssertion(ctx context.Context, cred *model.Passke
 	if err != nil || len(authData) < 37 {
 		return false
 	}
-	if authData[32]&0x01 == 0 { // AuthenticatorFlags.UserPresent
+	if authData[32]&0x01 == 0 {
 		return false
 	}
 

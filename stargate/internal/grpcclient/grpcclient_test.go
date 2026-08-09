@@ -98,3 +98,17 @@ func TestDevelopAppProviderUsesLocalOAuthClient(t *testing.T) {
 		t.Fatalf("slug = %q, want local-client", slug)
 	}
 }
+
+func TestNewClientsLeavesOptionalServicesDisabled(t *testing.T) {
+	cfg := config.Default()
+	clients, err := NewClients(cfg)
+	if err != nil {
+		t.Fatalf("NewClients returned error: %v", err)
+	}
+	defer clients.Close()
+	for _, service := range []string{"develop", "wallet", "drive", "pass", "blade", "ring"} {
+		if clients.Available(service) {
+			t.Fatalf("%s client unexpectedly enabled", service)
+		}
+	}
+}

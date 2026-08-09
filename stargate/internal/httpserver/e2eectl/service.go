@@ -209,6 +209,9 @@ func (s *Service) checkAndNotifyKpDepleted(ctx context.Context, accountID, devic
 // e2ee.kp.depleted websocket push (the C# routes it through the Ring
 // service, which forwards to the websocket service).
 func (s *Service) notifyKpDepleted(ctx context.Context, accountID, mlsDeviceID string, deviceLabel *string, availableCount int) {
+	if s.events == nil {
+		return
+	}
 	payload := kpDepletedPayload{
 		MlsDeviceId:    mlsDeviceID,
 		DeviceId:       mlsDeviceID,
@@ -328,6 +331,9 @@ func (s *Service) ResetMlsGroup(ctx context.Context, groupID string, newEpoch, s
 // every distinct member account (the payload reason is the raw request
 // reason, which may be null).
 func (s *Service) notifyGroupReset(ctx context.Context, groupID string, reason *string) {
+	if s.events == nil {
+		return
+	}
 	userIds, err := s.store.ListMlsGroupMemberAccountIDs(ctx, groupID)
 	if err != nil {
 		s.logf().Warn("list group members for reset notify", "group", groupID, "error", err)
@@ -678,6 +684,9 @@ func (s *Service) RevokeDevice(ctx context.Context, accountID, deviceID string) 
 // websocket is disconnected (or the status check is unavailable), else push
 // e2ee.envelope to the websocket_push stream and mark the envelope Delivered.
 func (s *Service) deliverEnvelope(ctx context.Context, env *store.E2eeEnvelope) {
+	if s.events == nil {
+		return
+	}
 	if s.blade != nil {
 		connected, err := s.checkWebsocketConnected(ctx, env)
 		if err != nil {

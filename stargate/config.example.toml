@@ -17,12 +17,14 @@ keyFile = "Keys/server.key"
 dsn = "host=localhost port=5432 user=postgres dbname=dyson_stargate sslmode=disable"
 
 [redis]
-addr = "localhost:6379"
+# Optional cache/session acceleration. Empty disables cache-backed features.
+addr = ""
 password = ""
 db = 0
 
 [nats]
-target = "nats://127.0.0.1:4222"
+# Optional event bus. Empty disables event consumers and realtime publishing.
+target = ""
 sessionEventsStream = "auth_session_events"
 sessionEventsSubject = "auth.session.revoked"
 websocketPushStream = "websocket_push"
@@ -30,6 +32,9 @@ websocketPushSubject = "websocket.push"
 
 [auth]
 issuer = "solar-network"
+# Issuers accepted for both ordinary and OIDC access/refresh tokens. Keep old
+# values here when changing issuer so already-issued tokens remain usable.
+validIssuers = ["solar-network", "https://nt.solian.app"]
 audiences = ["http://localhost:5071", "https://localhost:7099"]
 publicKeyPath = "Keys/PublicKey.pem"
 privateKeyPath = "Keys/PrivateKey.pem"
@@ -85,10 +90,15 @@ requiredTestKeys = []
 [geoip]
 databasePath = "Keys/GeoLite2-City.mmdb"
 
-# Outbound gRPC targets. develop is optional when OAuth clients are defined
-# under [[oidcProvider.clients]]. Without either a local client or Develop,
-# /api/auth/open/* client lookup returns "Client not found".
-# The other targets remain optional and degrade gracefully when empty.
+# Outbound gRPC integrations are optional. An empty target disables the
+# corresponding enrichment, notification, lookup, or realtime feature; the
+# remaining Stargate routes continue to serve.
+# A configured target is lazy-dialed and RPC failures also degrade per feature.
+# Develop is only needed when no matching local OAuth client is configured.
+# Wallet, Drive, Pass, Ring, and Blade may remain empty independently.
+#
+# Keep the table active with empty defaults for simple environment overrides.
+# Each target may be set independently.
 [services]
 develop = { grpc = "" }
 drive = { grpc = "" }
@@ -114,9 +124,13 @@ grpcEndpoint = ""
 leaseSeconds = 30
 weight = 1
 
+# [oidc]
+# Every social provider is disabled until its credentials are complete.
+# Enable providers independently; missing credentials return an unavailable
+# feature response instead of preventing Stargate from starting.
 [oidc]
 google = { clientId = "", clientSecret = "" }
-apple = { clientId = "dev.solsynth.solian", teamId = "", keyId = "", privateKeyPath = "Keys/Solarpass.p8" }
+apple = { clientId = "", teamId = "", keyId = "", privateKeyPath = "Keys/Solarpass.p8" }
 microsoft = { clientId = "", clientSecret = "", discoveryEndpoint = "" }
 steam = { apiKey = "" }
 discord = { clientId = "", clientSecret = "" }

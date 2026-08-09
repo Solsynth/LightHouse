@@ -34,6 +34,7 @@ func discardLogger() *slog.Logger {
 func testAuthConfig(privPath, pubPath string) *config.Config {
 	return &config.Config{Auth: struct {
 		Issuer               string   `toml:"issuer"`
+		ValidIssuers         []string `toml:"validIssuers"`
 		Audiences            []string `toml:"audiences"`
 		PublicKeyPath        string   `toml:"publicKeyPath"`
 		PrivateKeyPath       string   `toml:"privateKeyPath"`
@@ -43,6 +44,7 @@ func testAuthConfig(privPath, pubPath string) *config.Config {
 		CookieSecure         bool     `toml:"cookieSecure"`
 	}{
 		Issuer:         "test-issuer",
+		ValidIssuers:   []string{"https://oidc.example"},
 		Audiences:      []string{"test-aud"},
 		PublicKeyPath:  pubPath,
 		PrivateKeyPath: privPath,

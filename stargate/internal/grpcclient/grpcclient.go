@@ -11,6 +11,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
@@ -26,6 +27,7 @@ import (
 // uses self-signed certs issued by the DysonNetwork CA; per the Golaunch
 // README, CA validation is off.
 func Dial(target string) (*grpc.ClientConn, error) {
+	target = strings.TrimSpace(target)
 	if target == "" {
 		return nil, nil
 	}
@@ -46,12 +48,42 @@ type Clients struct {
 	conns   []*grpc.ClientConn
 }
 
-// NewClients dials every configured target.
+// Available reports whether a named optional outbound service was configured
+// well enough for its client to be constructed. gRPC remains lazy: a client
+// can still become unavailable after construction, in which case callers
+// must handle the RPC error and keep the feature degraded.
+func (c *Clients) Available(service string) bool {
+	if c == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(service)) {
+	case "wallet":
+		return c.Wallet != nil
+	case "develop":
+		return c.Develop != nil
+	case "drive":
+		return c.Drive != nil
+	case "pass":
+		return c.Pass != nil
+	case "blade":
+		return c.Blade != nil
+	case "ring":
+		return c.Ring != nil
+	default:
+		return false
+	}
+}
+
+// NewClients creates lazy clients only for configured targets. Empty targets
+// leave the corresponding client nil, which disables that integration.
 func NewClients(cfg *config.Config) (*Clients, error) {
 	c := &Clients{}
+	if cfg == nil {
+		return c, nil
+	}
 	dial := func(target string) *grpc.ClientConn {
 		conn, err := Dial(target)
-		if err != nil {
+		if err != nil || conn == nil {
 			return nil
 		}
 		c.conns = append(c.conns, conn)

@@ -143,6 +143,10 @@ type service struct {
 	codeLifetime    time.Duration
 }
 
+func (s *service) cacheAvailable() bool {
+	return s.redis != nil && s.redis.Available()
+}
+
 func newService(d Deps) (*service, error) {
 	issuer := d.Cfg.OidcProvider.IssuerUri
 	if issuer == "" {
@@ -273,10 +277,12 @@ func (s *service) findClientByIdentifier(ctx context.Context, identifier string)
 	}
 	return s.findClientBySlug(ctx, identifier)
 }
-
 func (s *service) findClientByID(ctx context.Context, id string) (*oidcClient, error) {
 	if client := s.findLocalClient(id); client != nil {
 		return client, nil
+	}
+	if !s.cacheAvailable() {
+		return nil, nil
 	}
 	var client oidcClient
 	found, err := s.redis.Cache.Get(ctx, cacheKeyPrefixClientId+id, &client)
@@ -294,6 +300,9 @@ func (s *service) findClientByID(ctx context.Context, id string) (*oidcClient, e
 func (s *service) findClientBySlug(ctx context.Context, slug string) (*oidcClient, error) {
 	if client := s.findLocalClient(slug); client != nil {
 		return client, nil
+	}
+	if !s.cacheAvailable() {
+		return nil, nil
 	}
 	var client oidcClient
 	found, err := s.redis.Cache.Get(ctx, cacheKeyPrefixClientSlug+slug, &client)
@@ -549,6 +558,9 @@ func (s *service) generateAuthorizationCode(ctx context.Context, clientID, accou
 }
 
 func (s *service) storeAuthorizationCode(ctx context.Context, info *authorizationCodeInfo) (string, error) {
+	if !s.cacheAvailable() {
+		return "", errors.New("OIDC authorization requires the cache service")
+	}
 	code := generateRandomString(32)
 	if err := s.redis.Cache.Set(ctx, cacheKeyPrefixAuthCode+code, info, s.codeLifetime); err != nil {
 		return "", err
@@ -557,6 +569,9 @@ func (s *service) storeAuthorizationCode(ctx context.Context, info *authorizatio
 }
 
 func (s *service) validateAuthorizationCode(ctx context.Context, code, clientID string, redirectURI, codeVerifier *string, isPublicClient bool) (*authorizationCodeInfo, error) {
+	if !s.cacheAvailable() {
+		return nil, errors.New("OIDC authorization requires the cache service")
+	}
 	var info authorizationCodeInfo
 	found, err := s.redis.Cache.Get(ctx, cacheKeyPrefixAuthCode+code, &info)
 	if err != nil {
@@ -582,7 +597,6 @@ func (s *service) validateAuthorizationCode(ctx context.Context, code, clientID 
 			return nil, nil
 		}
 	}
-	// Single-use: remove the code before returning it.
 	_ = s.redis.Cache.Remove(ctx, cacheKeyPrefixAuthCode+code)
 	return &info, nil
 }
@@ -618,6 +632,9 @@ func verifyCodeChallengeWithFallback(codeVerifier, codeChallenge string, method 
 // --- Device codes ---
 
 func (s *service) generateDeviceCode(ctx context.Context, clientID string, scopes []string, nonce *string) (*deviceCodeInfo, error) {
+	if !s.cacheAvailable() {
+		return nil, errors.New("OIDC device authorization requires the cache service")
+	}
 	now := time.Now().UTC()
 	info := &deviceCodeInfo{
 		DeviceCode:             generateRandomString(32),
@@ -640,6 +657,9 @@ func (s *service) generateDeviceCode(ctx context.Context, clientID string, scope
 }
 
 func (s *service) getDeviceCodeByUserCode(ctx context.Context, userCode string) (*deviceCodeInfo, error) {
+	if !s.cacheAvailable() {
+		return nil, errors.New("OIDC device authorization requires the cache service")
+	}
 	var deviceCode string
 	found, err := s.redis.Cache.Get(ctx, cacheKeyPrefixUserCode+userCode, &deviceCode)
 	if err != nil {
@@ -652,6 +672,9 @@ func (s *service) getDeviceCodeByUserCode(ctx context.Context, userCode string) 
 }
 
 func (s *service) getDeviceCode(ctx context.Context, deviceCode string) (*deviceCodeInfo, error) {
+	if !s.cacheAvailable() {
+		return nil, errors.New("OIDC device authorization requires the cache service")
+	}
 	var info deviceCodeInfo
 	found, err := s.redis.Cache.Get(ctx, cacheKeyPrefixDeviceCode+deviceCode, &info)
 	if err != nil {
@@ -664,6 +687,9 @@ func (s *service) getDeviceCode(ctx context.Context, deviceCode string) (*device
 }
 
 func (s *service) updateDeviceCode(ctx context.Context, info *deviceCodeInfo) error {
+	if !s.cacheAvailable() {
+		return errors.New("OIDC device authorization requires the cache service")
+	}
 	remaining := time.Until(info.ExpiresAt)
 	if remaining <= 0 {
 		return nil
@@ -769,8 +795,10 @@ func (s *service) handleRefreshTokenFlow(ctx context.Context, clientID, refreshT
 	session.LastGrantedAt = model.NewTime(now)
 	session.ExpiredAt = model.NewTime(newExpiry)
 	session.Epoch++
-	_ = s.redis.Cache.Remove(ctx, "auth:session:"+session.Id)
-	_ = s.redis.Raw.Del(ctx, fmt.Sprintf("auth:session_tokens:%s", session.Id)).Err()
+	if s.cacheAvailable() {
+		_ = s.redis.Cache.Remove(ctx, "auth:session:"+session.Id)
+		_ = s.redis.Raw.Del(ctx, fmt.Sprintf("auth:session_tokens:%s", session.Id)).Err()
+	}
 	return session, nil, session.Scopes, nil
 }
 
@@ -892,8 +920,10 @@ func (s *service) handleDeviceCodeGrant(ctx context.Context, deviceCode, clientI
 	if err != nil {
 		return nil, err
 	}
-	_ = s.redis.Cache.Remove(ctx, cacheKeyPrefixDeviceCode+deviceCode)
-	_ = s.redis.Cache.Remove(ctx, cacheKeyPrefixUserCode+info.UserCode)
+	if s.cacheAvailable() {
+		_ = s.redis.Cache.Remove(ctx, cacheKeyPrefixDeviceCode+deviceCode)
+		_ = s.redis.Cache.Remove(ctx, cacheKeyPrefixUserCode+info.UserCode)
+	}
 	return resp, nil
 }
 
@@ -1066,8 +1096,10 @@ func (s *service) setSessionScopes(ctx context.Context, session *model.AuthSessi
 		return err
 	}
 	session.Scopes = normalized
-	_ = s.redis.Cache.Remove(ctx, "auth:session:"+session.Id)
-	_ = s.redis.Raw.Del(ctx, fmt.Sprintf("auth:session_tokens:%s", session.Id)).Err()
+	if s.cacheAvailable() {
+		_ = s.redis.Cache.Remove(ctx, "auth:session:"+session.Id)
+		_ = s.redis.Raw.Del(ctx, fmt.Sprintf("auth:session_tokens:%s", session.Id)).Err()
+	}
 	return nil
 }
 

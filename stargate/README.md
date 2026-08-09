@@ -31,7 +31,13 @@ cp config.example.toml config.toml   # set DSNs, keys, service targets
 CONFIG_PATH=config.toml make run
 ```
 
-Requires Postgres, Redis and NATS (JetStream enabled: `nats-server -js`).
+Postgres is required for the core account and session store. Redis and NATS
+are optional: without Redis, cache-dependent features (QR login, passkeys,
+one-time codes, and deletion throttling) return `503` while DB-backed
+authentication continues; without NATS, event consumers and realtime event
+publishing are disabled. Every outbound target in `[services]` is optional
+and disables only its dependent enrichment, lookup, notification, or
+realtime feature when unset or unavailable.
 
 ### Local OAuth clients
 

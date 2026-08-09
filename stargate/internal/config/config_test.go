@@ -38,3 +38,34 @@ isPublicClient = false
 		t.Fatalf("redirect URIs = %v", client.RedirectUris)
 	}
 }
+
+func TestOptionalServiceTarget(t *testing.T) {
+	if (ServiceTarget{}).Enabled() {
+		t.Fatal("empty service target reported enabled")
+	}
+	if !(ServiceTarget{GRPC: " dns:9090 "}).Enabled() {
+		t.Fatal("configured service target reported disabled")
+	}
+}
+
+func TestLoadExampleConfiguration(t *testing.T) {
+	cfg, err := Load(filepath.Join("..", "..", "config.example.toml"))
+	if err != nil {
+		t.Fatalf("Load example configuration: %v", err)
+	}
+	if cfg.Services.Wallet.Enabled() || cfg.Services.Develop.Enabled() {
+		t.Fatal("example configuration must leave outbound services disabled")
+	}
+	if cfg.CaptchaEnabled() {
+		t.Fatal("example configuration must leave captcha disabled")
+	}
+	wantIssuers := []string{"solar-network", "https://nt.solian.app"}
+	if len(cfg.Auth.ValidIssuers) != len(wantIssuers) {
+		t.Fatalf("valid issuers = %v, want %v", cfg.Auth.ValidIssuers, wantIssuers)
+	}
+	for i, want := range wantIssuers {
+		if cfg.Auth.ValidIssuers[i] != want {
+			t.Fatalf("valid issuer %d = %q, want %q", i, cfg.Auth.ValidIssuers[i], want)
+		}
+	}
+}

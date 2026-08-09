@@ -18,6 +18,12 @@ type Client struct {
 	Cache *cache.RedisCacheService
 }
 
+// Available reports whether both Redis clients needed by Stargate features
+// were initialized successfully. A nil client is a supported degraded mode.
+func (c *Client) Available() bool {
+	return c != nil && c.Raw != nil && c.Cache != nil
+}
+
 // Connect creates the Redis client and shared cache service.
 func Connect(ctx context.Context, addr, password string, dbIndex int) (*Client, error) {
 	raw := redis.NewClient(&redis.Options{

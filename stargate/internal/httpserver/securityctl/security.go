@@ -564,7 +564,7 @@ func (c *controller) enableFactorLogic(ctx context.Context, account *model.Accou
 func (c *controller) verifyFactorCode(ctx context.Context, factor *model.AuthFactor, code string) bool {
 	switch factor.Type {
 	case model.AuthFactorTypeEmailCode, model.AuthFactorTypeInAppCode:
-		if c.d.Redis == nil {
+		if c.d.Redis == nil || !c.d.Redis.Available() {
 			return false
 		}
 		key := "authfactor:" + factor.Id + ":code"
@@ -845,8 +845,8 @@ func (c *controller) startPasskeyRegistration(ctx *gin.Context) {
 		return
 	}
 	_ = creation
-	if c.d.Redis == nil {
-		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Redis is not configured.", http.StatusInternalServerError))
+	if c.d.Redis == nil || !c.d.Redis.Available() {
+		ctx.JSON(http.StatusServiceUnavailable, errs.New("SERVICE_UNAVAILABLE", "This feature requires the cache service.", http.StatusServiceUnavailable))
 		return
 	}
 	key := passkeyChallengePrefix + user.Id + ":" + request.DeviceId
@@ -904,8 +904,8 @@ func (c *controller) completePasskeyRegistration(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, errs.New("PADLOCK_PASSKEY_FACTOR_NOT_ENABLED", "Passkey factor is not enabled.", http.StatusBadRequest))
 		return
 	}
-	if c.d.Redis == nil {
-		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Redis is not configured.", http.StatusInternalServerError))
+	if c.d.Redis == nil || !c.d.Redis.Available() {
+		ctx.JSON(http.StatusServiceUnavailable, errs.New("SERVICE_UNAVAILABLE", "This feature requires the cache service.", http.StatusServiceUnavailable))
 		return
 	}
 	key := passkeyChallengePrefix + user.Id + ":" + request.DeviceId

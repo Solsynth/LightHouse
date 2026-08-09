@@ -55,10 +55,11 @@ const (
 // AuthJwtService. The signing keys MUST be the same PEM files the C# fleet
 // used, so in-flight tokens keep validating.
 type JWTService struct {
-	issuer   string
-	audience string
-	private  *rsa.PrivateKey
-	public   *rsa.PublicKey
+	issuer       string
+	validIssuers []string
+	audience     string
+	private      *rsa.PrivateKey
+	public       *rsa.PublicKey
 }
 
 // NewJWTService loads the RSA key pair from the configured paths.
@@ -75,6 +76,22 @@ func NewJWTService(cfg *config.Config) (*JWTService, error) {
 	if issuer == "" {
 		issuer = "solar-network"
 	}
+	validIssuers := make([]string, 0, len(cfg.Auth.ValidIssuers)+2)
+	for _, candidate := range append(append(append([]string(nil), cfg.Auth.ValidIssuers...), issuer), cfg.OidcProvider.IssuerUri) {
+		if candidate == "" {
+			continue
+		}
+		alreadyListed := false
+		for _, listed := range validIssuers {
+			if listed == candidate {
+				alreadyListed = true
+				break
+			}
+		}
+		if !alreadyListed {
+			validIssuers = append(validIssuers, candidate)
+		}
+	}
 	audience := ""
 	if len(cfg.Auth.Audiences) > 0 {
 		audience = cfg.Auth.Audiences[0]
@@ -82,7 +99,22 @@ func NewJWTService(cfg *config.Config) (*JWTService, error) {
 	if audience == "" {
 		audience = "solar-network"
 	}
-	return &JWTService{issuer: issuer, audience: audience, private: private, public: public}, nil
+	return &JWTService{
+		issuer: issuer, validIssuers: validIssuers, audience: audience,
+		private: private, public: public,
+	}, nil
+}
+
+func (s *JWTService) issuerValid(issuer string) bool {
+	if issuer == "" {
+		return false
+	}
+	for _, validIssuer := range s.validIssuers {
+		if issuer == validIssuer {
+			return true
+		}
+	}
+	return issuer == s.issuer
 }
 
 func loadRSAPrivateKey(path string) (*rsa.PrivateKey, error) {
@@ -209,24 +241,31 @@ func (s *JWTService) sign(claims jwt.MapClaims, now, expiresAt time.Time) (strin
 	return token.SignedString(s.private)
 }
 
+// parseAndVerify validates the JWT signature and algorithm without applying
+// issuer, audience, or expiry policy.
+func (s *JWTService) parseAndVerify(tokenText string) (jwt.MapClaims, bool) {
+	parser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256"}), jwt.WithoutClaimsValidation())
+	token, err := parser.Parse(tokenText, func(t *jwt.Token) (any, error) {
+		return s.public, nil
+	})
+	if err != nil || !token.Valid {
+		return nil, false
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	return claims, ok
+}
+
 // ValidateJwt validates signature, issuer, audience and nbf. Like the C#,
 // exp is NOT enforced here (the caller governs it: AuthenticateToken maps an
 // expired access token to TOKEN_EXPIRED, session expiry governs refresh
 // tokens); nbf is checked with a 1-minute clock skew. WithoutClaimsValidation
 // is required because the golang-jwt v5 default validator enforces exp.
 func (s *JWTService) ValidateJwt(tokenText string) (bool, jwt.MapClaims) {
-	parser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256"}), jwt.WithoutClaimsValidation())
-	token, err := parser.Parse(tokenText, func(t *jwt.Token) (any, error) {
-		return s.public, nil
-	})
-	if err != nil {
+	claims, ok := s.parseAndVerify(tokenText)
+	if !ok {
 		return false, nil
 	}
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok || !token.Valid {
-		return false, nil
-	}
-	if iss, _ := claims["iss"].(string); iss != s.issuer {
+	if iss, _ := claims["iss"].(string); !s.issuerValid(iss) {
 		return false, nil
 	}
 	// Audience may be a string or an array of strings.

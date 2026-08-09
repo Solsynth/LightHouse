@@ -206,8 +206,10 @@ func (s *AuthService) RotateApiKeyToken(ctx context.Context, key *model.ApiKey) 
 	if _, err := s.token.BumpAccountVersion(ctx, key.AccountId); err != nil {
 		return nil, err
 	}
-	_ = s.redis.Cache.Remove(ctx, "auth:session:"+sessionID.String())
-	_ = s.redis.Raw.Del(ctx, "auth:session_tokens:"+sessionID.String()).Err()
+	if s.redis != nil && s.redis.Available() {
+		_ = s.redis.Cache.Remove(ctx, "auth:session:"+sessionID.String())
+		_ = s.redis.Raw.Del(ctx, "auth:session_tokens:"+sessionID.String()).Err()
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}

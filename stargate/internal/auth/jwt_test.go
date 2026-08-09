@@ -81,3 +81,47 @@ func TestCreateOidcUserTokenUsesProviderClaimsAndSigner(t *testing.T) {
 		t.Fatalf("OIDC claims issuer=%v audience=%v, want %q/%q", claims["iss"], claims["aud"], wantIssuer, wantAudience)
 	}
 }
+
+func TestValidateJwtAndOidcTokenAcceptConfiguredIssuerHistory(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	svc := &JWTService{
+		issuer:       "new-issuer",
+		validIssuers: []string{"legacy-issuer", "new-issuer"},
+		audience:     "auth-service",
+		private:      key,
+		public:       &key.PublicKey,
+	}
+
+	sign := func(issuer, audience string) string {
+		t.Helper()
+		token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+			"iss": issuer,
+			"aud": audience,
+			"sid": "11111111-1111-1111-1111-111111111111",
+			"nbf": time.Now().Unix(),
+		})
+		text, err := token.SignedString(key)
+		if err != nil {
+			t.Fatalf("sign token: %v", err)
+		}
+		return text
+	}
+
+	if valid, _ := svc.ValidateJwt(sign("legacy-issuer", "auth-service")); !valid {
+		t.Fatal("legacy issuer was rejected by ordinary JWT validation")
+	}
+	if valid, _ := svc.ValidateJwt(sign("unknown-issuer", "auth-service")); valid {
+		t.Fatal("unknown issuer was accepted by ordinary JWT validation")
+	}
+
+	oidc := &TokenAuthService{jwt: svc}
+	if _, _, _, _, valid := oidc.validateOidcToken(sign("legacy-issuer", "oidc-client")); !valid {
+		t.Fatal("legacy issuer was rejected by OIDC validation")
+	}
+	if _, _, _, _, valid := oidc.validateOidcToken(sign("unknown-issuer", "oidc-client")); valid {
+		t.Fatal("unknown issuer was accepted by OIDC validation")
+	}
+}

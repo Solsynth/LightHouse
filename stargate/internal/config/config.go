@@ -6,6 +6,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
@@ -61,6 +62,7 @@ type Config struct {
 
 	Auth struct {
 		Issuer               string   `toml:"issuer"`
+		ValidIssuers         []string `toml:"validIssuers"`
 		Audiences            []string `toml:"audiences"`
 		PublicKeyPath        string   `toml:"publicKeyPath"`
 		PrivateKeyPath       string   `toml:"privateKeyPath"`
@@ -130,6 +132,11 @@ type Config struct {
 
 type ServiceTarget struct {
 	GRPC string `toml:"grpc"`
+}
+
+// Enabled reports whether an outbound service target was configured.
+func (s ServiceTarget) Enabled() bool {
+	return strings.TrimSpace(s.GRPC) != ""
 }
 
 // OAuthClient configures a custom OAuth/OIDC client without requiring
@@ -227,6 +234,7 @@ func Default() *Config {
 	cfg.HTTP.Port = "8080"
 	cfg.GRPC.Port = "9090"
 	cfg.Auth.Issuer = "solar-network"
+	cfg.Auth.ValidIssuers = []string{"solar-network", "https://nt.solian.app"}
 	cfg.Auth.Audiences = []string{"http://localhost:5071", "https://localhost:7099"}
 	cfg.Auth.AccessTokenLifetime = "5m"
 	cfg.Auth.RefreshTokenLifetime = "720h"
@@ -335,4 +343,14 @@ func (c *Config) RefreshTokenLifetime() time.Duration {
 		return d
 	}
 	return 30 * 24 * time.Hour
+}
+
+// CaptchaEnabled reports whether an external captcha verifier is configured.
+// Skip and incomplete credentials both mean the optional feature is disabled.
+func (c *Config) CaptchaEnabled() bool {
+	if c == nil || c.Captcha.Skip {
+		return false
+	}
+	return strings.TrimSpace(c.Captcha.Provider) != "" &&
+		strings.TrimSpace(c.Captcha.APISecret) != ""
 }

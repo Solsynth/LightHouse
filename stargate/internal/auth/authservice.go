@@ -100,7 +100,7 @@ func VerifyFactorPassword(f *model.AuthFactor, input string) (bool, error) {
 // ValidateCaptcha verifies a captcha token with the configured provider,
 // mirroring AuthService.ValidateCaptcha. SkipCaptcha short-circuits.
 func (s *AuthService) ValidateCaptcha(ctx context.Context, token string) (bool, error) {
-	if s.cfg.Captcha.Skip {
+	if s.cfg == nil || !s.cfg.CaptchaEnabled() {
 		return true, nil
 	}
 	if strings.TrimSpace(token) == "" {
@@ -233,6 +233,9 @@ func (s *AuthService) collectSessionsToRevoke(ctx context.Context, root uuid.UUI
 }
 
 func (s *AuthService) invalidateSessionCaches(ctx context.Context, sessions []store.RevokedSession) error {
+	if s.redis == nil || !s.redis.Available() {
+		return nil
+	}
 	for _, session := range sessions {
 		key := "auth:session:" + session.SessionID
 		_ = s.redis.Cache.Remove(ctx, key)
@@ -490,8 +493,10 @@ func (s *AuthService) RefreshSessionAndIssueTokens(ctx context.Context, refreshT
 	session.ExpiredAt = model.NewTime(newExpiry)
 	session.Epoch++
 
-	_ = s.redis.Cache.Remove(ctx, "auth:session:"+sessionID.String())
-	_ = s.redis.Raw.Del(ctx, fmt.Sprintf(SessionTokensGroupFmt, sessionID.String())).Err()
+	if s.redis != nil && s.redis.Available() {
+		_ = s.redis.Cache.Remove(ctx, "auth:session:"+sessionID.String())
+		_ = s.redis.Raw.Del(ctx, fmt.Sprintf(SessionTokensGroupFmt, sessionID.String())).Err()
+	}
 
 	pair, err := s.CreateTokenPair(ctx, session)
 	if err != nil {
@@ -506,9 +511,11 @@ func (s *AuthService) TrackAuthenticatedActivity(ctx context.Context, session *m
 		return
 	}
 	activityKey := "auth:activity:" + session.AccountId
-	found, err := s.redis.Cache.HasFlag(ctx, activityKey)
-	if err == nil && found {
-		return
+	if s.redis != nil && s.redis.Available() {
+		found, err := s.redis.Cache.HasFlag(ctx, activityKey)
+		if err == nil && found {
+			return
+		}
 	}
 	resolvedIP := ipAddress
 	if resolvedIP == "" && session.IpAddress != nil {
@@ -523,7 +530,9 @@ func (s *AuthService) TrackAuthenticatedActivity(ctx context.Context, session *m
 		"session_type": session.Type.String(),
 		"app_id":       appID,
 	}, deref(session.UserAgent), resolvedIP, nil, &session.Id)
-	_ = s.redis.Cache.SetFlag(ctx, activityKey, time.Hour)
+	if s.redis != nil && s.redis.Available() {
+		_ = s.redis.Cache.SetFlag(ctx, activityKey, time.Hour)
+	}
 }
 
 // --- Sudo / PIN ---
@@ -534,8 +543,10 @@ func (s *AuthService) ValidateSudoMode(ctx context.Context, session *model.AuthS
 		return false, nil
 	}
 	sudoKey := "accounts:" + session.Id + ":sudo"
-	if found, _ := s.redis.Cache.HasFlag(ctx, sudoKey); found {
-		return true, nil
+	if s.redis != nil && s.redis.Available() {
+		if found, _ := s.redis.Cache.HasFlag(ctx, sudoKey); found {
+			return true, nil
+		}
 	}
 	hasPin, err := s.hasEnabledFactor(ctx, session.AccountId, model.AuthFactorTypePinCode)
 	if err != nil {
@@ -554,7 +565,7 @@ func (s *AuthService) ValidateSudoMode(ctx context.Context, session *model.AuthS
 		}
 		return false, err
 	}
-	if valid {
+	if valid && s.redis != nil && s.redis.Available() {
 		_ = s.redis.Cache.SetFlag(ctx, sudoKey, 5*time.Minute)
 	}
 	return valid, nil
@@ -747,7 +758,7 @@ func (s *AuthService) CreateSessionFromParent(ctx context.Context, parentSession
 		 parent_session_id, client_id, audiences, scopes, app_id, epoch, updated_at)
 		VALUES (gen_random_uuid(),$1,$2,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,0,$2) RETURNING id`,
 		int(session.Type), now, session.ExpiredAt, session.AccountId, session.IpAddress, session.UserAgent,
-		locJSON, session.ParentSessionId, session.ClientId, session.Audiences, session.Scopes, session.AppId,).Scan(&sessionID)
+		locJSON, session.ParentSessionId, session.ClientId, session.Audiences, session.Scopes, session.AppId).Scan(&sessionID)
 	if err != nil {
 		return nil, err
 	}

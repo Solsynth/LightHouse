@@ -80,7 +80,7 @@ type CustomAppProvider interface {
 	GetCustomAppSlug(ctx context.Context, appID string) (string, error)
 }
 
-// OIDCValidator validates OIDC-issuer tokens (same key pair, relaxed issuer).
+// OIDCValidator validates OIDC-issuer tokens using the shared valid issuer list.
 type OIDCValidator struct {
 	jwt *JWTService
 }
@@ -150,7 +150,7 @@ func (t *TokenAuthService) AuthenticateToken(ctx context.Context, token, ipAddre
 	sessionID, tokenUse, tokenEpoch, claims, validated := t.validateToken(token)
 	oidcPath := false
 	if !validated {
-		// OIDC fallback (relaxed issuer validation).
+		// OIDC fallback (shared issuer-list validation).
 		oidcSessionID, oidcUse, oidcEpoch, oidcClaims, ok := t.validateOidcToken(token)
 		if !ok || oidcSessionID == uuid.Nil {
 			log.Debug("token validation failed")
@@ -171,32 +171,33 @@ func (t *TokenAuthService) AuthenticateToken(ctx context.Context, token, ipAddre
 		return false, nil, MsgTokenExpired, tokenUse
 	}
 
-	// Cache hit path.
-	cacheKey := "auth:session:" + sessionID.String()
-	var cached gen.DyAuthSession
-	if found, err := t.redis.Cache.Get(ctx, cacheKey, &cached); err == nil && found && cached.Id != "" {
-		effectiveEpoch := tokenEpoch
-		if int(cached.Epoch) != effectiveEpoch {
-			_ = t.redis.Cache.Remove(ctx, cacheKey)
-			return false, nil, "Token has been invalidated.", tokenUse
-		}
-		if cached.ExpiredAt != nil && cached.ExpiredAt.AsTime().Before(time.Now().UTC()) {
-			_ = t.redis.Cache.Remove(ctx, cacheKey)
-			return false, nil, "Session has been expired.", tokenUse
-		}
-		if oidcPath {
-			if ok, msg := t.validateOidcBinding(ctx, &cached, claims); !ok {
-				return false, nil, msg, tokenUse
+	// Cache is an acceleration layer; authentication remains DB-backed when
+	// Redis is unavailable.
+	if t.redis != nil && t.redis.Available() {
+		cacheKey := "auth:session:" + sessionID.String()
+		var cached gen.DyAuthSession
+		if found, err := t.redis.Cache.Get(ctx, cacheKey, &cached); err == nil && found && cached.Id != "" {
+			effectiveEpoch := tokenEpoch
+			if int(cached.Epoch) != effectiveEpoch {
+				_ = t.redis.Cache.Remove(ctx, cacheKey)
+				return false, nil, "Token has been invalidated.", tokenUse
 			}
-		}
-		session := sessionFromProto(&cached)
-		// Older session cache entries predate profile hydration. Drop them
-		// through the normal DB path so the refreshed entry carries Profile.
-		if session.Account == nil || session.Account.Profile == nil {
-			_ = t.redis.Cache.Remove(ctx, cacheKey)
-		} else {
-			applyScopesFromToken(session, claims)
-			return true, session, "", tokenUse
+			if cached.ExpiredAt != nil && cached.ExpiredAt.AsTime().Before(time.Now().UTC()) {
+				_ = t.redis.Cache.Remove(ctx, cacheKey)
+				return false, nil, "Session has been expired.", tokenUse
+			}
+			if oidcPath {
+				if ok, msg := t.validateOidcBinding(ctx, &cached, claims); !ok {
+					return false, nil, msg, tokenUse
+				}
+			}
+			session := sessionFromProto(&cached)
+			if session.Account == nil || session.Account.Profile == nil {
+				_ = t.redis.Cache.Remove(ctx, cacheKey)
+			} else {
+				applyScopesFromToken(session, claims)
+				return true, session, "", tokenUse
+			}
 		}
 	}
 
@@ -226,11 +227,14 @@ func (t *TokenAuthService) AuthenticateToken(ctx context.Context, token, ipAddre
 		return false, nil, "Authentication error.", ""
 	}
 	t.HydratePerk(ctx, session.Account)
-
 	proto := SessionToProto(session)
-	group := "auth:account_sessions:" + session.AccountId
-	if err := t.redis.Cache.SetWithGroups(ctx, cacheKey, proto, []string{group}, SessionCacheTTL); err != nil {
-		log.Warn("cache session", "error", err)
+	cacheKey := "auth:session:" + sessionID.String()
+
+	if t.redis != nil && t.redis.Available() {
+		group := "auth:account_sessions:" + session.AccountId
+		if err := t.redis.Cache.SetWithGroups(ctx, cacheKey, proto, []string{group}, SessionCacheTTL); err != nil {
+			log.Warn("cache session", "error", err)
+		}
 	}
 
 	if oidcPath {
@@ -264,25 +268,21 @@ func (t *TokenAuthService) validateToken(token string) (sessionID uuid.UUID, tok
 	return jti, tokenUse, epoch, claims, true
 }
 
-// validateOidcToken accepts tokens signed by the OIDC issuer key with relaxed
-// issuer/audience validation (mirrors ValidateOidcTokenRelaxed).
+// validateOidcToken accepts tokens signed by the OIDC issuer key. Issuer
+// validation uses the same auth.validIssuers list as ordinary JWTs; audience
+// validation remains OAuth-session-specific and is performed separately by
+// validateOidcBinding.
 func (t *TokenAuthService) validateOidcToken(token string) (sessionID uuid.UUID, tokenUse string, epoch int, claims jwt.MapClaims, ok bool) {
-	// The OIDC provider uses the same RSA key pair (config OidcProvider keys
-	// default to the auth keys), so the JWTService validator applies. The
-	// relaxed variant skips issuer/audience checks.
 	parts := strings.Count(token, ".") + 1
 	if parts != 3 {
 		return uuid.Nil, "", 0, nil, false
 	}
-	parser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256"}), jwt.WithoutClaimsValidation())
-	parsed, err := parser.Parse(token, func(tk *jwt.Token) (any, error) {
-		return t.jwt.PublicKey(), nil
-	})
-	if err != nil || !parsed.Valid {
+	claims, ok = t.jwt.parseAndVerify(token)
+	if !ok {
 		return uuid.Nil, "", 0, nil, false
 	}
-	claims, ok = parsed.Claims.(jwt.MapClaims)
-	if !ok {
+	iss, _ := claims["iss"].(string)
+	if !t.jwt.issuerValid(iss) {
 		return uuid.Nil, "", 0, nil, false
 	}
 	sessionID, ok = ParseUUIDClaim(claims, "sid")
@@ -354,8 +354,8 @@ func firstSessionID(claims jwt.MapClaims) string {
 }
 
 // IsOidcToken reports whether the token is an OIDC-issued access token
-// (relaxed-issuer path) rather than a plain Padlock user token: OIDC tokens
-// carry the azp claim and an OIDC provider issuer.
+// (shared issuer-list validation) rather than a plain Padlock user token:
+// OIDC tokens carry the azp claim and an OIDC provider issuer.
 func (t *TokenAuthService) IsOidcToken(token string) bool {
 	claims, ok := unverifiedClaims(token)
 	if !ok {
@@ -601,8 +601,10 @@ func stringOrNil(value string) *string {
 	return &value
 }
 
-// GetAccountVersion reads auth:account_ver:{id} (0 when absent).
 func (t *TokenAuthService) GetAccountVersion(ctx context.Context, accountID string) (int, error) {
+	if t.redis == nil || !t.redis.Available() {
+		return 0, nil
+	}
 	var v int
 	found, err := t.redis.Cache.Get(ctx, AccountVersionPrefix+accountID, &v)
 	if err != nil {
@@ -614,13 +616,15 @@ func (t *TokenAuthService) GetAccountVersion(ctx context.Context, accountID stri
 	return v, nil
 }
 
-// BumpAccountVersion increments auth:account_ver:{id} with a 90d TTL.
 func (t *TokenAuthService) BumpAccountVersion(ctx context.Context, accountID string) (int, error) {
 	current, err := t.GetAccountVersion(ctx, accountID)
 	if err != nil {
 		return 0, err
 	}
 	next := current + 1
+	if t.redis == nil || !t.redis.Available() {
+		return next, nil
+	}
 	if err := t.redis.Cache.Set(ctx, AccountVersionPrefix+accountID, next, 90*24*time.Hour); err != nil {
 		return 0, err
 	}
@@ -632,5 +636,8 @@ func (t *TokenAuthService) BumpAccountVersion(ctx context.Context, accountID str
 // invalidation is enforced by session epoch + account version — but the
 // constant exists for downstream compatibility.
 func (t *TokenAuthService) RevokeJti(ctx context.Context, jti string) error {
+	if t.redis == nil || !t.redis.Available() {
+		return nil
+	}
 	return t.redis.Cache.Set(ctx, RevokedJtiPrefix+jti, "1", RevokedJtiTTL)
 }
