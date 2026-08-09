@@ -132,7 +132,7 @@ func run(log *slog.Logger) error {
 	defer clients.Close()
 
 	perkProvider := &grpcclient.WalletPerkProvider{Client: clients.Wallet, Log: log}
-	appProvider := &grpcclient.DevelopAppProvider{Client: clients.Develop, Log: log}
+	appProvider := &grpcclient.DevelopAppProvider{Client: clients.Develop, Cfg: cfg, Log: log}
 
 	tokenAuth := auth.NewTokenAuthService(st, rc, jwtService, perkProvider, appProvider, log)
 	logs := actionlog.New(database)

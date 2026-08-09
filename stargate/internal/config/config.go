@@ -71,13 +71,14 @@ type Config struct {
 	} `toml:"auth"`
 
 	OidcProvider struct {
-		IssuerUri                 string `toml:"issuerUri"`
-		PublicKeyPath             string `toml:"publicKeyPath"`
-		PrivateKeyPath            string `toml:"privateKeyPath"`
-		AccessTokenLifetime       string `toml:"accessTokenLifetime"`
-		RefreshTokenLifetime      string `toml:"refreshTokenLifetime"`
-		AuthorizationCodeLifetime string `toml:"authorizationCodeLifetime"`
-		RequireHttpsMetadata      bool   `toml:"requireHttpsMetadata"`
+		IssuerUri                 string        `toml:"issuerUri"`
+		PublicKeyPath             string        `toml:"publicKeyPath"`
+		PrivateKeyPath            string        `toml:"privateKeyPath"`
+		AccessTokenLifetime       string        `toml:"accessTokenLifetime"`
+		RefreshTokenLifetime      string        `toml:"refreshTokenLifetime"`
+		AuthorizationCodeLifetime string        `toml:"authorizationCodeLifetime"`
+		RequireHttpsMetadata      bool          `toml:"requireHttpsMetadata"`
+		Clients                   []OAuthClient `toml:"clients"`
 	} `toml:"oidcProvider"`
 
 	Captcha struct {
@@ -129,6 +130,50 @@ type Config struct {
 
 type ServiceTarget struct {
 	GRPC string `toml:"grpc"`
+}
+
+// OAuthClient configures a custom OAuth/OIDC client without requiring
+// DysonNetwork.Develop. IDs and secrets are deployment-owned values.
+type OAuthClient struct {
+	Id                string   `toml:"id"`
+	Slug              string   `toml:"slug"`
+	Name              string   `toml:"name"`
+	ClientSecret      string   `toml:"clientSecret"`
+	Status            int      `toml:"status"`
+	HomeUri           string   `toml:"homeUri"`
+	PolicyUri         string   `toml:"policyUri"`
+	TermsOfServiceUri string   `toml:"termsOfServiceUri"`
+	RedirectUris      []string `toml:"redirectUris"`
+	AllowedScopes     []string `toml:"allowedScopes"`
+	IsPublicClient    bool     `toml:"isPublicClient"`
+}
+
+// FindLocalOAuthClient finds a configured client by its ID or slug.
+func (c *Config) FindLocalOAuthClient(identifier string) *OAuthClient {
+	if c == nil || identifier == "" {
+		return nil
+	}
+	for i := range c.OidcProvider.Clients {
+		client := &c.OidcProvider.Clients[i]
+		if client.Id == identifier || client.Slug == identifier {
+			return client
+		}
+	}
+	return nil
+}
+
+// FindLocalOAuthClientByID finds a configured client by its stable ID.
+func (c *Config) FindLocalOAuthClientByID(id string) *OAuthClient {
+	if c == nil || id == "" {
+		return nil
+	}
+	for i := range c.OidcProvider.Clients {
+		client := &c.OidcProvider.Clients[i]
+		if client.Id == id {
+			return client
+		}
+	}
+	return nil
 }
 
 type GoogleClient struct {
@@ -252,6 +297,7 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("STARGATE_SERVICES_PASS__GRPC", &cfg.Services.Pass.GRPC)
 	setStr("STARGATE_SERVICES_BLADE__GRPC", &cfg.Services.Blade.GRPC)
 	setStr("STARGATE_SERVICES_RING__GRPC", &cfg.Services.Ring.GRPC)
+	setStr("STARGATE_SERVICES_DEVELOP__GRPC", &cfg.Services.Develop.GRPC)
 	setBool("STARGATE_CAPTCHA_SKIP", &cfg.Captcha.Skip)
 	setBool("STARGATE_ACCOUNT_ACTIVATION__TESTS_ENABLED", &cfg.AccountActivation.TestsEnabled)
 	setBool("STARGATE_DISCOVERY_ENABLED", &cfg.Discovery.Enabled)

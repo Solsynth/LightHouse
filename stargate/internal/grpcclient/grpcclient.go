@@ -133,14 +133,27 @@ func (p *WalletPerkProvider) GetPerkSubscription(ctx context.Context, accountID 
 	return ref, nil
 }
 
-// DevelopAppProvider looks up OIDC clients (custom apps) from Develop.
+// DevelopAppProvider looks up OIDC clients from local configuration first,
+// then falls back to Develop.
 type DevelopAppProvider struct {
 	Client gen.DyCustomAppServiceClient
+	Cfg    *config.Config
 	Log    *slog.Logger
 }
 
 // GetCustomAppSlug returns the custom app slug for an OIDC client id.
 func (p *DevelopAppProvider) GetCustomAppSlug(ctx context.Context, appID string) (string, error) {
+	if p != nil && p.Cfg != nil {
+		if client := p.Cfg.FindLocalOAuthClientByID(appID); client != nil {
+			slug := client.Slug
+			if slug == "" {
+				slug = client.Id
+			}
+			if slug != "" {
+				return slug, nil
+			}
+		}
+	}
 	if p == nil || p.Client == nil {
 		return "", fmt.Errorf("develop client not configured")
 	}

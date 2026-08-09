@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
@@ -220,7 +221,51 @@ func loadOIDCKeys(cfg *config.Config) (*rsa.PublicKey, *rsa.PrivateKey) {
 	return pub, priv
 }
 
-// --- Client lookup (Develop gRPC + Redis cache) ---
+// --- Client lookup (local config, Develop gRPC + Redis cache) ---
+
+func (s *service) findLocalClient(identifier string) *oidcClient {
+	if s.cfg == nil {
+		return nil
+	}
+	configured := s.cfg.FindLocalOAuthClient(identifier)
+	if configured == nil {
+		return nil
+	}
+	id := configured.Id
+	if id == "" {
+		id = configured.Slug
+	}
+	slug := configured.Slug
+	if slug == "" {
+		slug = id
+	}
+	if id == "" || slug == "" {
+		return nil
+	}
+	status := configured.Status
+	if status == 0 {
+		status = customAppStatusProduction
+	}
+	client := &oidcClient{
+		Id:             id,
+		Slug:           slug,
+		Name:           configured.Name,
+		Status:         status,
+		RedirectUris:   configured.RedirectUris,
+		AllowedScopes:  configured.AllowedScopes,
+		IsPublicClient: configured.IsPublicClient,
+	}
+	if configured.HomeUri != "" {
+		client.HomeUri = &configured.HomeUri
+	}
+	if configured.PolicyUri != "" {
+		client.PolicyUri = &configured.PolicyUri
+	}
+	if configured.TermsOfServiceUri != "" {
+		client.TermsOfServiceUri = &configured.TermsOfServiceUri
+	}
+	return client
+}
 
 func (s *service) findClientByIdentifier(ctx context.Context, identifier string) (*oidcClient, error) {
 	if _, err := uuid.Parse(identifier); err == nil {
@@ -230,6 +275,9 @@ func (s *service) findClientByIdentifier(ctx context.Context, identifier string)
 }
 
 func (s *service) findClientByID(ctx context.Context, id string) (*oidcClient, error) {
+	if client := s.findLocalClient(id); client != nil {
+		return client, nil
+	}
 	var client oidcClient
 	found, err := s.redis.Cache.Get(ctx, cacheKeyPrefixClientId+id, &client)
 	if err == nil && found {
@@ -244,6 +292,9 @@ func (s *service) findClientByID(ctx context.Context, id string) (*oidcClient, e
 }
 
 func (s *service) findClientBySlug(ctx context.Context, slug string) (*oidcClient, error) {
+	if client := s.findLocalClient(slug); client != nil {
+		return client, nil
+	}
 	var client oidcClient
 	found, err := s.redis.Cache.Get(ctx, cacheKeyPrefixClientSlug+slug, &client)
 	if err == nil && found {
@@ -333,9 +384,17 @@ func cloudFileFromProto(f *gen.DyCloudFile) *model.SnCloudFileReferenceObject {
 	return &ref
 }
 
-// ValidateClientCredentialsAsync calls Develop's CheckCustomAppSecret with
-// IsOidc=true, exactly like the C#.
+// ValidateClientCredentialsAsync checks local configuration first, then
+// falls back to Develop's CheckCustomAppSecret with IsOidc=true.
 func (s *service) validateClientCredentials(ctx context.Context, clientID, secret string) (bool, error) {
+	if s.cfg != nil {
+		if configured := s.cfg.FindLocalOAuthClient(clientID); configured != nil {
+			if configured.ClientSecret == "" {
+				return false, nil
+			}
+			return subtle.ConstantTimeCompare([]byte(configured.ClientSecret), []byte(secret)) == 1, nil
+		}
+	}
 	if s.develop == nil {
 		return false, nil
 	}

@@ -47,6 +47,21 @@ refreshTokenLifetime = "720h"
 authorizationCodeLifetime = "30m"
 requireHttpsMetadata = true
 
+# Optional local OAuth/OIDC clients. Use these when DysonNetwork.Develop is
+# unavailable. The client ID must be stable because it is stored in OAuth
+# sessions. status=2 means Production and enforces redirectUris; status=1
+# (Staging) accepts any redirect URI, matching Develop's behavior.
+# [[oidcProvider.clients]]
+# id = "00000000-0000-0000-0000-000000000001"
+# slug = "my-local-client"
+# name = "My Local Client"
+# clientSecret = "replace-with-a-secret"
+# status = 2
+# homeUri = "https://client.example.com"
+# redirectUris = ["https://client.example.com/oauth/callback"]
+# allowedScopes = ["openid", "profile", "email"]
+# isPublicClient = false
+
 [captcha]
 provider = "cloudflare"
 apiKey = "0x4AAAAAABCDUdOujj4feOb_"
@@ -56,7 +71,6 @@ skip = true
 [webauthn]
 rpId = "localhost"
 rpName = "Solar Network"
-relatedOrigins = ["http://localhost:3000"]
 
 # Account activation (mirrors Passport's AccountActivation). Entry-test (exam)
 # logic stays in Passport: when testsEnabled is true and requiredTestKeys is
@@ -71,11 +85,10 @@ requiredTestKeys = []
 [geoip]
 databasePath = "Keys/GeoLite2-City.mmdb"
 
-# Outbound gRPC targets. develop is REQUIRED for OIDC client lookup
-# (authorize/token/device flows) and custom-app checks; without it every
-# /api/auth/open/* client lookup fails with "Client not found". The C#
-# Padlock wired it unconditionally via the shared _grpc.develop channel —
-# mirror that here, e.g. develop = { grpc = "develop:5001" }.
+# Outbound gRPC targets. develop is optional when OAuth clients are defined
+# under [[oidcProvider.clients]]. Without either a local client or Develop,
+# /api/auth/open/* client lookup returns "Client not found".
+# The other targets remain optional and degrade gracefully when empty.
 [services]
 develop = { grpc = "" }
 drive = { grpc = "" }

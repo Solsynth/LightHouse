@@ -7,6 +7,8 @@ import (
 
 	"google.golang.org/grpc"
 	gen "src.solsynth.dev/sosys/go/proto"
+
+	"src.solsynth.dev/sosys/stargate/internal/config"
 )
 
 // fakeWalletClient implements gen.DySubscriptionServiceClient with only
@@ -73,4 +75,26 @@ func TestGetPerkSubscriptionEmptySentinel(t *testing.T) {
 			t.Fatalf("error = %v, want %v", err, sentinel)
 		}
 	})
+}
+
+func TestDevelopAppProviderUsesLocalOAuthClient(t *testing.T) {
+	const appID = "local-client-id"
+	p := &DevelopAppProvider{
+		Cfg: func() *config.Config {
+			cfg := config.Default()
+			cfg.OidcProvider.Clients = []config.OAuthClient{{
+				Id:   appID,
+				Slug: "local-client",
+			}}
+			return cfg
+		}(),
+	}
+
+	slug, err := p.GetCustomAppSlug(context.Background(), appID)
+	if err != nil {
+		t.Fatalf("GetCustomAppSlug returned error: %v", err)
+	}
+	if slug != "local-client" {
+		t.Fatalf("slug = %q, want local-client", slug)
+	}
 }

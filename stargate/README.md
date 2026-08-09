@@ -33,6 +33,28 @@ CONFIG_PATH=config.toml make run
 
 Requires Postgres, Redis and NATS (JetStream enabled: `nats-server -js`).
 
+### Local OAuth clients
+
+Stargate normally reads custom OAuth/OIDC clients from
+`DysonNetwork.Develop`. Deployments that do not run Develop can define the
+clients locally instead:
+
+```toml
+[[oidcProvider.clients]]
+id = "00000000-0000-0000-0000-000000000001"
+slug = "my-client"
+name = "My Client"
+clientSecret = "replace-with-a-secret"
+status = 2
+redirectUris = ["https://client.example.com/oauth/callback"]
+allowedScopes = ["openid", "profile", "email"]
+isPublicClient = false
+```
+
+Local entries are checked before Develop. Keep each `id` stable because it is
+stored in OAuth sessions. `status = 2` (Production) enforces `redirectUris`;
+public clients should use PKCE and omit `clientSecret`.
+
 ## Migrate
 
 ```sh
