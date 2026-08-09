@@ -184,8 +184,8 @@ func (s *JWTService) CreateUserToken(session *model.AuthSession, account *model.
 		"nbf":          now.Unix(),
 		"exp":          expiresAt.Unix(),
 	}
-	for _, scope := range session.Scopes {
-		claims["scope"] = scope
+	if len(session.Scopes) > 0 {
+		claims["scope"] = strings.Join(session.Scopes, " ")
 	}
 	return s.sign(claims, now, expiresAt)
 }
@@ -234,8 +234,7 @@ func (s *JWTService) sign(claims jwt.MapClaims, now, expiresAt time.Time) (strin
 	// iss/aud are added centrally, mirroring the C# CreateJwt.
 	claims["iss"] = s.issuer
 	claims["aud"] = s.audience
-	// Repeatable "scope" claims are collapsed to a single space-joined claim,
-	// mirroring how JwtSecurityTokenHandler serializes repeated claims.
+	// OAuth scope claims are serialized as one space-delimited string.
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = "solar-network"
 	return token.SignedString(s.private)

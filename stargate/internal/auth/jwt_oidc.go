@@ -3,6 +3,7 @@ package auth
 import (
 	"crypto/rsa"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -46,7 +47,7 @@ func (s *JWTService) createOidcUserToken(signer *rsa.PrivateKey, session *model.
 		"exp":          expiresAt.Unix(),
 	}
 	if len(scopes) > 0 {
-		claims["scope"] = scopes
+		claims["scope"] = strings.Join(scopes, " ")
 	}
 	for k, v := range additionalClaims {
 		claims[k] = v

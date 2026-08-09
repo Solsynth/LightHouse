@@ -57,3 +57,27 @@ func TestDiscoveryDocumentAdvertisesStargateEndpoints(t *testing.T) {
 		t.Errorf("issuer = %q", got)
 	}
 }
+
+func TestScopesFromClaimsSplitsOAuthScopeString(t *testing.T) {
+	got := scopesFromClaims(map[string]any{"scope": "openid profile email"})
+	for _, scope := range []string{"openid", "profile", "email"} {
+		if _, ok := got[scope]; !ok {
+			t.Errorf("scope %q missing from %#v", scope, got)
+		}
+	}
+	if len(got) != 3 {
+		t.Fatalf("scope count = %d, want 3", len(got))
+	}
+}
+
+func TestScopesFromClaimsKeepsLegacyArrayCompatibility(t *testing.T) {
+	got := scopesFromClaims(map[string]any{"scope": []any{"openid", "profile"}})
+	for _, scope := range []string{"openid", "profile"} {
+		if _, ok := got[scope]; !ok {
+			t.Errorf("legacy scope %q missing from %#v", scope, got)
+		}
+	}
+	if len(got) != 2 {
+		t.Fatalf("legacy scope count = %d, want 2", len(got))
+	}
+}

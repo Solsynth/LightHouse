@@ -41,6 +41,35 @@ func TestClaimInt(t *testing.T) {
 	}
 }
 
+func TestCreateUserTokenSerializesAllScopesAsOAuthScopeString(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	svc := &JWTService{
+		issuer:   "solar-network",
+		audience: "https://auth.example",
+		private:  key,
+	}
+	session := &model.AuthSession{Id: "session-1", Scopes: []string{"openid", "profile", "email"}}
+	account := &model.Account{Id: "account-1", Name: "User"}
+
+	tokenText, err := svc.CreateUserToken(session, account, 1, time.Now().Add(5*time.Minute))
+	if err != nil {
+		t.Fatalf("create user token: %v", err)
+	}
+	parsed, err := jwt.Parse(tokenText, func(token *jwt.Token) (any, error) {
+		return &key.PublicKey, nil
+	})
+	if err != nil || !parsed.Valid {
+		t.Fatalf("parse user token: valid=%v err=%v", parsed.Valid, err)
+	}
+	claims := parsed.Claims.(jwt.MapClaims)
+	if got, want := claims["scope"], "openid profile email"; got != want {
+		t.Fatalf("scope claim = %#v, want %#v", got, want)
+	}
+}
+
 func TestCreateOidcUserTokenUsesProviderClaimsAndSigner(t *testing.T) {
 	authKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -62,7 +91,7 @@ func TestCreateOidcUserTokenUsesProviderClaimsAndSigner(t *testing.T) {
 
 	tokenText, err := svc.CreateOidcUserTokenWithSigner(
 		providerKey, session, account, 3, time.Now().Add(5*time.Minute),
-		wantIssuer, wantAudience, []string{"openid"}, map[string]any{"azp": wantAudience},
+		wantIssuer, wantAudience, []string{"openid", "profile"}, map[string]any{"azp": wantAudience},
 	)
 	if err != nil {
 		t.Fatalf("create OIDC token: %v", err)
@@ -79,6 +108,9 @@ func TestCreateOidcUserTokenUsesProviderClaimsAndSigner(t *testing.T) {
 	}
 	if claims["iss"] != wantIssuer || claims["aud"] != wantAudience {
 		t.Fatalf("OIDC claims issuer=%v audience=%v, want %q/%q", claims["iss"], claims["aud"], wantIssuer, wantAudience)
+	}
+	if got, want := claims["scope"], "openid profile"; got != want {
+		t.Fatalf("OIDC scope claim = %#v, want %#v", got, want)
 	}
 }
 

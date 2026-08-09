@@ -674,7 +674,9 @@ func scopesFromClaims(claims jwt.MapClaims) map[string]struct{} {
 	}
 	switch t := v.(type) {
 	case string:
-		set[t] = struct{}{}
+		for _, scope := range strings.Fields(t) {
+			set[scope] = struct{}{}
+		}
 	case []any:
 		for _, item := range t {
 			if sv, ok := item.(string); ok {
