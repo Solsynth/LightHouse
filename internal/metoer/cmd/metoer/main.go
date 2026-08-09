@@ -75,6 +75,7 @@ func main() {
 	level := parseLogLevel(os.Getenv("LOG_LEVEL"))
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
 	slog.SetDefault(log)
+	log.Info("metoer starting", "version", version, "commit", gitCommit)
 
 	if err := run(log); err != nil {
 		log.Error("metoer exited with error", "error", err)
@@ -85,21 +86,26 @@ func main() {
 func run(log *slog.Logger) error {
 	cfg, err := config.Load("")
 	if err != nil {
-		return err
+		return fmt.Errorf("load config: %w", err)
 	}
+	log.Info("configuration loaded", "http_port", cfg.HTTP.Port, "grpc_port", cfg.GRPC.Port)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	log.Info("connecting database")
 	database, err := db.Connect(ctx, cfg.Database.DSN)
 	if err != nil {
-		return err
+		return fmt.Errorf("connect database: %w", err)
 	}
 	defer db.Close(database)
+	log.Info("database connected")
 
+	log.Info("running database migrations")
 	if err := migrate.Run(ctx, database); err != nil {
-		return err
+		return fmt.Errorf("run database migrations: %w", err)
 	}
+	log.Info("database migrations complete")
 
 	rc, err := redisclient.Connect(ctx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.DB)
 	if err != nil {
@@ -254,7 +260,8 @@ func run(log *slog.Logger) error {
 		discoveryReg = discovery.New(gen.NewDyServiceDiscoveryServiceClient(conn), opts, log)
 		go discoveryReg.Run(ctx)
 		log.Info("blade service discovery enabled",
-			"service", opts.Service, "instance_id", opts.InstanceID, "target", cfg.Discovery.Target)
+			"service", opts.Service, "instance_id", opts.InstanceID, "target", cfg.Discovery.Target,
+			"http_endpoint", opts.HttpEndpoint, "grpc_endpoint", opts.GrpcEndpoint)
 	}
 
 	// Scheduled jobs + the filesystem listener.
@@ -275,21 +282,28 @@ func run(log *slog.Logger) error {
 		}
 	}()
 
+	httpAddr := ":" + cfg.HTTP.Port
+	httpLn, err := net.Listen("tcp", httpAddr)
+	if err != nil {
+		return fmt.Errorf("listen http on %s: %w", httpAddr, err)
+	}
+	httpSrv := &http.Server{Handler: srv.Engine}
+
+	grpcAddr := ":" + cfg.GRPC.Port
+	grpcLn, err := net.Listen("tcp", grpcAddr)
+	if err != nil {
+		_ = httpLn.Close()
+		return fmt.Errorf("listen grpc on %s: %w", grpcAddr, err)
+	}
+
 	errCh := make(chan error, 2)
+	log.Info("http server listening", "addr", httpAddr, "version", version, "commit", gitCommit)
 	go func() {
-		addr := ":" + cfg.HTTP.Port
-		log.Info("http server listening", "addr", addr, "version", version, "commit", gitCommit)
-		errCh <- srv.Engine.Run(addr)
+		errCh <- httpSrv.Serve(httpLn)
 	}()
+	log.Info("grpc server listening", "addr", grpcAddr)
 	go func() {
-		addr := ":" + cfg.GRPC.Port
-		ln, err := net.Listen("tcp", addr)
-		if err != nil {
-			errCh <- err
-			return
-		}
-		log.Info("grpc server listening", "addr", addr)
-		errCh <- grpcSrv.Serve(ln)
+		errCh <- grpcSrv.Serve(grpcLn)
 	}()
 
 	select {
@@ -299,6 +313,9 @@ func run(log *slog.Logger) error {
 		defer cancel()
 		if discoveryReg != nil {
 			discoveryReg.Deregister(shutdownCtx)
+		}
+		if err := httpSrv.Shutdown(shutdownCtx); err != nil {
+			log.Warn("http server shutdown failed", "error", err)
 		}
 		grpcSrv.GracefulStop()
 		if nc != nil {

@@ -23,9 +23,9 @@ type RouteRegistrar func(api *gin.RouterGroup)
 func New(cfg *config.Config, authMiddleware gin.HandlerFunc) *Server {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
+	engine.Use(gin.Logger())
 	engine.Use(gin.Recovery())
 	engine.Use(authMiddleware)
-
 	s := &Server{Engine: engine, cfg: cfg}
 
 	engine.GET("/health", func(c *gin.Context) { c.Status(http.StatusOK) })
