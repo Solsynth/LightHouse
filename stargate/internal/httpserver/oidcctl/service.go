@@ -892,7 +892,7 @@ func (s *service) generateJwtToken(ctx context.Context, client *oidcClient, sess
 	if effectiveScopes == nil {
 		effectiveScopes = client.AllowedScopes
 	}
-	return s.jwt.CreateOidcUserToken(session, session.Account, sessionVersion, expiresAt, s.issuer, client.Slug, effectiveScopes, map[string]any{"azp": client.Slug})
+	return s.jwt.CreateOidcUserTokenWithSigner(s.privateKey, session, session.Account, sessionVersion, expiresAt, s.issuer, client.Slug, effectiveScopes, map[string]any{"azp": client.Slug})
 }
 
 // generateIdToken mirrors GenerateIdToken (signed with the OIDC provider key).

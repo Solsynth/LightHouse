@@ -1,9 +1,14 @@
 package auth
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"testing"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"src.solsynth.dev/sosys/stargate/internal/model"
 )
 
 // TestClaimInt pins the string-or-number claim parsing: the C# minting
@@ -33,5 +38,46 @@ func TestClaimInt(t *testing.T) {
 		if got != tc.want || ok != tc.ok {
 			t.Errorf("ClaimInt(%q) = (%d, %v), want (%d, %v)", tc.key, got, ok, tc.want, tc.ok)
 		}
+	}
+}
+
+func TestCreateOidcUserTokenUsesProviderClaimsAndSigner(t *testing.T) {
+	authKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate auth key: %v", err)
+	}
+	providerKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate provider key: %v", err)
+	}
+	svc := &JWTService{
+		issuer:   "solar-network",
+		audience: "https://auth.example",
+		private:  authKey,
+	}
+	session := &model.AuthSession{Id: "session-1", Epoch: 2}
+	account := &model.Account{Id: "account-1", Name: "User"}
+	wantIssuer := "https://issuer.example"
+	wantAudience := "forgejo"
+
+	tokenText, err := svc.CreateOidcUserTokenWithSigner(
+		providerKey, session, account, 3, time.Now().Add(5*time.Minute),
+		wantIssuer, wantAudience, []string{"openid"}, map[string]any{"azp": wantAudience},
+	)
+	if err != nil {
+		t.Fatalf("create OIDC token: %v", err)
+	}
+	parsed, err := jwt.Parse(tokenText, func(token *jwt.Token) (any, error) {
+		return &providerKey.PublicKey, nil
+	})
+	if err != nil || !parsed.Valid {
+		t.Fatalf("parse OIDC token with provider key: valid=%v err=%v", parsed.Valid, err)
+	}
+	claims, ok := parsed.Claims.(jwt.MapClaims)
+	if !ok {
+		t.Fatalf("claims type = %T, want jwt.MapClaims", parsed.Claims)
+	}
+	if claims["iss"] != wantIssuer || claims["aud"] != wantAudience {
+		t.Fatalf("OIDC claims issuer=%v audience=%v, want %q/%q", claims["iss"], claims["aud"], wantIssuer, wantAudience)
 	}
 }
