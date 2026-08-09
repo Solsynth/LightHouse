@@ -99,7 +99,8 @@ func (s *Store) GetConnectionFullByID(ctx context.Context, id uuid.UUID) (*model
 // GetConnectionByProviderAndIdentifier loads a connection by provider+identifier.
 func (s *Store) GetConnectionByProviderAndIdentifier(ctx context.Context, provider, providedIdentifier string) (*model.Connection, error) {
 	row := s.queryRow(ctx, `SELECT id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, registered_at, created_at, updated_at, deleted_at
-		FROM account_connections WHERE LOWER(provider) = LOWER($1) AND provided_identifier = $2 AND deleted_at IS NULL LIMIT 1`, provider, providedIdentifier)
+		FROM account_connections WHERE LOWER(provider) = LOWER($1) AND provided_identifier = $2
+		ORDER BY (deleted_at IS NULL) DESC, updated_at DESC LIMIT 1`, provider, providedIdentifier)
 	c, err := scanConnectionFull(row)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {

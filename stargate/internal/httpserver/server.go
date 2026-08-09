@@ -70,29 +70,37 @@ func (s *Server) assetLinks(c *gin.Context) {
 			"package_name":             "dev.solsynth.solian",
 			"sha256_cert_fingerprints": []string{},
 		},
+		"relation_extensions": gin.H{
+			"delegate_permission/common.handle_all_urls": gin.H{
+				"dynamic_app_link_components": appLinkComponents(),
+			},
+		},
 	}})
 }
 
 // appLinkComponents mirrors Padlock's AppLinkComponents route table (kept in
-// sync with the Island client route table).
+// sync with the Island client route table). The same path rules are emitted
+// for Apple's AASA format and Android 15+ dynamic App Links.
 func appLinkComponents() []gin.H {
 	patterns := []string{
 		"/", "/explore", "/chat", "/chat/search", "/chat/*/detail", "/chat/*/search",
 		"/chat/*", "/realms", "/account", "/account/stickers", "/account/stickers/*",
 		"/account/relationships", "/account/me/update", "/account/me/activation",
-		"/account/me/board", "/account/me/leveling", "/account/me/settings", "/account/me/qr",
-		"/account/me/badges", "/account/me/progress", "/account/me/meet", "/account/me/meet/*",
-		"/account/me/action-logs", "/account/me/physical-passports", "/account/tickets",
-		"/account/tickets/*", "/account/me/punishments", "/account/me/affiliations",
-		"/account/me/affiliations/*", "/files", "/files/*", "/creators", "/creators/*/posts",
-		"/creators/*/collections", "/creators/*/surveys", "/creators/*/stickers",
-		"/creators/*/stickers/*", "/creators/*/domains", "/creators/*/tags", "/wallet",
-		"/wallet/transactions/*", "/articles/compose", "/articles/*/edit", "/blogs/compose",
-		"/blogs/*/edit", "/auth/login", "/auth/create-account", "/auth/authorize", "/settings",
-		"/settings/chat-room-storage", "/plugins", "/plugins/editor", "/about", "/cf-ip-speed-test",
-		"/posts/shuffle", "/posts/bookmarks", "/posts/categories", "/posts/categories/*",
-		"/posts/*", "/publishers/*", "/fediverse/actors/*", "/accounts/*", "/search",
-		"/calendar/*/events/*", "/calendar/*", "/realms/*", "/surveys/*", "/orders/*",
+		"/account/me/board", "/account/me/leveling", "/account/me/stellar-program",
+		"/account/me/settings", "/account/me/qr", "/account/me/badges", "/account/me/progress",
+		"/account/me/meet", "/account/me/meet/*", "/account/me/action-logs",
+		"/account/me/physical-passports", "/account/tickets", "/account/tickets/*",
+		"/account/me/punishments", "/account/me/affiliations", "/account/me/affiliations/*",
+		"/files", "/files/*", "/creators", "/creators/*/posts", "/creators/*/collections",
+		"/creators/*/surveys", "/creators/*/stickers", "/creators/*/stickers/*",
+		"/creators/*/domains", "/creators/*/tags", "/wallet", "/wallet/transactions/*",
+		"/articles/compose", "/articles/*/edit", "/blogs/compose", "/blogs/*/edit",
+		"/auth/login", "/auth/create-account", "/auth/authorize", "/settings",
+		"/settings/chat-room-storage", "/plugins", "/plugins/editor", "/about",
+		"/cf-ip-speed-test", "/posts/shuffle", "/posts/bookmarks", "/posts/categories",
+		"/posts/categories/*", "/posts/*", "/publishers/*", "/fediverse/actors/*",
+		"/accounts/*", "/search", "/calendar/*/events/*", "/calendar/*", "/realms/*",
+		"/surveys/*", "/orders/*",
 	}
 	components := make([]gin.H, 0, len(patterns))
 	for _, pattern := range patterns {
