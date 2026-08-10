@@ -138,10 +138,12 @@ func (s *Store) GetSuperuserActorIDs(ctx context.Context) ([]string, error) {
 	return actors, rows.Err()
 }
 
-// ListApiKeysByAccount lists an account's keys with session ids.
+// ListApiKeysByAccount lists an account's keys with their backing session
+// expiry and session ids.
 func (s *Store) ListApiKeysByAccount(ctx context.Context, accountID string) ([]model.ApiKey, error) {
-	rows, err := s.query(ctx, `SELECT id, label, account_id, app_id, session_id, created_at, updated_at, expired_at, deleted_at
-		FROM api_keys WHERE account_id = $1 AND deleted_at IS NULL ORDER BY created_at`, accountID)
+	rows, err := s.query(ctx, `SELECT k.id, k.label, k.account_id, k.app_id, k.session_id, k.created_at, k.updated_at, sess.expired_at, k.deleted_at
+		FROM api_keys k LEFT JOIN auth_sessions sess ON sess.id = k.session_id
+		WHERE k.account_id = $1 AND k.deleted_at IS NULL ORDER BY k.created_at`, accountID)
 	if err != nil {
 		return nil, err
 	}
