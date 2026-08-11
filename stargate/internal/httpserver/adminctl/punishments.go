@@ -18,6 +18,7 @@ import (
 	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/go/pkg/errs"
+	"src.solsynth.dev/sosys/stargate/internal/localization"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
@@ -252,8 +253,8 @@ func deletePunishment(d Deps) gin.HandlerFunc {
 		clearActorPermissionCache(d, c, accountID.String())
 		// Best-effort "punishment lifted" push (the C# localizes per account
 		// language; Stargate ships en/zh-hans strings).
-		title := localize(account.Language, "punishmentLiftedTitle", "")
-		body := localize(account.Language, "punishmentLiftedBody", punishmentTypeName(int(punishment.Type)))
+		title := localization.Localize(account.Language, "punishmentLiftedTitle", nil)
+		body := localization.Localize(account.Language, "punishmentLiftedBody", map[string]string{"type": punishmentTypeName(int(punishment.Type))})
 		_ = sendPushToUser(c, d, accountID.String(), "account.punishment.lifted", title, "", body)
 		c.JSON(http.StatusOK, gin.H{})
 	}
@@ -336,7 +337,7 @@ func createPunishmentInternal(c *gin.Context, d Deps, accountID, creatorID uuid.
 	}
 	title := punishmentTitle(language, ptype)
 	body := punishmentBody(language, reason, expiredAt)
-	_ = sendPushToUser(c, d, accountID.String(), "account.punishment", title, localize("", "punishmentTitle", ""), body)
+	_ = sendPushToUser(c, d, accountID.String(), "account.punishment", title, localization.Localize(language, "punishmentTitle", nil), body)
 
 	view := punishmentView{Punishment: *punishment}
 	hydratePunishments(c, d, indexViews([]punishmentView{view}))
@@ -515,70 +516,24 @@ func punishmentTypeName(ptype int) string {
 func punishmentTitle(language string, ptype int) string {
 	switch model.PunishmentType(ptype) {
 	case model.PunishmentPermissionModification:
-		return localize(language, "punishmentTitlePermissionModification", "")
+		return localization.Localize(language, "punishmentTitlePermissionModification", nil)
 	case model.PunishmentBlockLogin:
-		return localize(language, "punishmentTitleBlockLogin", "")
+		return localization.Localize(language, "punishmentTitleBlockLogin", nil)
 	case model.PunishmentDisableAccount:
-		return localize(language, "punishmentTitleDisableAccount", "")
+		return localization.Localize(language, "punishmentTitleDisableAccount", nil)
 	default:
-		return localize(language, "punishmentTitleStrike", "")
+		return localization.Localize(language, "punishmentTitleStrike", nil)
 	}
 }
 
 func punishmentBody(language, reason string, expiredAt *model.Time) string {
 	if expiredAt != nil {
-		return localize(language, "punishmentBodyWithExpiry", reason+"\nExpires: "+expiredAt.Time().UTC().Format("2006-01-02T15:04:05Z"))
+		return localization.Localize(language, "punishmentBodyWithExpiry", map[string]string{
+			"reason":    reason,
+			"expiredAt": expiredAt.Time().UTC().Format("2006-01-02T15:04:05Z"),
+		})
 	}
-	return localize(language, "punishmentBody", reason)
-}
-
-// localize resolves the punishment copy for the account language. The C#
-// ILocalizationService picks from Resources/Locales; Stargate ships the
-// English strings plus the zh-hans translations and falls back to English.
-func localize(language, key, arg string) string {
-	var text string
-	if strings.HasPrefix(strings.ToLower(language), "zh") {
-		text = zhPunishmentCopy[key]
-	} else {
-		text = enPunishmentCopy[key]
-	}
-	if text == "" {
-		text = enPunishmentCopy[key]
-	}
-	if strings.Contains(text, "{reason}") {
-		text = strings.ReplaceAll(text, "{reason}", arg)
-	}
-	if strings.Contains(text, "{expiredAt}") {
-		text = strings.ReplaceAll(text, "{expiredAt}", arg)
-	}
-	if strings.Contains(text, "{type}") {
-		text = strings.ReplaceAll(text, "{type}", arg)
-	}
-	return text
-}
-
-var enPunishmentCopy = map[string]string{
-	"punishmentTitle":                       "Your account has a new action",
-	"punishmentTitlePermissionModification": "Permissions Restricted",
-	"punishmentTitleBlockLogin":             "Login Blocked",
-	"punishmentTitleDisableAccount":         "Account Disabled",
-	"punishmentTitleStrike":                 "Warning Issued",
-	"punishmentBody":                        "Reason: {reason}",
-	"punishmentBodyWithExpiry":              "Reason: {reason}\nExpires: {expiredAt}",
-	"punishmentLiftedTitle":                 "Restriction Lifted",
-	"punishmentLiftedBody":                  "Your {type} restriction has been lifted",
-}
-
-var zhPunishmentCopy = map[string]string{
-	"punishmentTitle":                       "您的账户有一条新的处罚",
-	"punishmentTitlePermissionModification": "权限受限",
-	"punishmentTitleBlockLogin":             "登陆已禁用",
-	"punishmentTitleDisableAccount":         "账户已停用",
-	"punishmentTitleStrike":                 "警告已发出",
-	"punishmentBody":                        "原因：{reason}",
-	"punishmentBodyWithExpiry":              "原因：{reason}\n过期时间：{expiredAt}",
-	"punishmentLiftedTitle":                 "限制已解除",
-	"punishmentLiftedBody":                  "您的 {type} 限制已被解除",
+	return localization.Localize(language, "punishmentBody", map[string]string{"reason": reason})
 }
 
 func sendPushToUser(c *gin.Context, d Deps, userID, topic, title, subtitle, body string) error {

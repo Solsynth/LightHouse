@@ -32,6 +32,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/config"
 	"src.solsynth.dev/sosys/stargate/internal/geo"
 	"src.solsynth.dev/sosys/stargate/internal/grpcclient"
+	"src.solsynth.dev/sosys/stargate/internal/localization"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
@@ -659,9 +660,9 @@ func (h *handler) sendFactorCode(ctx context.Context, account *model.Account, fa
 		if found, _ := h.d.Redis.Cache.Get(ctx, authFactorCodePrefix+factor.Id+":code", &cached); found && cached != "" {
 			return errors.New("A factor code has been sent and in active duration.")
 		}
-		if err := h.pushNotificationErr(ctx, account.Id, account.Language, "auth.verification",
-			"Disposable Verification Code",
-			code+" is your verification code. It expires in 5 minutes.", false); err != nil {
+		if err := h.pushNotificationErr(ctx, account.Id, "auth.verification",
+			localization.Localize(account.Language, "authCodeTitle", nil),
+			localization.Localize(account.Language, "authCodeBody", map[string]string{"code": code}), false); err != nil {
 			return err
 		}
 		return h.d.Redis.Cache.Set(ctx, authFactorCodePrefix+factor.Id+":code", code, 5*time.Minute)
@@ -1221,9 +1222,9 @@ func (h *handler) approveChallenge(c *gin.Context) {
 	if challenge.DeviceName != nil && *challenge.DeviceName != "" {
 		deviceName = *challenge.DeviceName
 	}
-	h.pushNotification(ctx, user.Id, user.Language, "auth.challenge_approved",
-		"Login approved",
-		"Your sign-in from "+deviceName+" was approved on another device", false)
+	h.pushNotification(ctx, user.Id, "auth.challenge_approved",
+		localization.Localize(user.Language, "loginApprovedTitle", nil),
+		localization.Localize(user.Language, "loginApprovedBody", map[string]string{"deviceName": deviceName}), false)
 	c.Status(http.StatusOK)
 }
 
@@ -1290,9 +1291,9 @@ func (h *handler) declineChallenge(c *gin.Context) {
 	if challenge.DeviceName != nil && *challenge.DeviceName != "" {
 		deviceName = *challenge.DeviceName
 	}
-	h.pushNotification(ctx, user.Id, user.Language, "auth.challenge_declined",
-		"Login declined",
-		"Your sign-in from "+deviceName+" was declined on another device", false)
+	h.pushNotification(ctx, user.Id, "auth.challenge_declined",
+		localization.Localize(user.Language, "loginDeclinedTitle", nil),
+		localization.Localize(user.Language, "loginDeclinedBody", map[string]string{"deviceName": deviceName}), false)
 	c.Status(http.StatusOK)
 }
 
@@ -1653,9 +1654,12 @@ func (h *handler) publishChallengePending(ctx context.Context, challenge *model.
 	if challenge.IpAddress != nil && *challenge.IpAddress != "" {
 		ipAddress = *challenge.IpAddress
 	}
-	h.pushNotification(ctx, account.Id, account.Language, "auth.login_attempt",
-		"Login attempt detected",
-		"Someone is trying to sign in to your account from a device named "+deviceName+" at "+ipAddress, true)
+	h.pushNotification(ctx, account.Id, "auth.login_attempt",
+		localization.Localize(account.Language, "loginAttemptTitle", nil),
+		localization.Localize(account.Language, "loginAttemptBody", map[string]string{
+			"deviceName": deviceName,
+			"ipAddress":  ipAddress,
+		}), true)
 }
 
 // pushLoginNotification mirrors the auth.login ring notification when a
@@ -1673,9 +1677,12 @@ func (h *handler) pushLoginNotification(ctx context.Context, challenge *model.Au
 	if challenge.IpAddress != nil && *challenge.IpAddress != "" {
 		ipAddress = *challenge.IpAddress
 	}
-	h.pushNotification(ctx, account.Id, account.Language, "auth.login",
-		"New login detected",
-		"Your account was signed in on a device named "+deviceName+" from "+ipAddress, true)
+	h.pushNotification(ctx, account.Id, "auth.login",
+		localization.Localize(account.Language, "newLoginTitle", nil),
+		localization.Localize(account.Language, "newLoginBody", map[string]string{
+			"deviceName": deviceName,
+			"ipAddress":  ipAddress,
+		}), true)
 }
 
 func (h *handler) publishWS(ctx context.Context, target, event string, payload any) {
@@ -1687,14 +1694,13 @@ func (h *handler) publishWS(ctx context.Context, target, event string, payload a
 	}
 }
 
-func (h *handler) pushNotification(ctx context.Context, userID, language, topic, title, body string, savable bool) {
-	_ = h.pushNotificationErr(ctx, userID, language, topic, title, body, savable)
+func (h *handler) pushNotification(ctx context.Context, userID, topic, title, body string, savable bool) {
+	_ = h.pushNotificationErr(ctx, userID, topic, title, body, savable)
 }
 
 // pushNotificationErr mirrors pushNotification but surfaces delivery failures
 // (Ring unavailable, RPC error) instead of swallowing them.
-func (h *handler) pushNotificationErr(ctx context.Context, userID, language, topic, title, body string, savable bool) error {
-	_ = language
+func (h *handler) pushNotificationErr(ctx context.Context, userID, topic, title, body string, savable bool) error {
 	if h.d.Clients == nil || h.d.Clients.Ring == nil {
 		return errors.New("ring service is not configured")
 	}

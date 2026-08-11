@@ -13,6 +13,7 @@ import (
 	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/go/pkg/errs"
+	"src.solsynth.dev/sosys/stargate/internal/localization"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
@@ -790,14 +791,14 @@ func (d Deps) opAcceptFriendRelationship(ctx context.Context, relationship *mode
 	return backward, nil
 }
 
-// pushFriendRequest mirrors the SendFriendRequest Ring push with the
-// English localization strings.
+// pushFriendRequest mirrors the SendFriendRequest Ring push with localized
+// copy and the fleet's sender-locale behavior.
 func (d Deps) pushFriendRequest(ctx context.Context, sender *model.Account, targetID string) {
 	if d.Clients == nil || d.Clients.Ring == nil {
 		return
 	}
 	actionURI := "/account/relationships"
-	title := strings.ReplaceAll("{sender} requested to be your friend", "{sender}", sender.Nick)
+	title := localization.Localize(sender.Language, "friendRequestTitle", map[string]string{"sender": sender.Nick})
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	_, err := d.Clients.Ring.SendPushNotificationToUser(ctx, &gen.DySendPushNotificationToUserRequest{
@@ -805,7 +806,7 @@ func (d Deps) pushFriendRequest(ctx context.Context, sender *model.Account, targ
 		Notification: &gen.DyPushNotification{
 			Topic:     "relationships.friends.request",
 			Title:     title,
-			Body:      "You can go to relationships page and decide accept their request or not.",
+			Body:      localization.Localize(sender.Language, "friendRequestBody", nil),
 			ActionUri: &actionURI,
 			IsSavable: true,
 		},
