@@ -56,35 +56,25 @@ func (s *AuthService) CreateApiKey(ctx context.Context, accountID string, label 
 	if expiredAt != nil && !expiredAt.After(now) {
 		return nil, &ErrInvalid{Message: "ExpiredAt must be in the future."}
 	}
+	accountUUID, err := uuid.Parse(accountID)
+	if err != nil {
+		return nil, err
+	}
 	var appID *uuid.UUID
-	var parentID *string
+	var parentID *uuid.UUID
 	if parentSession != nil {
 		appID = uuidPtr(parentSession.AppId)
-		parentID = &parentSession.Id
+		if parentSession.Id != "" {
+			parsedParentID, err := uuid.Parse(parentSession.Id)
+			if err != nil {
+				return nil, err
+			}
+			parentID = &parsedParentID
+		}
 	}
 
-	tx, err := s.store.Begin(ctx)
+	sessionID, keyID, err := s.store.CreateApiKeyWithSession(ctx, accountUUID, normalized, expiredAt, appID, parentID)
 	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
-
-	var sessionID uuid.UUID
-	err = tx.QueryRow(ctx, `INSERT INTO auth_sessions
-		(id, type, created_at, last_granted_at, expired_at, account_id, app_id, parent_session_id, epoch, updated_at)
-		VALUES (gen_random_uuid(),$1,$2,$2,$3,$4,$5,$6,0,$2) RETURNING id`,
-		int(model.SessionTypeApiKey), now, expiredAt, accountID, appID, parentID).Scan(&sessionID)
-	if err != nil {
-		return nil, err
-	}
-	var keyID uuid.UUID
-	err = tx.QueryRow(ctx, `INSERT INTO api_keys (id, label, account_id, app_id, session_id, created_at, updated_at)
-		VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$5) RETURNING id`,
-		normalized, accountID, appID, sessionID).Scan(&keyID)
-	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	key := &model.ApiKey{

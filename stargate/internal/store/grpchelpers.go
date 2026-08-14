@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
@@ -136,6 +138,44 @@ func (s *Store) GetSuperuserActorIDs(ctx context.Context) ([]string, error) {
 		actors = append(actors, actor)
 	}
 	return actors, rows.Err()
+}
+
+// CreateApiKeyWithSession persists an API key and its backing session in one
+// GORM transaction. API-key sessions have no requested audiences or scopes.
+func (s *Store) CreateApiKeyWithSession(ctx context.Context, accountID uuid.UUID, label string, expiredAt *time.Time, appID, parentSessionID *uuid.UUID) (uuid.UUID, uuid.UUID, error) {
+	now := time.Now().UTC()
+	sessionID := uuid.New()
+	keyID := uuid.New()
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&AuthSessionEntity{
+			ID:              sessionID,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+			AccountID:       accountID,
+			AppID:           appID,
+			Audiences:       datatypes.JSON([]byte("[]")),
+			Epoch:           0,
+			ExpiredAt:       expiredAt,
+			LastGrantedAt:   &now,
+			ParentSessionID: parentSessionID,
+			Scopes:          datatypes.JSON([]byte("[]")),
+			Type:            int(model.SessionTypeApiKey),
+		}).Error; err != nil {
+			return err
+		}
+		return tx.Create(&APIKeyEntity{
+			ID: keyID,
+			EntityBase: EntityBase{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			AccountID: accountID,
+			AppID:     appID,
+			Label:     label,
+			SessionID: sessionID,
+		}).Error
+	})
+	return sessionID, keyID, err
 }
 
 // ListApiKeysByAccount lists an account's keys with their backing session
