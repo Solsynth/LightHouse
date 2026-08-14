@@ -70,6 +70,60 @@ func TestCreateUserTokenSerializesAllScopesAsOAuthScopeString(t *testing.T) {
 	}
 }
 
+func TestCreateBotTokenExpiryFollowsSession(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	svc := &JWTService{
+		issuer:   "solar-network",
+		audience: "https://auth.example",
+		private:  key,
+	}
+	apiKey := &model.ApiKey{Id: "api-key-1", AccountId: "account-1"}
+
+	t.Run("no session expiry omits JWT expiry", func(t *testing.T) {
+		tokenText, err := svc.CreateBotToken(apiKey, &model.AuthSession{Id: "session-1"}, 1)
+		if err != nil {
+			t.Fatalf("create bot token: %v", err)
+		}
+		parsed, err := jwt.Parse(tokenText, func(token *jwt.Token) (any, error) {
+			return &key.PublicKey, nil
+		})
+		if err != nil || !parsed.Valid {
+			t.Fatalf("parse bot token: valid=%v err=%v", parsed.Valid, err)
+		}
+		claims := parsed.Claims.(jwt.MapClaims)
+		if _, ok := claims["exp"]; ok {
+			t.Fatalf("non-expiring bot token unexpectedly has exp claim: %v", claims["exp"])
+		}
+	})
+
+	t.Run("session expiry becomes JWT expiry", func(t *testing.T) {
+		expiredAt := time.Now().Add(time.Hour)
+		tokenText, err := svc.CreateBotToken(apiKey, &model.AuthSession{
+			Id: "session-2", ExpiredAt: model.NewTime(expiredAt),
+		}, 1)
+		if err != nil {
+			t.Fatalf("create bot token: %v", err)
+		}
+		parsed, err := jwt.Parse(tokenText, func(token *jwt.Token) (any, error) {
+			return &key.PublicKey, nil
+		})
+		if err != nil || !parsed.Valid {
+			t.Fatalf("parse bot token: valid=%v err=%v", parsed.Valid, err)
+		}
+		claims := parsed.Claims.(jwt.MapClaims)
+		exp, ok := claims["exp"].(float64)
+		if !ok {
+			t.Fatalf("exp claim = %T, want float64", claims["exp"])
+		}
+		if got, want := int64(exp), expiredAt.Unix(); got != want {
+			t.Fatalf("exp = %d, want %d", got, want)
+		}
+	})
+}
+
 func TestCreateOidcUserTokenUsesProviderClaimsAndSigner(t *testing.T) {
 	authKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {

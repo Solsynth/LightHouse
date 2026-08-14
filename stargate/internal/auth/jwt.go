@@ -207,13 +207,11 @@ func (s *JWTService) CreateRefreshToken(session *model.AuthSession, accountVersi
 	return s.sign(claims, now, expiresAt)
 }
 
-// CreateBotToken signs an API-key (bot) token.
+// CreateBotToken signs an API-key (bot) token. A session without an explicit
+// expiry produces a non-expiring JWT; the session remains revocable through
+// its epoch and database state.
 func (s *JWTService) CreateBotToken(key *model.ApiKey, session *model.AuthSession, accountVersion int) (string, error) {
 	now := time.Now().UTC()
-	expiresAt := time.Now().UTC().Add(30 * 24 * time.Hour)
-	if session.ExpiredAt != nil {
-		expiresAt = session.ExpiredAt.Time()
-	}
 	claims := jwt.MapClaims{
 		"sub":        key.AccountId,
 		"jti":        session.Id,
@@ -225,7 +223,11 @@ func (s *JWTService) CreateBotToken(key *model.ApiKey, session *model.AuthSessio
 		"epoch":      fmt.Sprintf("%d", session.Epoch),
 		"iat":        now.Unix(),
 		"nbf":        now.Unix(),
-		"exp":        expiresAt.Unix(),
+	}
+	var expiresAt time.Time
+	if session.ExpiredAt != nil {
+		expiresAt = session.ExpiredAt.Time()
+		claims["exp"] = expiresAt.Unix()
 	}
 	return s.sign(claims, now, expiresAt)
 }

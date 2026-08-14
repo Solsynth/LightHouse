@@ -244,7 +244,8 @@ func (s *dyBotAccountReceiverService) ListApiKey(ctx context.Context, req *gen.D
 
 // CreateApiKey mirrors BotAccountReceiverGrpc.CreateApiKey: request.AccountId
 // is the bot account's automated id, and the fresh Bot token is attached to
-// the returned key.
+// the returned key. The current DyApiKey protobuf has no expiry field, so bot
+// sessions are intentionally created without a session expiry.
 func (s *dyBotAccountReceiverService) CreateApiKey(ctx context.Context, req *gen.DyApiKey) (*gen.DyApiKey, error) {
 	automatedID, err := uuid.Parse(req.AccountId)
 	if err != nil {
