@@ -41,7 +41,10 @@ func (s *Store) GetAccountsByAutomatedIDs(ctx context.Context, ids []uuid.UUID) 
 	return accounts, rows.Err()
 }
 
-// GetAccountsByNames loads accounts by name.
+// GetAccountsByNames loads accounts by name. Direct matches come first; a
+// name with no current holder falls back to the most recent former owner
+// recorded in account_name_history (paid renames), so stale links keep
+// resolving without shadowing a new user who took the name.
 func (s *Store) GetAccountsByNames(ctx context.Context, names []string) ([]model.Account, error) {
 	rows, err := s.query(ctx, `SELECT `+accountColumns+` FROM accounts WHERE name = ANY($1) AND deleted_at IS NULL`, names)
 	if err != nil {
@@ -49,14 +52,32 @@ func (s *Store) GetAccountsByNames(ctx context.Context, names []string) ([]model
 	}
 	defer rows.Close()
 	var accounts []model.Account
+	matched := make(map[string]bool, len(names))
 	for rows.Next() {
 		a, err := scanAccount(rows)
 		if err != nil {
 			return nil, err
 		}
 		accounts = append(accounts, *a)
+		matched[a.Name] = true
 	}
-	return accounts, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, name := range names {
+		if matched[name] {
+			continue
+		}
+		owner, err := s.GetAccountNameHistoryOwner(ctx, name)
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				continue
+			}
+			return nil, err
+		}
+		accounts = append(accounts, *owner)
+	}
+	return accounts, nil
 }
 
 // ListConnections lists an account's connections (full rows incl. tokens).

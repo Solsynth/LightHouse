@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -102,6 +103,39 @@ func (s *dyAccountService) GetAccount(ctx context.Context, req *gen.DyGetAccount
 		s.d.Token.HydratePerk(ctx, account)
 	}
 	return auth.AccountToProto(account), nil
+}
+
+// accountNameRegex mirrors the registration name rule
+// (httpserver/authctl/account.go): letters, digits, underscore, hyphen.
+var accountNameRegex = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+// RenameAccount renames an account's name (paid name-change card flow).
+func (s *dyAccountService) RenameAccount(ctx context.Context, req *gen.DyRenameAccountRequest) (*gen.DyRenameAccountResponse, error) {
+	accountID, err := uuid.Parse(req.AccountId)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid account id")
+	}
+	newName := strings.TrimSpace(req.NewName)
+	if len(newName) < 2 || len(newName) > 256 || !accountNameRegex.MatchString(newName) {
+		return nil, status.Error(codes.InvalidArgument, "Name can only contain letters, numbers, underscores, and hyphens (2-256 characters).")
+	}
+	account, err := s.d.Store.RenameAccount(ctx, accountID, newName)
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			return nil, status.Error(codes.NotFound, "account not found")
+		case errors.Is(err, store.ErrNameTaken):
+			return nil, status.Error(codes.AlreadyExists, "the name has been taken")
+		}
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if err := s.hydrateProfile(ctx, account); err != nil {
+		return nil, err
+	}
+	if s.d.Token != nil {
+		s.d.Token.HydratePerk(ctx, account)
+	}
+	return &gen.DyRenameAccountResponse{Account: auth.AccountToProto(account)}, nil
 }
 
 // GetBotAccount mirrors AccountServiceGrpc.GetBotAccount.

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"src.solsynth.dev/sosys/go/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
@@ -29,6 +30,13 @@ func (d Deps) getAccountByName(c *gin.Context) {
 			return
 		}
 		internalError(c, err)
+		return
+	}
+	// A name probe that resolved via name history (former owner) redirects to
+	// the account's current name; exact-name requests return the account JSON.
+	// UUID probes and pure case differences keep serving the account directly.
+	if _, parseErr := uuid.Parse(name); parseErr != nil && !strings.EqualFold(name, account.Name) {
+		c.Redirect(http.StatusFound, "/api/accounts/"+account.Name)
 		return
 	}
 	d.enrichPublic(c.Request.Context(), account)

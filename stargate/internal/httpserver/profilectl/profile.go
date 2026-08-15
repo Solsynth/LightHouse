@@ -307,12 +307,20 @@ func fileURL(cfg *config.Config, ref *model.SnCloudFileReferenceObject) string {
 }
 
 // resolveAccount mirrors AccountPublicController's lookup: GUID probes load
-// by id, anything else is a case-insensitive name lookup.
+// by id, anything else is a case-insensitive name lookup, falling back to the
+// most recent former owner in account_name_history when nobody holds the name.
 func (d Deps) resolveAccount(ctx context.Context, probe string) (*model.Account, error) {
 	if id, err := uuid.Parse(probe); err == nil {
 		return d.Store.GetAccountWithProfile(ctx, id)
 	}
-	return d.Store.GetAccountWithProfileByNameFold(ctx, probe)
+	account, err := d.Store.GetAccountWithProfileByNameFold(ctx, probe)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return d.Store.GetAccountNameHistoryOwner(ctx, probe)
+		}
+		return nil, err
+	}
+	return account, nil
 }
 
 // isProfileComplete mirrors the C# IsProfileComplete helper.
