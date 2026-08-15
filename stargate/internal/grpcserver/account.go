@@ -237,7 +237,7 @@ func (s *dyAccountService) ListAccounts(ctx context.Context, req *gen.DyListAcco
 	}
 	response := &gen.DyListAccountsResponse{TotalSize: int32(total)}
 	if len(accounts) == int(pageSize) {
-		response.NextPageToken = fmt.Sprintf("%d", page+1)
+		response.NextCursor = fmt.Sprintf("%d", page+1)
 	}
 	for i := range accounts {
 		response.Accounts = append(response.Accounts, auth.AccountToProto(&accounts[i]))

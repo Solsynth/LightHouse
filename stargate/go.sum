@@ -202,5 +202,5 @@ gorm.io/gorm v1.31.1 h1:7CA8FTFz/gRfgqgpeKIBcervUn3xSyPUmr6B2WXJ7kg=
 gorm.io/gorm v1.31.1/go.mod h1:XyQVbO2k6YkOis7C2437jSit3SsDK72s7n7rsSHd+Gs=
 nullprogram.com/x/optparse v1.0.0/go.mod h1:KdyPE+Igbe0jQUrVfMqDMeJQIJZEuyV7pjYmp6pbG50=
 rsc.io/pdf v0.1.1/go.mod h1:n8OzWcQ6Sp37PL01nO98y4iUCRdTGarVfzxY20ICaU4=
-src.solsynth.dev/sosys/go v0.2.1-0.20260806100538-e3430ca507d0 h1:FsZf5Fxw6IM/FxScxMGYKLXpgJ0OwCcqlxFYLC5JsY4=
-src.solsynth.dev/sosys/go v0.2.1-0.20260806100538-e3430ca507d0/go.mod h1:0Z0jNGBJNBDzN6ZkWGdXRCm01nn08b5aMZKNFLLDwXc=
+src.solsynth.dev/sosys/go v0.2.1-0.20260815152351-e5aa41987d79 h1:F4lCtpsQjKC7UqYq/2kG2S5hHaKXy2qQji7a+Hd+n/0=
+src.solsynth.dev/sosys/go v0.2.1-0.20260815152351-e5aa41987d79/go.mod h1:0Z0jNGBJNBDzN6ZkWGdXRCm01nn08b5aMZKNFLLDwXc=
