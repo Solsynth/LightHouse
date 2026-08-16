@@ -142,7 +142,7 @@ func (s *ringService) sendNotification(ctx context.Context, userID uuid.UUID, no
 		appId,
 		optionalStringValue(notification.PushType),
 	)
-	if errors.Is(err, push.ErrEmptyNotification) {
+	if errors.Is(err, push.ErrEmptyNotification) || errors.Is(err, push.ErrUnknownAppId) {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
 	return err

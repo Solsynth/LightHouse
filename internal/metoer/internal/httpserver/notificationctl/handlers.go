@@ -2,6 +2,7 @@ package notificationctl
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 
 	"src.solsynth.dev/sosys/metoer/internal/middleware"
 	"src.solsynth.dev/sosys/metoer/internal/model"
+	"src.solsynth.dev/sosys/metoer/internal/push"
 )
 
 // countUnread mirrors CountUnreadNotifications.
@@ -180,6 +182,10 @@ func subscribe(deps Deps) gin.HandlerFunc {
 			appId,
 		)
 		if err != nil {
+			if errors.Is(err, push.ErrUnknownAppId) {
+				c.JSON(http.StatusBadRequest, errs.BadRequest("RING_NOTIFICATION_INVALID_APP", "The app id is not configured."))
+				return
+			}
 			c.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to subscribe device.", http.StatusInternalServerError))
 			return
 		}
@@ -331,6 +337,10 @@ func send(deps Deps) gin.HandlerFunc {
 
 		save := queryBool(c, "save")
 		if err := deps.Push.SendNotificationBatch(c.Request.Context(), notification, request.AccountId, save, nil); err != nil {
+			if errors.Is(err, push.ErrUnknownAppId) {
+				c.JSON(http.StatusBadRequest, errs.BadRequest("RING_NOTIFICATION_INVALID_APP", "The app id is not configured."))
+				return
+			}
 			c.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to send notification.", http.StatusInternalServerError))
 			return
 		}

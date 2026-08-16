@@ -84,9 +84,14 @@ func (s *Store) GetCurrentDeviceSubscriptions(ctx context.Context, accountID uui
 	return items, nil
 }
 
-func (s *Store) ListActivatedSubscriptions(ctx context.Context, accountID uuid.UUID) ([]*model.PushSubscription, error) {
+// ListActivatedSubscriptions returns the account's activated subscriptions
+// scoped to the resolved app (same semantics as ListSubscriptions: legacy
+// NULL/empty app_id rows belong to the default app; an empty resolved app id
+// disables the filter).
+func (s *Store) ListActivatedSubscriptions(ctx context.Context, accountID uuid.UUID, resolvedAppID, defaultAppID *string) ([]*model.PushSubscription, error) {
+	query := applyAppFilter(s.db(ctx).Model(&PushSubscriptionEntity{}).Where("account_id = ? AND is_activated", accountID), "app_id", resolvedAppID, defaultAppID)
 	var entities []PushSubscriptionEntity
-	if err := s.db(ctx).Where("account_id = ? AND is_activated", accountID).Find(&entities).Error; err != nil {
+	if err := query.Find(&entities).Error; err != nil {
 		return nil, err
 	}
 	items := make([]*model.PushSubscription, 0, len(entities))

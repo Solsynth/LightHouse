@@ -158,6 +158,9 @@ func (s *Service) SubscribeDevice(ctx context.Context, deviceId, deviceToken str
 		return nil, fmt.Errorf("parse account id: %w", err)
 	}
 	appId = s.ResolveAppId(appId, true)
+	if err := s.validateAppId(appId); err != nil {
+		return nil, err
+	}
 
 	if isActivated {
 		if err := s.st.DeactivateSubscriptions(ctx, accountID, deviceId, provider, now); err != nil {
@@ -298,6 +301,21 @@ func (s *Service) GetConnectedSopWebSocketDeviceIds(accountID uuid.UUID) map[str
 // gRPC maps it to InvalidArgument).
 var ErrEmptyNotification = errors.New("Unable to send notification that is completely empty.")
 
+// ErrUnknownAppId is returned when a send or subscription targets an app id
+// that is not configured (the allowlist guard; ResolveAppSenders would
+// otherwise silently fall back to the default app's senders).
+var ErrUnknownAppId = errors.New("App id is not configured")
+
+// validateAppId enforces the configured-app allowlist: a non-empty app id
+// that names no configured app is rejected instead of silently delivering
+// through the default app's senders.
+func (s *Service) validateAppId(appId string) error {
+	if appId != "" && !s.apps.IsAppConfigured(appId) {
+		return fmt.Errorf("%w: %s", ErrUnknownAppId, appId)
+	}
+	return nil
+}
+
 // SendNotification mirrors PushService.SendNotification.
 func (s *Service) SendNotification(ctx context.Context, accountID uuid.UUID, topic string, title, subtitle, content *string, meta map[string]any, actionUri *string, isSilent, save bool, appId, pushType string) error {
 	if meta == nil {
@@ -310,6 +328,11 @@ func (s *Service) SendNotification(ctx context.Context, accountID uuid.UUID, top
 		meta["action_uri"] = *actionUri
 	}
 
+	appId = s.ResolveAppId(appId, true)
+	if err := s.validateAppId(appId); err != nil {
+		return err
+	}
+
 	preference, err := s.prefs.Get(ctx, accountID, topic)
 	if err != nil {
 		return err
@@ -318,7 +341,6 @@ func (s *Service) SendNotification(ctx context.Context, accountID uuid.UUID, top
 		return nil
 	}
 
-	appId = s.ResolveAppId(appId, true)
 	now := model.NowTime()
 	notification := &model.Notification{
 		ModelBase: model.ModelBase{Id: uuid.New(), CreatedAt: now, UpdatedAt: now},
@@ -355,7 +377,9 @@ func (s *Service) DeliverPushNotification(ctx context.Context, notification *mod
 	s.obs.RecordNotificationSend(ctx, notification, "queue")
 	connectedSopDeviceIds := s.GetConnectedSopWebSocketDeviceIds(notification.AccountId)
 
-	subscriptions, err := s.st.ListActivatedSubscriptions(ctx, notification.AccountId)
+	appID := s.ResolveAppId(notification.AppIdValue(), true)
+	defaultApp := s.GetDefaultAppId()
+	subscriptions, err := s.st.ListActivatedSubscriptions(ctx, notification.AccountId, &appID, new(defaultApp))
 	if err != nil {
 		return err
 	}
@@ -440,6 +464,12 @@ func (s *Service) MarkAllNotificationsViewed(ctx context.Context, accountID uuid
 
 // SendNotificationBatch mirrors PushService.SendNotificationBatch.
 func (s *Service) SendNotificationBatch(ctx context.Context, notification *model.Notification, accounts []uuid.UUID, save bool, excludedWebSocketDeviceIds []string) error {
+	appID := s.ResolveAppId(notification.AppIdValue(), true)
+	if err := s.validateAppId(appID); err != nil {
+		return err
+	}
+	defaultApp := s.GetDefaultAppId()
+
 	preferences, err := s.prefs.GetMany(ctx, accounts, notification.Topic)
 	if err != nil {
 		return err
@@ -486,7 +516,7 @@ func (s *Service) SendNotificationBatch(ctx context.Context, notification *model
 
 		s.obs.RecordNotificationSend(ctx, notification, "batch")
 		connectedSopDeviceIds := s.GetConnectedSopWebSocketDeviceIds(notification.AccountId)
-		subscriptions, err := s.st.ListActivatedSubscriptions(ctx, account)
+		subscriptions, err := s.st.ListActivatedSubscriptions(ctx, account, &appID, new(defaultApp))
 		if err != nil {
 			return err
 		}

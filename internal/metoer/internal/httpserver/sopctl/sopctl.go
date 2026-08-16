@@ -5,6 +5,7 @@ package sopctl
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -74,6 +75,10 @@ func registerSopToken(deps Deps) gin.HandlerFunc {
 		}
 		token, subscription, err := deps.Push.RegisterSopToken(c.Request.Context(), sopDeviceId, request.DeviceName, user, appId)
 		if err != nil {
+			if errors.Is(err, push.ErrUnknownAppId) {
+				c.JSON(http.StatusBadRequest, errs.BadRequest("RING_NOTIFICATION_INVALID_APP", "The app id is not configured."))
+				return
+			}
 			c.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to register SOP token.", http.StatusInternalServerError))
 			return
 		}

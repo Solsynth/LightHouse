@@ -124,6 +124,16 @@ func (s *PushService) ResolveAppId(appId string, useDefaultIfMissing bool) strin
 	return ""
 }
 
+// IsAppConfigured reports whether appId names a configured app (the
+// send/registration allowlist; empty is never configured).
+func (s *PushService) IsAppConfigured(appId string) bool {
+	if appId == "" {
+		return false
+	}
+	_, ok := s.appSenders[appId]
+	return ok
+}
+
 // ResolveAppSenders mirrors PushService.ResolveAppSenders.
 func (s *PushService) ResolveAppSenders(appId string) *AppSenders {
 	if appId != "" {
