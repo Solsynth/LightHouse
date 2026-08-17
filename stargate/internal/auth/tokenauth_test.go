@@ -117,6 +117,11 @@ func TestAccountFromProtoCarriesProfile(t *testing.T) {
 			AccountId:  "acct-1",
 			Level:      42,
 			Experience: 12345,
+			ActiveBadge: &gen.DyBadgeReferenceObject{
+				Id:        "badge-1",
+				Type:      "pioneer",
+				AccountId: "acct-1",
+			},
 		},
 	})
 	if account.Profile == nil {
@@ -125,5 +130,12 @@ func TestAccountFromProtoCarriesProfile(t *testing.T) {
 	if account.Profile.Id != "profile-1" || account.Profile.AccountId != "acct-1" ||
 		account.Profile.Level != 42 || account.Profile.Experience != 12345 {
 		t.Fatalf("account profile = %+v, want id/profile level data", account.Profile)
+	}
+	if account.Profile.ActiveBadge == nil {
+		t.Fatal("account profile active_badge = nil, want cached badge")
+	}
+	badge, ok := (*account.Profile.ActiveBadge).(map[string]any)
+	if !ok || badge["id"] != "badge-1" || badge["type"] != "pioneer" {
+		t.Fatalf("account profile active_badge = %#v, want badge-1/pioneer", *account.Profile.ActiveBadge)
 	}
 }

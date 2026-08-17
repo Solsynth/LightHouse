@@ -575,6 +575,48 @@ func profileFromProto(p *gen.DyAccountProfile) *model.Profile {
 			VerifiedBy:  stringOrNil(p.Verification.VerifiedBy),
 		}
 	}
+	// Session cache round-trips accounts through protobuf; preserve the
+	// canonical snake_case map used by the HTTP profile JSON response.
+	if p.ActiveBadge != nil {
+		meta := make(map[string]any, len(p.ActiveBadge.Meta))
+		value := map[string]any{
+			"id":           p.ActiveBadge.Id,
+			"type":         p.ActiveBadge.Type,
+			"label":        nil,
+			"caption":      nil,
+			"meta":         meta,
+			"activated_at": nil,
+			"expired_at":   nil,
+			"account_id":   p.ActiveBadge.AccountId,
+			"created_at":   profileTimeString(profile.CreatedAt),
+			"updated_at":   profileTimeString(profile.UpdatedAt),
+			"deleted_at":   nil,
+		}
+		if p.ActiveBadge.Label != nil {
+			value["label"] = p.ActiveBadge.Label.Value
+		}
+		if p.ActiveBadge.Caption != nil {
+			value["caption"] = p.ActiveBadge.Caption.Value
+		}
+		for key, item := range p.ActiveBadge.Meta {
+			if item == nil {
+				meta[key] = nil
+			} else {
+				meta[key] = item.AsInterface()
+			}
+		}
+		if p.ActiveBadge.ActivatedAt != nil {
+			value["activated_at"] = p.ActiveBadge.ActivatedAt.AsTime().UTC().Format(time.RFC3339)
+		}
+		if p.ActiveBadge.ExpiredAt != nil {
+			value["expired_at"] = p.ActiveBadge.ExpiredAt.AsTime().UTC().Format(time.RFC3339)
+		}
+		if value["account_id"] == "" {
+			value["account_id"] = profile.AccountId
+		}
+		badge := any(value)
+		profile.ActiveBadge = &badge
+	}
 	if p.Picture != nil {
 		picture := sharedmodels.FromProtoValue(p.Picture)
 		profile.Picture = &picture
@@ -584,6 +626,13 @@ func profileFromProto(p *gen.DyAccountProfile) *model.Profile {
 		profile.Background = &background
 	}
 	return profile
+}
+
+func profileTimeString(t *model.Time) any {
+	if t == nil {
+		return nil
+	}
+	return time.Time(*t).UTC().Format(time.RFC3339)
 }
 
 func wrapperString(value *wrapperspb.StringValue) *string {
