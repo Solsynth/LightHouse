@@ -434,11 +434,18 @@ func (s *Service) DeliverPushNotification(ctx context.Context, notification *mod
 	}
 	wg.Wait()
 	close(deliveryErrs)
-	var errs []error
-	for err := range deliveryErrs {
-		errs = append(errs, err)
+	// Per-device delivery failures are already logged and recorded with a
+	// Failure outcome inside SendPushNotification. They must NOT propagate:
+	// the queue consumer nacks on error and redelivers the whole message,
+	// re-pushing to every device that already received it.
+	failed := 0
+	for range deliveryErrs {
+		failed++
 	}
-	return errors.Join(errs...)
+	if failed > 0 {
+		s.log.Info("push notification partially delivered", "notification_id", notification.Id, "failed_devices", failed)
+	}
+	return nil
 }
 
 // MarkNotificationsViewed mirrors PushService.MarkNotificationsViewed.
@@ -507,7 +514,6 @@ func (s *Service) SendNotificationBatch(ctx context.Context, notification *model
 
 	s.log.Info("delivering notification in batch", "topic", notification.Topic, "notification_id", notification.Id, "meta", notification.Meta)
 
-	var deliveryErrors []error
 	for _, account := range recipients {
 		notification.AccountId = account
 		if preferences[account] == model.NotificationPreferenceSilent {
@@ -571,11 +577,18 @@ func (s *Service) SendNotificationBatch(ctx context.Context, notification *model
 		}
 		wg.Wait()
 		close(deliveryErrs)
-		for err := range deliveryErrs {
-			deliveryErrors = append(deliveryErrors, err)
+		// Per-device failures must not fail the batch (the caller would retry
+		// and re-push every account that already received the notification);
+		// they are logged and recorded inside SendPushNotification.
+		failed := 0
+		for range deliveryErrs {
+			failed++
+		}
+		if failed > 0 {
+			s.log.Info("batch notification partially delivered", "notification_id", notification.Id, "account_id", account, "failed_devices", failed)
 		}
 	}
-	return errors.Join(deliveryErrors...)
+	return nil
 }
 
 // SendPushNotification mirrors PushService.SendPushNotificationAsync.
