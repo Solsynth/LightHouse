@@ -83,6 +83,9 @@ func (s *dyBotAccountReceiverService) CreateBotAccount(ctx context.Context, req 
 			return nil, err
 		}
 	}
+	if err := s.reloadProfile(ctx, account); err != nil {
+		return nil, err
+	}
 
 	return &gen.DyCreateBotAccountResponse{
 		Bot: &gen.DyBotAccount{
@@ -139,6 +142,9 @@ func (s *dyBotAccountReceiverService) applyProfile(ctx context.Context, accountI
 	if p.Verification != nil {
 		prof.Verification = p.Verification
 	}
+	if p.ActiveBadge != nil {
+		prof.ActiveBadge = p.ActiveBadge
+	}
 	if p.Picture != nil {
 		prof.Picture = p.Picture
 	}
@@ -149,6 +155,14 @@ func (s *dyBotAccountReceiverService) applyProfile(ctx context.Context, accountI
 		prof.Links = p.Links
 	}
 	return s.d.Store.SaveProfile(ctx, prof)
+}
+func (s *dyBotAccountReceiverService) reloadProfile(ctx context.Context, account *model.Account) error {
+	profile, err := s.d.Store.GetProfileByAccount(ctx, uuid.MustParse(account.Id))
+	if err != nil {
+		return err
+	}
+	account.Profile = profile
+	return nil
 }
 
 // UpdateBotAccount mirrors BotAccountReceiverGrpc.UpdateBotAccount: the C#
@@ -162,7 +176,6 @@ func (s *dyBotAccountReceiverService) UpdateBotAccount(ctx context.Context, req 
 		return nil, status.Error(codes.InvalidArgument, "Invalid account ID format")
 	}
 	account := accountFromProto(req.Account)
-
 	if err := s.d.Store.UpdateAccountWithProfile(ctx, account, timeNow()); err != nil {
 		return nil, err
 	}
@@ -170,6 +183,9 @@ func (s *dyBotAccountReceiverService) UpdateBotAccount(ctx context.Context, req 
 		if err := s.applyProfile(ctx, account.Id, account.Profile); err != nil {
 			return nil, err
 		}
+	}
+	if err := s.reloadProfile(ctx, account); err != nil {
+		return nil, err
 	}
 
 	return &gen.DyUpdateBotAccountResponse{

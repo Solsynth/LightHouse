@@ -40,7 +40,7 @@ type Profile struct {
 	Birthday           *Time                       `json:"birthday,omitempty"`
 	LastSeenAt         *Time                       `json:"last_seen_at,omitempty"`
 	Verification       *SnVerificationMark         `json:"verification,omitempty"`
-	ActiveBadge        *any                        `json:"active_badge,omitempty"`
+	ActiveBadge        *any                        `json:"active_badge"`
 	Experience         int                         `json:"experience"`
 	Level              int                         `json:"level"`
 	LevelingProgress   float64                     `json:"leveling_progress"`

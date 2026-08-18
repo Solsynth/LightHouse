@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -137,5 +138,20 @@ func TestAccountFromProtoCarriesProfile(t *testing.T) {
 	badge, ok := (*account.Profile.ActiveBadge).(map[string]any)
 	if !ok || badge["id"] != "badge-1" || badge["type"] != "pioneer" {
 		t.Fatalf("account profile active_badge = %#v, want badge-1/pioneer", *account.Profile.ActiveBadge)
+	}
+}
+
+func TestProfileJSONIncludesNullActiveBadge(t *testing.T) {
+	raw, err := json.Marshal(&model.Profile{})
+	if err != nil {
+		t.Fatalf("marshal profile: %v", err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatalf("unmarshal profile: %v", err)
+	}
+	value, ok := wire["active_badge"]
+	if !ok || value != nil {
+		t.Fatalf("profile active_badge = %#v, want explicit null", value)
 	}
 }
