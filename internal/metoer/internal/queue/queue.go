@@ -1,181 +1,142 @@
-// Package queue ports DysonNetwork.Ring.Services.QueueService +
-// QueueBackgroundService: the JetStream `pusher_queue` stream producer and
-// its durable, load-balanced consumer. Wire formats are pinned by tests in
-// queue_test.go (the empirically verified C# shapes).
+// Package queue provides the in-process async dispatcher for push
+// notifications and emails. It replaces the C# pusher_queue JetStream
+// transport: jobs are queued on a buffered channel and drained by a worker
+// pool. Delivery is exactly-once-per-enqueue — there is no redelivery, no
+// consumer state and no replay-on-restart; jobs still buffered at shutdown
+// are lost (non-durable by design).
 package queue
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log/slog"
 	"sync"
 
 	"github.com/google/uuid"
-	"github.com/nats-io/nats.go/jetstream"
-
-	eb "src.solsynth.dev/sosys/go/pkg/eventbus"
 
 	"src.solsynth.dev/sosys/metoer/internal/model"
 )
 
-// Names mirror QueueBackgroundService constants verbatim.
+// JobType mirrors the old pusher_queue QueueMessageType (declaration order
+// preserved).
+type JobType int
+
 const (
-	QueueName    = "pusher_queue"
-	StreamName   = "pusher_queue"
-	QueueGroup   = "pusher_workers"
-	ConsumerName = "pusher_workers"
+	JobTypeEmail JobType = iota
+	JobTypePushNotification
 )
 
-// MessageHandler processes one queue envelope. Returning an error nacks the
-// message (redelivery); returning nil acks it.
-type MessageHandler func(ctx context.Context, msg *model.QueueMessage) error
+// EmailJob carries an outbound email (EnqueueEmail).
+type EmailJob struct {
+	ToName    string
+	ToAddress string
+	Subject   string
+	Body      string
+}
 
-// Service is the queue producer/consumer (thread-safe; singleton).
+// PushJob carries a push notification delivery (EnqueuePushNotification).
+// The notification is passed by reference: timestamps and app id survive,
+// so DeliverPushNotification sees the real created_at (no wire round-trip).
+type PushJob struct {
+	Notification               *model.Notification
+	ExcludedWebSocketDeviceIDs []string
+	IsSavable                  bool
+}
+
+// Job is one unit of async work.
+type Job struct {
+	Type  JobType
+	Email *EmailJob
+	Push  *PushJob
+}
+
+// MessageHandler processes one job. Returning an error is logged; there is
+// no retry or redelivery — delivery failures are terminal by design.
+type MessageHandler func(ctx context.Context, job *Job) error
+
+// Service is the in-process dispatcher: producers send Jobs on a buffered
+// channel, Run starts the worker pool that drains it.
 type Service struct {
-	bus           *eb.Bus
-	consumerCount int
-	log           *slog.Logger
-	handler       MessageHandler
+	jobs    chan *Job
+	workers int
+	log     *slog.Logger
 
-	ensureOnce sync.Once
-	ensureErr  error
+	mu      sync.Mutex
+	handler MessageHandler
 }
 
-// New builds the queue service over the event bus. consumerCount is the
-// configured ConsumerCount (0 → resolved by the caller, mirroring the C#
-// `?? Environment.ProcessorCount` fallback).
-func New(bus *eb.Bus, consumerCount int, log *slog.Logger) *Service {
-	return &Service{bus: bus, consumerCount: consumerCount, log: log}
-}
-
-func (s *Service) ensureStream(ctx context.Context) error {
-	if s.bus == nil || s.bus.Conn == nil {
-		return nil
+// New builds the dispatcher. workers is the pool size (0 → 1, mirroring the
+// C# consumer-count fallback); the buffer is fixed at 1024 jobs.
+func New(workers int, log *slog.Logger) *Service {
+	if workers < 1 {
+		workers = 1
 	}
-	s.ensureOnce.Do(func() {
-		s.ensureErr = s.bus.EnsureStream(ctx, StreamName, []string{QueueName})
-	})
-	return s.ensureErr
+	return &Service{jobs: make(chan *Job, 1024), workers: workers, log: log}
 }
 
-// EnqueueEmail queues an Email queue message (EnqueueEmail).
+// SetHandler registers the job dispatch (must be set before Run).
+func (s *Service) SetHandler(handler MessageHandler) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.handler = handler
+}
+
+// EnqueueEmail queues an outbound email (EnqueueEmail). Blocks while the
+// buffer is full, honoring ctx cancellation.
 func (s *Service) EnqueueEmail(ctx context.Context, toName, toAddress, subject, body string) error {
-	data, err := json.Marshal(model.EmailMessage{ToName: toName, ToAddress: toAddress, Subject: subject, Body: body})
-	if err != nil {
-		return err
-	}
-	return s.publish(ctx, &model.QueueMessage{
-		Type: model.QueueMessageTypeEmail,
-		Data: string(data),
-	})
+	return s.enqueue(ctx, &Job{Type: JobTypeEmail, Email: &EmailJob{ToName: toName, ToAddress: toAddress, Subject: subject, Body: body}})
 }
 
-// EnqueuePushNotification queues a PushNotification message
+// EnqueuePushNotification queues a push notification delivery
 // (EnqueuePushNotification). The notification's AccountId is set to userID
-// first (the C# mutates the passed object).
+// first (parity with the C# mutating behavior).
 func (s *Service) EnqueuePushNotification(ctx context.Context, notification *model.Notification, userID uuid.UUID, excludedWebSocketDeviceIDs []string, isSavable bool) error {
 	notification.AccountId = userID
-	data, err := json.Marshal(model.NewQueueNotification(notification))
-	if err != nil {
-		return err
-	}
-	target := userID.String()
-	return s.publish(ctx, &model.QueueMessage{
-		Type:                       model.QueueMessageTypePushNotification,
-		TargetId:                   &target,
-		Data:                       string(data),
-		ExcludedWebSocketDeviceIds: excludedWebSocketDeviceIDs,
-		IsSavable:                  isSavable,
-	})
+	return s.enqueue(ctx, &Job{Type: JobTypePushNotification, Push: &PushJob{Notification: notification, ExcludedWebSocketDeviceIDs: excludedWebSocketDeviceIDs, IsSavable: isSavable}})
 }
 
-func (s *Service) publish(ctx context.Context, msg *model.QueueMessage) error {
-	if s.bus == nil || s.bus.Conn == nil {
-		return fmt.Errorf("pusher queue unavailable: NATS is not connected")
-	}
-	if err := s.ensureStream(ctx); err != nil {
-		return fmt.Errorf("ensure pusher_queue stream: %w", err)
-	}
-	raw, err := json.Marshal(msg)
-	if err != nil {
-		return err
-	}
-	if _, err := s.bus.JS.Publish(ctx, QueueName, raw); err != nil {
-		return fmt.Errorf("publish to %s: %w", QueueName, err)
-	}
-	return nil
-}
-
-// SetHandler registers the message dispatch (wired from main to break the
-// queue ↔ push/email import cycle).
-func (s *Service) SetHandler(handler MessageHandler) { s.handler = handler }
-
-// Run starts consumerCount consumer goroutines over the shared durable
-// consumer (deliver group pusher_workers → the server load-balances, exactly
-// like the C# per-task ConsumeAsync loops) and blocks until ctx is cancelled.
-// Messages published while down survive and are redelivered on boot
-// (DeliverPolicy All on first creation; ack-tracked afterwards).
-func (s *Service) Run(ctx context.Context) error {
-	if s.bus == nil || s.bus.Conn == nil || s.bus.JS == nil {
-		s.log.Warn("queue consumer disabled (nats unavailable)")
+func (s *Service) enqueue(ctx context.Context, job *Job) error {
+	select {
+	case s.jobs <- job:
 		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-	if s.consumerCount < 1 {
-		s.consumerCount = 1
-	}
-	if err := s.ensureStream(ctx); err != nil {
-		return fmt.Errorf("queue stream: %w", err)
-	}
+}
 
-	consumer, err := s.bus.JS.CreateOrUpdateConsumer(ctx, StreamName, jetstream.ConsumerConfig{
-		Name:          ConsumerName,
-		FilterSubject: QueueName,
-		DeliverGroup:  QueueGroup,
-		DeliverPolicy: jetstream.DeliverAllPolicy,
-		AckPolicy:     jetstream.AckExplicitPolicy,
-		MaxDeliver:    5,
-	})
-	if err != nil {
-		return fmt.Errorf("create pusher_workers consumer: %w", err)
-	}
-
-	s.log.Info("starting queue consumers", "count", s.consumerCount)
+// Run starts the worker pool and blocks until ctx is cancelled. Jobs still
+// buffered at shutdown are lost (in-process, non-durable by design).
+func (s *Service) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
-	for range s.consumerCount {
+	for range s.workers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			cc, err := consumer.Consume(func(msg jetstream.Msg) {
-				if err := s.process(ctx, msg); err != nil {
-					s.log.Error("queue message processing failed", "subject", msg.Subject(), "error", err)
-					_ = msg.Nak()
+			for {
+				select {
+				case <-ctx.Done():
 					return
+				case job := <-s.jobs:
+					s.dispatch(ctx, job)
 				}
-				_ = msg.Ack()
-			})
-			if err != nil {
-				s.log.Error("queue consumer failed to start", "error", err)
-				return
 			}
-			<-ctx.Done()
-			cc.Stop()
 		}()
 	}
 	wg.Wait()
 	return nil
 }
 
-func (s *Service) process(ctx context.Context, msg jetstream.Msg) error {
-	var envelope model.QueueMessage
-	if err := json.Unmarshal(msg.Data(), &envelope); err != nil {
-		// Invalid message format → C# logs a warning and acks.
-		s.log.Warn("invalid queue message format", "error", err)
-		return nil
+func (s *Service) dispatch(ctx context.Context, job *Job) {
+	if job == nil {
+		return
 	}
-	if s.handler == nil {
-		s.log.Warn("no queue message handler registered; dropping message", "type", envelope.Type)
-		return nil
+	s.mu.Lock()
+	handler := s.handler
+	s.mu.Unlock()
+	if handler == nil {
+		s.log.Warn("no queue handler registered; dropping job", "type", job.Type)
+		return
 	}
-	return s.handler(ctx, &envelope)
+	if err := handler(ctx, job); err != nil {
+		s.log.Error("job processing failed", "type", job.Type, "error", err)
+	}
 }

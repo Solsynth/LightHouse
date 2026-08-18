@@ -15,7 +15,7 @@ internal/db, migrate   GORM PostgreSQL handle + embedded SQL migrations
 internal/store         GORM-backed Postgres access layer (mirrors EF Core
                        queries incl. the global soft-delete filter)
 internal/model         entity + wire models (snake_case JSON, nulls included)
-internal/queue         pusher_queue JetStream producer + durable consumer
+internal/queue         in-process async dispatcher (buffered channel + workers)
 internal/push          PushService port: senders, SOP streams, replay,
                        websocket fan-out, invalid-token flush buffer
 internal/email         SMTP sender + email sending-plan state machine
@@ -31,8 +31,8 @@ internal/events        websocket_push publisher + filesystem listener
 
 ## Run
 
-Requires Postgres (`dyson_ring` — the **same live database the C# fleet
-uses**), Redis and NATS with JetStream.
+Requires Postgres (`dyson_ring`), Redis and NATS (JetStream for
+`account_events` / `accounts.last_active`, core NATS for `websocket_push`).
 
 ```sh
 make run            # CONFIG_PATH=config.example.toml
@@ -50,20 +50,18 @@ are mounted at deploy time, never baked into the image.
   convention, do not add `omitempty` to API-facing fields. Enum values are
   ints; instants are RFC3339 UTC seconds. `meta` dictionary keys are
   snake-cased on outbound responses (STJ `DictionaryKeyPolicy`).
-- **Queue wire format** (`pusher_queue`, JetStream): the envelope is
-  snake_case with nulls included; the `data` payload is PascalCase with
-  NodaTime instants serialized as `{}` (STJ default options — verified
-  empirically). The C# consumer round-trips `{}` to epoch; Go does the
-  same, preserving real timestamps on the DB-write path (notifications are
-  saved before enqueue).
-- **NATS**: stream `pusher_queue` (subject `pusher_queue`), durable consumer
-  `pusher_workers` with deliver group `pusher_workers`, AckPolicy Explicit,
-  MaxDeliver 5, DeliverPolicy All on first creation. Core subject
-  `websocket_push` carries the `{namespace,target,ids,excluded_device_ids,
-  packet}` envelope (packet = base64 protojson `DyWebSocketPacket` with
-  `notifications.new`). JetStream `account_events` /
-  `accounts.last_active` (PascalCase `LastActiveEvent`) is published by the
-  auth middleware (throttled 1m per account).
+- **Async dispatch** (push/email): in-process — `internal/queue` queues jobs
+  on a buffered channel drained by a worker pool (size = `ConsumerCount`).
+  Delivery is exactly-once-per-enqueue: no redelivery, no consumer state, no
+  replay-on-restart; jobs buffered at shutdown are lost. Per-device push
+  failures are terminal (logged, with `failure`/`invalid_token` delivery
+  records); invalid tokens are deleted by the 5-minute flush job.
+- **NATS** (events, not the push queue): core subject `websocket_push`
+  carries the `{namespace,target,ids,excluded_device_ids,packet}` envelope
+  (packet = base64 protojson `DyWebSocketPacket` with `notifications.new`).
+  JetStream `account_events` / `accounts.last_active` (PascalCase
+  `LastActiveEvent`) is published by the auth middleware (throttled 1m per
+  account); the filesystem listener consumes `filesystem.file.updated.v1`.
 - **Redis keys** (shared with the C# fleet via the `dyson:` prefix):
   `ring:sop:replay:*` (+ lock), `auth:session:*`, `auth:profile:*`,
   `auth:last_seen_touch:*`.

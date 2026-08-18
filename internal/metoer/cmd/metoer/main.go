@@ -6,7 +6,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -40,7 +39,6 @@ import (
 	"src.solsynth.dev/sosys/metoer/internal/httpserver/sopctl"
 	"src.solsynth.dev/sosys/metoer/internal/middleware"
 	"src.solsynth.dev/sosys/metoer/internal/migrate"
-	"src.solsynth.dev/sosys/metoer/internal/model"
 	"src.solsynth.dev/sosys/metoer/internal/observability"
 	"src.solsynth.dev/sosys/metoer/internal/push"
 	"src.solsynth.dev/sosys/metoer/internal/queue"
@@ -129,8 +127,8 @@ func run(log *slog.Logger) error {
 
 	obs := observability.New(st, log)
 
-	// Queue publisher first (the push service enqueues through it).
-	queueSvc := queue.New(nc, cfg.ConsumerCountValue(), log)
+	// In-process dispatcher first (the push service enqueues through it).
+	queueSvc := queue.New(cfg.ConsumerCountValue(), log)
 
 	appSenders := push.NewApps(cfg, &http.Client{Timeout: 30 * time.Second})
 	streams := push.NewSopStreams()
@@ -145,8 +143,8 @@ func run(log *slog.Logger) error {
 	}
 	plans := email.NewPlanService(st, clients.Account(), emailSvc, log)
 
-	// Queue consumer dispatch (queue ↔ push/email cycle is broken here in
-	// main, mirroring the C# ProcessMessageAsync).
+	// Async job dispatch (queue ↔ push/email cycle is broken here in main to
+	// avoid an import cycle).
 	queueSvc.SetHandler(pushQueueHandler(pushSvc, emailSvc, log))
 
 	// Auth middleware: GrpcTokenAuthenticator against Stargate's
@@ -278,7 +276,7 @@ func run(log *slog.Logger) error {
 	}()
 	go func() {
 		if err := queueSvc.Run(ctx); err != nil {
-			log.Error("queue consumer stopped", "error", err)
+			log.Error("queue workers stopped", "error", err)
 		}
 	}()
 
@@ -330,38 +328,29 @@ func run(log *slog.Logger) error {
 	}
 }
 
-// pushQueueHandler mirrors QueueBackgroundService.ProcessMessageAsync: the
-// type dispatch that lives in main because queue ↔ push/email would
-// otherwise be an import cycle.
+// pushQueueHandler dispatches async jobs to push/email (queue ↔ push/email
+// would otherwise be an import cycle).
 func pushQueueHandler(pushSvc *push.Service, emailSvc *email.Service, log *slog.Logger) queue.MessageHandler {
-	return func(ctx context.Context, msg *model.QueueMessage) error {
-		switch msg.Type {
-		case model.QueueMessageTypeEmail:
+	return func(ctx context.Context, job *queue.Job) error {
+		switch job.Type {
+		case queue.JobTypeEmail:
 			if emailSvc == nil {
-				log.Warn("email service not configured; dropping email message")
+				log.Warn("email service not configured; dropping email job")
 				return nil
 			}
-			var emailMsg model.EmailMessage
-			if err := json.Unmarshal([]byte(msg.Data), &emailMsg); err != nil {
-				return fmt.Errorf("invalid email message format: %w", err)
+			if job.Email == nil {
+				return nil
 			}
-			return emailSvc.SendEmail(ctx, emailMsg.ToName, emailMsg.ToAddress, emailMsg.Subject, emailMsg.Body, "queue")
+			return emailSvc.SendEmail(ctx, job.Email.ToName, job.Email.ToAddress, job.Email.Subject, job.Email.Body, "queue")
 
-		case model.QueueMessageTypePushNotification:
-			var qn model.QueueNotification
-			if err := json.Unmarshal([]byte(msg.Data), &qn); err != nil {
-				log.Error("invalid push notification data format", "error", err)
+		case queue.JobTypePushNotification:
+			if job.Push == nil {
 				return nil
 			}
-			notification, err := qn.ToNotification()
-			if err != nil {
-				log.Error("invalid push notification data format", "error", err)
-				return nil
-			}
-			return pushSvc.DeliverPushNotification(ctx, notification, msg.ExcludedWebSocketDeviceIds, msg.IsSavable)
+			return pushSvc.DeliverPushNotification(ctx, job.Push.Notification, job.Push.ExcludedWebSocketDeviceIDs, job.Push.IsSavable)
 
 		default:
-			log.Warn("unknown message type", "type", msg.Type)
+			log.Warn("unknown job type", "type", job.Type)
 			return nil
 		}
 	}

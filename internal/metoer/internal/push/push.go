@@ -34,7 +34,7 @@ func newSet(items ...string) map[string]struct{} {
 	return out
 }
 
-// Enqueuer enqueues a push notification to the pusher_queue (wired to
+// Enqueuer queues a push notification for async delivery (wired to
 // queue.Service.EnqueuePushNotification; kept as a func to avoid an import
 // cycle queue ↔ push).
 type Enqueuer func(ctx context.Context, notification *model.Notification, userID uuid.UUID, excludedWebSocketDeviceIDs []string, isSavable bool) error
