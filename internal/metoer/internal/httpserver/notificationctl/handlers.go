@@ -109,6 +109,7 @@ func markAllRead(deps Deps) gin.HandlerFunc {
 
 // pushSubscribeRequest mirrors PushNotificationSubscribeRequest.
 type pushSubscribeRequest struct {
+	DeviceId    *string `json:"device_id"`
 	DeviceToken *string `json:"device_token"`
 	DeviceName  *string `json:"device_name"`
 	Provider    *int    `json:"provider"`
@@ -167,13 +168,18 @@ func subscribe(deps Deps) gin.HandlerFunc {
 		if request.AppId != nil {
 			appId = *request.AppId
 		}
-		var clientId string
-		if session.ClientId != nil {
-			clientId = *session.ClientId
+		var deviceId string
+		if request.DeviceId != nil {
+			deviceId = strings.TrimSpace(*request.DeviceId)
+		}
+		// Older clients do not send device_id; retain the authenticated
+		// session identity as their compatibility fallback.
+		if deviceId == "" && session.ClientId != nil {
+			deviceId = *session.ClientId
 		}
 		result, err := deps.Push.SubscribeDevice(
 			c.Request.Context(),
-			clientId,
+			deviceId,
 			*request.DeviceToken,
 			request.DeviceName,
 			provider,
