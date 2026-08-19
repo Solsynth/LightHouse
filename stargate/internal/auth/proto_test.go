@@ -76,3 +76,28 @@ func TestAccountToProtoPerk(t *testing.T) {
 		})
 	}
 }
+
+func TestProfileToProtoCarriesProfileMarkers(t *testing.T) {
+	active := any(map[string]any{
+		"id":         "badge-1",
+		"type":       "pioneer",
+		"label":      "Pioneer",
+		"meta":       map[string]any{"tier": "founder"},
+		"account_id": "11111111-1111-1111-1111-111111111111",
+	})
+	profile := &model.Profile{
+		AccountId:    "11111111-1111-1111-1111-111111111111",
+		ActiveBadge:  &active,
+		Verification: &model.SnVerificationMark{Type: 1},
+	}
+	got := ProfileToProto(profile)
+	if got == nil || got.ActiveBadge == nil {
+		t.Fatal("profile active_badge = nil, want gRPC marker")
+	}
+	if got.ActiveBadge.Id != "badge-1" || got.ActiveBadge.Type != "pioneer" {
+		t.Fatalf("profile active_badge = %+v, want badge-1/pioneer", got.ActiveBadge)
+	}
+	if got.Verification == nil || got.Verification.Type != 1 {
+		t.Fatalf("profile verification = %+v, want type 1", got.Verification)
+	}
+}
