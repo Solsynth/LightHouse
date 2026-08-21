@@ -27,3 +27,17 @@ func TestNotificationsResponsePreservesUnreadStateSnapshot(t *testing.T) {
 		t.Fatalf("response payload lost unread viewed_at: %s", payload)
 	}
 }
+
+func TestNotificationsResponsePreservesViewedState(t *testing.T) {
+	viewedAt := model.NowTime()
+	response := notificationsResponse([]*model.Notification{{ViewedAt: &viewedAt}})
+
+	payload, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("marshal response: %v", err)
+	}
+	if !strings.Contains(string(payload), `"viewed_at":`) ||
+		strings.Contains(string(payload), `"viewed_at":null`) {
+		t.Fatalf("response payload lost viewed_at: %s", payload)
+	}
+}
