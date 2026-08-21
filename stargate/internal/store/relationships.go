@@ -129,6 +129,7 @@ func (s *Store) ListRelationshipsPage(ctx context.Context, accountID uuid.UUID, 
 func (s *Store) ListRelationshipRequests(ctx context.Context, accountID uuid.UUID) ([]model.Relationship, error) {
 	rows, err := s.query(ctx, `SELECT `+relationshipColumns+` FROM account_relationships
 		WHERE deleted_at IS NULL AND status = $1 AND (account_id = $2 OR related_id = $2)
+		  AND (expired_at IS NULL OR expired_at > now())
 		ORDER BY created_at`, model.RelationshipPending, accountID)
 	if err != nil {
 		return nil, err
