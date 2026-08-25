@@ -54,7 +54,7 @@ func TestCreateUserTokenSerializesAllScopesAsOAuthScopeString(t *testing.T) {
 	session := &model.AuthSession{Id: "session-1", Scopes: []string{"openid", "profile", "email"}}
 	account := &model.Account{Id: "account-1", Name: "User"}
 
-	tokenText, err := svc.CreateUserToken(session, account, 1, time.Now().Add(5*time.Minute))
+	tokenText, err := svc.CreateUserToken(session, account, time.Now().Add(5*time.Minute))
 	if err != nil {
 		t.Fatalf("create user token: %v", err)
 	}
@@ -67,6 +67,9 @@ func TestCreateUserTokenSerializesAllScopesAsOAuthScopeString(t *testing.T) {
 	claims := parsed.Claims.(jwt.MapClaims)
 	if got, want := claims["scope"], "openid profile email"; got != want {
 		t.Fatalf("scope claim = %#v, want %#v", got, want)
+	}
+	if _, found := claims["ver"]; found {
+		t.Fatalf("user token unexpectedly contains ver claim: %v", claims)
 	}
 }
 
@@ -83,7 +86,7 @@ func TestCreateBotTokenExpiryFollowsSession(t *testing.T) {
 	apiKey := &model.ApiKey{Id: "api-key-1", AccountId: "account-1"}
 
 	t.Run("no session expiry omits JWT expiry", func(t *testing.T) {
-		tokenText, err := svc.CreateBotToken(apiKey, &model.AuthSession{Id: "session-1"}, 1)
+		tokenText, err := svc.CreateBotToken(apiKey, &model.AuthSession{Id: "session-1"})
 		if err != nil {
 			t.Fatalf("create bot token: %v", err)
 		}
@@ -103,7 +106,7 @@ func TestCreateBotTokenExpiryFollowsSession(t *testing.T) {
 		expiredAt := time.Now().Add(time.Hour)
 		tokenText, err := svc.CreateBotToken(apiKey, &model.AuthSession{
 			Id: "session-2", ExpiredAt: model.NewTime(expiredAt),
-		}, 1)
+		})
 		if err != nil {
 			t.Fatalf("create bot token: %v", err)
 		}
@@ -144,7 +147,7 @@ func TestCreateOidcUserTokenUsesProviderClaimsAndSigner(t *testing.T) {
 	wantAudience := "forgejo"
 
 	tokenText, err := svc.CreateOidcUserTokenWithSigner(
-		providerKey, session, account, 3, time.Now().Add(5*time.Minute),
+		providerKey, session, account, time.Now().Add(5*time.Minute),
 		wantIssuer, wantAudience, []string{"openid", "profile"}, map[string]any{"azp": wantAudience},
 	)
 	if err != nil {
@@ -165,6 +168,9 @@ func TestCreateOidcUserTokenUsesProviderClaimsAndSigner(t *testing.T) {
 	}
 	if got, want := claims["scope"], "openid profile"; got != want {
 		t.Fatalf("OIDC scope claim = %#v, want %#v", got, want)
+	}
+	if _, found := claims["ver"]; found {
+		t.Fatalf("OIDC token unexpectedly contains ver claim: %v", claims)
 	}
 }
 

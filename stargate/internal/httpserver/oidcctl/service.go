@@ -754,15 +754,6 @@ func (s *service) handleRefreshTokenFlow(ctx context.Context, clientID, refreshT
 	if err != nil {
 		return nil, nil, nil, errors.New("Invalid refresh token")
 	}
-	if claimVersion, ok := auth.ClaimInt(claims, "ver"); ok {
-		currentVersion, err := s.token.GetAccountVersion(ctx, accountID.String())
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		if int(claimVersion) < currentVersion {
-			return nil, nil, nil, errors.New("Refresh token has been invalidated")
-		}
-	}
 	session, err := s.store.GetSessionWithAccount(ctx, sessionID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -945,15 +936,11 @@ func (s *service) issueTokenPair(ctx context.Context, client *oidcClient, sessio
 	if err != nil {
 		return nil, err
 	}
-	sessionVersion, err := s.token.GetAccountVersion(ctx, session.AccountId)
-	if err != nil {
-		return nil, err
-	}
 	refreshExpiry := now.Add(s.refreshLifetime)
 	if session.ExpiredAt != nil {
 		refreshExpiry = session.ExpiredAt.Time()
 	}
-	refreshToken, err := s.jwt.CreateRefreshToken(session, sessionVersion, refreshExpiry)
+	refreshToken, err := s.jwt.CreateRefreshToken(session, refreshExpiry)
 	if err != nil {
 		return nil, err
 	}
@@ -977,15 +964,11 @@ func (s *service) generateJwtToken(ctx context.Context, client *oidcClient, sess
 	if session.Account == nil {
 		return "", errors.New("Session account is required for OIDC access token.")
 	}
-	sessionVersion, err := s.token.GetAccountVersion(ctx, session.AccountId)
-	if err != nil {
-		return "", err
-	}
 	effectiveScopes := scopes
 	if effectiveScopes == nil {
 		effectiveScopes = client.AllowedScopes
 	}
-	return s.jwt.CreateOidcUserTokenWithSigner(s.privateKey, session, session.Account, sessionVersion, expiresAt, s.issuer, client.Slug, effectiveScopes, map[string]any{"azp": client.Slug})
+	return s.jwt.CreateOidcUserTokenWithSigner(s.privateKey, session, session.Account, expiresAt, s.issuer, client.Slug, effectiveScopes, map[string]any{"azp": client.Slug})
 }
 
 // generateIdToken mirrors GenerateIdToken (signed with the OIDC provider key).

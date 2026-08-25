@@ -179,14 +179,9 @@ func TestOidcRefreshTokenFlow(t *testing.T) {
 		_, _ = st.Exec(ctx, `DELETE FROM auth_sessions WHERE id = $1`, sessionID)
 	})
 
-	version, err := svc.token.GetAccountVersion(ctx, accountID)
-	if err != nil {
-		t.Fatalf("account version: %v", err)
-	}
-
 	mintRefresh := func(session *model.AuthSession) string {
 		t.Helper()
-		token, err := jwtSvc.CreateRefreshToken(session, version, now.Add(30*24*time.Hour))
+		token, err := jwtSvc.CreateRefreshToken(session, now.Add(30*24*time.Hour))
 		if err != nil {
 			t.Fatalf("mint refresh token: %v", err)
 		}
@@ -244,9 +239,8 @@ func TestOidcRefreshTokenFlow(t *testing.T) {
 	// claim is a string ("2"); the float64-only read silently fell back to 0
 	// and rejected it as "Token has been invalidated."
 	atk, err := jwtSvc.CreateOidcUserToken(
-		refreshed2, refreshed2.Account, version,
-		now.Add(5*time.Minute), svc.issuer, "maidkit", refreshed2.Scopes,
-		map[string]any{"azp": "maidkit"},
+		refreshed2, refreshed2.Account, now.Add(5*time.Minute), svc.issuer,
+		"maidkit", refreshed2.Scopes, map[string]any{"azp": "maidkit"},
 	)
 	if err != nil {
 		t.Fatalf("mint access token: %v", err)
@@ -283,14 +277,10 @@ func TestOidcRefreshSurvivesUnrelatedSessionRevocation(t *testing.T) {
 		_, _ = st.Exec(ctx, `DELETE FROM auth_sessions WHERE id = ANY($1)`, []uuid.UUID{oidcSessionID, otherSessionID})
 	})
 
-	version, err := svc.token.GetAccountVersion(ctx, accountID)
-	if err != nil {
-		t.Fatalf("account version: %v", err)
-	}
 	refresh, err := jwtSvc.CreateRefreshToken(&model.AuthSession{
 		Id: oidcSessionID.String(), AccountId: accountID, AppId: &clientIDStr,
 		Type: model.SessionTypeOAuth, Epoch: 0, Scopes: []string{"openid"},
-	}, version, now.Add(30*24*time.Hour))
+	}, now.Add(30*24*time.Hour))
 	if err != nil {
 		t.Fatalf("mint refresh token: %v", err)
 	}
@@ -298,11 +288,54 @@ func TestOidcRefreshSurvivesUnrelatedSessionRevocation(t *testing.T) {
 	if ok, err := svc.authSvc.RevokeSession(ctx, otherSessionID); err != nil || !ok {
 		t.Fatalf("revoke unrelated session: ok=%v err=%v", ok, err)
 	}
-	if currentVersion, err := svc.token.GetAccountVersion(ctx, accountID); err != nil || currentVersion != version {
-		t.Fatalf("account version after unrelated revoke = %d, %v; want %d", currentVersion, err, version)
-	}
 	if _, _, _, err := svc.handleRefreshTokenFlow(ctx, clientIDStr, refresh); err != nil {
 		t.Fatalf("refresh after unrelated revoke: %v", err)
+	}
+}
+
+func TestOidcRefreshFailsAfterAccountSessionRevocation(t *testing.T) {
+	ctx := context.Background()
+	svc, st, jwtSvc := newRefreshTestService(t)
+
+	var accountID string
+	if err := st.QueryRow(ctx, `SELECT id FROM accounts ORDER BY created_at LIMIT 1`).Scan(&accountID); err != nil {
+		t.Skipf("no local account to attach the session: %v", err)
+	}
+
+	now := time.Now().UTC()
+	clientID := uuid.New()
+	clientIDStr := clientID.String()
+	sessionID := uuid.New()
+	if _, err := st.Exec(ctx, `INSERT INTO auth_sessions
+		(id, type, created_at, last_granted_at, expired_at, account_id, app_id, audiences, scopes, epoch, updated_at)
+		VALUES ($1, $2, $3, $3, $4, $5, $6, '[]', '["openid"]'::jsonb, 0, $3)`,
+		sessionID, int(model.SessionTypeOAuth), now, now.Add(time.Hour), accountID, clientID); err != nil {
+		t.Fatalf("seed OIDC session: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = st.Exec(ctx, `DELETE FROM auth_sessions WHERE id = $1`, sessionID)
+	})
+	refresh, err := jwtSvc.CreateRefreshToken(&model.AuthSession{
+		Id: sessionID.String(), AccountId: accountID, AppId: &clientIDStr,
+		Type: model.SessionTypeOAuth, Epoch: 0, Scopes: []string{"openid"},
+	}, now.Add(30*24*time.Hour))
+	if err != nil {
+		t.Fatalf("mint refresh token: %v", err)
+	}
+
+	count, err := svc.authSvc.RevokeAllSessionsForAccount(ctx, accountID)
+	if err != nil || count < 1 {
+		t.Fatalf("revoke all sessions: count=%d err=%v", count, err)
+	}
+	if _, _, _, err := svc.handleRefreshTokenFlow(ctx, clientIDStr, refresh); err == nil {
+		t.Fatal("refresh token remained valid after account session revocation")
+	}
+	reloaded, err := st.GetSessionWithAccount(ctx, sessionID)
+	if err != nil {
+		t.Fatalf("reload session: %v", err)
+	}
+	if reloaded.Epoch != 1 {
+		t.Fatalf("session epoch after account revocation = %d, want 1", reloaded.Epoch)
 	}
 }
 
@@ -329,14 +362,10 @@ func TestOidcConcurrentRefreshRotatesOnlyOnce(t *testing.T) {
 		_, _ = st.Exec(ctx, `DELETE FROM auth_sessions WHERE id = $1`, sessionID)
 	})
 
-	version, err := svc.token.GetAccountVersion(ctx, accountID)
-	if err != nil {
-		t.Fatalf("account version: %v", err)
-	}
 	refresh, err := jwtSvc.CreateRefreshToken(&model.AuthSession{
 		Id: sessionID.String(), AccountId: accountID, AppId: &clientIDStr,
 		Type: model.SessionTypeOAuth, Epoch: 0, Scopes: []string{"openid"},
-	}, version, now.Add(30*24*time.Hour))
+	}, now.Add(30*24*time.Hour))
 	if err != nil {
 		t.Fatalf("mint refresh token: %v", err)
 	}

@@ -180,9 +180,6 @@ func (s *AuthService) RevokeAllSessionsForAccount(ctx context.Context, accountID
 	if err := s.invalidateSessionCaches(ctx, revoked); err != nil {
 		s.log.Warn("invalidate session caches", "error", err)
 	}
-	if _, err := s.token.BumpAccountVersion(ctx, accountID); err != nil {
-		s.log.Warn("bump account version", "error", err)
-	}
 	s.publishRevoked(ctx, revoked, now)
 	return len(revoked), nil
 }
@@ -263,12 +260,8 @@ func (s *AuthService) CreateToken(ctx context.Context, session *model.AuthSessio
 		return "", errors.New("Session account not found.")
 	}
 	s.hydratePerk(ctx, account)
-	version, err := s.token.GetAccountVersion(ctx, account.Id)
-	if err != nil {
-		return "", err
-	}
 	expires := s.resolveAccessExpiry(session, time.Now().UTC())
-	return s.jwt.CreateUserToken(session, account, version, expires)
+	return s.jwt.CreateUserToken(session, account, expires)
 }
 
 // TokenPair is the access+refresh pair.
@@ -286,21 +279,17 @@ func (s *AuthService) CreateTokenPair(ctx context.Context, session *model.AuthSe
 		return nil, errors.New("Session account not found.")
 	}
 	s.hydratePerk(ctx, account)
-	version, err := s.token.GetAccountVersion(ctx, account.Id)
-	if err != nil {
-		return nil, err
-	}
 	now := time.Now().UTC()
 	accessExpires := s.resolveAccessExpiry(session, now)
 	refreshExpires := now.Add(s.cfg.RefreshTokenLifetime())
 	if session.ExpiredAt != nil {
 		refreshExpires = session.ExpiredAt.Time()
 	}
-	access, err := s.jwt.CreateUserToken(session, account, version, accessExpires)
+	access, err := s.jwt.CreateUserToken(session, account, accessExpires)
 	if err != nil {
 		return nil, err
 	}
-	refresh, err := s.jwt.CreateRefreshToken(session, version, refreshExpires)
+	refresh, err := s.jwt.CreateRefreshToken(session, refreshExpires)
 	if err != nil {
 		return nil, err
 	}
@@ -446,15 +435,6 @@ func (s *AuthService) RefreshSessionAndIssueTokens(ctx context.Context, refreshT
 	if !ok {
 		return nil, nil, &ErrInvalid{Message: "Invalid refresh token."}
 	}
-	if tokenVer, ok := ClaimInt(claims, "ver"); ok {
-		currentVer, err := s.token.GetAccountVersion(ctx, accountID.String())
-		if err != nil {
-			return nil, nil, err
-		}
-		if tokenVer < currentVer {
-			return nil, nil, &ErrInvalid{Message: "Refresh token has been invalidated."}
-		}
-	}
 	now := time.Now().UTC()
 	session, err := s.store.GetSessionWithAccount(ctx, sessionID)
 	if err != nil {
@@ -474,11 +454,12 @@ func (s *AuthService) RefreshSessionAndIssueTokens(ctx context.Context, refreshT
 	}
 
 	newExpiry := now.Add(s.cfg.RefreshTokenLifetime())
-	_, err = s.store.Exec(ctx,
-		`UPDATE auth_sessions SET last_granted_at = $1, expired_at = $2, epoch = epoch + 1 WHERE id = $3`,
-		now, newExpiry, sessionID)
+	rotated, err := s.store.UpdateSessionRefresh(ctx, sessionID.String(), session.Epoch, now, newExpiry)
 	if err != nil {
 		return nil, nil, err
+	}
+	if !rotated {
+		return nil, nil, &ErrInvalid{Message: "Refresh token has been revoked."}
 	}
 	session.LastGrantedAt = model.NewTime(now)
 	session.ExpiredAt = model.NewTime(newExpiry)

@@ -28,7 +28,6 @@ const (
 	SessionCacheTTL       = time.Hour
 	SessionTokensGroupFmt = "auth:session_tokens:%s"
 	AccountSessionsGroup  = "auth:account_sessions:%s"
-	AccountVersionPrefix  = "auth:account_ver:"
 	RevokedJtiPrefix      = "auth:revoked:jti:"
 	RevokedJtiTTL         = 30 * 24 * time.Hour
 )
@@ -650,40 +649,9 @@ func stringOrNil(value string) *string {
 	return &value
 }
 
-func (t *TokenAuthService) GetAccountVersion(ctx context.Context, accountID string) (int, error) {
-	if t.redis == nil || !t.redis.Available() {
-		return 0, nil
-	}
-	var v int
-	found, err := t.redis.Cache.Get(ctx, AccountVersionPrefix+accountID, &v)
-	if err != nil {
-		return 0, err
-	}
-	if !found {
-		return 0, nil
-	}
-	return v, nil
-}
-
-func (t *TokenAuthService) BumpAccountVersion(ctx context.Context, accountID string) (int, error) {
-	current, err := t.GetAccountVersion(ctx, accountID)
-	if err != nil {
-		return 0, err
-	}
-	next := current + 1
-	if t.redis == nil || !t.redis.Available() {
-		return next, nil
-	}
-	if err := t.redis.Cache.Set(ctx, AccountVersionPrefix+accountID, next, 90*24*time.Hour); err != nil {
-		return 0, err
-	}
-	return next, nil
-}
-
 // RevokeJti records a revoked JTI with a 30-day TTL via the shared cache
-// (dyson: prefix). Note: the current C# code never writes this key — token
-// invalidation is enforced by session epoch + account version — but the
-// constant exists for downstream compatibility.
+// (dyson: prefix). Session epochs enforce ordinary token invalidation;
+// this key remains for downstream compatibility.
 func (t *TokenAuthService) RevokeJti(ctx context.Context, jti string) error {
 	if t.redis == nil || !t.redis.Available() {
 		return nil

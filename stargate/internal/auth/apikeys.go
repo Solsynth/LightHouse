@@ -111,11 +111,7 @@ func (s *AuthService) IssueApiKeyToken(ctx context.Context, key *model.ApiKey) (
 	if err != nil {
 		return "", err
 	}
-	version, err := s.token.GetAccountVersion(ctx, key.AccountId)
-	if err != nil {
-		return "", err
-	}
-	return s.jwt.CreateBotToken(key, session, version)
+	return s.jwt.CreateBotToken(key, session)
 }
 
 // RevokeApiKeyToken soft-deletes the key and revokes its session.

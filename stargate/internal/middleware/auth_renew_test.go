@@ -106,11 +106,11 @@ func TestAuthAutoRenewsExpiredToken(t *testing.T) {
 
 	session := &model.AuthSession{Id: uuid.NewString(), AccountId: uuid.NewString(), Epoch: 0, Scopes: []string{"*"}}
 	account := &model.Account{Id: session.AccountId, Name: "Test"}
-	expired, err := jwtSvc.CreateUserToken(session, account, 0, time.Now().Add(-time.Hour))
+	expired, err := jwtSvc.CreateUserToken(session, account, time.Now().Add(-time.Hour))
 	if err != nil {
 		t.Fatalf("mint expired token: %v", err)
 	}
-	refreshToken, err := jwtSvc.CreateRefreshToken(session, 0, time.Now().Add(30*24*time.Hour))
+	refreshToken, err := jwtSvc.CreateRefreshToken(session, time.Now().Add(30*24*time.Hour))
 	if err != nil {
 		t.Fatalf("mint refresh token: %v", err)
 	}
@@ -176,11 +176,11 @@ func TestAuthAutoRenewFailureFallsBackToTokenExpired(t *testing.T) {
 
 	session := &model.AuthSession{Id: uuid.NewString(), AccountId: uuid.NewString(), Epoch: 0}
 	account := &model.Account{Id: session.AccountId, Name: "Test"}
-	expired, err := jwtSvc.CreateUserToken(session, account, 0, time.Now().Add(-time.Hour))
+	expired, err := jwtSvc.CreateUserToken(session, account, time.Now().Add(-time.Hour))
 	if err != nil {
 		t.Fatalf("mint expired token: %v", err)
 	}
-	refreshToken, err := jwtSvc.CreateRefreshToken(session, 0, time.Now().Add(30*24*time.Hour))
+	refreshToken, err := jwtSvc.CreateRefreshToken(session, time.Now().Add(30*24*time.Hour))
 	if err != nil {
 		t.Fatalf("mint refresh token: %v", err)
 	}
@@ -218,12 +218,12 @@ func TestAuthDoesNotAutoRenewOidcToken(t *testing.T) {
 
 	session := &model.AuthSession{Id: uuid.NewString(), AccountId: uuid.NewString(), Epoch: 0}
 	account := &model.Account{Id: session.AccountId, Name: "Test"}
-	oidcToken, err := jwtSvc.CreateOidcUserToken(session, account, 0, time.Now().Add(-time.Hour),
+	oidcToken, err := jwtSvc.CreateOidcUserToken(session, account, time.Now().Add(-time.Hour),
 		"https://oidc.example", "client-slug", nil, map[string]any{"azp": "client-slug"})
 	if err != nil {
 		t.Fatalf("mint oidc token: %v", err)
 	}
-	refreshToken, err := jwtSvc.CreateRefreshToken(session, 0, time.Now().Add(30*24*time.Hour))
+	refreshToken, err := jwtSvc.CreateRefreshToken(session, time.Now().Add(30*24*time.Hour))
 	if err != nil {
 		t.Fatalf("mint refresh token: %v", err)
 	}

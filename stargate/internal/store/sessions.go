@@ -49,10 +49,11 @@ func (s *Store) RevokeSessions(ctx context.Context, ids []uuid.UUID, now time.Ti
 	return revoked, nil
 }
 
-// RevokeAllSessions expires every live session of an account.
+// RevokeAllSessions expires every live session of an account and rotates its
+// epoch. Live sessions may have no expiry or a future expiry.
 func (s *Store) RevokeAllSessions(ctx context.Context, accountID string, now time.Time) ([]RevokedSession, error) {
 	rows, err := s.query(ctx, `UPDATE auth_sessions SET expired_at = $1, epoch = epoch + 1, updated_at = $1
-		WHERE account_id = $2 AND expired_at IS NULL RETURNING id, account_id, client_id`, now, accountID)
+		WHERE account_id = $2 AND (expired_at IS NULL OR expired_at > $1) RETURNING id, account_id, client_id`, now, accountID)
 	if err != nil {
 		return nil, err
 	}

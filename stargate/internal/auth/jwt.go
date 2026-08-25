@@ -19,10 +19,8 @@ import (
 )
 
 // ClaimInt reads an integer claim that may be serialized either as a JSON
-// number (float64 after parsing) or as a string: the C# minting writes
-// ver/epoch as strings (JWT claims are string-valued) and validates with
-// int.TryParse, so a float64-only assertion silently skips the check on
-// fleet-issued tokens.
+// number (float64 after parsing) or as a string. Session epochs and standard
+// JWT time claims use this representation.
 func ClaimInt(claims jwt.MapClaims, name string) (int, bool) {
 	switch v := claims[name].(type) {
 	case float64:
@@ -165,15 +163,14 @@ func loadRSAPublicKey(path string) (*rsa.PublicKey, error) {
 // PublicKey exposes the RSA public key (used by JWKS).
 func (s *JWTService) PublicKey() *rsa.PublicKey { return s.public }
 
-// CreateUserToken signs a user token with the exact claim set of the C#.
-func (s *JWTService) CreateUserToken(session *model.AuthSession, account *model.Account, accountVersion int, expiresAt time.Time) (string, error) {
+// CreateUserToken signs a user token.
+func (s *JWTService) CreateUserToken(session *model.AuthSession, account *model.Account, expiresAt time.Time) (string, error) {
 	now := time.Now().UTC()
 	claims := jwt.MapClaims{
 		"sub":          account.Id,
 		"jti":          session.Id,
 		"sid":          session.Id,
 		ClaimType:      TokenUseUser,
-		"ver":          fmt.Sprintf("%d", accountVersion),
 		"epoch":        fmt.Sprintf("%d", session.Epoch),
 		"is_superuser": boolStr(account.IsSuperuser),
 		"name":         account.Name,
@@ -191,14 +188,13 @@ func (s *JWTService) CreateUserToken(session *model.AuthSession, account *model.
 }
 
 // CreateRefreshToken signs a refresh token.
-func (s *JWTService) CreateRefreshToken(session *model.AuthSession, accountVersion int, expiresAt time.Time) (string, error) {
+func (s *JWTService) CreateRefreshToken(session *model.AuthSession, expiresAt time.Time) (string, error) {
 	now := time.Now().UTC()
 	claims := jwt.MapClaims{
 		"sub":     session.AccountId,
 		"jti":     session.Id,
 		"sid":     session.Id,
 		ClaimType: TokenUseRefresh,
-		"ver":     fmt.Sprintf("%d", accountVersion),
 		"epoch":   fmt.Sprintf("%d", session.Epoch),
 		"iat":     now.Unix(),
 		"nbf":     now.Unix(),
@@ -207,10 +203,10 @@ func (s *JWTService) CreateRefreshToken(session *model.AuthSession, accountVersi
 	return s.sign(claims, now, expiresAt)
 }
 
-// CreateBotToken signs an API-key (bot) token. A session without an explicit
-// expiry produces a non-expiring JWT; the session remains revocable through
-// its epoch and database state.
-func (s *JWTService) CreateBotToken(key *model.ApiKey, session *model.AuthSession, accountVersion int) (string, error) {
+// CreateBotToken signs an API-key token. A session without an explicit expiry
+// produces a non-expiring JWT; the session remains revocable through its epoch
+// and database state.
+func (s *JWTService) CreateBotToken(key *model.ApiKey, session *model.AuthSession) (string, error) {
 	now := time.Now().UTC()
 	claims := jwt.MapClaims{
 		"sub":        key.AccountId,
@@ -219,7 +215,6 @@ func (s *JWTService) CreateBotToken(key *model.ApiKey, session *model.AuthSessio
 		ClaimType:    TokenUseApiKey,
 		"api_key_id": key.Id,
 		"account_id": key.AccountId,
-		"ver":        fmt.Sprintf("%d", accountVersion),
 		"epoch":      fmt.Sprintf("%d", session.Epoch),
 		"iat":        now.Unix(),
 		"nbf":        now.Unix(),
@@ -231,15 +226,14 @@ func (s *JWTService) CreateBotToken(key *model.ApiKey, session *model.AuthSessio
 	}
 	return s.sign(claims, now, expiresAt)
 }
-
 func (s *JWTService) sign(claims jwt.MapClaims, now, expiresAt time.Time) (string, error) {
 	// iss/aud are added centrally, mirroring the C# CreateJwt.
 	claims["iss"] = s.issuer
 	claims["aud"] = s.audience
-	// OAuth scope claims are serialized as one space-delimited string.
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = "solar-network"
 	return token.SignedString(s.private)
+
 }
 
 // parseAndVerify validates the JWT signature and algorithm without applying
