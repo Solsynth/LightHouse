@@ -11,8 +11,6 @@ package oidcctl
 // ambiguity that broke the session JOIN).
 //
 // Mirrors the admin_oidc_test.go convention: skip when Postgres/Redis are
-// unavailable.
-
 import (
 	"context"
 	"encoding/json"
@@ -21,6 +19,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -254,5 +254,117 @@ func TestOidcRefreshTokenFlow(t *testing.T) {
 	ok, _, msg, tokenUse := svc.token.AuthenticateToken(ctx, atk, "127.0.0.1")
 	if !ok {
 		t.Fatalf("access token after refresh rejected: %s (use=%s)", msg, tokenUse)
+	}
+}
+
+func TestOidcRefreshSurvivesUnrelatedSessionRevocation(t *testing.T) {
+	ctx := context.Background()
+	svc, st, jwtSvc := newRefreshTestService(t)
+
+	var accountID string
+	if err := st.QueryRow(ctx, `SELECT id FROM accounts ORDER BY created_at LIMIT 1`).Scan(&accountID); err != nil {
+		t.Skipf("no local account to attach the session: %v", err)
+	}
+
+	now := time.Now().UTC()
+	clientID := uuid.New()
+	clientIDStr := clientID.String()
+	oidcSessionID := uuid.New()
+	otherSessionID := uuid.New()
+	for _, sessionID := range []uuid.UUID{oidcSessionID, otherSessionID} {
+		if _, err := st.Exec(ctx, `INSERT INTO auth_sessions
+			(id, type, created_at, last_granted_at, account_id, app_id, audiences, scopes, epoch, updated_at)
+			VALUES ($1, $2, $3, $3, $4, $5, '[]', '["openid"]'::jsonb, 0, $3)`,
+			sessionID, int(model.SessionTypeOAuth), now, accountID, clientID); err != nil {
+			t.Fatalf("seed session: %v", err)
+		}
+	}
+	t.Cleanup(func() {
+		_, _ = st.Exec(ctx, `DELETE FROM auth_sessions WHERE id = ANY($1)`, []uuid.UUID{oidcSessionID, otherSessionID})
+	})
+
+	version, err := svc.token.GetAccountVersion(ctx, accountID)
+	if err != nil {
+		t.Fatalf("account version: %v", err)
+	}
+	refresh, err := jwtSvc.CreateRefreshToken(&model.AuthSession{
+		Id: oidcSessionID.String(), AccountId: accountID, AppId: &clientIDStr,
+		Type: model.SessionTypeOAuth, Epoch: 0, Scopes: []string{"openid"},
+	}, version, now.Add(30*24*time.Hour))
+	if err != nil {
+		t.Fatalf("mint refresh token: %v", err)
+	}
+
+	if ok, err := svc.authSvc.RevokeSession(ctx, otherSessionID); err != nil || !ok {
+		t.Fatalf("revoke unrelated session: ok=%v err=%v", ok, err)
+	}
+	if currentVersion, err := svc.token.GetAccountVersion(ctx, accountID); err != nil || currentVersion != version {
+		t.Fatalf("account version after unrelated revoke = %d, %v; want %d", currentVersion, err, version)
+	}
+	if _, _, _, err := svc.handleRefreshTokenFlow(ctx, clientIDStr, refresh); err != nil {
+		t.Fatalf("refresh after unrelated revoke: %v", err)
+	}
+}
+
+func TestOidcConcurrentRefreshRotatesOnlyOnce(t *testing.T) {
+	ctx := context.Background()
+	svc, st, jwtSvc := newRefreshTestService(t)
+
+	var accountID string
+	if err := st.QueryRow(ctx, `SELECT id FROM accounts ORDER BY created_at LIMIT 1`).Scan(&accountID); err != nil {
+		t.Skipf("no local account to attach the session: %v", err)
+	}
+
+	now := time.Now().UTC()
+	clientID := uuid.New()
+	clientIDStr := clientID.String()
+	sessionID := uuid.New()
+	if _, err := st.Exec(ctx, `INSERT INTO auth_sessions
+		(id, type, created_at, last_granted_at, account_id, app_id, audiences, scopes, epoch, updated_at)
+		VALUES ($1, $2, $3, $3, $4, $5, '[]', '["openid"]'::jsonb, 0, $3)`,
+		sessionID, int(model.SessionTypeOAuth), now, accountID, clientID); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = st.Exec(ctx, `DELETE FROM auth_sessions WHERE id = $1`, sessionID)
+	})
+
+	version, err := svc.token.GetAccountVersion(ctx, accountID)
+	if err != nil {
+		t.Fatalf("account version: %v", err)
+	}
+	refresh, err := jwtSvc.CreateRefreshToken(&model.AuthSession{
+		Id: sessionID.String(), AccountId: accountID, AppId: &clientIDStr,
+		Type: model.SessionTypeOAuth, Epoch: 0, Scopes: []string{"openid"},
+	}, version, now.Add(30*24*time.Hour))
+	if err != nil {
+		t.Fatalf("mint refresh token: %v", err)
+	}
+
+	start := make(chan struct{})
+	var successes atomic.Int32
+	var group sync.WaitGroup
+	for range 2 {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			if _, _, _, err := svc.handleRefreshTokenFlow(ctx, clientIDStr, refresh); err == nil {
+				successes.Add(1)
+			}
+		}()
+	}
+	close(start)
+	group.Wait()
+
+	if successes.Load() != 1 {
+		t.Fatalf("successful concurrent refreshes = %d, want 1", successes.Load())
+	}
+	reloaded, err := st.GetSessionWithAccount(ctx, sessionID)
+	if err != nil {
+		t.Fatalf("reload session: %v", err)
+	}
+	if reloaded.Epoch != 1 {
+		t.Fatalf("session epoch after concurrent refreshes = %d, want 1", reloaded.Epoch)
 	}
 }

@@ -80,13 +80,18 @@ func (s *Store) UpdateSessionScopes(ctx context.Context, sessionID string, scope
 	return err
 }
 
-// UpdateSessionRefresh bumps a session's grant time, expiry and epoch on an
-// OIDC refresh-token rotation (mirrors HandleRefreshTokenFlowAsync).
-func (s *Store) UpdateSessionRefresh(ctx context.Context, sessionID string, lastGrantedAt, expiredAt time.Time) error {
-	_, err := s.exec(ctx, `UPDATE auth_sessions
-		SET last_granted_at = $1, expired_at = $2, epoch = epoch + 1, updated_at = $1 WHERE id = $3`,
-		lastGrantedAt, expiredAt, sessionID)
-	return err
+// UpdateSessionRefresh atomically rotates an OIDC refresh token. The update
+// only succeeds when [expectedEpoch] matches the epoch embedded in the
+// presented token, so concurrent refreshes cannot both issue a replacement.
+func (s *Store) UpdateSessionRefresh(ctx context.Context, sessionID string, expectedEpoch int, lastGrantedAt, expiredAt time.Time) (bool, error) {
+	tag, err := s.exec(ctx, `UPDATE auth_sessions
+		SET last_granted_at = $1, expired_at = $2, epoch = epoch + 1, updated_at = $1
+		WHERE id = $3 AND epoch = $4`,
+		lastGrantedAt, expiredAt, sessionID, expectedEpoch)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 func scanSessionWithAccount(row rowScanner) (*model.AuthSession, error) {

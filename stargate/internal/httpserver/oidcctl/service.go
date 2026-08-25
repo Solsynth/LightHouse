@@ -789,8 +789,12 @@ func (s *service) handleRefreshTokenFlow(ctx context.Context, clientID, refreshT
 		return nil, nil, nil, errors.New("Refresh token has been revoked")
 	}
 	newExpiry := now.Add(s.refreshLifetime)
-	if err := s.store.UpdateSessionRefresh(ctx, sessionID.String(), now, newExpiry); err != nil {
+	rotated, err := s.store.UpdateSessionRefresh(ctx, sessionID.String(), session.Epoch, now, newExpiry)
+	if err != nil {
 		return nil, nil, nil, err
+	}
+	if !rotated {
+		return nil, nil, nil, errors.New("Refresh token has been revoked")
 	}
 	session.LastGrantedAt = model.NewTime(now)
 	session.ExpiredAt = model.NewTime(newExpiry)

@@ -129,9 +129,6 @@ func (s *AuthService) RevokeApiKeyToken(ctx context.Context, key *model.ApiKey) 
 	if _, err := tx.Exec(ctx, `UPDATE api_keys SET deleted_at = $1, updated_at = $1 WHERE id = $2`, now, key.Id); err != nil {
 		return err
 	}
-	if _, err := s.token.BumpAccountVersion(ctx, key.AccountId); err != nil {
-		return err
-	}
 	sessionID, err := uuid.Parse(key.SessionId)
 	if err != nil {
 		return err
@@ -191,9 +188,6 @@ func (s *AuthService) RotateApiKeyToken(ctx context.Context, key *model.ApiKey) 
 	// Re-point the key at the new session.
 	if _, err := tx.Exec(ctx, `UPDATE api_keys SET session_id = $1, app_id = $2, updated_at = $3 WHERE id = $4`,
 		newSessionID, oldAppID, now, key.Id); err != nil {
-		return nil, err
-	}
-	if _, err := s.token.BumpAccountVersion(ctx, key.AccountId); err != nil {
 		return nil, err
 	}
 	if s.redis != nil && s.redis.Available() {

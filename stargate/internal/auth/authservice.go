@@ -141,9 +141,9 @@ func (s *AuthService) ValidateCaptcha(ctx context.Context, token string) (bool, 
 
 // --- Sessions ---
 
-// RevokeSession revokes a session and all its descendants (BFS on
-// parent_session_id), bumping epochs and account versions and publishing
-// auth.session.revoked events.
+// RevokeSession revokes a session and all its descendants (BFS), bumping
+// their epochs and publishing auth.session.revoked events. Account-wide token
+// invalidation is reserved for RevokeAllSessionsForAccount.
 func (s *AuthService) RevokeSession(ctx context.Context, sessionID uuid.UUID) (bool, error) {
 	ids, err := s.collectSessionsToRevoke(ctx, sessionID)
 	if err != nil {
@@ -162,15 +162,6 @@ func (s *AuthService) RevokeSession(ctx context.Context, sessionID uuid.UUID) (b
 	}
 	if err := s.invalidateSessionCaches(ctx, revoked); err != nil {
 		s.log.Warn("invalidate session caches", "error", err)
-	}
-	accounts := map[string]struct{}{}
-	for _, r := range revoked {
-		accounts[r.AccountID] = struct{}{}
-	}
-	for accountID := range accounts {
-		if _, err := s.token.BumpAccountVersion(ctx, accountID); err != nil {
-			s.log.Warn("bump account version", "error", err)
-		}
 	}
 	s.publishRevoked(ctx, revoked, now)
 	return true, nil
