@@ -27,12 +27,18 @@ const (
 	PunishmentsDelete = "punishments.delete"
 
 	// ── Accounts ──
-	AccountsDeletion        = "accounts.delete"
-	AccountsStatusesUpdate  = "accounts.statuses.update"
-	AccountsStatusesCreate  = "accounts.statuses.create"
-	AccountsView            = "accounts.view"
-	AccountsManage          = "accounts.manage"
-	AccountsConnectionsView = "account.connections"
+	AccountsDeletion         = "accounts.delete"
+	AccountsStatusesUpdate   = "accounts.statuses.update"
+	AccountsStatusesCreate   = "accounts.statuses.create"
+	AccountsView             = "accounts.view"
+	AccountsManage           = "accounts.manage"
+	AccountsConnectionsView  = "account.connections"
+	AccountsActionLogsView   = "accounts.actionlogs.view"
+	AccountsProfileManage    = "accounts.profile.manage"
+	AccountsConnectionsManage = "accounts.connections.manage"
+	AccountsPasskeysView     = "accounts.passkeys.view"
+	AccountsPasskeysManage   = "accounts.passkeys.manage"
+	AccountsRelationshipsView = "accounts.relationships.view"
 
 	// ── Tests ──
 	TestsTake   = "tests.take"
@@ -455,6 +461,12 @@ var AllKeys = []string{
 	AccountsView,
 	AccountsManage,
 	AccountsConnectionsView,
+	AccountsActionLogsView,
+	AccountsProfileManage,
+	AccountsConnectionsManage,
+	AccountsPasskeysView,
+	AccountsPasskeysManage,
+	AccountsRelationshipsView,
 
 	TestsTake,
 	TestsManage,

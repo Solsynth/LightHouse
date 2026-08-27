@@ -261,7 +261,7 @@ func (s *dyAccountService) ListAccounts(ctx context.Context, req *gen.DyListAcco
 	if parsed, err := strconv.Atoi(req.PageToken); err == nil && parsed > 0 {
 		page = parsed
 	}
-	accounts, total, err := s.d.Store.AdminListAccounts(ctx, req.Filter, req.OrderBy, int(pageSize), int(pageSize)*page)
+	accounts, total, err := s.d.Store.AdminListAccounts(ctx, req.Filter, req.OrderBy, int(pageSize), int(pageSize)*page, nil)
 	if err != nil {
 		return nil, err
 	}

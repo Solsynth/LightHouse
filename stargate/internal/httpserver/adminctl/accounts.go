@@ -66,6 +66,9 @@ type adminAccountDetailResponse struct {
 	ActiveDeviceCount  int                        `json:"active_device_count"`
 	ActivePunishment   *punishmentView            `json:"active_punishment,omitempty"`
 	ActivePunishments  []punishmentView           `json:"active_punishments"`
+	PunishmentOverview *punishmentView            `json:"punishment_overview,omitempty"`
+	ConnectionCount    int                        `json:"connection_count"`
+	PasskeyCount       int                        `json:"passkey_count"`
 }
 
 // adminMessageDispatchResponse mirrors AdminMessageDispatchResponse.
@@ -130,6 +133,28 @@ type adminResetPasswordFactorRequest struct {
 	RevokeSessions bool   `json:"revoke_sessions"`
 }
 
+// updateAdminProfileRequest mirrors the profile patch fields for admin management.
+type updateAdminProfileRequest struct {
+	FirstName  *string `json:"first_name,omitempty"`
+	MiddleName *string `json:"middle_name,omitempty"`
+	LastName   *string `json:"last_name,omitempty"`
+	Bio        *string `json:"bio,omitempty"`
+	Gender     *string `json:"gender,omitempty"`
+	Pronouns   *string `json:"pronouns,omitempty"`
+	TimeZone   *string `json:"time_zone,omitempty"`
+	Location   *string `json:"location,omitempty"`
+}
+
+// batchRevokeDeviceRequest carries device IDs for batch revoke.
+type batchRevokeDeviceRequest struct {
+	DeviceIDs []string `json:"device_ids"`
+}
+
+// batchVerifyContactsRequest carries contact IDs for batch verify.
+type batchVerifyContactsRequest struct {
+	ContactIDs []string `json:"contact_ids"`
+}
+
 type updateAdminDeviceLabelRequest struct {
 	Label string `json:"label"`
 }
@@ -181,6 +206,27 @@ func registerAccountAdmin(g *gin.RouterGroup, d Deps) {
 	g.POST(":name/factors/:factorId/disable", requirePerm(d, permission.AuthFactorsManage), disableAccountAuthFactor(d))
 	g.POST(":name/factors/password/reset", requirePerm(d, permission.AuthFactorsManage), resetAccountPasswordFactor(d))
 	g.DELETE(":name/factors/:factorId", requirePerm(d, permission.AuthFactorsManage), deleteAccountAuthFactor(d))
+
+	// Action logs (admin search)
+	g.GET(":name/action-logs", requirePerm(d, permission.AccountsActionLogsView), listAccountActionLogs(d))
+
+	// Profile management
+	g.PATCH(":name/profile", requirePerm(d, permission.AccountsProfileManage), updateAccountProfile(d))
+	g.GET(":name/name-history", requirePerm(d, permission.AccountsView), listAccountNameHistory(d))
+
+	// Connections
+	g.GET(":name/connections", requirePerm(d, permission.AccountsConnectionsManage), listAccountConnections(d))
+
+	// Passkeys
+	g.GET(":name/passkeys", requirePerm(d, permission.AccountsPasskeysView), listAccountPasskeys(d))
+	g.DELETE(":name/passkeys/:passkeyId", requirePerm(d, permission.AccountsPasskeysManage), deleteAccountPasskey(d))
+
+	// Batch operations
+	g.POST(":name/devices/batch/revoke", requirePerm(d, permission.AccountDevicesManage), batchRevokeDeviceSessions(d))
+	g.POST(":name/contacts/batch/verify", requirePerm(d, permission.AccountContactsManage), batchVerifyContacts(d))
+
+	// Relationships
+	g.GET(":name/relationships", requirePerm(d, permission.AccountsRelationshipsView), listAccountRelationships(d))
 }
 
 // ─────────────────────────── Account list / detail ───────────────────────────
@@ -192,7 +238,37 @@ func listAccounts(d Deps) gin.HandlerFunc {
 		query := c.Query("query")
 		orderBy := c.Query("orderBy")
 
-		accounts, total, err := d.Store.AdminListAccounts(c.Request.Context(), query, orderBy, take, offset)
+		// Parse optional filters
+		var filters *store.AdminAccountFilters
+		if activated := c.Query("activated"); activated != "" {
+			val := activated == "true"
+			filters = &store.AdminAccountFilters{Activated: &val}
+		}
+		if hasPunishment := c.Query("hasPunishment"); hasPunishment == "true" {
+			if filters == nil {
+				filters = &store.AdminAccountFilters{}
+			}
+			val := true
+			filters.HasPunishment = &val
+		}
+		if after := c.Query("createdAfter"); after != "" {
+			if t, err := time.Parse(time.RFC3339, after); err == nil {
+				if filters == nil {
+					filters = &store.AdminAccountFilters{}
+				}
+				filters.CreatedAfter = &t
+			}
+		}
+		if before := c.Query("createdBefore"); before != "" {
+			if t, err := time.Parse(time.RFC3339, before); err == nil {
+				if filters == nil {
+					filters = &store.AdminAccountFilters{}
+				}
+				filters.CreatedBefore = &t
+			}
+		}
+
+		accounts, total, err := d.Store.AdminListAccounts(c.Request.Context(), query, orderBy, take, offset, filters)
 		if err != nil {
 			serverError(c, err, d)
 			return
@@ -344,6 +420,17 @@ func getAccount(d Deps) gin.HandlerFunc {
 			idx := store.SelectMostSeverePunishment(activePunishments)
 			activePunishment = lookup[activePunishments[idx].Id]
 		}
+		connections, err := d.Store.AdminListConnections(c.Request.Context(), accountID)
+		if err != nil {
+			serverError(c, err, d)
+			return
+		}
+		passkeys, err := d.Store.AdminListPasskeys(c.Request.Context(), accountID)
+		if err != nil {
+			serverError(c, err, d)
+			return
+		}
+
 		account.Contacts = contacts
 		c.JSON(http.StatusOK, adminAccountDetailResponse{
 			Account:            account,
@@ -353,6 +440,9 @@ func getAccount(d Deps) gin.HandlerFunc {
 			ActiveDeviceCount:  deviceCounts[accountID.String()],
 			ActivePunishment:   activePunishment,
 			ActivePunishments:  views,
+			PunishmentOverview: activePunishment,
+			ConnectionCount:    len(connections),
+			PasskeyCount:       len(passkeys),
 		})
 	}
 }
@@ -1768,6 +1858,273 @@ func parseUUIDArray(c *gin.Context, name string) []uuid.UUID {
 		}
 	}
 	return ids
+}
+
+// ─────────────────────────── Action logs ───────────────────────────
+
+func listAccountActionLogs(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		take := queryTake(c, 50)
+		offset := queryOffset(c)
+		action := c.Query("action")
+
+		account := lookupAccount(c, d, c.Param("name"))
+		if account == nil {
+			return
+		}
+		accountID, err := uuid.Parse(account.Id)
+		if err != nil {
+			accountNotFound(c)
+			return
+		}
+		logs, total, err := d.Store.AdminListAccountActionLogs(c.Request.Context(), accountID, action, take, offset)
+		if err != nil {
+			serverError(c, err, d)
+			return
+		}
+		setTotal(c, total)
+		c.JSON(http.StatusOK, logs)
+	}
+}
+
+// ─────────────────────────── Profile management ───────────────────────────
+
+func updateAccountProfile(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var request updateAdminProfileRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, errs.New("PADLOCK_INVALID_REQUEST", "Invalid request body.", http.StatusBadRequest))
+			return
+		}
+		account := lookupAccount(c, d, c.Param("name"))
+		if account == nil {
+			return
+		}
+		accountID, err := uuid.Parse(account.Id)
+		if err != nil {
+			accountNotFound(c)
+			return
+		}
+		profile, err := d.Store.AdminUpdateAccountProfile(
+			c.Request.Context(), accountID,
+			request.FirstName, request.MiddleName, request.LastName,
+			request.Bio, request.Gender, request.Pronouns,
+			request.TimeZone, request.Location,
+		)
+		if err != nil {
+			serverError(c, err, d)
+			return
+		}
+		logAction(d, c, accountID, model.ActionLogAccountProfileUpdate, map[string]any{
+			"fields_updated": request,
+		})
+		c.JSON(http.StatusOK, profile)
+	}
+}
+
+func listAccountNameHistory(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		account := lookupAccount(c, d, c.Param("name"))
+		if account == nil {
+			return
+		}
+		accountID, err := uuid.Parse(account.Id)
+		if err != nil {
+			accountNotFound(c)
+			return
+		}
+		history, err := d.Store.AdminListAccountNameHistory(c.Request.Context(), accountID)
+		if err != nil {
+			serverError(c, err, d)
+			return
+		}
+		c.JSON(http.StatusOK, history)
+	}
+}
+
+// ─────────────────────────── Connections ───────────────────────────
+
+func listAccountConnections(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		account := lookupAccount(c, d, c.Param("name"))
+		if account == nil {
+			return
+		}
+		accountID, err := uuid.Parse(account.Id)
+		if err != nil {
+			accountNotFound(c)
+			return
+		}
+		connections, err := d.Store.AdminListConnections(c.Request.Context(), accountID)
+		if err != nil {
+			serverError(c, err, d)
+			return
+		}
+		c.JSON(http.StatusOK, connections)
+	}
+}
+
+// ─────────────────────────── Passkeys ───────────────────────────
+
+func listAccountPasskeys(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		account := lookupAccount(c, d, c.Param("name"))
+		if account == nil {
+			return
+		}
+		accountID, err := uuid.Parse(account.Id)
+		if err != nil {
+			accountNotFound(c)
+			return
+		}
+		passkeys, err := d.Store.AdminListPasskeys(c.Request.Context(), accountID)
+		if err != nil {
+			serverError(c, err, d)
+			return
+		}
+		c.JSON(http.StatusOK, passkeys)
+	}
+}
+
+func deleteAccountPasskey(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		account := lookupAccount(c, d, c.Param("name"))
+		if account == nil {
+			return
+		}
+		accountID, err := uuid.Parse(account.Id)
+		if err != nil {
+			accountNotFound(c)
+			return
+		}
+		passkeyID, err := uuid.Parse(c.Param("passkeyId"))
+		if err != nil {
+			accountNotFound(c)
+			return
+		}
+		if err := d.Store.AdminDeletePasskey(c.Request.Context(), accountID, passkeyID); err != nil {
+			if err == store.ErrNotFound {
+				accountNotFound(c)
+				return
+			}
+			serverError(c, err, d)
+			return
+		}
+		logAction(d, c, accountID, model.ActionLogAdminPasskeyDelete, map[string]any{
+			"passkey_id": passkeyID.String(),
+		})
+		c.Status(http.StatusNoContent)
+	}
+}
+
+// ─────────────────────────── Batch operations ───────────────────────────
+
+func batchRevokeDeviceSessions(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var request batchRevokeDeviceRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, errs.New("PADLOCK_INVALID_REQUEST", "Invalid request body.", http.StatusBadRequest))
+			return
+		}
+		if len(request.DeviceIDs) == 0 {
+			c.JSON(http.StatusBadRequest, errs.New("PADLOCK_DEVICE_IDS_REQUIRED", "At least one device ID is required.", http.StatusBadRequest))
+			return
+		}
+		account := lookupAccount(c, d, c.Param("name"))
+		if account == nil {
+			return
+		}
+		accountID, err := uuid.Parse(account.Id)
+		if err != nil {
+			accountNotFound(c)
+			return
+		}
+		revoked := 0
+		for _, rawID := range request.DeviceIDs {
+			if err := deleteDeviceFlow(c, d, accountID, rawID); err != nil {
+				// deleteDeviceFlow already sent error response; bail out
+				return
+			}
+			revoked++
+		}
+		c.JSON(http.StatusOK, gin.H{"revoked": revoked})
+	}
+}
+
+func batchVerifyContacts(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var request batchVerifyContactsRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, errs.New("PADLOCK_INVALID_REQUEST", "Invalid request body.", http.StatusBadRequest))
+			return
+		}
+		if len(request.ContactIDs) == 0 {
+			c.JSON(http.StatusBadRequest, errs.New("PADLOCK_CONTACT_IDS_REQUIRED", "At least one contact ID is required.", http.StatusBadRequest))
+			return
+		}
+		account := lookupAccount(c, d, c.Param("name"))
+		if account == nil {
+			return
+		}
+		accountID, err := uuid.Parse(account.Id)
+		if err != nil {
+			accountNotFound(c)
+			return
+		}
+		now := time.Now().UTC()
+		verified := 0
+		for _, rawID := range request.ContactIDs {
+			contactID, err := uuid.Parse(rawID)
+			if err != nil {
+				continue
+			}
+			if _, err := d.Store.AdminSetContactVerified(c.Request.Context(), accountID, contactID, now); err != nil {
+				if err == store.ErrNotFound {
+					continue
+				}
+				serverError(c, err, d)
+				return
+			}
+			verified++
+		}
+		logAction(d, c, accountID, model.ActionLogAdminContactVerify, map[string]any{
+			"verified":    verified,
+			"contact_ids": request.ContactIDs,
+		})
+		c.JSON(http.StatusOK, gin.H{"verified": verified})
+	}
+}
+
+// ─────────────────────────── Relationships ───────────────────────────
+
+func listAccountRelationships(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		take := queryTake(c, 50)
+		offset := queryOffset(c)
+
+		account := lookupAccount(c, d, c.Param("name"))
+		if account == nil {
+			return
+		}
+		accountID, err := uuid.Parse(account.Id)
+		if err != nil {
+			accountNotFound(c)
+			return
+		}
+		var status *int
+		if raw := c.Query("status"); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil {
+				status = &parsed
+			}
+		}
+		relationships, total, err := d.Store.AdminListRelationships(c.Request.Context(), accountID, status, take, offset)
+		if err != nil {
+			serverError(c, err, d)
+			return
+		}
+		setTotal(c, total)
+		c.JSON(http.StatusOK, relationships)
+	}
 }
 
 // ─────────────────────────── Activate / delete ───────────────────────────

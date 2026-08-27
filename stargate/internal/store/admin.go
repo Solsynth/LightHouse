@@ -54,12 +54,46 @@ type AdminEmailRecipient struct {
 // mirroring AccountAdminController.ListAccounts (soft-deleted accounts are
 // excluded via the accounts.deleted_at filter). Returns the page plus the
 // total matching count (X-Total).
-func (s *Store) AdminListAccounts(ctx context.Context, query, orderBy string, take, offset int) ([]model.Account, int, error) {
+// AdminAccountFilters carries optional filters for AdminListAccounts.
+type AdminAccountFilters struct {
+	Activated     *bool
+	HasPunishment *bool
+	CreatedAfter  *time.Time
+	CreatedBefore *time.Time
+}
+
+// AdminListAccounts pages accounts with an optional name/nick ILIKE filter,
+// mirroring AccountAdminController.ListAccounts (soft-deleted accounts are
+// excluded via the accounts.deleted_at filter). Returns the page plus the
+// total matching count (X-Total).
+func (s *Store) AdminListAccounts(ctx context.Context, query, orderBy string, take, offset int, filters *AdminAccountFilters) ([]model.Account, int, error) {
 	where := `WHERE a.deleted_at IS NULL`
 	args := []any{}
 	if strings.TrimSpace(query) != "" {
 		args = append(args, "%"+strings.TrimSpace(query)+"%")
 		where += ` AND (a.name ILIKE $1 OR a.nick ILIKE $1)`
+	}
+	if filters != nil {
+		if filters.Activated != nil {
+			if *filters.Activated {
+				where += ` AND a.activated_at IS NOT NULL`
+			} else {
+				where += ` AND a.activated_at IS NULL`
+			}
+		}
+		if filters.HasPunishment != nil && *filters.HasPunishment {
+			where += ` AND EXISTS (SELECT 1 FROM account_punishments p WHERE p.account_id = a.id AND p.deleted_at IS NULL AND (p.expired_at IS NULL OR p.expired_at > now()))`
+		}
+		if filters.CreatedAfter != nil {
+			args = append(args, *filters.CreatedAfter)
+			idx := len(args)
+			where += ` AND a.created_at >= $` + strconv.Itoa(idx)
+		}
+		if filters.CreatedBefore != nil {
+			args = append(args, *filters.CreatedBefore)
+			idx := len(args)
+			where += ` AND a.created_at <= $` + strconv.Itoa(idx)
+		}
 	}
 	var order string
 	switch orderBy {
@@ -1326,4 +1360,202 @@ func scanAdminActionLog(row rowScanner) (*model.ActionLog, error) {
 	}
 	log.SessionId = uuidPtrStr(sessionID)
 	return &log, nil
+}
+
+// AdminListAccountActionLogs is the admin route backing for listing action
+// logs scoped to a specific account. Mirrors AdminListOwnActionLogs with
+// an explicit admin-facing name.
+func (s *Store) AdminListAccountActionLogs(ctx context.Context, accountID uuid.UUID, action string, take, offset int) ([]model.ActionLog, int, error) {
+	where := `WHERE account_id = $1 AND deleted_at IS NULL`
+	args := []any{accountID}
+	if strings.TrimSpace(action) != "" {
+		args = append(args, action)
+		where += ` AND action = $` + strconv.Itoa(len(args))
+	}
+	var total int
+	if err := s.queryRow(ctx, `SELECT count(*) FROM action_logs `+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	args = append(args, take, offset)
+	rows, err := s.query(ctx, `SELECT id, action, meta, user_agent, ip_address, location, account_id, session_id, created_at, updated_at, deleted_at
+		FROM action_logs `+where+` ORDER BY created_at DESC LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var logs []model.ActionLog
+	for rows.Next() {
+		log, err := scanAdminActionLog(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		logs = append(logs, *log)
+	}
+	return logs, total, rows.Err()
+}
+
+// AdminListConnections lists an account's connections (admin view),
+// filtering soft-deleted rows.
+func (s *Store) AdminListConnections(ctx context.Context, accountID uuid.UUID) ([]model.Connection, error) {
+	rows, err := s.query(ctx, `SELECT id, provider, provided_identifier, meta, last_used_at, is_public, account_id, registered_at, created_at, updated_at, deleted_at
+		FROM account_connections WHERE account_id = $1 AND deleted_at IS NULL ORDER BY created_at`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var connections []model.Connection
+	for rows.Next() {
+		var c model.Connection
+		var meta []byte
+		if err := rows.Scan(&c.Id, &c.Provider, &c.ProvidedIdentifier, &meta, &c.LastUsedAt,
+			&c.IsPublic, &c.AccountId, &c.RegisteredAt, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt); err != nil {
+			return nil, err
+		}
+		if len(meta) > 0 && string(meta) != "null" {
+			_ = json.Unmarshal(meta, &c.Meta)
+		}
+		connections = append(connections, c)
+	}
+	return connections, rows.Err()
+}
+
+// AdminListPasskeys lists an account's passkeys (admin view), filtering
+// soft-deleted rows.
+func (s *Store) AdminListPasskeys(ctx context.Context, accountID uuid.UUID) ([]model.Passkey, error) {
+	rows, err := s.query(ctx, `SELECT id, account_id, label, credential_id, credential, created_at, updated_at, deleted_at
+		FROM account_passkeys WHERE account_id = $1 AND deleted_at IS NULL ORDER BY created_at`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var passkeys []model.Passkey
+	for rows.Next() {
+		var p model.Passkey
+		if err := rows.Scan(&p.Id, &p.AccountId, &p.Label, &p.CredentialId, &p.Credential,
+			&p.CreatedAt, &p.UpdatedAt, &p.DeletedAt); err != nil {
+			return nil, err
+		}
+		passkeys = append(passkeys, p)
+	}
+	return passkeys, rows.Err()
+}
+
+// AdminDeletePasskey hard-deletes a passkey row. Returns ErrNotFound when
+// the row does not exist or does not belong to the account.
+func (s *Store) AdminDeletePasskey(ctx context.Context, accountID, passkeyID uuid.UUID) error {
+	tag, err := s.exec(ctx, `DELETE FROM account_passkeys WHERE id = $1 AND account_id = $2`, passkeyID, accountID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// AdminListRelationships lists an account's outgoing relationships with
+// related-account info, mirroring the admin relationship management surface.
+func (s *Store) AdminListRelationships(ctx context.Context, accountID uuid.UUID, status *int, take, offset int) ([]model.Relationship, int, error) {
+	where := `WHERE r.account_id = $1 AND r.deleted_at IS NULL`
+	args := []any{accountID}
+	if status != nil {
+		args = append(args, *status)
+		where += ` AND r.status = $` + strconv.Itoa(len(args))
+	}
+
+	var total int
+	if err := s.queryRow(ctx, `SELECT count(*) FROM account_relationships r `+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	args = append(args, take, offset)
+	rows, err := s.query(ctx, `SELECT `+relationshipColumns+` FROM account_relationships r
+		`+where+` ORDER BY r.created_at DESC LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var relationships []model.Relationship
+	for rows.Next() {
+		r, err := scanRelationship(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		relationships = append(relationships, *r)
+	}
+	return relationships, total, rows.Err()
+}
+
+// AdminUpdateAccountProfile updates profile fields (admin management). Only
+// non-nil fields are written; returns the refreshed profile.
+func (s *Store) AdminUpdateAccountProfile(ctx context.Context, accountID uuid.UUID, firstName, middleName, lastName, bio, gender, pronouns, timeZone, location *string) (*model.Profile, error) {
+	profile, err := s.GetOrCreateAccountProfile(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if firstName != nil {
+		profile.FirstName = firstName
+	}
+	if middleName != nil {
+		profile.MiddleName = middleName
+	}
+	if lastName != nil {
+		profile.LastName = lastName
+	}
+	if bio != nil {
+		profile.Bio = bio
+	}
+	if gender != nil {
+		profile.Gender = gender
+	}
+	if pronouns != nil {
+		profile.Pronouns = pronouns
+	}
+	if timeZone != nil {
+		profile.TimeZone = timeZone
+	}
+	if location != nil {
+		profile.Location = location
+	}
+	if err := s.SaveProfile(ctx, profile); err != nil {
+		return nil, err
+	}
+	return s.GetProfileByAccount(ctx, accountID)
+}
+
+// AdminUpdateAccountBasicInfo updates account basic info (nick, language,
+// region) from admin management. Only non-nil fields are written; returns
+// the refreshed account.
+func (s *Store) AdminUpdateAccountBasicInfo(ctx context.Context, accountID uuid.UUID, nick, language, region *string) (*model.Account, error) {
+	return s.UpdateAccountBasicInfo(ctx, accountID, nick, language, region)
+}
+
+// AdminListAccountNameHistory lists name history for an account (paid
+// renames), ordered by creation time descending.
+func (s *Store) AdminListAccountNameHistory(ctx context.Context, accountID uuid.UUID) ([]map[string]any, error) {
+	rows, err := s.query(ctx, `SELECT id, account_id, name, created_at, updated_at, deleted_at
+		FROM account_name_history WHERE account_id = $1 ORDER BY created_at DESC`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var history []map[string]any
+	for rows.Next() {
+		var id, histAccountID, name string
+		var createdAt, updatedAt *model.Time
+		var deletedAt *model.Time
+		if err := rows.Scan(&id, &histAccountID, &name, &createdAt, &updatedAt, &deletedAt); err != nil {
+			return nil, err
+		}
+		entry := map[string]any{
+			"id":         id,
+			"account_id": histAccountID,
+			"name":       name,
+			"created_at": createdAt,
+			"updated_at": updatedAt,
+			"deleted_at": deletedAt,
+		}
+		history = append(history, entry)
+	}
+	return history, rows.Err()
 }

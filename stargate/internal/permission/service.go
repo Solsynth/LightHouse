@@ -571,6 +571,21 @@ var moderatorPermissionKeys = []string{
 	TicketsMessagesCreate,
 	TicketsStatusUpdate,
 	TicketsAssign,
+	AccountsView,
+	AccountsManage,
+	AccountsDeletion,
+	AccountsActionLogsView,
+	AccountsProfileManage,
+	AccountsConnectionsManage,
+	AccountsPasskeysView,
+	AccountsPasskeysManage,
+	AccountsRelationshipsView,
+	PunishmentsView,
+	PunishmentsCreate,
+	PunishmentsUpdate,
+	PunishmentsDelete,
+	NotificationsSend,
+	EmailsSend,
 }
 
 // developerPermissionKeys mirrors PermissionSeedService.DeveloperPermissionKeys.

@@ -110,4 +110,7 @@ const (
 	ActionLogAccountProfileComplete        ActionLogType = "accounts.profile.complete"
 	ActionLogAccountConnectionLink         ActionLogType = "accounts.connection.link"
 	ActionLogAccountPushEnable             ActionLogType = "accounts.push.enable"
+	ActionLogAdminContactVerify            ActionLogType = "admin.contacts.verify"
+	ActionLogAdminPasskeyDelete            ActionLogType = "admin.passkeys.delete"
+	ActionLogAdminBatchDeviceRevoke        ActionLogType = "admin.devices.batch_revoke"
 )
