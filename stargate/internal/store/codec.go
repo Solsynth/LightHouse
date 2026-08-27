@@ -28,6 +28,19 @@ func encodeJSONPtr(value any) (*datatypes.JSON, error) {
 	return &encoded, nil
 }
 
+// decodeJSONArray decodes a raw jsonb column value ([]byte from the driver)
+// into a string slice. Returns nil for nil or empty input.
+func decodeJSONArray(raw []byte) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var out []string
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil
+	}
+	return out
+}
+
 func decodeJSON(raw *datatypes.JSON, destination any) error {
 	if raw == nil || len(*raw) == 0 {
 		return nil

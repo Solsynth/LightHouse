@@ -488,9 +488,9 @@ func (s *Store) AdminPunishmentDelete(ctx context.Context, accountID, punishment
 
 func scanPunishment(row rowScanner) (*model.Punishment, error) {
 	var p model.Punishment
-	var blocked []string
+	var blockedRaw []byte
 	var creatorID *uuid.UUID
-	err := row.Scan(&p.Id, &p.Reason, &p.ExpiredAt, &p.Type, &blocked, &p.AccountId,
+	err := row.Scan(&p.Id, &p.Reason, &p.ExpiredAt, &p.Type, &blockedRaw, &p.AccountId,
 		&creatorID, &p.CreatedAt, &p.UpdatedAt, &p.DeletedAt)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -498,7 +498,7 @@ func scanPunishment(row rowScanner) (*model.Punishment, error) {
 		}
 		return nil, err
 	}
-	p.BlockedPermissions = blocked
+	p.BlockedPermissions = decodeJSONArray(blockedRaw)
 	p.CreatorId = uuidPtrStr(creatorID)
 	return &p, nil
 }
@@ -746,13 +746,13 @@ func (s *Store) AdminCountSessionChildren(ctx context.Context, sessionIDs []uuid
 func scanAdminSession(row rowScanner) (*model.AuthSession, error) {
 	session := &model.AuthSession{}
 	var (
-		audiences, scopes                             []string
+		audiencesRaw, scopesRaw                       []byte
 		location                                      []byte
 		clientID, parentSessionID, challengeID, appID *uuid.UUID
 		epoch                                         int
 	)
 	err := row.Scan(
-		&session.Id, &session.Type, &session.LastGrantedAt, &session.ExpiredAt, &audiences, &scopes,
+		&session.Id, &session.Type, &session.LastGrantedAt, &session.ExpiredAt, &audiencesRaw, &scopesRaw,
 		&session.IpAddress, &session.UserAgent, &location, &session.AccountId,
 		&clientID, &parentSessionID, &challengeID, &appID, &epoch,
 		&session.CreatedAt, &session.UpdatedAt, &session.DeletedAt,
@@ -763,8 +763,8 @@ func scanAdminSession(row rowScanner) (*model.AuthSession, error) {
 		}
 		return nil, err
 	}
-	session.Audiences = audiences
-	session.Scopes = scopes
+	session.Audiences = decodeJSONArray(audiencesRaw)
+	session.Scopes = decodeJSONArray(scopesRaw)
 	if len(location) > 0 && string(location) != "null" {
 		var gp model.GeoPoint
 		if err := json.Unmarshal(location, &gp); err == nil {

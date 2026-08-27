@@ -97,7 +97,7 @@ func (s *Store) UpdateSessionRefresh(ctx context.Context, sessionID string, expe
 func scanSessionWithAccount(row rowScanner) (*model.AuthSession, error) {
 	session := &model.AuthSession{}
 	var (
-		audiences, scopes                             []string
+		audiencesRaw, scopesRaw                       []byte
 		location                                      []byte
 		clientID, parentSessionID, challengeID, appID *uuid.UUID
 		epoch                                         int
@@ -105,7 +105,7 @@ func scanSessionWithAccount(row rowScanner) (*model.AuthSession, error) {
 	account := &model.Account{}
 	var automatedID *uuid.UUID
 	err := row.Scan(
-		&session.Id, &session.Type, &session.LastGrantedAt, &session.ExpiredAt, &audiences, &scopes,
+		&session.Id, &session.Type, &session.LastGrantedAt, &session.ExpiredAt, &audiencesRaw, &scopesRaw,
 		&session.IpAddress, &session.UserAgent, &location, &session.AccountId,
 		&clientID, &parentSessionID, &challengeID, &appID, &epoch,
 		&session.CreatedAt, &session.UpdatedAt, &session.DeletedAt,
@@ -118,8 +118,8 @@ func scanSessionWithAccount(row rowScanner) (*model.AuthSession, error) {
 		}
 		return nil, err
 	}
-	session.Audiences = audiences
-	session.Scopes = scopes
+	session.Audiences = decodeJSONArray(audiencesRaw)
+	session.Scopes = decodeJSONArray(scopesRaw)
 	if len(location) > 0 && string(location) != "null" {
 		var gp model.GeoPoint
 		if err := json.Unmarshal(location, &gp); err == nil {

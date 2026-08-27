@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"encoding/json"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -43,10 +44,13 @@ func TestCreateApiKeyInitializesSessionJSONArrays(t *testing.T) {
 		t.Fatalf("create api key: %v", err)
 	}
 
-	var audiences, scopes []string
-	if err := pool.QueryRow(ctx, `SELECT audiences, scopes FROM auth_sessions WHERE id = $1`, key.SessionId).Scan(&audiences, &scopes); err != nil {
+	var audiencesRaw, scopesRaw []byte
+	if err := pool.QueryRow(ctx, `SELECT audiences, scopes FROM auth_sessions WHERE id = $1`, key.SessionId).Scan(&audiencesRaw, &scopesRaw); err != nil {
 		t.Fatalf("load created API key session: %v", err)
 	}
+	var audiences, scopes []string
+	_ = json.Unmarshal(audiencesRaw, &audiences)
+	_ = json.Unmarshal(scopesRaw, &scopes)
 	if audiences == nil || scopes == nil {
 		t.Fatalf("created API key session has nil JSON arrays: audiences=%v scopes=%v", audiences, scopes)
 	}

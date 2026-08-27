@@ -138,10 +138,13 @@ func TestAuthorizationCodeFlowCreatesSessionWithJSONArrays(t *testing.T) {
 		_, _ = st.Exec(ctx, `DELETE FROM auth_sessions WHERE id = $1`, sessionID)
 	})
 
-	var audiences, storedScopes []string
-	if err := st.QueryRow(ctx, `SELECT audiences, scopes FROM auth_sessions WHERE id = $1`, sessionID).Scan(&audiences, &storedScopes); err != nil {
+	var audiencesRaw, scopesRaw []byte
+	if err := st.QueryRow(ctx, `SELECT audiences, scopes FROM auth_sessions WHERE id = $1`, sessionID).Scan(&audiencesRaw, &scopesRaw); err != nil {
 		t.Fatalf("load created OIDC session: %v", err)
 	}
+	var audiences, storedScopes []string
+	_ = json.Unmarshal(audiencesRaw, &audiences)
+	_ = json.Unmarshal(scopesRaw, &storedScopes)
 	if audiences == nil || storedScopes == nil {
 		t.Fatalf("created OIDC session has nil JSON arrays: audiences=%v scopes=%v", audiences, storedScopes)
 	}

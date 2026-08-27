@@ -21,16 +21,16 @@ const challengeColumns = `id, account_id, approved_at, approved_by_session_id, a
 func scanChallenge(row rowScanner) (*model.AuthChallenge, error) {
 	ch := &model.AuthChallenge{}
 	var (
-		accountID                    *string
-		audiences, scopes, blacklist []string
-		location                     []byte
-		approvedBySessionID          *uuid.UUID
+		accountID                             *string
+		audiencesRaw, scopesRaw, blacklistRaw []byte
+		location                              []byte
+		approvedBySessionID                   *uuid.UUID
 	)
 	err := row.Scan(
 		&ch.Id, &accountID, &ch.ApprovedAt, &approvedBySessionID,
-		&audiences, &blacklist, &ch.CreatedAt, &ch.DeclinedAt, &ch.DeletedAt,
+		&audiencesRaw, &blacklistRaw, &ch.CreatedAt, &ch.DeclinedAt, &ch.DeletedAt,
 		&ch.DeviceId, &ch.DeviceName, &ch.ExpiredAt, &ch.FailedAttempts, &ch.IpAddress,
-		&location, &ch.Nonce, &ch.Platform, &scopes, &ch.StepRemain, &ch.StepTotal,
+		&location, &ch.Nonce, &ch.Platform, &scopesRaw, &ch.StepRemain, &ch.StepTotal,
 		&ch.UpdatedAt, &ch.UserAgent,
 	)
 	if err != nil {
@@ -40,9 +40,9 @@ func scanChallenge(row rowScanner) (*model.AuthChallenge, error) {
 		return nil, err
 	}
 	ch.AccountId = accountIDOrSentinel(accountID)
-	ch.Audiences = audiences
-	ch.Scopes = scopes
-	ch.BlacklistFactors = blacklist
+	ch.Audiences = decodeJSONArray(audiencesRaw)
+	ch.Scopes = decodeJSONArray(scopesRaw)
+	ch.BlacklistFactors = decodeJSONArray(blacklistRaw)
 	ch.ApprovedBySessionId = uuidPtrStr(approvedBySessionID)
 	if len(location) > 0 && string(location) != "null" {
 		var gp model.GeoPoint
