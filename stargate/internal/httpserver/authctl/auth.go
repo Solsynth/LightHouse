@@ -784,8 +784,24 @@ func (h *handler) verifyPasskeyAssertion(ctx context.Context, cred *model.Passke
 	if err != nil || !found || storedChallenge == "" {
 		return false
 	}
-	challengeKey := "passkey:assertion:" + challengeID
+	if !verifyPasskeyAssertionSignature(cred, credentialID, clientDataJson, authenticatorData, signature, storedChallenge) {
+		return false
+	}
+	_ = h.d.Redis.Cache.Remove(ctx, "passkey:assertion:"+challengeID)
+	return true
+}
 
+// verifyPasskeyAssertionSignature checks the browser's assertion against the
+// stored challenge without touching Redis, mirroring webauthn §7.2:
+//
+//   - the credential id must match the registered credential;
+//   - the authenticatorData must carry the UserPresent flag (UP bit);
+//   - the signature must verify over authenticatorData[:37] ||
+//     SHA-256(clientDataJSON) — the digest, not the raw bytes — with the
+//     registered ES256 public key (DER, with a raw 64-byte r||s fallback);
+//   - clientDataJSON must be a webauthn.get ceremony echoing the stored
+//     challenge.
+func verifyPasskeyAssertionSignature(cred *model.PasskeyCredential, credentialID, clientDataJson, authenticatorData, signature, storedChallenge string) bool {
 	if cred.CredentialId != credentialID {
 		return false
 	}
@@ -801,6 +817,11 @@ func (h *handler) verifyPasskeyAssertion(ctx context.Context, cred *model.Passke
 	if err != nil {
 		return false
 	}
+	// The signed message is the SHA-256 digest of clientDataJSON — not the raw
+	// bytes — appended to the first 37 bytes of authenticatorData, matching
+	// webauthn Step 16 and go-webauthn's ParsedCredentialAssertionData.Verify.
+	// Signing the raw clientDataJSON instead made every assertion fail the
+	// signature check ("fail assertion").
 	clientDataHash := sha256.Sum256(clientDataBytes)
 	signedData := make([]byte, 0, 37+len(clientDataHash))
 	signedData = append(signedData, authData[:37]...)
@@ -815,8 +836,18 @@ func (h *handler) verifyPasskeyAssertion(ctx context.Context, cred *model.Passke
 		X:     new(big.Int).SetBytes(cred.PublicKeyX),
 		Y:     new(big.Int).SetBytes(cred.PublicKeyY),
 	}
+	// WebAuthn signatures are DER-encoded (ASN.1 SEQUENCE of r,s); try that
+	// first, then fall back to the raw 64-byte r||s layout used by some
+	// authenticators.
 	if !ecdsa.VerifyASN1(pub, signedData, sig) {
-		return false
+		if len(sig) != 64 {
+			return false
+		}
+		r := new(big.Int).SetBytes(sig[:32])
+		s := new(big.Int).SetBytes(sig[32:])
+		if !ecdsa.Verify(pub, signedData, r, s) {
+			return false
+		}
 	}
 
 	var clientData struct {
@@ -832,7 +863,6 @@ func (h *handler) verifyPasskeyAssertion(ctx context.Context, cred *model.Passke
 	if clientData.Challenge != storedChallenge {
 		return false
 	}
-	_ = h.d.Redis.Cache.Remove(ctx, challengeKey)
 	return true
 }
 
