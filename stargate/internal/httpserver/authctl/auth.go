@@ -817,15 +817,20 @@ func verifyPasskeyAssertionSignature(cred *model.PasskeyCredential, credentialID
 	if err != nil {
 		return false
 	}
-	// The signed message is the SHA-256 digest of clientDataJSON — not the raw
-	// bytes — appended to the first 37 bytes of authenticatorData, matching
-	// webauthn Step 16 and go-webauthn's ParsedCredentialAssertionData.Verify.
-	// Signing the raw clientDataJSON instead made every assertion fail the
-	// signature check ("fail assertion").
+	// WebAuthn §7.2 Step 16: the signature covers the 32-byte digest
+	//   SHA-256(authenticatorData || SHA-256(clientDataJSON))
+	// over the FULL authenticator data — not a 37-byte prefix, and not the raw
+	// concatenation (ecdsa.VerifyASN1 takes a digest, not a message). This
+	// mirrors go-webauthn's webauthncose.EC2PublicKeyData.Verify, which hashes
+	// authData || SHA-256(clientDataJSON) before ecdsa.Verify. The earlier
+	// code passed the unhashed concat as the digest, so every real assertion
+	// failed ("Invalid passkey assertion") while the self-consistent unit
+	// test passed.
 	clientDataHash := sha256.Sum256(clientDataBytes)
-	signedData := make([]byte, 0, 37+len(clientDataHash))
-	signedData = append(signedData, authData[:37]...)
+	signedData := make([]byte, 0, len(authData)+len(clientDataHash))
+	signedData = append(signedData, authData...)
 	signedData = append(signedData, clientDataHash[:]...)
+	digest := sha256.Sum256(signedData)
 
 	sig, err := decodeBase64OrBase64Url(signature)
 	if err != nil {
@@ -839,13 +844,13 @@ func verifyPasskeyAssertionSignature(cred *model.PasskeyCredential, credentialID
 	// WebAuthn signatures are DER-encoded (ASN.1 SEQUENCE of r,s); try that
 	// first, then fall back to the raw 64-byte r||s layout used by some
 	// authenticators.
-	if !ecdsa.VerifyASN1(pub, signedData, sig) {
+	if !ecdsa.VerifyASN1(pub, digest[:], sig) {
 		if len(sig) != 64 {
 			return false
 		}
 		r := new(big.Int).SetBytes(sig[:32])
 		s := new(big.Int).SetBytes(sig[32:])
-		if !ecdsa.Verify(pub, signedData, r, s) {
+		if !ecdsa.Verify(pub, digest[:], r, s) {
 			return false
 		}
 	}

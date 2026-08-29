@@ -12,20 +12,22 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
 
-// signAssertion signs the exact message a browser signs for
-// navigator.credentials.get: the first 37 bytes of authenticatorData
-// concatenated with SHA-256(clientDataJSON). It returns the assertion fields
-// in the base64url form the client submits to the complete endpoints.
+// navigator.credentials.get: the 32-byte digest
+//   SHA-256(authenticatorData || SHA-256(clientDataJSON))
+// over the FULL authenticator data (WebAuthn §7.2 Step 16 — the same
+// construction go-webauthn verifies). It returns the assertion fields in the
+// base64url form the client submits to the complete endpoints.
 func signAssertion(t *testing.T, priv *ecdsa.PrivateKey, authData []byte, clientDataJSON string, rawSignature bool) (clientDataJson, authenticatorData, signature string) {
 	t.Helper()
-	hash := sha256.Sum256([]byte(clientDataJSON))
-	signed := make([]byte, 0, 37+len(hash))
-	signed = append(signed, authData...)
-	signed = append(signed, hash[:]...)
+	innerHash := sha256.Sum256([]byte(clientDataJSON))
+	toSign := make([]byte, 0, len(authData)+len(innerHash))
+	toSign = append(toSign, authData...)
+	toSign = append(toSign, innerHash[:]...)
+	digest := sha256.Sum256(toSign)
 	var sig []byte
 	if rawSignature {
 		// Raw IEEE P1363 r||s layout (64 bytes), used by some authenticators.
-		r, s, err := ecdsa.Sign(rand.Reader, priv, signed)
+		r, s, err := ecdsa.Sign(rand.Reader, priv, digest[:])
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -34,7 +36,7 @@ func signAssertion(t *testing.T, priv *ecdsa.PrivateKey, authData []byte, client
 		s.FillBytes(sig[32:])
 	} else {
 		var err error
-		sig, err = ecdsa.SignASN1(rand.Reader, priv, signed)
+		sig, err = ecdsa.SignASN1(rand.Reader, priv, digest[:])
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -46,10 +48,10 @@ func signAssertion(t *testing.T, priv *ecdsa.PrivateKey, authData []byte, client
 
 // TestVerifyPasskeyAssertionSignature pins the assertion verification
 // contract that was broken in prod ("fail assertion"): the signature is
-// checked over authenticatorData[:37] || SHA-256(clientDataJSON) — the
-// digest, not the raw clientDataJSON — the clientDataJSON must be a
-// webauthn.get ceremony echoing the stored challenge, and both DER and raw
-// r||s signature layouts are accepted.
+// checked over the 32-byte digest SHA-256(authenticatorData ||
+// SHA-256(clientDataJSON)) — the full authenticator data, hashed — the
+// clientDataJSON must be a webauthn.get ceremony echoing the stored
+// challenge, and both DER and raw r||s signature layouts are accepted.
 func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -150,6 +152,20 @@ func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 		cJSON, aData, sig := signAssertion(t, priv, authData, string(badType), false)
 		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge) {
 			t.Fatal("verifyPasskeyAssertionSignature accepted a non-assertion ceremony")
+		}
+	})
+
+	t.Run("accepts authenticator data with extensions (ED flag)", func(t *testing.T) {
+		// Authenticators that emit extension data (e.g. the platform
+		// authenticator's uv/prf handling) return authData longer than 37
+		// bytes; the signature covers the FULL data, so truncation to [:37]
+		// must not happen.
+		extAuthData := make([]byte, 37+8)
+		extAuthData[32] = 0x01 | 0x80 // UP | ED
+		copy(extAuthData[37:], []byte{1, 2, 3, 4, 5, 6, 7, 8})
+		cJSON, aData, sig := signAssertion(t, priv, extAuthData, string(clientDataJSON), false)
+		if !verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge) {
+			t.Fatal("verifyPasskeyAssertionSignature rejected a valid assertion with extension data")
 		}
 	})
 }

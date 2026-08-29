@@ -116,7 +116,8 @@ func TestPasskeyCredentialJSONAssertionRoundTrip(t *testing.T) {
 		t.Fatalf("stored credential unparseable: %v", err)
 	}
 
-	// The browser signs rpIdHash(32) || flags || counter || sha256(clientDataJSON).
+	// The browser signs the 32-byte digest
+	// SHA-256(authData || SHA-256(clientDataJSON)) (WebAuthn §7.2 Step 16).
 	authData := make([]byte, 37)
 	authData[32] = 0x01 // UserPresent
 	clientDataJSON := []byte(`{"type":"webauthn.get","challenge":"` +
@@ -125,7 +126,8 @@ func TestPasskeyCredentialJSONAssertionRoundTrip(t *testing.T) {
 	signedData := make([]byte, 0, 37+32)
 	signedData = append(signedData, authData...)
 	signedData = append(signedData, clientDataHash[:]...)
-	sig, err := ecdsa.SignASN1(rand.Reader, priv, signedData)
+	digest := sha256.Sum256(signedData)
+	sig, err := ecdsa.SignASN1(rand.Reader, priv, digest[:])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +135,7 @@ func TestPasskeyCredentialJSONAssertionRoundTrip(t *testing.T) {
 	pub := &ecdsa.PublicKey{Curve: elliptic.P256(),
 		X: new(big.Int).SetBytes(parsed.PublicKeyX),
 		Y: new(big.Int).SetBytes(parsed.PublicKeyY)}
-	if !ecdsa.VerifyASN1(pub, signedData, sig) {
+	if !ecdsa.VerifyASN1(pub, digest[:], sig) {
 		t.Fatal("stored passkey public key failed to verify the ES256 assertion")
 	}
 }
