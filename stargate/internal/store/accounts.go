@@ -17,13 +17,11 @@ func (s *Store) GetAccountWithProfileByNameFold(ctx context.Context, name string
 		return nil, mapNotFound(err)
 	}
 	account := accountFromEntity(&entity)
-	var profile ProfileEntity
-	result := s.DB.WithContext(ctx).Where("account_id = ?", entity.ID).First(&profile)
-	if result.Error == nil {
-		account.Profile = profileFromEntity(&profile)
-	} else if !isNotFound(result.Error) {
-		return nil, result.Error
+	profile, err := s.loadProfileForAccount(ctx, entity.ID)
+	if err != nil {
+		return nil, err
 	}
+	account.Profile = profile
 	return account, nil
 }
 

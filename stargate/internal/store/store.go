@@ -5,7 +5,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -40,55 +39,6 @@ func scanAccount(row rowScanner) (*model.Account, error) {
 		return nil, err
 	}
 	account.AutomatedId = uuidPtrStr(automatedID)
-	return account, nil
-}
-
-func scanAccountWithProfile(row rowScanner) (*model.Account, error) {
-	account := &model.Account{}
-	profile := &model.Profile{}
-	var automatedID *uuid.UUID
-	var profileID, profileAccountID *string
-	var firstName, middleName, lastName, bio, gender, pronouns, timeZone, location *string
-	var birthday, lastSeenAt *model.Time
-	var experience *int
-	var socialCredits *float64
-	var links, usernameColor, verification, activeBadge, picture, background []byte
-	var profileCreated, profileUpdated, profileDeleted *model.Time
-	if err := row.Scan(&account.Id, &account.Name, &account.Nick, &account.Language, &account.Region,
-		&account.ActivatedAt, &account.IsSuperuser, &automatedID, &account.CreatedAt, &account.UpdatedAt, &account.DeletedAt,
-		&profileID, &firstName, &middleName, &lastName, &bio, &gender, &pronouns, &timeZone, &location,
-		&links, &usernameColor, &birthday, &lastSeenAt, &verification, &activeBadge, &experience, &socialCredits,
-		&picture, &background, &profileAccountID, &profileCreated, &profileUpdated, &profileDeleted); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	account.AutomatedId = uuidPtrStr(automatedID)
-	if profileID != nil {
-		profile.Id, profile.AccountId = *profileID, *profileID
-		if profileAccountID != nil {
-			profile.AccountId = *profileAccountID
-		}
-		profile.FirstName, profile.MiddleName, profile.LastName = firstName, middleName, lastName
-		profile.Bio, profile.Gender, profile.Pronouns, profile.TimeZone, profile.Location = bio, gender, pronouns, timeZone, location
-		profile.Birthday, profile.LastSeenAt = birthday, lastSeenAt
-		if experience != nil {
-			profile.Experience = *experience
-		}
-		if socialCredits != nil {
-			profile.SocialCredits = *socialCredits
-		}
-		profile.CreatedAt, profile.UpdatedAt, profile.DeletedAt = profileCreated, profileUpdated, profileDeleted
-		_ = json.Unmarshal(links, &profile.Links)
-		_ = json.Unmarshal(usernameColor, &profile.UsernameColor)
-		_ = json.Unmarshal(verification, &profile.Verification)
-		_ = decodeActiveBadge(profile, activeBadge)
-		_ = json.Unmarshal(picture, &profile.Picture)
-		_ = json.Unmarshal(background, &profile.Background)
-		profile.ComputeLeveling()
-		account.Profile = profile
-	}
 	return account, nil
 }
 
@@ -186,31 +136,6 @@ func accountFromEntity(entity *AccountEntity) *model.Account {
 	}
 }
 
-func profileFromEntity(entity *ProfileEntity) *model.Profile {
-	if entity == nil {
-		return nil
-	}
-	profile := &model.Profile{
-		Id: entity.ID.String(), FirstName: entity.FirstName, MiddleName: entity.MiddleName,
-		LastName: entity.LastName, Bio: entity.Bio, Gender: entity.Gender,
-		Pronouns: entity.Pronouns, TimeZone: entity.TimeZone, Location: entity.Location,
-		Birthday: timePtr(entity.Birthday), LastSeenAt: timePtr(entity.LastSeenAt),
-		Experience: entity.Experience, SocialCredits: entity.SocialCredits,
-		AccountId: entity.AccountID.String(), CreatedAt: timePtr(&entity.CreatedAt),
-		UpdatedAt: timePtr(&entity.UpdatedAt), DeletedAt: deletedTime(entity.DeletedAt),
-	}
-	_ = decodeJSON(entity.Links, &profile.Links)
-	_ = decodeJSON(entity.UsernameColor, &profile.UsernameColor)
-	_ = decodeJSON(entity.Verification, &profile.Verification)
-	if entity.ActiveBadge != nil {
-		_ = decodeActiveBadge(profile, []byte(*entity.ActiveBadge))
-	}
-	_ = decodeJSON(entity.Picture, &profile.Picture)
-	_ = decodeJSON(entity.Background, &profile.Background)
-	profile.ComputeLeveling()
-	return profile
-}
-
 func sessionFromEntity(entity *AuthSessionEntity) *model.AuthSession {
 	if entity == nil {
 		return nil
@@ -295,13 +220,11 @@ func (s *Store) GetAccountWithProfile(ctx context.Context, id uuid.UUID) (*model
 	if err != nil {
 		return nil, err
 	}
-	var profile ProfileEntity
-	result := s.DB.WithContext(ctx).Where("account_id = ?", id).First(&profile)
-	if result.Error == nil {
-		account.Profile = profileFromEntity(&profile)
-	} else if !isNotFound(result.Error) {
-		return nil, result.Error
+	profile, err := s.loadProfileForAccount(ctx, id)
+	if err != nil {
+		return nil, err
 	}
+	account.Profile = profile
 	return account, nil
 }
 
@@ -310,13 +233,15 @@ func (s *Store) GetAccountWithProfileByName(ctx context.Context, name string) (*
 	if err != nil {
 		return nil, err
 	}
-	var profile ProfileEntity
-	result := s.DB.WithContext(ctx).Where("account_id = ?", account.Id).First(&profile)
-	if result.Error == nil {
-		account.Profile = profileFromEntity(&profile)
-	} else if !isNotFound(result.Error) {
-		return nil, result.Error
+	accountID, err := uuid.Parse(account.Id)
+	if err != nil {
+		return nil, err
 	}
+	profile, err := s.loadProfileForAccount(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	account.Profile = profile
 	return account, nil
 }
 

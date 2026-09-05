@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,6 +20,43 @@ func (s *Store) GetProfileByAccount(ctx context.Context, accountID uuid.UUID) (*
 	row := s.queryRow(ctx, `SELECT `+profileColumns+` FROM account_profiles p
 		WHERE p.account_id = $1 AND p.deleted_at IS NULL`, accountID)
 	return scanProfile(row)
+}
+
+// isBareProfile reports whether a profile carries no user-authored data at all
+// (no first/last name, no bio, no picture). Such rows are what migrated
+// accounts that never edited their profile end up with — and what the old
+// Passport created on demand. The Solian client refuses to cache/serve a
+// profile it deems bare (it treats the empty shell as a server-side
+// fallback), so every read path that surfaces a profile to a client must
+// ensure bare rows are healed before serialization.
+func isBareProfile(p *model.Profile) bool {
+	if p == nil {
+		return true
+	}
+	nonBlank := func(s *string) bool { return s != nil && strings.TrimSpace(*s) != "" }
+	return !nonBlank(p.FirstName) &&
+		!nonBlank(p.LastName) &&
+		!nonBlank(p.Bio) &&
+		p.Picture == nil
+}
+
+// loadProfileForAccount loads an account's profile, healing bare (data-less)
+// shells so no read path surfaces an empty profile to a client (the Solian
+// client refuses to cache/serve a profile with no name/bio/picture). It
+// returns nil when the account has no profile row — callers create on demand
+// via GetOrCreateAccountProfile — preserving the existing read contract.
+func (s *Store) loadProfileForAccount(ctx context.Context, accountID uuid.UUID) (*model.Profile, error) {
+	profile, err := s.GetProfileByAccount(ctx, accountID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if isBareProfile(profile) {
+		return s.GetOrCreateAccountProfile(ctx, accountID)
+	}
+	return profile, nil
 }
 
 // GetOrCreateAccountProfile loads the account's profile, creating an empty
@@ -109,7 +147,8 @@ func (s *Store) HealBareProfile(ctx context.Context, accountID uuid.UUID) error 
 }
 
 // GetProfilesByAccountIDs loads the 1:1 profile rows for the given accounts
-// (missing accounts are absent from the map).
+// (missing accounts are absent from the map). Bare rows are healed
+// (backfilled with the account name) so no profile shell is surfaced.
 func (s *Store) GetProfilesByAccountIDs(ctx context.Context, ids []uuid.UUID) (map[string]*model.Profile, error) {
 	profiles := map[string]*model.Profile{}
 	if len(ids) == 0 {
@@ -125,6 +164,13 @@ func (s *Store) GetProfilesByAccountIDs(ctx context.Context, ids []uuid.UUID) (m
 		profile, err := scanProfile(rows)
 		if err != nil {
 			return nil, err
+		}
+		if isBareProfile(profile) {
+			healed, err := s.GetOrCreateAccountProfile(ctx, mustParseUUID(profile.AccountId))
+			if err != nil {
+				return nil, err
+			}
+			profile = healed
 		}
 		profiles[profile.AccountId] = profile
 	}
