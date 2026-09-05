@@ -111,6 +111,11 @@ type AuthChallenge struct {
 	CreatedAt           *Time          `json:"created_at,omitempty"`
 	UpdatedAt           *Time          `json:"updated_at,omitempty"`
 	DeletedAt           *Time          `json:"deleted_at,omitempty"`
+	// PromptRequestedAt is a persisted-but-private marker recording when an
+	// in-app approval prompt was last published for this challenge. It is not
+	// part of the public wire shape and replaces the "code already sent"
+	// Redis guard.
+	PromptRequestedAt *Time `json:"-"`
 }
 
 // MarshalJSON normalizes nil list fields to [] so the Dart SDK's strict

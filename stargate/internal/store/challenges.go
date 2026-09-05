@@ -16,7 +16,7 @@ import (
 
 const challengeColumns = `id, account_id, approved_at, approved_by_session_id, audiences, blacklist_factors,
 	created_at, declined_at, deleted_at, device_id, device_name, expired_at, failed_attempts, ip_address,
-	location, nonce, platform, scopes, step_remain, step_total, updated_at, user_agent`
+	location, nonce, platform, scopes, step_remain, step_total, updated_at, user_agent, prompt_requested_at`
 
 func scanChallenge(row rowScanner) (*model.AuthChallenge, error) {
 	ch := &model.AuthChallenge{}
@@ -31,7 +31,7 @@ func scanChallenge(row rowScanner) (*model.AuthChallenge, error) {
 		&audiencesRaw, &blacklistRaw, &ch.CreatedAt, &ch.DeclinedAt, &ch.DeletedAt,
 		&ch.DeviceId, &ch.DeviceName, &ch.ExpiredAt, &ch.FailedAttempts, &ch.IpAddress,
 		&location, &ch.Nonce, &ch.Platform, &scopesRaw, &ch.StepRemain, &ch.StepTotal,
-		&ch.UpdatedAt, &ch.UserAgent,
+		&ch.UpdatedAt, &ch.UserAgent, &ch.PromptRequestedAt,
 	)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -87,11 +87,13 @@ func (s *Store) CreateAuthChallenge(ctx context.Context, ch *model.AuthChallenge
 	_, err := s.exec(ctx, `INSERT INTO auth_challenges
 		(id, account_id, approved_at, approved_by_session_id, audiences, blacklist_factors, created_at,
 		 declined_at, deleted_at, device_id, device_name, expired_at, failed_attempts, ip_address,
-		 location, nonce, platform, scopes, step_remain, step_total, updated_at, user_agent)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+		 location, nonce, platform, scopes, step_remain, step_total, updated_at, user_agent,
+		 prompt_requested_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
 		ch.Id, nullableAccountID(ch.AccountId), ch.ApprovedAt, ch.ApprovedBySessionId, audiences, blacklist, ch.CreatedAt,
 		ch.DeclinedAt, ch.DeletedAt, ch.DeviceId, ch.DeviceName, ch.ExpiredAt, ch.FailedAttempts, ch.IpAddress,
-		locationJSON, ch.Nonce, int(ch.Platform), scopes, ch.StepRemain, ch.StepTotal, ch.UpdatedAt, ch.UserAgent)
+		locationJSON, ch.Nonce, int(ch.Platform), scopes, ch.StepRemain, ch.StepTotal, ch.UpdatedAt, ch.UserAgent,
+		ch.PromptRequestedAt)
 	return err
 }
 
@@ -112,10 +114,12 @@ func jsonbOrEmpty[T any](v []T) []byte {
 func (s *Store) UpdateAuthChallenge(ctx context.Context, ch *model.AuthChallenge) error {
 	_, err := s.exec(ctx, `UPDATE auth_challenges SET
 		account_id = $2, approved_at = $3, approved_by_session_id = $4, blacklist_factors = $5,
-		declined_at = $6, expired_at = $7, failed_attempts = $8, step_remain = $9, updated_at = $10
+		declined_at = $6, expired_at = $7, failed_attempts = $8, step_remain = $9, step_total = $10,
+		updated_at = $11, prompt_requested_at = $12
 		WHERE id = $1`,
 		ch.Id, nullableAccountID(ch.AccountId), ch.ApprovedAt, ch.ApprovedBySessionId, ch.BlacklistFactors,
-		ch.DeclinedAt, ch.ExpiredAt, ch.FailedAttempts, ch.StepRemain, ch.UpdatedAt)
+		ch.DeclinedAt, ch.ExpiredAt, ch.FailedAttempts, ch.StepRemain, ch.StepTotal, ch.UpdatedAt,
+		ch.PromptRequestedAt)
 	return err
 }
 

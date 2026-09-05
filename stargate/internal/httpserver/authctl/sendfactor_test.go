@@ -137,8 +137,9 @@ func TestSendFactorCodeEmailCodeDeliversViaRing(t *testing.T) {
 		if err != nil {
 			t.Fatalf("load factor: %v", err)
 		}
+		challenge := &model.AuthChallenge{Id: uuid.NewString(), AccountId: accountID}
 
-		if err := h.sendFactorCode(ctx, account, factor); err != nil {
+		if err := h.sendFactorCode(ctx, account, factor, challenge); err != nil {
 			t.Fatalf("sendFactorCode: %v", err)
 		}
 		if len(ring.emails) != 1 {
@@ -168,8 +169,9 @@ func TestSendFactorCodeEmailCodeDeliversViaRing(t *testing.T) {
 		accountID, factorID := seedFactorAccount(t, ctx, pool, model.AuthFactorTypeEmailCode, true)
 		account, _ := h.d.Store.GetAccountByID(ctx, uuid.MustParse(accountID))
 		factor, _ := h.d.Store.GetAuthFactorByID(ctx, accountID, uuid.MustParse(factorID))
+		challenge := &model.AuthChallenge{Id: uuid.NewString(), AccountId: accountID}
 
-		if err := h.sendFactorCode(ctx, account, factor); err == nil {
+		if err := h.sendFactorCode(ctx, account, factor, challenge); err == nil {
 			t.Fatal("sendFactorCode succeeded, want error on ring failure")
 		}
 		var cached string
@@ -184,8 +186,9 @@ func TestSendFactorCodeEmailCodeDeliversViaRing(t *testing.T) {
 		accountID, factorID := seedFactorAccount(t, ctx, pool, model.AuthFactorTypeEmailCode, false)
 		account, _ := h.d.Store.GetAccountByID(ctx, uuid.MustParse(accountID))
 		factor, _ := h.d.Store.GetAuthFactorByID(ctx, accountID, uuid.MustParse(factorID))
+		challenge := &model.AuthChallenge{Id: uuid.NewString(), AccountId: accountID}
 
-		if err := h.sendFactorCode(ctx, account, factor); err != nil {
+		if err := h.sendFactorCode(ctx, account, factor, challenge); err != nil {
 			t.Fatalf("missing contact should not fail the request (mirrors C#): %v", err)
 		}
 		if len(ring.emails) != 0 {
@@ -198,40 +201,72 @@ func TestSendFactorCodeEmailCodeDeliversViaRing(t *testing.T) {
 	})
 }
 
-// TestSendFactorCodeInAppCodeSurfacesPushFailure pins the InAppCode contract:
-// a failed Ring push returns an error and stores no code, so the user is not
-// locked out of a code that never arrived.
-func TestSendFactorCodeInAppCodeSurfacesPushFailure(t *testing.T) {
+// TestSendFactorCodeInAppCodePublishesPrompt pins the InAppCode contract: the
+// factor no longer generates/stores/steps a code. Instead it records a
+// prompt_requested_at marker on the challenge and publishes the pending
+// challenge to the trusted device (Ring auth.login_attempt + WS
+// auth.challenge.pending). No authfactor:...:code Redis key is written. A
+// second request while a prompt is outstanding is rejected without a new push.
+func TestSendFactorCodeInAppCodePublishesPrompt(t *testing.T) {
 	pool, err := pgxpool.New(context.Background(), smokeDSN)
 	if err != nil {
 		t.Skipf("postgres unavailable: %v", err)
 	}
 	defer pool.Close()
 	ctx := context.Background()
+	if err := pool.Ping(ctx); err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
 
-	ring := &fakeRing{failPush: errors.New("ring down")}
+	ring := &fakeRing{}
 	h, rc := newFactorHandler(t, ctx, pool, ring)
 	accountID, factorID := seedFactorAccount(t, ctx, pool, model.AuthFactorTypeInAppCode, false)
 	account, _ := h.d.Store.GetAccountByID(ctx, uuid.MustParse(accountID))
 	factor, _ := h.d.Store.GetAuthFactorByID(ctx, accountID, uuid.MustParse(factorID))
 
-	if err := h.sendFactorCode(ctx, account, factor); err == nil {
-		t.Fatal("sendFactorCode succeeded, want error on push failure")
+	now := time.Now().UTC()
+	challenge := &model.AuthChallenge{
+		Id:               uuid.NewString(),
+		AccountId:        accountID,
+		StepTotal:        2,
+		StepRemain:       2,
+		BlacklistFactors: []string{},
+		Audiences:        []string{},
+		Scopes:           []string{},
+		ExpiredAt:        model.NewTime(now.Add(10 * time.Minute)),
+		CreatedAt:        model.NewTime(now),
+		UpdatedAt:        model.NewTime(now),
 	}
-	var cached string
-	if found, _ := rc.Cache.Get(ctx, authFactorCodePrefix+factorID+":code", &cached); found {
-		t.Fatalf("code stored despite failed push: %q", cached)
+	if err := h.d.Store.CreateAuthChallenge(ctx, challenge); err != nil {
+		t.Fatalf("create challenge: %v", err)
 	}
 
-	// Successful push stores the code and delivers it.
-	ring.failPush = nil
-	if err := h.sendFactorCode(ctx, account, factor); err != nil {
-		t.Fatalf("sendFactorCode after ring recovered: %v", err)
+	if err := h.sendFactorCode(ctx, account, factor, challenge); err != nil {
+		t.Fatalf("sendFactorCode: %v", err)
 	}
-	if len(ring.pushes) != 1 || ring.pushes[0].Topic != "auth.verification" {
-		t.Fatalf("push not delivered: %+v", ring.pushes)
+	if len(ring.pushes) != 1 || ring.pushes[0].Topic != "auth.login_attempt" {
+		t.Fatalf("push not delivered as auth.login_attempt: %+v", ring.pushes)
 	}
-	if found, _ := rc.Cache.Get(ctx, authFactorCodePrefix+factorID+":code", &cached); !found {
-		t.Fatal("code not stored after successful push")
+	var cached string
+	if found, _ := rc.Cache.Get(ctx, authFactorCodePrefix+factor.Id+":code", &cached); found {
+		t.Fatalf("authfactor code key written for in-app prompt: %q", cached)
+	}
+	reloaded, err := h.d.Store.GetAuthChallenge(ctx, uuid.MustParse(challenge.Id))
+	if err != nil {
+		t.Fatalf("reload challenge: %v", err)
+	}
+	if reloaded.PromptRequestedAt == nil {
+		t.Fatal("prompt_requested_at not persisted after prompt published")
+	}
+
+	// A second request while a prompt is outstanding must be rejected without
+	// publishing another push.
+	if err := h.sendFactorCode(ctx, account, factor, challenge); err == nil {
+		t.Fatal("second sendFactorCode succeeded, want error while prompt pending")
+	} else if err.Error() != "An in-app login request is already pending." {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ring.pushes) != 1 {
+		t.Fatalf("pushes after duplicate request = %d, want 1", len(ring.pushes))
 	}
 }

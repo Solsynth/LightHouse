@@ -126,6 +126,32 @@ func Register(api *gin.RouterGroup, d Deps) {
 	api.GET("/auth/webauthn/config", h.webauthnConfig)
 }
 
+// completableAuthFactors returns the enabled factors that can satisfy a step
+// of the username-challenge flow. PinCode/RecoveryCode/QrLogin/NfcToken/
+// Passkey are excluded (identical to detectChallengeRisk's historical filter).
+func completableAuthFactors(factors []model.AuthFactor) []model.AuthFactor {
+	out := make([]model.AuthFactor, 0, len(factors))
+	for _, f := range factors {
+		ft := model.AuthFactorType(f.Type)
+		if f.EnabledAt != nil && ft != model.AuthFactorTypePinCode &&
+			ft != model.AuthFactorTypeRecoveryCode && ft != model.AuthFactorTypeQrLogin &&
+			ft != model.AuthFactorTypeNfcToken && ft != model.AuthFactorTypePasskey {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// allRequiredStepCount returns the number of completable auth factors for the
+// account, i.e. the maximum number of steps a challenge can be escalated to.
+func (h *handler) allRequiredStepCount(ctx context.Context, accountID string) (int, error) {
+	factors, err := h.d.Store.GetAuthFactors(ctx, uuid.MustParse(accountID))
+	if err != nil {
+		return 0, err
+	}
+	return len(completableAuthFactors(factors)), nil
+}
+
 // detectChallengeRisk ports AuthService.DetectChallengeRisk: it computes the
 // number of required authentication steps for a new challenge.
 //
@@ -143,15 +169,7 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 	if err != nil {
 		return 0, err
 	}
-	enabledFactors := make([]model.AuthFactor, 0, len(factors))
-	for _, f := range factors {
-		ft := model.AuthFactorType(f.Type)
-		if f.EnabledAt != nil && ft != model.AuthFactorTypePinCode &&
-			ft != model.AuthFactorTypeRecoveryCode && ft != model.AuthFactorTypeQrLogin &&
-			ft != model.AuthFactorTypeNfcToken && ft != model.AuthFactorTypePasskey {
-			enabledFactors = append(enabledFactors, f)
-		}
-	}
+	enabledFactors := completableAuthFactors(factors)
 	maxSteps := len(enabledFactors)
 	if maxSteps == 0 {
 		return 0, errors.New("Account has no authentication factors configured.")
@@ -531,7 +549,7 @@ func (h *handler) requestFactorCode(c *gin.Context) {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_ACCOUNT_NOT_FOUND", "Account was not found.", http.StatusNotFound))
 		return
 	}
-	if err := h.sendFactorCode(ctx, account, factor); err != nil {
+	if err := h.sendFactorCode(ctx, account, factor, challenge); err != nil {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_SEND_FAILED", err.Error()))
 		return
 	}
@@ -590,8 +608,6 @@ func (h *handler) doChallenge(c *gin.Context) {
 		return
 	}
 
-	isFirstFactor := len(challenge.BlacklistFactors) == 0
-
 	okVerify, _ := h.verifyFactorCode(ctx, factor, req.Password)
 	if !okVerify {
 		challenge.FailedAttempts++
@@ -611,9 +627,6 @@ func (h *handler) doChallenge(c *gin.Context) {
 		h.logError("update challenge", err)
 	}
 
-	if isFirstFactor && challenge.StepRemain > 0 {
-		h.publishChallengePending(ctx, challenge)
-	}
 	if challenge.StepRemain == 0 {
 		h.pushLoginNotification(ctx, challenge, true)
 	}
@@ -628,7 +641,7 @@ const authFactorCodePrefix = "authfactor:"
 
 func (h *handler) verifyFactorCode(ctx context.Context, factor *model.AuthFactor, code string) (bool, error) {
 	switch model.AuthFactorType(factor.Type) {
-	case model.AuthFactorTypeEmailCode, model.AuthFactorTypeInAppCode:
+	case model.AuthFactorTypeEmailCode:
 		if h.d.Redis == nil || !h.d.Redis.Available() {
 			return false, nil
 		}
@@ -644,28 +657,27 @@ func (h *handler) verifyFactorCode(ctx context.Context, factor *model.AuthFactor
 	default:
 		// Passkey flows use their own endpoints; NFC tokens verify via the
 		// Passport gRPC service which is not ported (degrades to failure,
-		// matching the C# behavior when the RPC fails).
+		// matching the C# behavior when the RPC fails). In-app code factors
+		// never submit a code here — they are handled as an approval prompt.
 		return false, nil
 	}
 }
 
-func (h *handler) sendFactorCode(ctx context.Context, account *model.Account, factor *model.AuthFactor) error {
+func (h *handler) sendFactorCode(ctx context.Context, account *model.Account, factor *model.AuthFactor, challenge *model.AuthChallenge) error {
 	code := fmt.Sprintf("%06d", mathrand.IntN(900000)+100000)
 	switch model.AuthFactorType(factor.Type) {
 	case model.AuthFactorTypeInAppCode:
-		if h.d.Redis == nil || !h.d.Redis.Available() {
-			return errors.New("in-app factor code service is unavailable")
+		if challenge.PromptRequestedAt != nil {
+			return errors.New("An in-app login request is already pending.")
 		}
-		var cached string
-		if found, _ := h.d.Redis.Cache.Get(ctx, authFactorCodePrefix+factor.Id+":code", &cached); found && cached != "" {
-			return errors.New("A factor code has been sent and in active duration.")
-		}
-		if err := h.pushNotificationErr(ctx, account.Id, "auth.verification",
-			localization.Localize(account.Language, "authCodeTitle", nil),
-			localization.Localize(account.Language, "authCodeBody", map[string]string{"code": code}), false); err != nil {
+		now := time.Now().UTC()
+		challenge.PromptRequestedAt = model.NewTime(now)
+		challenge.UpdatedAt = model.NewTime(now)
+		if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
 			return err
 		}
-		return h.d.Redis.Cache.Set(ctx, authFactorCodePrefix+factor.Id+":code", code, 5*time.Minute)
+		h.publishChallengePending(ctx, challenge) // WS auth.challenge.pending + Ring auth.login_attempt
+		return nil
 	case model.AuthFactorTypeEmailCode:
 		if h.d.Redis == nil || !h.d.Redis.Available() {
 			return errors.New("email factor code service is unavailable")
@@ -1169,6 +1181,30 @@ func (h *handler) completePasskeyLogin(c *gin.Context) {
 // Pending / approve / decline
 // ---------------------------------------------------------------------------
 
+// escalateChallenge handles a decline of an in-app approval prompt. It clears
+// the outstanding prompt marker and escalates the challenge to require every
+// enabled (completable) factor. For a single-factor account there is no higher
+// level, so the decline is terminal: DeclinedAt is set and the challenge dies.
+func (h *handler) escalateChallenge(ctx context.Context, challenge *model.AuthChallenge) error {
+	maxSteps, err := h.allRequiredStepCount(ctx, challenge.AccountId)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	challenge.PromptRequestedAt = nil
+	challenge.UpdatedAt = model.NewTime(now)
+	if maxSteps <= 1 {
+		// Single-factor account: cannot get harder than one factor → terminal decline.
+		challenge.DeclinedAt = model.NewTime(now)
+		return h.d.Store.UpdateAuthChallenge(ctx, challenge)
+	}
+	challenge.StepTotal = maxSteps
+	challenge.StepRemain = maxSteps
+	challenge.BlacklistFactors = []string{}
+	challenge.DeclinedAt = model.NewTime(now)
+	return h.d.Store.UpdateAuthChallenge(ctx, challenge)
+}
+
 func (h *handler) getPendingChallenges(c *gin.Context) {
 	user := middleware.CurrentUser(c.Request.Context())
 	if user == nil {
@@ -1244,6 +1280,7 @@ func (h *handler) approveChallenge(c *gin.Context) {
 	challenge.StepRemain = 0
 	challenge.ApprovedAt = model.NewTime(now)
 	challenge.ApprovedBySessionId = &session.Id
+	challenge.PromptRequestedAt = nil
 	challenge.UpdatedAt = model.NewTime(now)
 	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
 		h.logError("update challenge", err)
@@ -1312,10 +1349,8 @@ func (h *handler) declineChallenge(c *gin.Context) {
 		return
 	}
 
-	challenge.DeclinedAt = model.NewTime(now)
-	challenge.UpdatedAt = model.NewTime(now)
-	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
-		h.logError("update challenge", err)
+	if err := h.escalateChallenge(ctx, challenge); err != nil {
+		h.logError("escalate challenge", err)
 	}
 
 	h.publishWS(ctx, user.Id, "auth.challenge.declined", map[string]any{
