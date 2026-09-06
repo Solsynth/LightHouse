@@ -665,3 +665,74 @@ func itoa(n int) string {
 	}
 	return string(digits)
 }
+
+// --- Security mode ---
+
+// GetSecurityMode loads the per-account security mode.
+func (s *Store) GetSecurityMode(ctx context.Context, accountID string) (model.SecurityMode, error) {
+	var mode int
+	err := s.queryRow(ctx, `SELECT security_mode FROM accounts WHERE id = $1`, accountID).Scan(&mode)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return model.SecurityModeDefault, ErrNotFound
+		}
+		return model.SecurityModeDefault, err
+	}
+	return model.SecurityMode(mode), nil
+}
+
+// SetSecurityMode persists the per-account security mode.
+func (s *Store) SetSecurityMode(ctx context.Context, accountID string, mode model.SecurityMode) error {
+	tag, err := s.exec(ctx, `UPDATE accounts SET security_mode = $1, updated_at = now() WHERE id = $2`, int(mode), accountID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// GetClientPlatformsByIDs loads platform values for the given client IDs in a
+// single query, avoiding N+1 when annotating sessions/devices.
+func (s *Store) GetClientPlatformsByIDs(ctx context.Context, ids []uuid.UUID) (map[string]model.ClientPlatform, error) {
+	if len(ids) == 0 {
+		return map[string]model.ClientPlatform{}, nil
+	}
+	rows, err := s.query(ctx, `SELECT id, platform FROM auth_clients WHERE id = ANY($1)`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]model.ClientPlatform, len(ids))
+	for rows.Next() {
+		var id uuid.UUID
+		var platform model.ClientPlatform
+		if err := rows.Scan(&id, &platform); err != nil {
+			return nil, err
+		}
+		result[id.String()] = platform
+	}
+	return result, rows.Err()
+}
+
+// IsTrustedSession reports whether a session is trusted (native platform +
+// recent activity within the maxGap window). Returns false when the session
+// has no client or the client was deleted.
+func (s *Store) IsTrustedSession(ctx context.Context, session *model.AuthSession, maxGap time.Duration) (bool, error) {
+	if session.ClientId == nil {
+		return false, nil
+	}
+	clientID, err := uuid.Parse(*session.ClientId)
+	if err != nil {
+		return false, nil
+	}
+	client, err := s.GetClientByID(ctx, clientID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return false, nil // deleted device — not trusted
+		}
+		return false, err
+	}
+	return model.SessionTrusted(client.Platform, session.LastGrantedAt, time.Now().UTC(), maxGap), nil
+}

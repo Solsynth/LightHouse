@@ -107,6 +107,10 @@ func Register(api *gin.RouterGroup, d Deps) {
 	security.DELETE("contacts/:id/public", c.unsetPublicContact)
 	security.DELETE("contacts/:id", c.deleteContact)
 
+	// ── Security preferences ──
+	security.GET("security/preferences", c.getSecurityPreferences)
+	security.PATCH("security/preferences", c.updateSecurityPreferences)
+
 	// ── Authorized apps ──
 	security.GET("authorized-apps", c.getAuthorizedApps)
 	security.POST("authorized-apps/:id/scopes", c.authorizeAppScopes)
@@ -1087,6 +1091,89 @@ func (c *controller) deletePasskey(ctx *gin.Context) {
 }
 
 // ---------------------------------------------------------------------------
+// Security preferences
+// ---------------------------------------------------------------------------
+
+// GET /api/security/preferences
+func (c *controller) getSecurityPreferences(ctx *gin.Context) {
+	user := middleware.CurrentUser(ctx.Request.Context())
+	if user == nil {
+		ctx.JSON(http.StatusUnauthorized, unauthorized401())
+		return
+	}
+	mode, err := c.d.Store.GetSecurityMode(ctx.Request.Context(), user.Id)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to load security preferences.", http.StatusInternalServerError))
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"mode": mode.String()})
+}
+
+type securityPreferencesRequest struct {
+	Mode string `json:"mode"`
+}
+
+// PATCH /api/security/preferences
+func (c *controller) updateSecurityPreferences(ctx *gin.Context) {
+	user := middleware.CurrentUser(ctx.Request.Context())
+	if user == nil {
+		ctx.JSON(http.StatusUnauthorized, unauthorized401())
+		return
+	}
+	var req securityPreferencesRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
+		return
+	}
+	mode, ok := model.SecurityMode(0).Parse(req.Mode)
+	if !ok {
+		ctx.JSON(http.StatusBadRequest, errs.New("PADLOCK_SECURITY_MODE_INVALID",
+			"Invalid security mode. Valid values: default, lockdown, lockoff.", http.StatusBadRequest))
+		return
+	}
+	if err := c.d.Store.SetSecurityMode(ctx.Request.Context(), user.Id, mode); err != nil {
+		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to update security preferences.", http.StatusInternalServerError))
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"mode": mode.String()})
+}
+
+// ---------------------------------------------------------------------------
+// Session annotation (category, trusted, auto-expiry)
+// ---------------------------------------------------------------------------
+
+// annotateSessions enriches sessions with category/trusted wire fields and
+// hides auto-expiry for browser sessions. Platform is loaded in a single
+// batch query.
+func (c *controller) annotateSessions(ctx context.Context, sessions []model.AuthSession) {
+	clientIDs := make([]uuid.UUID, 0, len(sessions))
+	for _, s := range sessions {
+		if s.ClientId != nil {
+			if id, err := uuid.Parse(*s.ClientId); err == nil {
+				clientIDs = append(clientIDs, id)
+			}
+		}
+	}
+	platforms, err := c.d.Store.GetClientPlatformsByIDs(ctx, clientIDs)
+	if err != nil {
+		return // degrade: leave sessions unannotated
+	}
+	now := time.Now().UTC()
+	gap := c.d.Cfg.Security.TrustedSessionMaxGapDuration()
+	for i := range sessions {
+		var platform model.ClientPlatform
+		if sessions[i].ClientId != nil {
+			platform = platforms[*sessions[i].ClientId]
+		}
+		sessions[i].Category = model.SessionCategory(platform)
+		sessions[i].Trusted = model.SessionTrusted(platform, sessions[i].LastGrantedAt, now, gap)
+		if sessions[i].Category == "browser" {
+			sessions[i].ExpiredAt = nil
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Sessions
 // ---------------------------------------------------------------------------
 
@@ -1124,6 +1211,7 @@ func (c *controller) getSessions(ctx *gin.Context) {
 	for i := range sessions {
 		sessions[i].IsCurrent = sessions[i].Id == currentSession.Id
 	}
+	c.annotateSessions(reqCtx, sessions)
 	ctx.Header("X-Total", strconv.Itoa(total))
 	ctx.Header("X-Auth-Session", currentSession.Id)
 	ctx.JSON(http.StatusOK, sessions)
@@ -1161,6 +1249,7 @@ func (c *controller) getSessionChildren(ctx *gin.Context) {
 	for i := range children {
 		children[i].IsCurrent = children[i].Id == currentSession.Id
 	}
+	c.annotateSessions(reqCtx, children)
 	ctx.Header("X-Total", strconv.Itoa(total))
 	ctx.Header("X-Auth-Session", currentSession.Id)
 	ctx.JSON(http.StatusOK, children)
@@ -1239,6 +1328,8 @@ type deviceWithSessions struct {
 	DeviceLabel *string              `json:"device_label,omitempty"`
 	DeviceId    string               `json:"device_id"`
 	AccountId   string               `json:"account_id"`
+	Category    string               `json:"category,omitempty"`
+	Trusted     bool                 `json:"trusted,omitempty"`
 	Sessions    []model.AuthSession  `json:"sessions"`
 }
 
@@ -1273,6 +1364,8 @@ func (c *controller) getDevices(ctx *gin.Context) {
 		return
 	}
 	result := make([]deviceWithSessions, 0, len(devices))
+	now := time.Now().UTC()
+	gap := c.d.Cfg.Security.TrustedSessionMaxGapDuration()
 	for _, device := range devices {
 		item := deviceWithSessions{
 			Id:          device.Id,
@@ -1283,8 +1376,18 @@ func (c *controller) getDevices(ctx *gin.Context) {
 			AccountId:   device.AccountId,
 			Sessions:    []model.AuthSession{},
 		}
+		item.Category = model.SessionCategory(device.Platform)
 		if sessions, ok := sessionsByClient[device.Id]; ok {
+			// Annotate nested sessions and compute device-level trust
+			// from the most recent granted-at timestamp across sessions.
+			c.annotateSessions(reqCtx, sessions)
 			item.Sessions = sessions
+			for _, s := range sessions {
+				if model.SessionTrusted(device.Platform, s.LastGrantedAt, now, gap) {
+					item.Trusted = true
+					break
+				}
+			}
 		}
 		result = append(result, item)
 	}

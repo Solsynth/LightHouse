@@ -137,3 +137,20 @@ discord = { clientId = "", clientSecret = "" }
 github = { clientId = "", clientSecret = "" }
 afdian = { clientId = "", clientSecret = "" }
 twitter = { clientId = "", clientSecret = "" }
+
+# Security controls: fail2ban (IP-level blocking after repeated failures),
+# challenge risk escalation, and per-account security mode preferences.
+[security]
+# Number of failed challenge attempts from the same IP before it is blocked.
+fail2banMaxFails = 5
+# Time window for counting failures (fail2ban resets after this).
+fail2banWindow = "15m"
+# Duration an IP stays blocked once the limit is reached.
+fail2banBlockFor = "30m"
+# After this many failures within a single challenge, the challenge is
+# escalated to require all available factors (unless the account's mode
+# overrides it).
+challengeFailEscalateAfter = 2
+# Maximum time since last activity for a native-device session to be
+# considered "trusted" (only trusted sessions may approve/decline logins).
+trustedSessionMaxGap = "720h"

@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"src.solsynth.dev/sosys/stargate/internal/config"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
@@ -118,6 +119,78 @@ func TestEscalateChallenge(t *testing.T) {
 		}
 		if reloaded.StepRemain != 1 || reloaded.DeclinedAt == nil || reloaded.PromptRequestedAt != nil {
 			t.Fatalf("persisted challenge state wrong: %+v", reloaded)
+		}
+	})
+}
+
+// TestMaybeEscalateFailure verifies that failed attempts above the
+// configured threshold bump the challenge step count, while preserving
+// already-completed factors. Lockoff mode skips escalation.
+func TestMaybeEscalateFailure(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(), smokeDSN)
+	if err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	defer pool.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := pool.Ping(ctx); err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+
+	st := store.New(pool)
+	cfg := &config.Config{}
+	cfg.Security.ChallengeFailEscalateAfter = 2
+	h := &handler{d: Deps{Store: st, Cfg: cfg}}
+
+	t.Run("escalates past threshold preserving completed factors", func(t *testing.T) {
+		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeInAppCode)
+		blacklisted := []string{uuid.NewString()}
+		ch := seedEscalateChallenge(t, ctx, pool, accountID, 1, 1, blacklisted, false)
+		ch.FailedAttempts = 3 // above threshold (2)
+
+		if err := h.maybeEscalateFailure(ctx, ch); err != nil {
+			t.Fatalf("maybeEscalateFailure: %v", err)
+		}
+		if ch.StepTotal != 2 {
+			t.Fatalf("StepTotal = %d, want 2", ch.StepTotal)
+		}
+		if ch.StepRemain != 1 { // 2 total - 1 blacklisted = 1
+			t.Fatalf("StepRemain = %d, want 1 (2 total - 1 blacklisted)", ch.StepRemain)
+		}
+		if len(ch.BlacklistFactors) != 1 {
+			t.Fatalf("BlacklistFactors = %v, want unchanged", ch.BlacklistFactors)
+		}
+	})
+
+	t.Run("does not escalate below threshold", func(t *testing.T) {
+		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeInAppCode)
+		ch := seedEscalateChallenge(t, ctx, pool, accountID, 1, 1, nil, false)
+		ch.FailedAttempts = 2 // at threshold, not above
+
+		if err := h.maybeEscalateFailure(ctx, ch); err != nil {
+			t.Fatalf("maybeEscalateFailure: %v", err)
+		}
+		if ch.StepTotal != 1 {
+			t.Fatalf("StepTotal = %d, want 1 (at threshold, not above)", ch.StepTotal)
+		}
+	})
+
+	t.Run("lockoff skips escalation", func(t *testing.T) {
+		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeInAppCode)
+		ch := seedEscalateChallenge(t, ctx, pool, accountID, 1, 1, nil, false)
+		ch.FailedAttempts = 5
+
+		if err := st.SetSecurityMode(ctx, accountID, model.SecurityModeLockoff); err != nil {
+			t.Fatalf("set security mode: %v", err)
+		}
+		t.Cleanup(func() { _, _ = pool.Exec(ctx, `UPDATE accounts SET security_mode = 0 WHERE id = $1`, accountID) })
+
+		if err := h.maybeEscalateFailure(ctx, ch); err != nil {
+			t.Fatalf("maybeEscalateFailure: %v", err)
+		}
+		if ch.StepTotal != 1 {
+			t.Fatalf("StepTotal = %d, want 1 (lockoff skips escalation)", ch.StepTotal)
 		}
 	})
 }

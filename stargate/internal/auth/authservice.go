@@ -18,6 +18,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/geo"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
+	"src.solsynth.dev/sosys/stargate/internal/risk"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
 
@@ -392,6 +393,7 @@ func (s *AuthService) CreateSessionAndIssueTokens(ctx context.Context, challenge
 			"challenge_id": challenge.Id,
 		}, deref(challenge.UserAgent), deref(challenge.IpAddress), &locText, &sid)
 	}
+	risk.ClearFailures(ctx, s.redis, deref(challenge.IpAddress))
 	return pair, nil
 }
 

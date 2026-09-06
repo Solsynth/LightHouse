@@ -36,6 +36,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
+	"src.solsynth.dev/sosys/stargate/internal/risk"
 	"src.solsynth.dev/sosys/stargate/internal/spell"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
@@ -164,7 +165,7 @@ func (h *handler) allRequiredStepCount(ctx context.Context, accountID string) (i
 // ported). Counting them produced challenges whose StepTotal exceeded the
 // factors the picker can complete, stranding the login after the last usable
 // factor with an empty picker.
-func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress, userAgent string) (int, error) {
+func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress, userAgent string, mode model.SecurityMode) (int, error) {
 	factors, err := h.d.Store.GetAuthFactors(ctx, uuid.MustParse(accountID))
 	if err != nil {
 		return 0, err
@@ -183,6 +184,14 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 		}
 	}
 	if allPassword {
+		return 1, nil
+	}
+
+	// Per-account security mode overrides.
+	switch mode {
+	case model.SecurityModeLockdown:
+		return maxSteps, nil
+	case model.SecurityModeLockoff:
 		return 1, nil
 	}
 
@@ -443,7 +452,18 @@ func (h *handler) createChallenge(c *gin.Context) {
 		return
 	}
 
-	steps, err := h.detectChallengeRisk(ctx, account.Id, ipAddress, userAgent)
+	if !risk.IPAllowed(ctx, h.d.Redis, h.d.Cfg, ipAddress) {
+		c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+			"Too many failed sign-in attempts. Try again later.", http.StatusTooManyRequests))
+		return
+	}
+
+	mode, err := h.d.Store.GetSecurityMode(ctx, account.Id)
+	if err != nil {
+		mode = model.SecurityModeDefault // degrade: never fail login on a preference-read error
+	}
+
+	steps, err := h.detectChallengeRisk(ctx, account.Id, ipAddress, userAgent, mode)
 	if err != nil {
 		c.JSON(http.StatusForbidden, errs.New("NO_AUTH_FACTORS", "Account has no authentication factors configured.", http.StatusForbidden))
 		return
@@ -613,6 +633,8 @@ func (h *handler) doChallenge(c *gin.Context) {
 		challenge.FailedAttempts++
 		challenge.UpdatedAt = model.NewTime(now)
 		_ = h.d.Store.UpdateAuthChallenge(ctx, challenge)
+		risk.RecordFailure(ctx, h.d.Redis, h.d.Cfg, derefStr(challenge.IpAddress))
+		_ = h.maybeEscalateFailure(ctx, challenge)
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_PASSWORD", "Invalid password."))
 		return
 	}
@@ -631,6 +653,38 @@ func (h *handler) doChallenge(c *gin.Context) {
 		h.pushLoginNotification(ctx, challenge, true)
 	}
 	c.JSON(http.StatusOK, challenge)
+}
+
+// maybeEscalateFailure checks whether a challenge's failure count warrants
+// increasing its step count. Already-completed factors (in BlacklistFactors)
+// are preserved.
+func (h *handler) maybeEscalateFailure(ctx context.Context, challenge *model.AuthChallenge) error {
+	mode, err := h.d.Store.GetSecurityMode(ctx, challenge.AccountId)
+	if err != nil {
+		mode = model.SecurityModeDefault
+	}
+	if mode == model.SecurityModeLockoff {
+		return nil // Lockoff skips escalation
+	}
+	if challenge.FailedAttempts <= h.d.Cfg.Security.ChallengeFailEscalateAfter {
+		return nil
+	}
+	maxSteps, err := h.allRequiredStepCount(ctx, challenge.AccountId)
+	if err != nil {
+		return err
+	}
+	if maxSteps <= challenge.StepTotal {
+		return nil // cannot get harder
+	}
+	now := time.Now().UTC()
+	challenge.StepTotal = maxSteps
+	remaining := maxSteps - len(challenge.BlacklistFactors)
+	if remaining < 1 {
+		remaining = 1
+	}
+	challenge.StepRemain = remaining
+	challenge.UpdatedAt = model.NewTime(now)
+	return h.d.Store.UpdateAuthChallenge(ctx, challenge)
 }
 
 // ---------------------------------------------------------------------------
@@ -1177,6 +1231,16 @@ func (h *handler) completePasskeyLogin(c *gin.Context) {
 	c.JSON(http.StatusOK, challenge)
 }
 
+// requireTrusted reports whether the session qualifies for challenge
+// approval/decline. Degrades to not-trusted on store errors (safe default).
+func (h *handler) requireTrusted(ctx context.Context, session *model.AuthSession) bool {
+	trusted, err := h.d.Store.IsTrustedSession(ctx, session, h.d.Cfg.Security.TrustedSessionMaxGapDuration())
+	if err != nil {
+		h.logError("trusted session check", err)
+	}
+	return trusted
+}
+
 // ---------------------------------------------------------------------------
 // Pending / approve / decline
 // ---------------------------------------------------------------------------
@@ -1238,6 +1302,11 @@ func (h *handler) approveChallenge(c *gin.Context) {
 	}
 	if session == nil {
 		c.JSON(http.StatusUnauthorized, errs.New("AUTH_SESSION_REQUIRED", "A valid session is required.", http.StatusUnauthorized))
+		return
+	}
+	if !h.requireTrusted(ctx, session) {
+		c.JSON(http.StatusForbidden, errs.New("AUTH_SESSION_NOT_TRUSTED",
+			"Only trusted sessions can approve or decline login attempts.", http.StatusForbidden))
 		return
 	}
 	var req sudoRequest
@@ -1310,6 +1379,11 @@ func (h *handler) declineChallenge(c *gin.Context) {
 	}
 	if session == nil {
 		c.JSON(http.StatusUnauthorized, errs.New("AUTH_SESSION_REQUIRED", "A valid session is required.", http.StatusUnauthorized))
+		return
+	}
+	if !h.requireTrusted(ctx, session) {
+		c.JSON(http.StatusForbidden, errs.New("AUTH_SESSION_NOT_TRUSTED",
+			"Only trusted sessions can approve or decline login attempts.", http.StatusForbidden))
 		return
 	}
 	var req sudoRequest

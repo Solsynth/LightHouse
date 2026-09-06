@@ -582,6 +582,17 @@ func (s *service) handleDeviceCodeApprove(c *gin.Context) {
 		c.Status(http.StatusUnauthorized)
 		return
 	}
+	trusted, err := s.store.IsTrustedSession(ctx, currentSession, s.cfg.Security.TrustedSessionMaxGapDuration())
+	if err != nil {
+		s.log.Error("trusted session check", "error", err)
+	}
+	if !trusted {
+		c.JSON(http.StatusForbidden, errorResponse{
+			Error:            "access_denied",
+			ErrorDescription: strPtr("Only trusted sessions can approve this device code."),
+		})
+		return
+	}
 	userCode := normalizeUserCode(c.Param("userCode"))
 	info, err := s.getDeviceCodeByUserCode(ctx, userCode)
 	if err != nil {
@@ -621,6 +632,17 @@ func (s *service) handleDeviceCodeDecline(c *gin.Context) {
 	currentSession := middleware.CurrentSession(ctx)
 	if currentUser == nil || currentSession == nil {
 		c.Status(http.StatusUnauthorized)
+		return
+	}
+	trusted, err := s.store.IsTrustedSession(ctx, currentSession, s.cfg.Security.TrustedSessionMaxGapDuration())
+	if err != nil {
+		s.log.Error("trusted session check", "error", err)
+	}
+	if !trusted {
+		c.JSON(http.StatusForbidden, errorResponse{
+			Error:            "access_denied",
+			ErrorDescription: strPtr("Only trusted sessions can approve this device code."),
+		})
 		return
 	}
 	userCode := normalizeUserCode(c.Param("userCode"))

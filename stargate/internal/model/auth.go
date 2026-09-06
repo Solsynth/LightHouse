@@ -67,6 +67,11 @@ type AuthSession struct {
 	AppId           *string `json:"-"`
 	ChallengeId     *string `json:"-"`
 	Epoch           int     `json:"-"`
+	// Category is "browser" or "device", derived from the client platform.
+	Category string `json:"category,omitempty"`
+	// Trusted indicates whether this session qualifies for challenge
+	// approval/decline (native + recent activity).
+	Trusted bool `json:"trusted,omitempty"`
 	// Account is populated server-side for enrichment.
 	Account *Account `json:"-"`
 }
@@ -144,9 +149,14 @@ type AuthClient struct {
 	AccountId   string         `json:"account_id"`
 	Platform    ClientPlatform `json:"platform"`
 	IsCurrent   bool           `json:"is_current,omitempty"`
-	CreatedAt   *Time          `json:"created_at,omitempty"`
-	UpdatedAt   *Time          `json:"updated_at,omitempty"`
-	DeletedAt   *Time          `json:"deleted_at,omitempty"`
+	// Category is "browser" or "device", derived from the platform.
+	Category string `json:"category,omitempty"`
+	// Trusted indicates whether this device qualifies for challenge
+	// approval/decline.
+	Trusted   bool   `json:"trusted,omitempty"`
+	CreatedAt *Time  `json:"created_at,omitempty"`
+	UpdatedAt *Time  `json:"updated_at,omitempty"`
+	DeletedAt *Time  `json:"deleted_at,omitempty"`
 }
 
 // AuthClientWithSessions mirrors SnAuthClientWithSessions. Sessions is

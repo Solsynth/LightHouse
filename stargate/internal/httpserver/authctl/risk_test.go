@@ -65,7 +65,7 @@ func TestDetectChallengeRiskSkipsUncompletableFactors(t *testing.T) {
 
 	t.Run("password plus passkey requires only the password step", func(t *testing.T) {
 		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypePasskey)
-		steps, err := h.detectChallengeRisk(ctx, accountID, freshIP, freshUA)
+		steps, err := h.detectChallengeRisk(ctx, accountID, freshIP, freshUA, model.SecurityModeDefault)
 		if err != nil {
 			t.Fatalf("detectChallengeRisk: %v", err)
 		}
@@ -76,7 +76,7 @@ func TestDetectChallengeRiskSkipsUncompletableFactors(t *testing.T) {
 
 	t.Run("password plus nfc token requires only the password step", func(t *testing.T) {
 		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeNfcToken)
-		steps, err := h.detectChallengeRisk(ctx, accountID, freshIP, freshUA)
+		steps, err := h.detectChallengeRisk(ctx, accountID, freshIP, freshUA, model.SecurityModeDefault)
 		if err != nil {
 			t.Fatalf("detectChallengeRisk: %v", err)
 		}
@@ -87,12 +87,34 @@ func TestDetectChallengeRiskSkipsUncompletableFactors(t *testing.T) {
 
 	t.Run("password plus in-app code still demands both steps", func(t *testing.T) {
 		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeInAppCode)
-		steps, err := h.detectChallengeRisk(ctx, accountID, freshIP, freshUA)
+		steps, err := h.detectChallengeRisk(ctx, accountID, freshIP, freshUA, model.SecurityModeDefault)
 		if err != nil {
 			t.Fatalf("detectChallengeRisk: %v", err)
 		}
 		if steps != 2 {
 			t.Fatalf("password+in-app-code steps = %d, want 2 (both are completable via the picker)", steps)
+		}
+	})
+
+	t.Run("lockdown forces maxSteps even on fresh IP", func(t *testing.T) {
+		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeInAppCode)
+		steps, err := h.detectChallengeRisk(ctx, accountID, freshIP, freshUA, model.SecurityModeLockdown)
+		if err != nil {
+			t.Fatalf("detectChallengeRisk: %v", err)
+		}
+		if steps != 2 {
+			t.Fatalf("lockdown steps = %d, want 2 (maxSteps)", steps)
+		}
+	})
+
+	t.Run("lockoff forces 1 step even on fresh IP", func(t *testing.T) {
+		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeInAppCode)
+		steps, err := h.detectChallengeRisk(ctx, accountID, freshIP, freshUA, model.SecurityModeLockoff)
+		if err != nil {
+			t.Fatalf("detectChallengeRisk: %v", err)
+		}
+		if steps != 1 {
+			t.Fatalf("lockoff steps = %d, want 1", steps)
 		}
 	})
 }

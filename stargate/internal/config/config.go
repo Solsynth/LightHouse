@@ -6,6 +6,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -128,6 +129,44 @@ type Config struct {
 		Afdian    AfdianClient    `toml:"afdian"`
 		Twitter   TwitterClient   `toml:"twitter"`
 	} `toml:"oidc"`
+
+	Security SecurityConfig `toml:"security"`
+}
+
+// SecurityConfig controls fail2ban, challenge risk escalation, and trusted
+// session thresholds. The defaults are production-shaped so a missing
+// [security] section never weakens the deployment.
+type SecurityConfig struct {
+	Fail2banMaxFails           int    `toml:"fail2banMaxFails"`
+	Fail2banWindow             string `toml:"fail2banWindow"`
+	Fail2banBlockFor           string `toml:"fail2banBlockFor"`
+	ChallengeFailEscalateAfter int    `toml:"challengeFailEscalateAfter"`
+	TrustedSessionMaxGap       string `toml:"trustedSessionMaxGap"`
+}
+
+// Fail2banWindowDuration parses the fail2ban counting window.
+func (s SecurityConfig) Fail2banWindowDuration() time.Duration {
+	if d, err := time.ParseDuration(s.Fail2banWindow); err == nil && d > 0 {
+		return d
+	}
+	return 15 * time.Minute
+}
+
+// Fail2banBlockForDuration parses the fail2ban block duration.
+func (s SecurityConfig) Fail2banBlockForDuration() time.Duration {
+	if d, err := time.ParseDuration(s.Fail2banBlockFor); err == nil && d > 0 {
+		return d
+	}
+	return 30 * time.Minute
+}
+
+// TrustedSessionMaxGapDuration parses the maximum time since last granted
+// activity for a session to be considered trusted.
+func (s SecurityConfig) TrustedSessionMaxGapDuration() time.Duration {
+	if d, err := time.ParseDuration(s.TrustedSessionMaxGap); err == nil && d > 0 {
+		return d
+	}
+	return 720 * time.Hour // 30 days
 }
 
 type ServiceTarget struct {
@@ -256,6 +295,11 @@ func Default() *Config {
 	cfg.Discovery.Service = "stargate"
 	cfg.Discovery.LeaseSeconds = 30
 	cfg.Discovery.Weight = 1
+	cfg.Security.Fail2banMaxFails = 5
+	cfg.Security.Fail2banWindow = "15m"
+	cfg.Security.Fail2banBlockFor = "30m"
+	cfg.Security.ChallengeFailEscalateAfter = 2
+	cfg.Security.TrustedSessionMaxGap = "720h"
 	return cfg
 }
 
@@ -315,6 +359,11 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("STARGATE_DISCOVERY_INSTANCE_ID", &cfg.Discovery.InstanceID)
 	setStr("STARGATE_DISCOVERY_HTTP_ENDPOINT", &cfg.Discovery.HttpEndpoint)
 	setStr("STARGATE_DISCOVERY_GRPC_ENDPOINT", &cfg.Discovery.GrpcEndpoint)
+	setInt("STARGATE_SECURITY_FAIL2BANMAXFAILS", &cfg.Security.Fail2banMaxFails)
+	setStr("STARGATE_SECURITY_FAIL2BANWINDOW", &cfg.Security.Fail2banWindow)
+	setStr("STARGATE_SECURITY_FAIL2BANBLOCKFOR", &cfg.Security.Fail2banBlockFor)
+	setInt("STARGATE_SECURITY_CHALLENGEFAILESCALATEAFTER", &cfg.Security.ChallengeFailEscalateAfter)
+	setStr("STARGATE_SECURITY_TRUSTEDSESSIONMAXGAP", &cfg.Security.TrustedSessionMaxGap)
 }
 
 func setStr(key string, dst *string) {
@@ -326,6 +375,14 @@ func setStr(key string, dst *string) {
 func setBool(key string, dst *bool) {
 	if v := os.Getenv(key); v != "" {
 		*dst = v == "true" || v == "1"
+	}
+}
+
+func setInt(key string, dst *int) {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			*dst = n
+		}
 	}
 }
 

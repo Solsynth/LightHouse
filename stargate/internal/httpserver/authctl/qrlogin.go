@@ -240,6 +240,11 @@ func (h *handler) approveQrChallenge(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, errs.New("UNAUTHORIZED", "Authentication is required.", http.StatusUnauthorized))
 		return
 	}
+	if !h.requireTrusted(ctx, session) {
+		c.JSON(http.StatusForbidden, errs.New("AUTH_SESSION_NOT_TRUSTED",
+			"Only trusted sessions can approve or decline login attempts.", http.StatusForbidden))
+		return
+	}
 	hasQrFactor, err := h.d.Store.HasEnabledFactor(ctx, user.Id, model.AuthFactorTypeQrLogin)
 	if err != nil {
 		h.logError("check qr factor", err)
@@ -314,6 +319,11 @@ func (h *handler) declineQrChallenge(c *gin.Context) {
 	session := middleware.CurrentSession(ctx)
 	if user == nil || session == nil {
 		c.JSON(http.StatusUnauthorized, errs.New("UNAUTHORIZED", "Authentication is required.", http.StatusUnauthorized))
+		return
+	}
+	if !h.requireTrusted(ctx, session) {
+		c.JSON(http.StatusForbidden, errs.New("AUTH_SESSION_NOT_TRUSTED",
+			"Only trusted sessions can approve or decline login attempts.", http.StatusForbidden))
 		return
 	}
 	hasQrFactor, err := h.d.Store.HasEnabledFactor(ctx, user.Id, model.AuthFactorTypeQrLogin)
