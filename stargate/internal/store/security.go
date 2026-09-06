@@ -536,10 +536,12 @@ func (s *Store) ListAuthorizedApps(ctx context.Context, accountID string, typ *m
 	var apps []model.AuthorizedApp
 	for rows.Next() {
 		var app model.AuthorizedApp
+		var scopesRaw []byte
 		if err := rows.Scan(&app.Id, &app.Type, &app.AccountId, &app.AppId, &app.AppSlug, &app.AppName,
-			&app.Scopes, &app.LastAuthorizedAt, &app.LastUsedAt, &app.CreatedAt, &app.UpdatedAt, &app.DeletedAt); err != nil {
+			&scopesRaw, &app.LastAuthorizedAt, &app.LastUsedAt, &app.CreatedAt, &app.UpdatedAt, &app.DeletedAt); err != nil {
 			return nil, err
 		}
+		app.Scopes = decodeJSONArray(scopesRaw)
 		apps = append(apps, app)
 	}
 	return apps, rows.Err()
@@ -583,13 +585,13 @@ func (s *Store) ListApiKeys(ctx context.Context, accountID string) ([]ApiKeyWith
 func scanSession(row rowScanner) (*model.AuthSession, error) {
 	session := &model.AuthSession{}
 	var (
-		audiences, scopes                             []string
+		audiencesRaw, scopesRaw                       []byte
 		location                                      []byte
 		clientID, parentSessionID, appID, challengeID *uuid.UUID
 		epoch                                         int
 	)
 	err := row.Scan(
-		&session.Id, &session.Type, &session.LastGrantedAt, &session.ExpiredAt, &audiences, &scopes,
+		&session.Id, &session.Type, &session.LastGrantedAt, &session.ExpiredAt, &audiencesRaw, &scopesRaw,
 		&session.IpAddress, &session.UserAgent, &location, &session.AccountId,
 		&clientID, &parentSessionID, &appID, &challengeID, &epoch,
 		&session.CreatedAt, &session.UpdatedAt, &session.DeletedAt,
@@ -597,8 +599,8 @@ func scanSession(row rowScanner) (*model.AuthSession, error) {
 	if err != nil {
 		return nil, err
 	}
-	session.Audiences = audiences
-	session.Scopes = scopes
+	session.Audiences = decodeJSONArray(audiencesRaw)
+	session.Scopes = decodeJSONArray(scopesRaw)
 	if len(location) > 0 && string(location) != "null" {
 		var gp model.GeoPoint
 		if json.Unmarshal(location, &gp) == nil {
