@@ -519,18 +519,24 @@ func (s *Store) DeleteContactRow(ctx context.Context, id uuid.UUID) error {
 
 // ListAuthorizedApps lists the account's authorized apps, optionally filtered
 // by type, ordered by last used (falling back to last authorized).
-func (s *Store) ListAuthorizedApps(ctx context.Context, accountID string, typ *model.AuthorizedAppType) ([]model.AuthorizedApp, error) {
-	query := `SELECT id, type, account_id, app_id, app_slug, app_name, scopes, last_authorized_at, last_used_at, created_at, updated_at, deleted_at
-		FROM authorized_apps WHERE account_id = $1 AND deleted_at IS NULL`
+func (s *Store) ListAuthorizedApps(ctx context.Context, accountID string, typ *model.AuthorizedAppType, take, offset int) ([]model.AuthorizedApp, int, error) {
+	where := `account_id = $1 AND deleted_at IS NULL`
 	args := []any{accountID}
 	if typ != nil {
 		args = append(args, int(*typ))
-		query += ` AND type = $2`
+		where += ` AND type = $` + itoa(len(args))
 	}
-	query += ` ORDER BY COALESCE(last_used_at, last_authorized_at) DESC`
+	var total int
+	if err := s.queryRow(ctx, `SELECT COUNT(*) FROM authorized_apps WHERE `+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	args = append(args, take, offset)
+	query := `SELECT id, type, account_id, app_id, app_slug, app_name, scopes, last_authorized_at, last_used_at, created_at, updated_at, deleted_at
+		FROM authorized_apps WHERE ` + where +
+		` ORDER BY COALESCE(last_used_at, last_authorized_at) DESC LIMIT $` + itoa(len(args)-1) + ` OFFSET $` + itoa(len(args))
 	rows, err := s.query(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 	var apps []model.AuthorizedApp
@@ -539,12 +545,12 @@ func (s *Store) ListAuthorizedApps(ctx context.Context, accountID string, typ *m
 		var scopesRaw []byte
 		if err := rows.Scan(&app.Id, &app.Type, &app.AccountId, &app.AppId, &app.AppSlug, &app.AppName,
 			&scopesRaw, &app.LastAuthorizedAt, &app.LastUsedAt, &app.CreatedAt, &app.UpdatedAt, &app.DeletedAt); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		app.Scopes = decodeJSONArray(scopesRaw)
 		apps = append(apps, app)
 	}
-	return apps, rows.Err()
+	return apps, total, rows.Err()
 }
 
 // --- API keys ---

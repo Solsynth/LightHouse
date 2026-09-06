@@ -1722,7 +1722,9 @@ func (c *controller) getAuthorizedApps(ctx *gin.Context) {
 			typ = &t
 		}
 	}
-	apps, err := c.d.Store.ListAuthorizedApps(reqCtx, user.Id, typ)
+	take := queryIntDefault(ctx, "take", 20)
+	offset := queryIntDefault(ctx, "offset", 0)
+	apps, total, err := c.d.Store.ListAuthorizedApps(reqCtx, user.Id, typ, take, offset)
 	if err != nil {
 		c.d.Log.ErrorContext(reqCtx, "list authorized apps failed", "account_id", user.Id, "error", err)
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to load authorized apps.", http.StatusInternalServerError))
@@ -1746,6 +1748,7 @@ func (c *controller) getAuthorizedApps(ctx *gin.Context) {
 			LastUsedAt:       app.LastUsedAt,
 		})
 	}
+	ctx.Header("X-Total", strconv.Itoa(total))
 	ctx.JSON(http.StatusOK, response)
 }
 
@@ -1806,7 +1809,7 @@ func (c *controller) authorizeAppScopes(ctx *gin.Context) {
 	}
 
 	var record *model.AuthorizedApp
-	records, err := c.d.Store.ListAuthorizedApps(reqCtx, user.Id, nil)
+	records, _, err := c.d.Store.ListAuthorizedApps(reqCtx, user.Id, nil, 1000, 0)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to load authorized apps.", http.StatusInternalServerError))
 		return

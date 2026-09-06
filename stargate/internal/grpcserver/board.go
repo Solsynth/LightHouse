@@ -32,7 +32,7 @@ func (s *dyAuthorizedAppService) QueryAuthorizedBoardApps(ctx context.Context, r
 		return nil, status.Error(codes.InvalidArgument, "Invalid account ID format")
 	}
 	oidcType := model.AuthorizedAppTypeOidc
-	apps, err := s.d.Store.ListAuthorizedApps(ctx, accountID.String(), &oidcType)
+	apps, _, err := s.d.Store.ListAuthorizedApps(ctx, accountID.String(), &oidcType, 1000, 0)
 	if err != nil {
 		return nil, err
 	}
