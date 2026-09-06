@@ -185,8 +185,14 @@ func (h *handler) scanQrChallenge(c *gin.Context) {
 	}
 	ctx := c.Request.Context()
 	user := middleware.CurrentUser(ctx)
-	if user == nil {
+	session := middleware.CurrentSession(ctx)
+	if user == nil || session == nil {
 		c.JSON(http.StatusUnauthorized, errs.New("UNAUTHORIZED", "Authentication is required.", http.StatusUnauthorized))
+		return
+	}
+	if !h.requireTrusted(ctx, session) {
+		c.JSON(http.StatusForbidden, errs.New("AUTH_SESSION_NOT_TRUSTED",
+			"Only trusted sessions can scan QR login codes.", http.StatusForbidden))
 		return
 	}
 	id, ok := parseUUIDParam(c, "id")
