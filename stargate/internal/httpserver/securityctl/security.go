@@ -1205,6 +1205,7 @@ func (c *controller) getSessions(ctx *gin.Context) {
 	}
 	sessions, total, err := c.d.Store.ListSessions(reqCtx, user.Id, typ, clientID, includeChildren, take, offset)
 	if err != nil {
+		c.d.Log.ErrorContext(reqCtx, "list sessions failed", "account_id", user.Id, "error", err)
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to load sessions.", http.StatusInternalServerError))
 		return
 	}
@@ -1346,6 +1347,7 @@ func (c *controller) getDevices(ctx *gin.Context) {
 	offset := queryIntDefault(ctx, "offset", 0)
 	devices, total, err := c.d.Store.ListDevices(reqCtx, user.Id, take, offset)
 	if err != nil {
+		c.d.Log.ErrorContext(reqCtx, "list devices failed", "account_id", user.Id, "error", err)
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to load devices.", http.StatusInternalServerError))
 		return
 	}
@@ -1722,6 +1724,7 @@ func (c *controller) getAuthorizedApps(ctx *gin.Context) {
 	}
 	apps, err := c.d.Store.ListAuthorizedApps(reqCtx, user.Id, typ)
 	if err != nil {
+		c.d.Log.ErrorContext(reqCtx, "list authorized apps failed", "account_id", user.Id, "error", err)
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to load authorized apps.", http.StatusInternalServerError))
 		return
 	}
