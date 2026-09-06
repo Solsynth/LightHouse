@@ -5,6 +5,7 @@ package actionlog
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
@@ -14,8 +15,18 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
 
+// ActionLogPublisher emits a freshly stored action log as an
+// ActionLogTriggeredEvent. It mirrors the Padlock
+// ActionLogService.CreateActionLogAsync publish step: Passport's
+// ProgressionService consumes these to advance achievements/quests.
+type ActionLogPublisher func(ctx context.Context, actionLogID uuid.UUID, accountID, action string, meta map[string]any, sessionID *string, occurredAt time.Time)
+
 type Service struct {
 	DB *gorm.DB
+	// Publish, when non-nil, broadcasts a stored action log to the fleet
+	// progression consumer after the row is persisted. Set once in main; nil
+	// disables publishing (events unavailable/disabled).
+	Publish ActionLogPublisher
 }
 
 func New(database *gorm.DB) *Service { return &Service{DB: database} }
@@ -50,11 +61,24 @@ func (s *Service) Create(ctx context.Context, accountID string, action model.Act
 		session = &value
 	}
 	metaValue := datatypes.JSON(metaJSON)
-	return s.DB.WithContext(ctx).Create(&store.ActionLogEntity{
+	entity := store.ActionLogEntity{
 		ID: uuid.New(), AccountID: account, Action: string(action),
 		Meta: metaValue, Location: locJSON, UserAgent: nullableString(userAgent),
 		IPAddress: nullableString(ipAddress), SessionID: session,
-	}).Error
+	}
+	if err := s.DB.WithContext(ctx).Create(&entity).Error; err != nil {
+		return err
+	}
+
+	if s.Publish != nil {
+		occurredAt := entity.CreatedAt
+		if occurredAt.IsZero() {
+			occurredAt = time.Now().UTC()
+		}
+		s.Publish(ctx, entity.ID, accountID, string(action), meta, sessionID, occurredAt.UTC())
+	}
+
+	return nil
 }
 
 func nullableString(value string) *string {

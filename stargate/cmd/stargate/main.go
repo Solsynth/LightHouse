@@ -136,6 +136,11 @@ func run(log *slog.Logger) error {
 
 	tokenAuth := auth.NewTokenAuthService(st, rc, jwtService, perkProvider, appProvider, log)
 	logs := actionlog.New(database)
+	logs.Publish = func(ctx context.Context, id uuid.UUID, accountID, action string, meta map[string]any, sessionID *string, occurredAt time.Time) {
+		if err := nc.PublishActionLogTriggered(ctx, id.String(), accountID, action, meta, sessionID, occurredAt); err != nil {
+			log.Warn("publish action log event", "action", action, "account_id", accountID, "error", err)
+		}
+	}
 	geoService := geo.NewService(cfg.GeoIP.DatabasePath)
 	authService := auth.NewAuthService(st, rc, cfg, geoService, jwtService, tokenAuth, nc, logs, log)
 

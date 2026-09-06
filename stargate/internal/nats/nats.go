@@ -49,6 +49,9 @@ func (c *Client) ensureStreams(ctx context.Context) error {
 	if err := c.EnsureStream(ctx, c.cfg.NATS.WebsocketPushStream, []string{c.cfg.NATS.WebsocketPushSubject}); err != nil {
 		return fmt.Errorf("websocket push stream: %w", err)
 	}
+	if err := c.EnsureStream(ctx, actionLogEventsStream, []string{actionLogsSubjectPrefix + ">"}); err != nil {
+		return fmt.Errorf("action log events stream: %w", err)
+	}
 	return nil
 }
 
@@ -108,6 +111,118 @@ func (c *Client) PublishWS(ctx context.Context, target string, event string, pay
 		return err
 	}
 	_, err = c.JS.Publish(ctx, c.cfg.NATS.WebsocketPushSubject, data)
+	return err
+}
+
+// actionLogEventsStream is the C# fleet's shared stream for progression
+// action log events (ActionLogTriggeredEvent.StreamName). Passport's
+// ProgressionService consumes it on action_logs.* to advance achievements
+// and quests. It is fixed in the C# contract, so it is hardcoded here like
+// the account_events stream.
+const actionLogEventsStream = "action_log_events"
+
+// actionLogsSubjectPrefix mirrors ActionLogTriggeredEvent.SubjectPrefix.
+const actionLogsSubjectPrefix = "action_logs."
+
+// trackedActionLogs mirrors DysonNetwork.Shared.Queue.ProgressionActionLogRegistry.TrackedActions.
+// Only these actions emit an ActionLogTriggeredEvent; the C# registry is the
+// source of truth — keep the two sets in sync when a progression trigger is
+// added or removed.
+var trackedActionLogs = map[string]struct{}{
+	"accounts.profile.update":              {},
+	"accounts.auth_factors.create":         {},
+	"accounts.auth_factors.enable":         {},
+	"accounts.auth_factors.disable":        {},
+	"accounts.auth_factors.delete":         {},
+	"accounts.auth_factors.reset_password": {},
+	"login":                                {},
+	"accounts.active":                      {},
+	"stellar.support.month":                {},
+	"developer.sessions.revoke":            {},
+	"developer.devices.revoke":             {},
+	"developer.devices.rename":             {},
+	"developer.apps.deauthorize":           {},
+	"relationships.friends.request":        {},
+	"relationships.friends.accept":         {},
+	"relationships.friends.established":    {},
+	"relationships.block":                  {},
+	"relationships.unblock":                {},
+	"relationships.mute":                   {},
+	"relationships.unmute":                 {},
+	"relationships.close_friend.add":       {},
+	"relationships.close_friend.remove":    {},
+	"accounts.profile.avatar":              {},
+	"accounts.profile.complete":            {},
+	"accounts.connection.link":             {},
+	"accounts.push.enable":                 {},
+	"posts.create":                         {},
+	"posts.create.topical":                 {},
+	"posts.featured":                       {},
+	"posts.react":                          {},
+	"posts.bookmark":                       {},
+	"posts.boost":                          {},
+	"chat.use":                             {},
+	"chatrooms.join":                       {},
+	"publishers.create":                    {},
+	"publishers.members.join":              {},
+	"realms.create":                        {},
+	"realms.join":                          {},
+}
+
+// ShouldPublishActionLog reports whether a freshly stored action log should
+// emit an ActionLogTriggeredEvent for the Passport progression consumer.
+func ShouldPublishActionLog(action string) bool {
+	_, ok := trackedActionLogs[action]
+	return ok
+}
+
+// ActionLogTriggeredEvent mirrors the C# ActionLogTriggeredEvent wire shape
+// (snake_case keys via InfraObjectCoder; NodaTime Instant as ISO-8601 UTC).
+// Padlock's ActionLogService published it on action_logs.<action> after
+// storing a tracked log; Passport deserializes this into
+// ActionLogTriggeredEvent to drive progression counting. EventType and
+// StreamName are recomputed by the C# side from Action, so only the
+// envelope fields plus the domain fields are sent.
+type ActionLogTriggeredEvent struct {
+	eb.Event
+	ActionLogID string         `json:"action_log_id"`
+	AccountID   string         `json:"account_id"`
+	Action      string         `json:"action"`
+	Meta        map[string]any `json:"meta"`
+	SessionID   *string        `json:"session_id,omitempty"`
+	OccurredAt  time.Time      `json:"occurred_at"`
+}
+
+// PublishActionLogTriggered broadcasts a stored action log on the
+// action_log_events stream (subject action_logs.<action>) for the tracked
+// actions Passport's progression counts. Untracked actions are dropped, and
+// a disabled/absent NATS connection is a no-op.
+func (c *Client) PublishActionLogTriggered(ctx context.Context, logID, accountID, action string, meta map[string]any, sessionID *string, occurredAt time.Time) error {
+	if c == nil || c.Conn == nil {
+		return nil
+	}
+	if !ShouldPublishActionLog(action) {
+		return nil
+	}
+	subject := actionLogsSubjectPrefix + action
+	payload, err := json.Marshal(ActionLogTriggeredEvent{
+		Event: eb.Event{
+			EventID:    uuid.NewString(),
+			Timestamp:  occurredAt.UTC(),
+			StreamName: actionLogEventsStream,
+			EventType:  subject,
+		},
+		ActionLogID: logID,
+		AccountID:   accountID,
+		Action:      action,
+		Meta:        meta,
+		SessionID:   sessionID,
+		OccurredAt:  occurredAt.UTC(),
+	})
+	if err != nil {
+		return err
+	}
+	_, err = c.JS.Publish(ctx, subject, payload)
 	return err
 }
 
