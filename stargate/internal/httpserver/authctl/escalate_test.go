@@ -14,8 +14,8 @@ import (
 )
 
 // seedEscalateChallenge inserts a challenge for the given account with the
-// provided step/blacklist/prompt state.
-func seedEscalateChallenge(t *testing.T, ctx context.Context, pool *pgxpool.Pool, accountID string, stepTotal, stepRemain int, blacklist []string, promptRequested bool) *model.AuthChallenge {
+// provided step/blacklist state.
+func seedEscalateChallenge(t *testing.T, ctx context.Context, pool *pgxpool.Pool, accountID string, stepTotal, stepRemain int, blacklist []string) *model.AuthChallenge {
 	t.Helper()
 	now := time.Now().UTC()
 	ch := &model.AuthChallenge{
@@ -33,9 +33,6 @@ func seedEscalateChallenge(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 	}
 	if blacklist == nil {
 		ch.BlacklistFactors = []string{}
-	}
-	if promptRequested {
-		ch.PromptRequestedAt = model.NewTime(now)
 	}
 	if err := store.New(pool).CreateAuthChallenge(ctx, ch); err != nil {
 		t.Fatalf("create challenge: %v", err)
@@ -65,10 +62,10 @@ func TestEscalateChallenge(t *testing.T) {
 	h := &handler{d: Deps{Store: st}}
 
 	t.Run("multi-factor decline escalates to full step count", func(t *testing.T) {
-		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeInAppCode)
+		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeEmailCode)
 		// StepRemain=1 (one factor already done), password blacklisted so the
-		// remaining factor is in-app; a prompt was requested.
-		ch := seedEscalateChallenge(t, ctx, pool, accountID, 2, 1, []string{uuid.NewString()}, true)
+		// remaining factor is the email code.
+		ch := seedEscalateChallenge(t, ctx, pool, accountID, 2, 1, []string{uuid.NewString()})
 
 		if err := h.escalateChallenge(ctx, ch); err != nil {
 			t.Fatalf("escalateChallenge: %v", err)
@@ -85,21 +82,18 @@ func TestEscalateChallenge(t *testing.T) {
 		if ch.DeclinedAt == nil {
 			t.Fatal("DeclinedAt not set after escalation")
 		}
-		if ch.PromptRequestedAt != nil {
-			t.Fatal("PromptRequestedAt not cleared after escalation")
-		}
 		reloaded, err := st.GetAuthChallenge(ctx, uuid.MustParse(ch.Id))
 		if err != nil {
 			t.Fatalf("reload challenge: %v", err)
 		}
-		if reloaded.StepTotal != 2 || reloaded.StepRemain != 2 || reloaded.DeclinedAt == nil || reloaded.PromptRequestedAt != nil {
+		if reloaded.StepTotal != 2 || reloaded.StepRemain != 2 || reloaded.DeclinedAt == nil {
 			t.Fatalf("persisted challenge state wrong: %+v", reloaded)
 		}
 	})
 
 	t.Run("single-factor decline is terminal", func(t *testing.T) {
 		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword)
-		ch := seedEscalateChallenge(t, ctx, pool, accountID, 1, 1, nil, true)
+		ch := seedEscalateChallenge(t, ctx, pool, accountID, 1, 1, nil)
 
 		if err := h.escalateChallenge(ctx, ch); err != nil {
 			t.Fatalf("escalateChallenge: %v", err)
@@ -110,14 +104,11 @@ func TestEscalateChallenge(t *testing.T) {
 		if ch.DeclinedAt == nil {
 			t.Fatal("DeclinedAt not set for terminal single-factor decline")
 		}
-		if ch.PromptRequestedAt != nil {
-			t.Fatal("PromptRequestedAt not cleared for terminal decline")
-		}
 		reloaded, err := st.GetAuthChallenge(ctx, uuid.MustParse(ch.Id))
 		if err != nil {
 			t.Fatalf("reload challenge: %v", err)
 		}
-		if reloaded.StepRemain != 1 || reloaded.DeclinedAt == nil || reloaded.PromptRequestedAt != nil {
+		if reloaded.StepRemain != 1 || reloaded.DeclinedAt == nil {
 			t.Fatalf("persisted challenge state wrong: %+v", reloaded)
 		}
 	})
@@ -144,9 +135,9 @@ func TestMaybeEscalateFailure(t *testing.T) {
 	h := &handler{d: Deps{Store: st, Cfg: cfg}}
 
 	t.Run("escalates past threshold preserving completed factors", func(t *testing.T) {
-		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeInAppCode)
+		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeEmailCode)
 		blacklisted := []string{uuid.NewString()}
-		ch := seedEscalateChallenge(t, ctx, pool, accountID, 1, 1, blacklisted, false)
+		ch := seedEscalateChallenge(t, ctx, pool, accountID, 1, 1, blacklisted)
 		ch.FailedAttempts = 3 // above threshold (2)
 
 		if err := h.maybeEscalateFailure(ctx, ch); err != nil {
@@ -164,8 +155,8 @@ func TestMaybeEscalateFailure(t *testing.T) {
 	})
 
 	t.Run("does not escalate below threshold", func(t *testing.T) {
-		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeInAppCode)
-		ch := seedEscalateChallenge(t, ctx, pool, accountID, 1, 1, nil, false)
+		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeEmailCode)
+		ch := seedEscalateChallenge(t, ctx, pool, accountID, 1, 1, nil)
 		ch.FailedAttempts = 2 // at threshold, not above
 
 		if err := h.maybeEscalateFailure(ctx, ch); err != nil {
@@ -177,8 +168,8 @@ func TestMaybeEscalateFailure(t *testing.T) {
 	})
 
 	t.Run("lockoff skips escalation", func(t *testing.T) {
-		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeInAppCode)
-		ch := seedEscalateChallenge(t, ctx, pool, accountID, 1, 1, nil, false)
+		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeEmailCode)
+		ch := seedEscalateChallenge(t, ctx, pool, accountID, 1, 1, nil)
 		ch.FailedAttempts = 5
 
 		if err := st.SetSecurityMode(ctx, accountID, model.SecurityModeLockoff); err != nil {

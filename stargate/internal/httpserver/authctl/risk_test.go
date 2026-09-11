@@ -38,12 +38,13 @@ func seedRiskAccount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, fact
 }
 
 // TestDetectChallengeRiskSkipsUncompletableFactors pins the step-count
-// contract: Passkey (7) and NfcToken (6) factors can never satisfy a step of
-// the username-challenge flow (the client picker offers passkeys only via the
-// separate discoverable flow, and NFC verification is not ported), so they
-// must not inflate StepTotal — a password+passkey account on a fresh device
-// requires exactly one step instead of stranding the login at an empty
-// factor picker.
+// contract: Passkey (7), NfcToken (6) and InAppCode (2) factors can never
+// satisfy a step of the username-challenge flow (the client picker offers
+// passkeys only via the separate discoverable flow, NFC verification is not
+// ported, and in-app approval is offered for every challenge instead of as a
+// pickable factor), so they must not inflate StepTotal — a password+passkey
+// account on a fresh device requires exactly one step instead of stranding the
+// login at an empty factor picker.
 func TestDetectChallengeRiskSkipsUncompletableFactors(t *testing.T) {
 	pool, err := pgxpool.New(context.Background(), smokeDSN)
 	if err != nil {
@@ -85,19 +86,30 @@ func TestDetectChallengeRiskSkipsUncompletableFactors(t *testing.T) {
 		}
 	})
 
-	t.Run("password plus in-app code still demands both steps", func(t *testing.T) {
+	t.Run("password plus in-app code requires only the password step", func(t *testing.T) {
 		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeInAppCode)
 		steps, err := h.detectChallengeRisk(ctx, accountID, freshIP, freshUA, model.SecurityModeDefault)
 		if err != nil {
 			t.Fatalf("detectChallengeRisk: %v", err)
 		}
-		if steps != 2 {
-			t.Fatalf("password+in-app-code steps = %d, want 2 (both are completable via the picker)", steps)
+		if steps != 1 {
+			t.Fatalf("password+in-app-code steps = %d, want 1 (in-app is no longer selectable)", steps)
+		}
+	})
+
+	t.Run("in-app code only still yields a challenge for cross-device approval", func(t *testing.T) {
+		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypeInAppCode)
+		steps, err := h.detectChallengeRisk(ctx, accountID, freshIP, freshUA, model.SecurityModeDefault)
+		if err != nil {
+			t.Fatalf("detectChallengeRisk: %v", err)
+		}
+		if steps != 1 {
+			t.Fatalf("in-app-only steps = %d, want 1 (approvable from a trusted device)", steps)
 		}
 	})
 
 	t.Run("lockdown forces maxSteps even on fresh IP", func(t *testing.T) {
-		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeInAppCode)
+		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeEmailCode)
 		steps, err := h.detectChallengeRisk(ctx, accountID, freshIP, freshUA, model.SecurityModeLockdown)
 		if err != nil {
 			t.Fatalf("detectChallengeRisk: %v", err)
@@ -108,7 +120,7 @@ func TestDetectChallengeRiskSkipsUncompletableFactors(t *testing.T) {
 	})
 
 	t.Run("lockoff forces 1 step even on fresh IP", func(t *testing.T) {
-		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeInAppCode)
+		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeEmailCode)
 		steps, err := h.detectChallengeRisk(ctx, accountID, freshIP, freshUA, model.SecurityModeLockoff)
 		if err != nil {
 			t.Fatalf("detectChallengeRisk: %v", err)

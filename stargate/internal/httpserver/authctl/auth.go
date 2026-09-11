@@ -129,14 +129,18 @@ func Register(api *gin.RouterGroup, d Deps) {
 
 // completableAuthFactors returns the enabled factors that can satisfy a step
 // of the username-challenge flow. PinCode/RecoveryCode/QrLogin/NfcToken/
-// Passkey are excluded (identical to detectChallengeRisk's historical filter).
+// Passkey are excluded (identical to detectChallengeRisk's historical filter),
+// and so is InAppCode: the in-app notification factor is no longer selectable
+// — cross-device approval is offered for every challenge instead (see
+// publishChallengePending in createChallenge).
 func completableAuthFactors(factors []model.AuthFactor) []model.AuthFactor {
 	out := make([]model.AuthFactor, 0, len(factors))
 	for _, f := range factors {
 		ft := model.AuthFactorType(f.Type)
 		if f.EnabledAt != nil && ft != model.AuthFactorTypePinCode &&
 			ft != model.AuthFactorTypeRecoveryCode && ft != model.AuthFactorTypeQrLogin &&
-			ft != model.AuthFactorTypeNfcToken && ft != model.AuthFactorTypePasskey {
+			ft != model.AuthFactorTypeNfcToken && ft != model.AuthFactorTypePasskey &&
+			ft != model.AuthFactorTypeInAppCode {
 			out = append(out, f)
 		}
 	}
@@ -164,7 +168,10 @@ func (h *handler) allRequiredStepCount(ctx context.Context, accountID string) (i
 // verification degrades to failure here (the Passport gRPC RPC is not
 // ported). Counting them produced challenges whose StepTotal exceeded the
 // factors the picker can complete, stranding the login after the last usable
-// factor with an empty picker.
+// factor with an empty picker. InAppCode is excluded for the same reason —
+// the picker no longer offers it — with one exception: when it is the
+// account's only enabled factor, the challenge still counts one step, because
+// a trusted session can satisfy it by approving from another device.
 func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress, userAgent string, mode model.SecurityMode) (int, error) {
 	factors, err := h.d.Store.GetAuthFactors(ctx, uuid.MustParse(accountID))
 	if err != nil {
@@ -173,6 +180,13 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 	enabledFactors := completableAuthFactors(factors)
 	maxSteps := len(enabledFactors)
 	if maxSteps == 0 {
+		// In-app-only accounts have no pickable factor left; cross-device
+		// approval is the sole way to satisfy their challenge.
+		for _, f := range factors {
+			if f.EnabledAt != nil && model.AuthFactorType(f.Type) == model.AuthFactorTypeInAppCode {
+				return 1, nil
+			}
+		}
 		return 0, errors.New("Account has no authentication factors configured.")
 	}
 	// If password is the only factor, skip the risk calculation.
@@ -491,6 +505,11 @@ func (h *handler) createChallenge(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
 		return
 	}
+	// Every challenge is pushed to the account's other devices so a trusted
+	// session can approve or decline it — the replacement for the removed
+	// in-app notification factor. Mirrors the other challenge handlers
+	// (doChallenge, approve/decline), which publish before responding.
+	h.publishChallengePending(ctx, challenge) // WS auth.challenge.pending + Ring auth.login_attempt
 	c.JSON(http.StatusOK, challenge)
 }
 
@@ -529,6 +548,7 @@ func (h *handler) getChallengeFactors(c *gin.Context) {
 	for _, f := range factors {
 		if f.EnabledAt != nil && f.Trustworthy >= 1 &&
 			model.AuthFactorType(f.Type) != model.AuthFactorTypeRecoveryCode &&
+			model.AuthFactorType(f.Type) != model.AuthFactorTypeInAppCode &&
 			model.AuthFactorType(f.Type) != model.AuthFactorTypeQrLogin {
 			result = append(result, f)
 		}
@@ -567,6 +587,14 @@ func (h *handler) requestFactorCode(c *gin.Context) {
 	account, err := h.d.Store.GetAccountByID(ctx, uuid.MustParse(challenge.AccountId))
 	if err != nil {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_ACCOUNT_NOT_FOUND", "Account was not found.", http.StatusNotFound))
+		return
+	}
+	// The in-app notification factor no longer issues a code: its approval
+	// prompt is published when the challenge is created, and completed by a
+	// trusted session via POST /auth/challenge/{id}/approve.
+	if model.AuthFactorType(factor.Type) == model.AuthFactorTypeInAppCode {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_SUPPORTED",
+			"The in-app notification factor is no longer supported. Approve this login from a trusted device instead."))
 		return
 	}
 	if err := h.sendFactorCode(ctx, account, factor, challenge); err != nil {
@@ -712,7 +740,8 @@ func (h *handler) verifyFactorCode(ctx context.Context, factor *model.AuthFactor
 		// Passkey flows use their own endpoints; NFC tokens verify via the
 		// Passport gRPC service which is not ported (degrades to failure,
 		// matching the C# behavior when the RPC fails). In-app code factors
-		// never submit a code here — they are handled as an approval prompt.
+		// are rejected before reaching here — their approval prompt is
+		// published when the challenge is created.
 		return false, nil
 	}
 }
@@ -721,17 +750,9 @@ func (h *handler) sendFactorCode(ctx context.Context, account *model.Account, fa
 	code := fmt.Sprintf("%06d", mathrand.IntN(900000)+100000)
 	switch model.AuthFactorType(factor.Type) {
 	case model.AuthFactorTypeInAppCode:
-		if challenge.PromptRequestedAt != nil {
-			return errors.New("An in-app login request is already pending.")
-		}
-		now := time.Now().UTC()
-		challenge.PromptRequestedAt = model.NewTime(now)
-		challenge.UpdatedAt = model.NewTime(now)
-		if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
-			return err
-		}
-		h.publishChallengePending(ctx, challenge) // WS auth.challenge.pending + Ring auth.login_attempt
-		return nil
+		// Unreachable: requestFactorCode rejects the in-app factor, whose
+		// prompt is now published at challenge creation.
+		return errors.New("The in-app notification factor is no longer supported.")
 	case model.AuthFactorTypeEmailCode:
 		if h.d.Redis == nil || !h.d.Redis.Available() {
 			return errors.New("email factor code service is unavailable")
@@ -1245,17 +1266,16 @@ func (h *handler) requireTrusted(ctx context.Context, session *model.AuthSession
 // Pending / approve / decline
 // ---------------------------------------------------------------------------
 
-// escalateChallenge handles a decline of an in-app approval prompt. It clears
-// the outstanding prompt marker and escalates the challenge to require every
-// enabled (completable) factor. For a single-factor account there is no higher
-// level, so the decline is terminal: DeclinedAt is set and the challenge dies.
+// escalateChallenge handles a decline of a cross-device approval. It escalates
+// the challenge to require every enabled (completable) factor. For a
+// single-factor account there is no higher level, so the decline is terminal:
+// DeclinedAt is set and the challenge dies.
 func (h *handler) escalateChallenge(ctx context.Context, challenge *model.AuthChallenge) error {
 	maxSteps, err := h.allRequiredStepCount(ctx, challenge.AccountId)
 	if err != nil {
 		return err
 	}
 	now := time.Now().UTC()
-	challenge.PromptRequestedAt = nil
 	challenge.UpdatedAt = model.NewTime(now)
 	if maxSteps <= 1 {
 		// Single-factor account: cannot get harder than one factor → terminal decline.
@@ -1349,7 +1369,6 @@ func (h *handler) approveChallenge(c *gin.Context) {
 	challenge.StepRemain = 0
 	challenge.ApprovedAt = model.NewTime(now)
 	challenge.ApprovedBySessionId = &session.Id
-	challenge.PromptRequestedAt = nil
 	challenge.UpdatedAt = model.NewTime(now)
 	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
 		h.logError("update challenge", err)

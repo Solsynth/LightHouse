@@ -1,14 +1,19 @@
 package authctl
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
@@ -16,6 +21,7 @@ import (
 	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/stargate/internal/config"
+	"src.solsynth.dev/sosys/stargate/internal/geo"
 	"src.solsynth.dev/sosys/stargate/internal/grpcclient"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
@@ -201,13 +207,13 @@ func TestSendFactorCodeEmailCodeDeliversViaRing(t *testing.T) {
 	})
 }
 
-// TestSendFactorCodeInAppCodePublishesPrompt pins the InAppCode contract: the
-// factor no longer generates/stores/steps a code. Instead it records a
-// prompt_requested_at marker on the challenge and publishes the pending
-// challenge to the trusted device (Ring auth.login_attempt + WS
-// auth.challenge.pending). No authfactor:...:code Redis key is written. A
-// second request while a prompt is outstanding is rejected without a new push.
-func TestSendFactorCodeInAppCodePublishesPrompt(t *testing.T) {
+// TestCreateChallengePublishesPendingPrompt pins the replacement for the
+// in-app notification factor: creating a challenge now publishes the
+// approval prompt to the account's other devices (Ring auth.login_attempt)
+// and leaves the challenge pending, so a trusted session can approve it. An
+// in-app-only account — which has no pickable factor left — must still be
+// able to start a challenge this way instead of being locked out.
+func TestCreateChallengePublishesPendingPrompt(t *testing.T) {
 	pool, err := pgxpool.New(context.Background(), smokeDSN)
 	if err != nil {
 		t.Skipf("postgres unavailable: %v", err)
@@ -219,17 +225,89 @@ func TestSendFactorCodeInAppCodePublishesPrompt(t *testing.T) {
 	}
 
 	ring := &fakeRing{}
-	h, rc := newFactorHandler(t, ctx, pool, ring)
+	h := &handler{d: Deps{
+		Store:   store.New(pool),
+		Geo:     &geo.Service{},
+		Cfg:     &config.Config{},
+		Clients: &grpcclient.Clients{Ring: ring},
+		Log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}}
+	accountID, _ := seedFactorAccount(t, ctx, pool, model.AuthFactorTypeInAppCode, false)
+	account, err := h.d.Store.GetAccountByID(ctx, uuid.MustParse(accountID))
+	if err != nil {
+		t.Fatalf("load account: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/auth/challenge", h.createChallenge)
+
+	body, _ := json.Marshal(map[string]any{
+		"account":     account.Name,
+		"device_id":   "pending-prompt-device",
+		"device_name": "Pending Prompt Test",
+		"platform":    int(model.ClientPlatformIos),
+	})
+	req := httptest.NewRequest(http.MethodPost, "/auth/challenge", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create challenge status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	var created model.AuthChallenge
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode challenge: %v", err)
+	}
+	if created.StepRemain != 1 {
+		t.Fatalf("StepRemain = %d, want 1 (in-app-only account)", created.StepRemain)
+	}
+	if len(ring.pushes) != 1 || ring.pushes[0].Topic != "auth.login_attempt" {
+		t.Fatalf("pending prompt not pushed as auth.login_attempt: %+v", ring.pushes)
+	}
+
+	// The prompt Device B acts on comes from the pending-challenge endpoint.
+	pending, err := h.d.Store.ListPendingChallenges(ctx, accountID)
+	if err != nil {
+		t.Fatalf("list pending challenges: %v", err)
+	}
+	if len(pending) != 1 || pending[0].Id != created.Id {
+		t.Fatalf("pending challenges = %+v, want the created challenge %s", pending, created.Id)
+	}
+}
+
+// TestRequestFactorCodeRejectsInAppCode pins the removal of the in-app
+// notification factor's code path: POST /auth/challenge/{id}/factors/{id} is
+// the only way to request a factor code, and for the in-app factor it must
+// fail with AUTH_FACTOR_NOT_SUPPORTED instead of publishing an approval
+// prompt — the prompt is already sent when the challenge is created.
+func TestRequestFactorCodeRejectsInAppCode(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(), smokeDSN)
+	if err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	defer pool.Close()
+	ctx := context.Background()
+	if err := pool.Ping(ctx); err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+
+	ring := &fakeRing{}
+	h := &handler{d: Deps{
+		Store:   store.New(pool),
+		Clients: &grpcclient.Clients{Ring: ring},
+		Log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}}
 	accountID, factorID := seedFactorAccount(t, ctx, pool, model.AuthFactorTypeInAppCode, false)
-	account, _ := h.d.Store.GetAccountByID(ctx, uuid.MustParse(accountID))
-	factor, _ := h.d.Store.GetAuthFactorByID(ctx, accountID, uuid.MustParse(factorID))
 
 	now := time.Now().UTC()
 	challenge := &model.AuthChallenge{
 		Id:               uuid.NewString(),
 		AccountId:        accountID,
-		StepTotal:        2,
-		StepRemain:       2,
+		DeviceId:         "reject-in-app-device",
+		StepTotal:        1,
+		StepRemain:       1,
 		BlacklistFactors: []string{},
 		Audiences:        []string{},
 		Scopes:           []string{},
@@ -241,32 +319,24 @@ func TestSendFactorCodeInAppCodePublishesPrompt(t *testing.T) {
 		t.Fatalf("create challenge: %v", err)
 	}
 
-	if err := h.sendFactorCode(ctx, account, factor, challenge); err != nil {
-		t.Fatalf("sendFactorCode: %v", err)
-	}
-	if len(ring.pushes) != 1 || ring.pushes[0].Topic != "auth.login_attempt" {
-		t.Fatalf("push not delivered as auth.login_attempt: %+v", ring.pushes)
-	}
-	var cached string
-	if found, _ := rc.Cache.Get(ctx, authFactorCodePrefix+factor.Id+":code", &cached); found {
-		t.Fatalf("authfactor code key written for in-app prompt: %q", cached)
-	}
-	reloaded, err := h.d.Store.GetAuthChallenge(ctx, uuid.MustParse(challenge.Id))
-	if err != nil {
-		t.Fatalf("reload challenge: %v", err)
-	}
-	if reloaded.PromptRequestedAt == nil {
-		t.Fatal("prompt_requested_at not persisted after prompt published")
-	}
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/auth/challenge/:id/factors/:factorId", h.requestFactorCode)
+	req := httptest.NewRequest(http.MethodPost,
+		"/auth/challenge/"+challenge.Id+"/factors/"+factorID, nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
 
-	// A second request while a prompt is outstanding must be rejected without
-	// publishing another push.
-	if err := h.sendFactorCode(ctx, account, factor, challenge); err == nil {
-		t.Fatal("second sendFactorCode succeeded, want error while prompt pending")
-	} else if err.Error() != "An in-app login request is already pending." {
-		t.Fatalf("unexpected error: %v", err)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body %s)", rec.Code, rec.Body.String())
 	}
-	if len(ring.pushes) != 1 {
-		t.Fatalf("pushes after duplicate request = %d, want 1", len(ring.pushes))
+	if !strings.Contains(rec.Body.String(), "AUTH_FACTOR_NOT_SUPPORTED") {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+	if len(ring.pushes) != 0 {
+		t.Fatalf("pushes sent for a rejected in-app request: %+v", ring.pushes)
+	}
+	if len(ring.emails) != 0 {
+		t.Fatalf("emails sent for a rejected in-app request: %+v", ring.emails)
 	}
 }
