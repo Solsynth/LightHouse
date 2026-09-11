@@ -38,13 +38,13 @@ func seedRiskAccount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, fact
 }
 
 // TestDetectChallengeRiskSkipsUncompletableFactors pins the step-count
-// contract: Passkey (7), NfcToken (6) and InAppCode (2) factors can never
-// satisfy a step of the username-challenge flow (the client picker offers
-// passkeys only via the separate discoverable flow, NFC verification is not
-// ported, and in-app approval is offered for every challenge instead of as a
-// pickable factor), so they must not inflate StepTotal — a password+passkey
-// account on a fresh device requires exactly one step instead of stranding the
-// login at an empty factor picker.
+// contract: Passkey (7) and InAppCode (2) factors can never satisfy a step of
+// the username-challenge flow (the client picker offers passkeys only via the
+// separate discoverable flow, and in-app approval is offered for every
+// challenge instead of as a pickable factor), so they must not inflate
+// StepTotal — a password+passkey account on a fresh device requires exactly one
+// step instead of stranding the login at an empty factor picker. NfcToken (6)
+// does count: its verification runs through Passport's DyNfcService.
 func TestDetectChallengeRiskSkipsUncompletableFactors(t *testing.T) {
 	pool, err := pgxpool.New(context.Background(), smokeDSN)
 	if err != nil {
@@ -75,14 +75,14 @@ func TestDetectChallengeRiskSkipsUncompletableFactors(t *testing.T) {
 		}
 	})
 
-	t.Run("password plus nfc token requires only the password step", func(t *testing.T) {
+	t.Run("password plus nfc token demands both steps", func(t *testing.T) {
 		accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypePassword, model.AuthFactorTypeNfcToken)
 		steps, err := h.detectChallengeRisk(ctx, accountID, freshIP, freshUA, model.SecurityModeDefault)
 		if err != nil {
 			t.Fatalf("detectChallengeRisk: %v", err)
 		}
-		if steps != 1 {
-			t.Fatalf("password+nfc steps = %d, want 1 (NFC verification is not ported)", steps)
+		if steps != 2 {
+			t.Fatalf("password+nfc steps = %d, want 2 (the tag is verifiable via Passport)", steps)
 		}
 	})
 

@@ -1,8 +1,8 @@
 // Package grpcclient holds the outbound gRPC clients Stargate uses to call
 // sibling services (wallet for perks, develop for OIDC clients, drive for
-// files, pass for badges, blade for websocket pushes, ring for
-// notifications). Targets come from the [services] config section; when a
-// target is empty the provider degrades gracefully (nil/empty results),
+// files, pass for profiles + NFC token validation, blade for websocket pushes,
+// ring for notifications). Targets come from the [services] config section;
+// when a target is empty the provider degrades gracefully (nil/empty results),
 // matching the C# services' behavior with a dependency down.
 package grpcclient
 
@@ -43,6 +43,7 @@ type Clients struct {
 	Develop gen.DyCustomAppServiceClient
 	Drive   gen.DyFileServiceClient
 	Pass    gen.DyProfileServiceClient
+	Nfc     gen.DyNfcServiceClient
 	Blade   gen.WebSocketServiceClient
 	Ring    gen.DyRingServiceClient
 	conns   []*grpc.ClientConn
@@ -65,6 +66,8 @@ func (c *Clients) Available(service string) bool {
 		return c.Drive != nil
 	case "pass":
 		return c.Pass != nil
+	case "nfc":
+		return c.Nfc != nil
 	case "blade":
 		return c.Blade != nil
 	case "ring":
@@ -100,6 +103,8 @@ func NewClients(cfg *config.Config) (*Clients, error) {
 	}
 	if conn := dial(cfg.Services.Pass.GRPC); conn != nil {
 		c.Pass = gen.NewDyProfileServiceClient(conn)
+		// Passport hosts the NFC validation service on the same instance.
+		c.Nfc = gen.NewDyNfcServiceClient(conn)
 	}
 	if conn := dial(cfg.Services.Blade.GRPC); conn != nil {
 		c.Blade = gen.NewWebSocketServiceClient(conn)

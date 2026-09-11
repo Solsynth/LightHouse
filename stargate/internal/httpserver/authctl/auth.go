@@ -128,18 +128,20 @@ func Register(api *gin.RouterGroup, d Deps) {
 }
 
 // completableAuthFactors returns the enabled factors that can satisfy a step
-// of the username-challenge flow. PinCode/RecoveryCode/QrLogin/NfcToken/
-// Passkey are excluded (identical to detectChallengeRisk's historical filter),
-// and so is InAppCode: the in-app notification factor is no longer selectable
-// — cross-device approval is offered for every challenge instead (see
-// publishChallengePending in createChallenge).
+// of the username-challenge flow. PinCode/RecoveryCode/QrLogin/Passkey are
+// excluded (identical to detectChallengeRisk's historical filter), and so is
+// InAppCode: the in-app notification factor is no longer selectable —
+// cross-device approval is offered for every challenge instead (see
+// publishChallengePending in createChallenge). NfcToken counts, mirroring the
+// C# DetectChallengeRisk, now that its verification runs through Passport's
+// DyNfcService (see verifyNfcToken).
 func completableAuthFactors(factors []model.AuthFactor) []model.AuthFactor {
 	out := make([]model.AuthFactor, 0, len(factors))
 	for _, f := range factors {
 		ft := model.AuthFactorType(f.Type)
 		if f.EnabledAt != nil && ft != model.AuthFactorTypePinCode &&
 			ft != model.AuthFactorTypeRecoveryCode && ft != model.AuthFactorTypeQrLogin &&
-			ft != model.AuthFactorTypeNfcToken && ft != model.AuthFactorTypePasskey &&
+			ft != model.AuthFactorTypePasskey &&
 			ft != model.AuthFactorTypeInAppCode {
 			out = append(out, f)
 		}
@@ -160,18 +162,16 @@ func (h *handler) allRequiredStepCount(ctx context.Context, accountID string) (i
 // detectChallengeRisk ports AuthService.DetectChallengeRisk: it computes the
 // number of required authentication steps for a new challenge.
 //
-// Unlike the C# source, NfcToken and Passkey factors are excluded from the
-// step count alongside PinCode/RecoveryCode/QrLogin: neither can satisfy a
-// step of the username-challenge flow. Passkeys are only offered to the
-// client through the separate discoverable-passkey flow
-// (startPasskeyLogin), which mints its own single-step challenge, and NFC
-// verification degrades to failure here (the Passport gRPC RPC is not
-// ported). Counting them produced challenges whose StepTotal exceeded the
-// factors the picker can complete, stranding the login after the last usable
-// factor with an empty picker. InAppCode is excluded for the same reason —
-// the picker no longer offers it — with one exception: when it is the
-// account's only enabled factor, the challenge still counts one step, because
-// a trusted session can satisfy it by approving from another device.
+// Unlike the C# source, Passkey factors are excluded from the step count
+// alongside PinCode/RecoveryCode/QrLogin: passkeys are only offered to the
+// client through the separate discoverable-passkey flow (startPasskeyLogin),
+// which mints its own single-step challenge, so counting them produced
+// challenges whose StepTotal exceeded the factors the picker can complete,
+// stranding the login after the last usable factor with an empty picker.
+// InAppCode is excluded for the same reason — the picker no longer offers it
+// — with one exception: when it is the account's only enabled factor, the
+// challenge still counts one step, because a trusted session can satisfy it
+// by approving from another device.
 func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress, userAgent string, mode model.SecurityMode) (int, error) {
 	factors, err := h.d.Store.GetAuthFactors(ctx, uuid.MustParse(accountID))
 	if err != nil {
@@ -736,14 +736,47 @@ func (h *handler) verifyFactorCode(ctx context.Context, factor *model.AuthFactor
 		return true, nil
 	case model.AuthFactorTypePassword, model.AuthFactorTypePinCode, model.AuthFactorTypeTimedCode:
 		return auth.VerifyFactorPassword(factor, code)
+	case model.AuthFactorTypeNfcToken:
+		return h.verifyNfcToken(ctx, factor.AccountId, code), nil
 	default:
-		// Passkey flows use their own endpoints; NFC tokens verify via the
-		// Passport gRPC service which is not ported (degrades to failure,
-		// matching the C# behavior when the RPC fails). In-app code factors
-		// are rejected before reaching here — their approval prompt is
-		// published when the challenge is created.
+		// Passkey flows use their own endpoints. In-app code factors are
+		// rejected before reaching here — their approval prompt is published
+		// when the challenge is created.
 		return false, nil
 	}
+}
+
+// verifyNfcToken ports AccountService.VerifyNfcToken. The client submits
+// "<tag hardware uid>:<nfc payload>" where the payload is the SUN URL read off
+// the tag (solian://phpass?picc_data=...&e=...&cmac=...); Passport validates
+// the token and reports the tag's owner. A tag that verifies but belongs to
+// another account must not satisfy this challenge, so the owner is matched
+// against the factor's account.
+func (h *handler) verifyNfcToken(ctx context.Context, accountID, code string) bool {
+	if h.d.Clients == nil || h.d.Clients.Nfc == nil {
+		return false
+	}
+	if len(code) < 32 {
+		return false
+	}
+	separator := strings.IndexByte(code, ':')
+	if separator <= 0 || separator >= len(code)-1 {
+		return false
+	}
+	rpcCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	response, err := h.d.Clients.Nfc.ValidateNfcToken(rpcCtx, &gen.DyValidateNfcTokenRequest{
+		TagUid: code[:separator],
+		UidHex: code[separator+1:],
+	})
+	if err != nil {
+		h.logError("validate nfc token", err)
+		return false
+	}
+	if response == nil || !response.GetIsValid() {
+		return false
+	}
+	return strings.EqualFold(response.GetAccountId(), accountID)
 }
 
 func (h *handler) sendFactorCode(ctx context.Context, account *model.Account, factor *model.AuthFactor, challenge *model.AuthChallenge) error {
