@@ -303,7 +303,7 @@ func fileURL(cfg *config.Config, ref *model.SnCloudFileReferenceObject) string {
 	if ref.Url != "" {
 		return ref.Url
 	}
-	return cfg.BaseUrl + "/files/" + ref.Id
+	return cfg.BaseUrl + "/drive/files/" + ref.Id
 }
 
 // resolveAccount mirrors AccountPublicController's lookup: GUID probes load
