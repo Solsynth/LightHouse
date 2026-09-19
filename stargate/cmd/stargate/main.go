@@ -135,6 +135,9 @@ func run(log *slog.Logger) error {
 	appProvider := &grpcclient.DevelopAppProvider{Client: clients.Develop, Cfg: cfg, Log: log}
 
 	presence := auth.NewDevicePresence(st, clients.Blade, log)
+	if clients == nil || clients.Blade == nil {
+		log.Warn("Blade gRPC client is not configured (services.blade.grpc); online device presence will report nothing online")
+	}
 
 	tokenAuth := auth.NewTokenAuthService(st, rc, jwtService, perkProvider, appProvider, log)
 	logs := actionlog.New(database)
