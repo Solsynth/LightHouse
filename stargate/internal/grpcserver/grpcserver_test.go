@@ -3,12 +3,19 @@ package grpcserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 	gen "src.solsynth.dev/sosys/go/proto"
 
+	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
 
@@ -230,5 +237,145 @@ func TestConvertActorType(t *testing.T) {
 func TestProtoValueNil(t *testing.T) {
 	if _, err := protoValueToJSON(nil); err == nil {
 		t.Error("nil Value must error (invalid permission value)")
+	}
+}
+
+// --- DyAuthService: online devices ---
+
+func TestGetOnlineDevicesValidation(t *testing.T) {
+	svc := &dyAuthService{d: Deps{}}
+	if _, err := svc.GetOnlineDevices(context.Background(), &gen.DyGetOnlineDevicesRequest{}); status.Code(err) != codes.InvalidArgument {
+		t.Errorf("blank account_id: code = %v, want InvalidArgument", status.Code(err))
+	}
+	if _, err := svc.GetOnlineDevices(context.Background(), &gen.DyGetOnlineDevicesRequest{AccountId: "not-a-uuid"}); status.Code(err) != codes.InvalidArgument {
+		t.Errorf("unparsable account_id: code = %v, want InvalidArgument", status.Code(err))
+	}
+	if _, err := svc.GetOnlineDevicesBatch(context.Background(), &gen.DyGetOnlineDevicesBatchRequest{}); status.Code(err) != codes.InvalidArgument {
+		t.Errorf("empty account_ids: code = %v, want InvalidArgument", status.Code(err))
+	}
+}
+
+func TestGetOnlineDevicesWithoutPresence(t *testing.T) {
+	svc := &dyAuthService{d: Deps{}}
+	accountID := uuid.NewString()
+	if _, err := svc.GetOnlineDevices(context.Background(), &gen.DyGetOnlineDevicesRequest{AccountId: accountID}); status.Code(err) != codes.Unavailable {
+		t.Errorf("GetOnlineDevices: code = %v, want Unavailable", status.Code(err))
+	}
+	if _, err := svc.GetOnlineDevicesBatch(context.Background(), &gen.DyGetOnlineDevicesBatchRequest{AccountIds: []string{accountID}}); status.Code(err) != codes.Unavailable {
+		t.Errorf("GetOnlineDevicesBatch: code = %v, want Unavailable", status.Code(err))
+	}
+}
+
+func TestGetOnlineDevicesBatchCoversEveryAccount(t *testing.T) {
+	// No store and no wsgateway configured: every requested account still gets
+	// an entry with an empty device list.
+	svc := &dyAuthService{d: Deps{Presence: auth.NewDevicePresence(nil, nil, nil)}}
+	first, second := uuid.NewString(), uuid.NewString()
+	resp, err := svc.GetOnlineDevicesBatch(context.Background(), &gen.DyGetOnlineDevicesBatchRequest{
+		AccountIds: []string{first, second, first},
+		Namespace:  "dev.solsynth.solian",
+	})
+	if err != nil {
+		t.Fatalf("GetOnlineDevicesBatch: %v", err)
+	}
+	if len(resp.Devices) != 2 {
+		t.Fatalf("devices = %#v, want 2 entries", resp.Devices)
+	}
+	for _, id := range []string{first, second} {
+		list, ok := resp.Devices[id]
+		if !ok || list == nil || len(list.Devices) != 0 {
+			t.Errorf("entry %s = %#v, want empty list", id, list)
+		}
+	}
+}
+
+func TestOnlineDeviceToProto(t *testing.T) {
+	label := "MacBook"
+	granted := time.Date(2025, 3, 1, 12, 0, 0, 0, time.UTC)
+	proto := onlineDeviceToProto(auth.OnlineDevice{
+		Client: model.AuthClient{
+			Id: "client-1", DeviceId: "hardware-1", DeviceName: "iPhone 15 Pro",
+			DeviceLabel: &label, Platform: model.ClientPlatformMacOs,
+		},
+		SessionIDs:    []string{"s1", "s2"},
+		LastGrantedAt: model.NewTime(granted),
+	})
+	if proto.Id != "client-1" || proto.DeviceId != "hardware-1" || proto.DeviceName != "iPhone 15 Pro" {
+		t.Errorf("identity fields = %+v", proto)
+	}
+	if proto.DeviceLabel == nil || *proto.DeviceLabel != label {
+		t.Errorf("device_label = %v, want %q", proto.DeviceLabel, label)
+	}
+	if len(proto.SessionIds) != 2 || proto.SessionIds[0] != "s1" {
+		t.Errorf("session_ids = %v", proto.SessionIds)
+	}
+	if proto.LastGrantedAt == nil || !proto.LastGrantedAt.AsTime().Equal(granted) {
+		t.Errorf("last_granted_at = %v, want %v", proto.LastGrantedAt, granted)
+	}
+}
+
+// The proto enum is shifted by one relative to model.ClientPlatform, so the
+// converter must be an explicit switch rather than a cast.
+func TestClientPlatformToProto(t *testing.T) {
+	want := map[model.ClientPlatform]gen.DyClientPlatform{
+		model.ClientPlatformUnidentified: gen.DyClientPlatform_DY_UNIDENTIFIED,
+		model.ClientPlatformWeb:          gen.DyClientPlatform_DY_WEB,
+		model.ClientPlatformIos:          gen.DyClientPlatform_DY_IOS,
+		model.ClientPlatformAndroid:      gen.DyClientPlatform_DY_ANDROID,
+		model.ClientPlatformMacOs:        gen.DyClientPlatform_DY_MACOS,
+		model.ClientPlatformWindows:      gen.DyClientPlatform_DY_WINDOWS,
+		model.ClientPlatformLinux:        gen.DyClientPlatform_DY_LINUX,
+	}
+	for platform, expected := range want {
+		if got := clientPlatformToProto(platform); got != expected {
+			t.Errorf("clientPlatformToProto(%d) = %v, want %v", platform, got, expected)
+		}
+	}
+	if got := clientPlatformToProto(model.ClientPlatform(99)); got != gen.DyClientPlatform_DY_UNIDENTIFIED {
+		t.Errorf("unknown platform = %v, want DY_UNIDENTIFIED", got)
+	}
+}
+
+// testDeviceStore satisfies auth's (unexported) deviceStore interface.
+type testDeviceStore struct {
+	err error
+}
+
+func (s testDeviceStore) ListClientsByAccountIDs(context.Context, []uuid.UUID) (map[string][]model.AuthClient, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return map[string][]model.AuthClient{}, nil
+}
+
+func (s testDeviceStore) ListSessionsByClientIDs(context.Context, []uuid.UUID) (map[string][]model.AuthSession, error) {
+	return map[string][]model.AuthSession{}, nil
+}
+
+type failingBlade struct {
+	gen.WebSocketServiceClient
+	err error
+}
+
+func (b failingBlade) GetUsersConnectedWebsocketDeviceIds(context.Context, *gen.DyGetUsersConnectedWebsocketDeviceIdsRequest, ...grpc.CallOption) (*gen.DyGetUsersConnectedWebsocketDeviceIdsResponse, error) {
+	return nil, b.err
+}
+
+// A failing wsgateway lookup degrades to Unavailable; a local (store) failure
+// is an Internal error. Callers distinguish the two.
+func TestGetOnlineDevicesErrorMapping(t *testing.T) {
+	accountID := uuid.NewString()
+	bladeDown := &dyAuthService{d: Deps{Presence: auth.NewDevicePresence(
+		testDeviceStore{}, failingBlade{err: errors.New("blade down")}, nil)}}
+	_, err := bladeDown.GetOnlineDevices(context.Background(), &gen.DyGetOnlineDevicesRequest{AccountId: accountID})
+	if status.Code(err) != codes.Unavailable {
+		t.Errorf("wsgateway failure: code = %v, want Unavailable", status.Code(err))
+	}
+
+	storeDown := &dyAuthService{d: Deps{Presence: auth.NewDevicePresence(
+		testDeviceStore{err: errors.New("boom")}, failingBlade{}, nil)}}
+	_, err = storeDown.GetOnlineDevices(context.Background(), &gen.DyGetOnlineDevicesRequest{AccountId: accountID})
+	if status.Code(err) != codes.Internal {
+		t.Errorf("store failure: code = %v, want Internal", status.Code(err))
 	}
 }

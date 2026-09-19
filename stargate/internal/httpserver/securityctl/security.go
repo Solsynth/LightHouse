@@ -47,16 +47,17 @@ import (
 
 // Deps carries the dependencies the security controllers need.
 type Deps struct {
-	Store   *store.Store
-	Redis   *redis.Client
-	Cfg     *config.Config
-	Auth    *auth.AuthService
-	Token   *auth.TokenAuthService
-	Perm    *permission.Service
-	Logs    *actionlog.Service
-	Clients *grpcclient.Clients
-	Spells  *spell.Service
-	Log     *slog.Logger
+	Store    *store.Store
+	Redis    *redis.Client
+	Cfg      *config.Config
+	Auth     *auth.AuthService
+	Token    *auth.TokenAuthService
+	Perm     *permission.Service
+	Logs     *actionlog.Service
+	Clients  *grpcclient.Clients
+	Spells   *spell.Service
+	Presence *auth.DevicePresence
+	Log      *slog.Logger
 }
 
 type controller struct {
@@ -1142,10 +1143,10 @@ func (c *controller) updateSecurityPreferences(ctx *gin.Context) {
 // Session annotation (category, trusted, auto-expiry)
 // ---------------------------------------------------------------------------
 
-// annotateSessions enriches sessions with category/trusted wire fields and
-// hides auto-expiry for browser sessions. Platform is loaded in a single
+// annotateSessions enriches sessions with category/trusted/online wire fields
+// and hides auto-expiry for browser sessions. Platform is loaded in a single
 // batch query.
-func (c *controller) annotateSessions(ctx context.Context, sessions []model.AuthSession) {
+func (c *controller) annotateSessions(ctx context.Context, sessions []model.AuthSession, online map[string]bool) {
 	clientIDs := make([]uuid.UUID, 0, len(sessions))
 	for _, s := range sessions {
 		if s.ClientId != nil {
@@ -1164,6 +1165,7 @@ func (c *controller) annotateSessions(ctx context.Context, sessions []model.Auth
 		var platform model.ClientPlatform
 		if sessions[i].ClientId != nil {
 			platform = platforms[*sessions[i].ClientId]
+			sessions[i].IsOnline = online[*sessions[i].ClientId]
 		}
 		sessions[i].Category = model.SessionCategory(platform)
 		sessions[i].Trusted = model.SessionTrusted(platform, sessions[i].LastGrantedAt, now, gap)
@@ -1171,6 +1173,25 @@ func (c *controller) annotateSessions(ctx context.Context, sessions []model.Auth
 			sessions[i].ExpiredAt = nil
 		}
 	}
+}
+
+// onlineClientIDs returns the account's live wsgateway clients keyed by
+// auth_clients.id. Blade failures degrade to "nothing online" instead of
+// failing the page.
+func (c *controller) onlineClientIDs(ctx context.Context, accountID string) map[string]bool {
+	online := map[string]bool{}
+	if c.d.Presence == nil {
+		return online
+	}
+	byAccount, err := c.d.Presence.ForAccounts(ctx, []string{accountID}, "")
+	if err != nil {
+		c.d.Log.WarnContext(ctx, "resolve online devices failed", "account_id", accountID, "error", err)
+		return online
+	}
+	for _, device := range byAccount[accountID] {
+		online[device.Client.Id] = true
+	}
+	return online
 }
 
 // ---------------------------------------------------------------------------
@@ -1212,7 +1233,7 @@ func (c *controller) getSessions(ctx *gin.Context) {
 	for i := range sessions {
 		sessions[i].IsCurrent = sessions[i].Id == currentSession.Id
 	}
-	c.annotateSessions(reqCtx, sessions)
+	c.annotateSessions(reqCtx, sessions, c.onlineClientIDs(reqCtx, user.Id))
 	ctx.Header("X-Total", strconv.Itoa(total))
 	ctx.Header("X-Auth-Session", currentSession.Id)
 	ctx.JSON(http.StatusOK, sessions)
@@ -1250,7 +1271,7 @@ func (c *controller) getSessionChildren(ctx *gin.Context) {
 	for i := range children {
 		children[i].IsCurrent = children[i].Id == currentSession.Id
 	}
-	c.annotateSessions(reqCtx, children)
+	c.annotateSessions(reqCtx, children, c.onlineClientIDs(reqCtx, user.Id))
 	ctx.Header("X-Total", strconv.Itoa(total))
 	ctx.Header("X-Auth-Session", currentSession.Id)
 	ctx.JSON(http.StatusOK, children)
@@ -1331,6 +1352,7 @@ type deviceWithSessions struct {
 	AccountId   string               `json:"account_id"`
 	Category    string               `json:"category,omitempty"`
 	Trusted     bool                 `json:"trusted,omitempty"`
+	IsOnline    bool                 `json:"is_online"`
 	Sessions    []model.AuthSession  `json:"sessions"`
 }
 
@@ -1365,6 +1387,7 @@ func (c *controller) getDevices(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to load sessions.", http.StatusInternalServerError))
 		return
 	}
+	online := c.onlineClientIDs(reqCtx, user.Id)
 	result := make([]deviceWithSessions, 0, len(devices))
 	now := time.Now().UTC()
 	gap := c.d.Cfg.Security.TrustedSessionMaxGapDuration()
@@ -1376,13 +1399,14 @@ func (c *controller) getDevices(ctx *gin.Context) {
 			DeviceLabel: device.DeviceLabel,
 			DeviceId:    device.DeviceId,
 			AccountId:   device.AccountId,
+			IsOnline:    online[device.Id],
 			Sessions:    []model.AuthSession{},
 		}
 		item.Category = model.SessionCategory(device.Platform)
 		if sessions, ok := sessionsByClient[device.Id]; ok {
 			// Annotate nested sessions and compute device-level trust
 			// from the most recent granted-at timestamp across sessions.
-			c.annotateSessions(reqCtx, sessions)
+			c.annotateSessions(reqCtx, sessions, online)
 			item.Sessions = sessions
 			for _, s := range sessions {
 				if model.SessionTrusted(device.Platform, s.LastGrantedAt, now, gap) {

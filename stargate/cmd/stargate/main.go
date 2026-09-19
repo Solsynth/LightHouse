@@ -134,6 +134,8 @@ func run(log *slog.Logger) error {
 	perkProvider := &grpcclient.WalletPerkProvider{Client: clients.Wallet, Log: log}
 	appProvider := &grpcclient.DevelopAppProvider{Client: clients.Develop, Cfg: cfg, Log: log}
 
+	presence := auth.NewDevicePresence(st, clients.Blade, log)
+
 	tokenAuth := auth.NewTokenAuthService(st, rc, jwtService, perkProvider, appProvider, log)
 	logs := actionlog.New(database)
 	logs.Publish = func(ctx context.Context, id uuid.UUID, accountID, action string, meta map[string]any, sessionID *string, occurredAt time.Time) {
@@ -186,6 +188,7 @@ func run(log *slog.Logger) error {
 		securityctl.Register(api, securityctl.Deps{
 			Store: st, Redis: rc, Cfg: cfg, Auth: authService, Token: tokenAuth,
 			Perm: permService, Logs: logs, Clients: clients, Log: log, Spells: spellService,
+			Presence: presence,
 		})
 		socialctl.Register(api, socialctl.Deps{
 			Store: st, Redis: rc, Cfg: cfg, Auth: authService, Logs: logs, Log: log, Spells: spellService,
@@ -230,7 +233,7 @@ func run(log *slog.Logger) error {
 	}
 	grpcSrv := grpc.NewServer(grpcOpts...)
 	registerGrpcServices(grpcSrv, authService, tokenAuth, st, permService, logs, jwtService, rc, cfg, log,
-		e2eectl.NewService(st, nc, clients, log))
+		e2eectl.NewService(st, nc, clients, log), presence)
 
 	// Blade service discovery: without registration, Blade's /meta capability
 	// aggregator never sees this instance and the Padlock-family capabilities
@@ -415,10 +418,11 @@ func registerGrpcServices(
 	cfg *config.Config,
 	log *slog.Logger,
 	e2eeService *e2eectl.Service,
+	presence *auth.DevicePresence,
 ) {
 	grpcserver.Register(grpcSrv, grpcserver.Deps{
 		Store: st, Redis: rc, Auth: authService, Token: tokenAuth, JWT: jwtService,
-		Perm: perm, Logs: logs, E2ee: e2eeService, Cfg: cfg, Log: log,
+		Perm: perm, Logs: logs, E2ee: e2eeService, Cfg: cfg, Log: log, Presence: presence,
 	})
 }
 

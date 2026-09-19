@@ -190,6 +190,30 @@ func (s *Store) ListSessionsByClientIDs(ctx context.Context, clientIDs []uuid.UU
 	return grouped, nil
 }
 
+// ListClientsByAccountIDs loads every non-deleted auth client for the given
+// accounts, grouped by account id (device presence).
+func (s *Store) ListClientsByAccountIDs(ctx context.Context, accountIDs []uuid.UUID) (map[string][]model.AuthClient, error) {
+	if len(accountIDs) == 0 {
+		return map[string][]model.AuthClient{}, nil
+	}
+	rows, err := s.query(ctx, `SELECT `+clientColumns+` FROM auth_clients
+		WHERE account_id = ANY($1) AND deleted_at IS NULL
+		ORDER BY created_at DESC`, accountIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	grouped := map[string][]model.AuthClient{}
+	for rows.Next() {
+		client, err := scanClient(rows)
+		if err != nil {
+			return nil, err
+		}
+		grouped[client.AccountId] = append(grouped[client.AccountId], *client)
+	}
+	return grouped, rows.Err()
+}
+
 // GetClientByDeviceID loads a device by (account_id, device_id).
 func (s *Store) GetClientByDeviceID(ctx context.Context, accountID, deviceID string) (*model.AuthClient, error) {
 	row := s.queryRow(ctx, `SELECT `+clientColumns+` FROM auth_clients

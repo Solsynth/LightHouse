@@ -20,7 +20,7 @@ require (
 	gorm.io/datatypes v1.2.7
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
-	src.solsynth.dev/sosys/go v0.2.1-0.20260815152351-e5aa41987d79
+	src.solsynth.dev/sosys/go v0.2.1-0.20260919143325-40fa743b4bd0
 )
 
 require (

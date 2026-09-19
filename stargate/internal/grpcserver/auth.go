@@ -4,6 +4,7 @@ package grpcserver
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
@@ -64,4 +65,59 @@ func (s *dyAuthService) ValidateCaptcha(ctx context.Context, req *gen.DyValidate
 		return nil, err
 	}
 	return &gen.DyValidateResponse{Valid: valid}, nil
+}
+
+// GetOnlineDevices returns the account's devices with a live wsgateway
+// connection, enriched with device identity and non-expired sessions.
+func (s *dyAuthService) GetOnlineDevices(ctx context.Context, req *gen.DyGetOnlineDevicesRequest) (*gen.DyGetOnlineDevicesResponse, error) {
+	accountID := ""
+	if req != nil {
+		accountID = strings.TrimSpace(req.AccountId)
+	}
+	if _, err := uuid.Parse(accountID); err != nil {
+		return nil, status.Error(codes.InvalidArgument, "account_id is required")
+	}
+	if s.d.Presence == nil {
+		return nil, status.Error(codes.Unavailable, "device presence is not configured")
+	}
+	byAccount, err := s.d.Presence.ForAccounts(ctx, []string{accountID}, req.GetNamespace())
+	if err != nil {
+		if errors.Is(err, auth.ErrOnlineDevicesUnavailable) {
+			return nil, status.Errorf(codes.Unavailable, "%v", err)
+		}
+		return nil, status.Errorf(codes.Internal, "resolve online devices: %v", err)
+	}
+	devices := byAccount[accountID]
+	resp := &gen.DyGetOnlineDevicesResponse{Devices: make([]*gen.DyOnlineDevice, 0, len(devices))}
+	for _, device := range devices {
+		resp.Devices = append(resp.Devices, onlineDeviceToProto(device))
+	}
+	return resp, nil
+}
+
+// GetOnlineDevicesBatch returns the same per account. The response carries an
+// entry for every requested account (empty list when offline).
+func (s *dyAuthService) GetOnlineDevicesBatch(ctx context.Context, req *gen.DyGetOnlineDevicesBatchRequest) (*gen.DyGetOnlineDevicesBatchResponse, error) {
+	if req == nil || len(req.AccountIds) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "account_ids is required")
+	}
+	if s.d.Presence == nil {
+		return nil, status.Error(codes.Unavailable, "device presence is not configured")
+	}
+	byAccount, err := s.d.Presence.ForAccounts(ctx, req.AccountIds, req.GetNamespace())
+	if err != nil {
+		if errors.Is(err, auth.ErrOnlineDevicesUnavailable) {
+			return nil, status.Errorf(codes.Unavailable, "%v", err)
+		}
+		return nil, status.Errorf(codes.Internal, "resolve online devices: %v", err)
+	}
+	resp := &gen.DyGetOnlineDevicesBatchResponse{Devices: make(map[string]*gen.DyOnlineDeviceList, len(byAccount))}
+	for accountID, devices := range byAccount {
+		list := &gen.DyOnlineDeviceList{Devices: make([]*gen.DyOnlineDevice, 0, len(devices))}
+		for _, device := range devices {
+			list.Devices = append(list.Devices, onlineDeviceToProto(device))
+		}
+		resp.Devices[accountID] = list
+	}
+	return resp, nil
 }

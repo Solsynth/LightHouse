@@ -18,6 +18,7 @@ import (
 	"src.solsynth.dev/sosys/go/pkg/models"
 	gen "src.solsynth.dev/sosys/go/proto"
 
+	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
 
@@ -41,6 +42,43 @@ func wrapperToStr(w *wrapperspb.StringValue) *string {
 	}
 	v := w.Value
 	return &v
+}
+
+// onlineDeviceToProto converts an account's live device (device presence on
+// DyAuthService) to its wire shape.
+func onlineDeviceToProto(d auth.OnlineDevice) *gen.DyOnlineDevice {
+	return &gen.DyOnlineDevice{
+		Id:            d.Client.Id,
+		DeviceId:      d.Client.DeviceId,
+		DeviceName:    d.Client.DeviceName,
+		DeviceLabel:   d.Client.DeviceLabel,
+		Platform:      clientPlatformToProto(d.Client.Platform),
+		SessionIds:    d.SessionIDs,
+		LastGrantedAt: toProtoTime(d.LastGrantedAt),
+	}
+}
+
+// clientPlatformToProto maps the model enum onto the proto enum. The proto
+// enum is shifted by one relative to model.ClientPlatform
+// (DY_CLIENT_PLATFORM_UNSPECIFIED prefixes DY_UNIDENTIFIED), so this must
+// stay an explicit switch — a cast would mislabel every platform.
+func clientPlatformToProto(p model.ClientPlatform) gen.DyClientPlatform {
+	switch p {
+	case model.ClientPlatformWeb:
+		return gen.DyClientPlatform_DY_WEB
+	case model.ClientPlatformIos:
+		return gen.DyClientPlatform_DY_IOS
+	case model.ClientPlatformAndroid:
+		return gen.DyClientPlatform_DY_ANDROID
+	case model.ClientPlatformMacOs:
+		return gen.DyClientPlatform_DY_MACOS
+	case model.ClientPlatformWindows:
+		return gen.DyClientPlatform_DY_WINDOWS
+	case model.ClientPlatformLinux:
+		return gen.DyClientPlatform_DY_LINUX
+	default:
+		return gen.DyClientPlatform_DY_UNIDENTIFIED
+	}
 }
 
 // authFactorToProto mirrors AccountServiceGrpc.ToProtoAuthFactor.

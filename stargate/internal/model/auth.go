@@ -72,6 +72,8 @@ type AuthSession struct {
 	// Trusted indicates whether this session qualifies for challenge
 	// approval/decline (native + recent activity).
 	Trusted bool `json:"trusted,omitempty"`
+	// IsOnline is derived from the owning device's live wsgateway connection.
+	IsOnline bool `json:"is_online"`
 	// Account is populated server-side for enrichment.
 	Account *Account `json:"-"`
 }

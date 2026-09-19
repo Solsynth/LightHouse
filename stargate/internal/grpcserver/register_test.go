@@ -30,8 +30,8 @@ func TestRegisterWiring(t *testing.T) {
 	// Every expected service is registered (with its full method set).
 	info := server.GetServiceInfo()
 	for service, wantMethods := range map[string]int{
-		"proto.DyAuthService":               3,
-		"proto.DyAccountService":            16,
+		"proto.DyAuthService":               5,
+		"proto.DyAccountService":            17,
 		"proto.DyProfileService":            25,
 		"proto.DyActionLogService":          3,
 		"proto.DyPermissionService":         6,

@@ -24,16 +24,17 @@ import (
 // Deps carries the shared service dependencies. Fields are the same objects
 // the HTTP layer uses; unused ones (Redis) are kept for contract parity.
 type Deps struct {
-	Store *store.Store
-	Redis *redis.Client
-	Auth  *auth.AuthService
-	Token *auth.TokenAuthService
-	JWT   *auth.JWTService
-	Perm  *permission.Service
-	Logs  *actionlog.Service
-	E2ee  *e2eectl.Service
-	Cfg   *config.Config
-	Log   *slog.Logger
+	Store    *store.Store
+	Redis    *redis.Client
+	Auth     *auth.AuthService
+	Token    *auth.TokenAuthService
+	JWT      *auth.JWTService
+	Perm     *permission.Service
+	Logs     *actionlog.Service
+	E2ee     *e2eectl.Service
+	Presence *auth.DevicePresence
+	Cfg      *config.Config
+	Log      *slog.Logger
 }
 
 // Register mounts every inbound gRPC service (the Padlock surface:
