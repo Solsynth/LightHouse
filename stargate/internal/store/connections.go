@@ -89,57 +89,61 @@ func (s *Store) GetConnectionByAccountAndProvider(ctx context.Context, accountID
 	return &c, nil
 }
 
-// InsertConnection creates a new connection row. registeredAt is non-nil
-// when this connection created the account (OIDC registration).
+// InsertConnection creates a new connection row, unless one already exists for
+// the same account+provider+identifier (idempotent: concurrent callbacks no-op
+// instead of racing on the unique index). registeredAt is non-nil when this
+// connection created the account (OIDC registration).
 func (s *Store) InsertConnection(ctx context.Context, accountID, provider, providedIdentifier, accessToken, refreshToken string, meta map[string]any, registeredAt *time.Time, now time.Time) error {
 	metaJSON, _ := json.Marshal(meta)
 	_, err := s.exec(ctx, `INSERT INTO account_connections
 		(id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, registered_at, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,false,$8,$9,$10,$10)`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,false,$8,$9,$10,$10)
+		ON CONFLICT (account_id, LOWER(provider), provided_identifier) WHERE deleted_at IS NULL DO NOTHING`,
 		uuid.NewString(), provider, providedIdentifier, metaJSON, nullStr(accessToken), nullStr(refreshToken), now, accountID, registeredAt, now)
 	return err
 }
 
-// UpsertConnection updates an existing connection or inserts a new one.
-// registeredAt is only applied to a newly inserted row (an existing row was
-// never the registration connection). Returns whether a row was created.
+// UpsertConnection atomically updates an existing connection or inserts a new
+// one — a single statement racing safely on the (account_id, LOWER(provider),
+// provided_identifier) unique index, so concurrent OIDC callbacks can never
+// create duplicate rows. registeredAt is only applied to a newly inserted row
+// (an existing row was never the registration connection). Returns whether a
+// row was created.
 func (s *Store) UpsertConnection(ctx context.Context, accountID, provider, providedIdentifier, accessToken, refreshToken string, meta map[string]any, registeredAt *time.Time, now time.Time) (bool, error) {
-	existing, err := s.GetConnectionByAccountAndProvider(ctx, accountID, provider)
-	if err == nil {
-		// Existing: refresh last_used_at + meta (tokens only when provided).
-		metaJSON, _ := json.Marshal(meta)
-		_, err := s.exec(ctx, `UPDATE account_connections SET last_used_at = $1, meta = $2, updated_at = $1 WHERE id = $3`,
-			now, metaJSON, existing.Id)
+	metaJSON, _ := json.Marshal(meta)
+	var created bool
+	err := s.queryRow(ctx, `INSERT INTO account_connections
+		(id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, registered_at, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,false,$8,$9,$10,$10)
+		ON CONFLICT (account_id, LOWER(provider), provided_identifier) WHERE deleted_at IS NULL
+		DO UPDATE SET last_used_at = EXCLUDED.last_used_at, meta = EXCLUDED.meta, updated_at = EXCLUDED.updated_at
+		RETURNING (xmax = 0)`,
+		uuid.NewString(), provider, providedIdentifier, metaJSON, nullStr(accessToken), nullStr(refreshToken), now, accountID, registeredAt, now).Scan(&created)
+	if err != nil {
 		return false, err
 	}
-	if !errors.Is(err, ErrNotFound) {
-		return false, err
-	}
-	if err := s.InsertConnection(ctx, accountID, provider, providedIdentifier, accessToken, refreshToken, meta, registeredAt, now); err != nil {
-		return false, err
-	}
-	return true, nil
+	return created, nil
 }
 
-// TouchConnectionTokens updates or inserts a connection with fresh tokens.
-// Returns whether a row was created.
+// TouchConnectionTokens atomically updates or inserts a connection with fresh
+// tokens — a single statement racing safely on the unique index (see
+// UpsertConnection). Returns whether a row was created.
 func (s *Store) TouchConnectionTokens(ctx context.Context, accountID, provider, providedIdentifier, accessToken, refreshToken string, meta map[string]any, registeredAt *time.Time, now time.Time) (bool, error) {
-	existing, err := s.GetConnectionByAccountAndProvider(ctx, accountID, provider)
-	if err == nil {
-		metaJSON, _ := json.Marshal(meta)
-		_, err := s.exec(ctx, `UPDATE account_connections
-			SET access_token = COALESCE($1, access_token), refresh_token = COALESCE($2, refresh_token),
-				last_used_at = $3, meta = $4, updated_at = $3 WHERE id = $5`,
-			nullStr(accessToken), nullStr(refreshToken), now, metaJSON, existing.Id)
+	metaJSON, _ := json.Marshal(meta)
+	var created bool
+	err := s.queryRow(ctx, `INSERT INTO account_connections
+		(id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, registered_at, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,false,$8,$9,$10,$10)
+		ON CONFLICT (account_id, LOWER(provider), provided_identifier) WHERE deleted_at IS NULL
+		DO UPDATE SET access_token = COALESCE(EXCLUDED.access_token, account_connections.access_token),
+			refresh_token = COALESCE(EXCLUDED.refresh_token, account_connections.refresh_token),
+			last_used_at = EXCLUDED.last_used_at, meta = EXCLUDED.meta, updated_at = EXCLUDED.updated_at
+		RETURNING (xmax = 0)`,
+		uuid.NewString(), provider, providedIdentifier, metaJSON, nullStr(accessToken), nullStr(refreshToken), now, accountID, registeredAt, now).Scan(&created)
+	if err != nil {
 		return false, err
 	}
-	if !errors.Is(err, ErrNotFound) {
-		return false, err
-	}
-	if err := s.InsertConnection(ctx, accountID, provider, providedIdentifier, accessToken, refreshToken, meta, registeredAt, now); err != nil {
-		return false, err
-	}
-	return true, nil
+	return created, nil
 }
 
 // CreateOidcSession inserts an Oidc-typed session (type=2).
