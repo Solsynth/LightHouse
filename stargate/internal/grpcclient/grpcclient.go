@@ -16,6 +16,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	gen "src.solsynth.dev/sosys/go/proto"
 
@@ -33,6 +34,21 @@ func Dial(target string) (*grpc.ClientConn, error) {
 	}
 	return grpc.NewClient(target,
 		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})),
+		grpc.WithDefaultCallOptions(grpc.WaitForReady(false)),
+	)
+}
+
+// DialInsecure creates a plaintext gRPC connection. Blade's wsgateway serves
+// plaintext h2c — the C# fleet (http://blade) and Stargate's own discovery
+// registration dial it that way — so the Blade client must not use the
+// TLS-always Dial above.
+func DialInsecure(target string) (*grpc.ClientConn, error) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return nil, nil
+	}
+	return grpc.NewClient(target,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultCallOptions(grpc.WaitForReady(false)),
 	)
 }
@@ -92,6 +108,14 @@ func NewClients(cfg *config.Config) (*Clients, error) {
 		c.conns = append(c.conns, conn)
 		return conn
 	}
+	dialInsecure := func(target string) *grpc.ClientConn {
+		conn, err := DialInsecure(target)
+		if err != nil || conn == nil {
+			return nil
+		}
+		c.conns = append(c.conns, conn)
+		return conn
+	}
 	if conn := dial(cfg.Services.Wallet.GRPC); conn != nil {
 		c.Wallet = gen.NewDySubscriptionServiceClient(conn)
 	}
@@ -106,7 +130,10 @@ func NewClients(cfg *config.Config) (*Clients, error) {
 		// Passport hosts the NFC validation service on the same instance.
 		c.Nfc = gen.NewDyNfcServiceClient(conn)
 	}
-	if conn := dial(cfg.Services.Blade.GRPC); conn != nil {
+	if conn := dialInsecure(cfg.Services.Blade.GRPC); conn != nil {
+		// Blade's wsgateway is the fleet's plaintext exception (plaintext h2c);
+		// the TLS-always Dial would fail the handshake and silently degrade
+		// every presence read. See DialInsecure.
 		c.Blade = gen.NewWebSocketServiceClient(conn)
 	}
 	if conn := dial(cfg.Services.Ring.GRPC); conn != nil {
