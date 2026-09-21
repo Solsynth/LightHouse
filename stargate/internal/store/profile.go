@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"time"
 
@@ -194,75 +195,155 @@ type ProfileFieldPatch struct {
 // ApplyProfileFieldPatch applies a Passport-published profile field patch to
 // the account's profile row (create-on-missing), mirroring the feature
 // writers that used to hit Passport's own account_profiles table.
+//
+// The write is column-targeted: only fields present in the patch are SET, so
+// a routine XP/last-seen patch can never clobber active_badge/verification
+// that another writer (admin verification, badge sync) committed
+// concurrently. The previous load-modify-SaveProfile form wrote every profile
+// column from its read snapshot, so two overlapping patches — across the
+// fleet's replicas, or a patch racing a user/admin profile save — silently
+// NULLed the badge/verification the later snapshot had not seen.
+// A literal JSON null in ActiveBadge/Verification still clears the column
+// (the Passport "null to clear" contract).
 func (s *Store) ApplyProfileFieldPatch(ctx context.Context, accountID uuid.UUID, patch *ProfileFieldPatch) error {
-	profile, err := s.GetOrCreateAccountProfile(ctx, accountID)
-	if err != nil {
+	if _, err := s.GetOrCreateAccountProfile(ctx, accountID); err != nil {
 		return err
 	}
+	sets := []string{"updated_at = now()"}
+	args := []any{}
+	add := func(column string, value any) {
+		args = append(args, value)
+		sets = append(sets, column+" = $"+itoa(len(args)))
+	}
 	if patch.LastSeenAt != nil {
-		profile.LastSeenAt = model.NewTime(*patch.LastSeenAt)
+		add("last_seen_at", *patch.LastSeenAt)
 	}
-	if patch.Experience != nil {
-		profile.Experience = *patch.Experience
-	}
-	if patch.ExperienceDelta != nil && *patch.ExperienceDelta != 0 {
-		profile.Experience += *patch.ExperienceDelta
+	// Preserve the legacy combine semantics when an event carries both an
+	// absolute experience and a delta: absolute first, then the delta on top.
+	switch {
+	case patch.Experience != nil && patch.ExperienceDelta != nil && *patch.ExperienceDelta != 0:
+		add("experience", *patch.Experience+*patch.ExperienceDelta)
+	case patch.Experience != nil:
+		add("experience", *patch.Experience)
+	case patch.ExperienceDelta != nil && *patch.ExperienceDelta != 0:
+		args = append(args, *patch.ExperienceDelta)
+		sets = append(sets, "experience = experience + $"+itoa(len(args)))
 	}
 	if patch.SocialCredits != nil {
-		profile.SocialCredits = *patch.SocialCredits
+		add("social_credits", *patch.SocialCredits)
 	}
 	if patch.HasActiveBadge {
-		profile.ActiveBadge = nil
-		if patch.ActiveBadge != nil {
-			value := patch.ActiveBadge
-			profile.ActiveBadge = &value
+		v, err := marshalJSONOrNull(patch.ActiveBadge)
+		if err != nil {
+			return err
 		}
+		add("active_badge", v)
 	}
 	if patch.HasVerification {
-		profile.Verification = patch.Verification
+		v, err := marshalJSONOrNull(patch.Verification)
+		if err != nil {
+			return err
+		}
+		add("verification", v)
 	}
-	return s.SaveProfile(ctx, profile)
+	args = append(args, accountID)
+	_, err := s.exec(ctx, `UPDATE account_profiles SET `+strings.Join(sets, ", ")+
+		` WHERE account_id = $`+itoa(len(args))+` AND deleted_at IS NULL`, args...)
+	return err
 }
 
 // SaveProfile writes the mutable profile columns (mirrors EF db.Update on
 // SnAccountProfile; computed fields like level are derived and not stored).
+//
+// Pointer columns (names, bio, gender, username_color, birthday, last_seen,
+// verification, active_badge, picture, background) are written only when set.
+// Callers load the row and merge the fields they change, so an unconditional
+// full-row write would clobber a column another writer committed between the
+// read and the save — the race that NULLed admin-set verification and active
+// badges. Scalars (links, experience, social_credits) always round-trip.
+// Explicit clears go through ApplyProfileFieldPatch ("null to clear").
 func (s *Store) SaveProfile(ctx context.Context, p *model.Profile) error {
 	links, err := json.Marshal(p.Links)
 	if err != nil {
 		return err
 	}
-	usernameColor, err := marshalJSONOrNull(p.UsernameColor)
-	if err != nil {
-		return err
+	sets := []string{"updated_at = now()"}
+	args := []any{}
+	add := func(column string, value any) {
+		args = append(args, value)
+		sets = append(sets, column+" = $"+itoa(len(args)))
 	}
-	verification, err := marshalJSONOrNull(p.Verification)
-	if err != nil {
-		return err
+	if p.FirstName != nil {
+		add("first_name", *p.FirstName)
 	}
-	activeBadge, err := marshalJSONOrNull(p.ActiveBadge)
-	if err != nil {
-		return err
+	if p.MiddleName != nil {
+		add("middle_name", *p.MiddleName)
 	}
-	picture, err := marshalJSONOrNull(p.Picture)
-	if err != nil {
-		return err
+	if p.LastName != nil {
+		add("last_name", *p.LastName)
 	}
-	background, err := marshalJSONOrNull(p.Background)
-	if err != nil {
-		return err
+	if p.Bio != nil {
+		add("bio", *p.Bio)
 	}
-	_, err = s.exec(ctx, `UPDATE account_profiles SET
-		first_name = $1, middle_name = $2, last_name = $3, bio = $4, gender = $5,
-		pronouns = $6, time_zone = $7, location = $8, links = $9, username_color = $10,
-		birthday = $11, last_seen_at = $12, verification = $13, active_badge = $14,
-		experience = $15, social_credits = $16, picture = $17, background = $18,
-		updated_at = $19
-		WHERE id = $20 AND deleted_at IS NULL`,
-		p.FirstName, p.MiddleName, p.LastName, p.Bio, p.Gender,
-		p.Pronouns, p.TimeZone, p.Location, links, usernameColor,
-		p.Birthday, p.LastSeenAt, verification, activeBadge,
-		p.Experience, p.SocialCredits, picture, background,
-		time.Now().UTC(), p.Id)
+	if p.Gender != nil {
+		add("gender", *p.Gender)
+	}
+	if p.Pronouns != nil {
+		add("pronouns", *p.Pronouns)
+	}
+	if p.TimeZone != nil {
+		add("time_zone", *p.TimeZone)
+	}
+	if p.Location != nil {
+		add("location", *p.Location)
+	}
+	add("links", links)
+	if p.UsernameColor != nil {
+		v, err := marshalJSONOrNull(p.UsernameColor)
+		if err != nil {
+			return err
+		}
+		add("username_color", v)
+	}
+	if p.Birthday != nil {
+		add("birthday", p.Birthday)
+	}
+	if p.LastSeenAt != nil {
+		add("last_seen_at", p.LastSeenAt)
+	}
+	if p.Verification != nil {
+		v, err := marshalJSONOrNull(p.Verification)
+		if err != nil {
+			return err
+		}
+		add("verification", v)
+	}
+	if p.ActiveBadge != nil {
+		v, err := marshalJSONOrNull(p.ActiveBadge)
+		if err != nil {
+			return err
+		}
+		add("active_badge", v)
+	}
+	add("experience", p.Experience)
+	add("social_credits", p.SocialCredits)
+	if p.Picture != nil {
+		v, err := marshalJSONOrNull(p.Picture)
+		if err != nil {
+			return err
+		}
+		add("picture", v)
+	}
+	if p.Background != nil {
+		v, err := marshalJSONOrNull(p.Background)
+		if err != nil {
+			return err
+		}
+		add("background", v)
+	}
+	args = append(args, p.Id)
+	_, err = s.exec(ctx, `UPDATE account_profiles SET `+strings.Join(sets, ", ")+
+		` WHERE id = $`+itoa(len(args))+` AND deleted_at IS NULL`, args...)
 	return err
 }
 
@@ -420,8 +501,12 @@ func decodeActiveBadge(profile *model.Profile, raw []byte) error {
 }
 
 // marshalJSONOrNull marshals a value to JSON, emitting SQL NULL for nil.
+// The nil check must also catch typed nil pointers (e.g. *model.Time,
+// *any, *SnVerificationMark): an interface holding one is not == nil, and
+// json.Marshal would emit the JSON literal `null` instead of SQL NULL,
+// silently converting every cleared column into jsonb 'null' on save.
 func marshalJSONOrNull(v any) (any, error) {
-	if v == nil {
+	if isNilValue(v) {
 		return nil, nil
 	}
 	b, err := json.Marshal(v)
@@ -429,6 +514,19 @@ func marshalJSONOrNull(v any) (any, error) {
 		return nil, err
 	}
 	return b, nil
+}
+
+// isNilValue reports whether v is nil, including typed nil pointers.
+func isNilValue(v any) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Ptr, reflect.Interface, reflect.Map, reflect.Slice, reflect.Chan, reflect.Func:
+		return rv.IsNil()
+	}
+	return false
 }
 
 func mustParseUUID(s string) uuid.UUID {
