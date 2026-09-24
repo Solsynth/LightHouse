@@ -3,16 +3,14 @@ package migrate
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/stargate/internal/db"
+	"src.solsynth.dev/sosys/stargate/internal/dbtest"
 )
 
 var migrationApplicationTables = []string{
@@ -26,34 +24,29 @@ func TestMigrationSafetyGate(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	admin, err := db.Connect(ctx, baseDSN)
-	if err != nil {
-		t.Skipf("postgres unavailable: %v", err)
-	}
-	defer db.Close(admin)
 
-	newSchema := func(t *testing.T, sentinel bool) (string, *gorm.DB) {
+	// Each subtest runs migrations in its own fresh dedicated database: the
+	// migrations begin with unqualified DROP TABLE IF EXISTS (which fall
+	// through the search_path), and CREATE EXTENSION IF NOT EXISTS pg_trgm
+	// installs into the first schema on the path. A dedicated empty database
+	// keeps both harmless and isolates subtests from each other.
+	newDatabase := func(t *testing.T) *gorm.DB {
 		t.Helper()
-		schema := "stargate_migrate_" + strings.ReplaceAll(uuid.NewString(), "-", "")
-		if err := admin.Exec("CREATE SCHEMA " + schema).Error; err != nil {
-			t.Fatal(err)
+		dsn, cleanup, err := dbtest.NewDatabase(ctx, baseDSN)
+		if err != nil {
+			t.Skipf("cannot create dedicated database: %v", err)
 		}
-		t.Cleanup(func() { _ = admin.Exec("DROP SCHEMA IF EXISTS " + schema + " CASCADE").Error })
-		if sentinel {
-			if err := admin.Exec("CREATE TABLE " + schema + ".sentinel (id integer PRIMARY KEY)").Error; err != nil {
-				t.Fatal(err)
-			}
-		}
-		schemaDB, err := db.Connect(ctx, withSearchPath(baseDSN, schema))
+		t.Cleanup(cleanup)
+		database, err := db.Connect(ctx, dsn)
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { _ = db.Close(schemaDB) })
-		return schema, schemaDB
+		t.Cleanup(func() { _ = db.Close(database) })
+		return database
 	}
 
-	t.Run("empty schema receives complete ledger and tables", func(t *testing.T) {
-		_, database := newSchema(t, false)
+	t.Run("empty database receives complete ledger and tables", func(t *testing.T) {
+		database := newDatabase(t)
 		if err := Run(ctx, database); err != nil {
 			t.Fatalf("Run: %v", err)
 		}
@@ -64,14 +57,17 @@ func TestMigrationSafetyGate(t *testing.T) {
 		}
 	})
 
-	t.Run("unledgered nonempty schema is rejected without changes", func(t *testing.T) {
-		schema, database := newSchema(t, true)
+	t.Run("unledgered nonempty database is rejected without changes", func(t *testing.T) {
+		database := newDatabase(t)
+		if err := database.Exec("CREATE TABLE sentinel (id integer PRIMARY KEY)").Error; err != nil {
+			t.Fatal(err)
+		}
 		err := Run(ctx, database)
 		if !errors.Is(err, ErrUnsafeDatabase) {
 			t.Fatalf("Run error = %v, want ErrUnsafeDatabase", err)
 		}
 		var count int64
-		if err := admin.Raw(fmt.Sprintf("SELECT count(*) FROM information_schema.tables WHERE table_schema = '%s'", schema)).Scan(&count).Error; err != nil {
+		if err := database.Raw(`SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'`).Scan(&count).Error; err != nil {
 			t.Fatal(err)
 		}
 		if count != 1 {
@@ -81,15 +77,4 @@ func TestMigrationSafetyGate(t *testing.T) {
 			t.Fatal("safety gate created schema_migrations")
 		}
 	})
-}
-
-func withSearchPath(dsn, schema string) string {
-	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
-		separator := "?"
-		if strings.Contains(dsn, "?") {
-			separator = "&"
-		}
-		return dsn + separator + "options=-csearch_path%3D" + schema
-	}
-	return dsn + " search_path=" + schema
 }

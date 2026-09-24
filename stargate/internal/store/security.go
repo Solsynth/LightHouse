@@ -7,19 +7,15 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
-
-const sessionColumns = `id, type, last_granted_at, expired_at, audiences, scopes, ip_address, user_agent,
-	location, account_id, client_id, parent_session_id, app_id, challenge_id, epoch, created_at, updated_at, deleted_at`
-
-const clientColumns = `id, device_id, device_name, device_label, account_id, platform, created_at, updated_at, deleted_at`
 
 // --- Sessions ---
 
@@ -27,75 +23,82 @@ const clientColumns = `id, device_id, device_name, device_label, account_id, pla
 // includeChildren is false only root sessions (no parent) are returned,
 // mirroring GetSessions: by default includeChildren=false shows roots only.
 func (s *Store) ListSessions(ctx context.Context, accountID string, typ *model.SessionType, clientID *uuid.UUID, includeChildren bool, take, offset int) ([]model.AuthSession, int, error) {
-	where := `account_id = $1`
-	args := []any{accountID}
-	if !includeChildren {
-		where += ` AND parent_session_id IS NULL`
+	// The legacy query carried no deleted_at filter, so the scoped statement
+	// stays Unscoped.
+	base := func() *gorm.DB {
+		query := s.DB.WithContext(ctx).Unscoped().Model(&AuthSessionEntity{}).
+			Where("account_id = ?", accountID)
+		if !includeChildren {
+			query = query.Where("parent_session_id IS NULL")
+		}
+		if typ != nil {
+			query = query.Where("type = ?", int(*typ))
+		}
+		if clientID != nil {
+			query = query.Where("client_id = ?", *clientID)
+		}
+		return query
 	}
-	if typ != nil {
-		args = append(args, int(*typ))
-		where += ` AND type = $` + itoa(len(args))
-	}
-	if clientID != nil {
-		args = append(args, *clientID)
-		where += ` AND client_id = $` + itoa(len(args))
-	}
-	var total int
-	if err := s.queryRow(ctx, `SELECT COUNT(*) FROM auth_sessions WHERE `+where, args...).Scan(&total); err != nil {
+
+	var total int64
+	if err := base().Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	pageArgs := append(append([]any{}, args...), take, offset)
-	rows, err := s.query(ctx, `SELECT `+sessionColumns+` FROM auth_sessions WHERE `+where+
-		` ORDER BY last_granted_at DESC NULLS LAST LIMIT $`+itoa(len(args)+1)+` OFFSET $`+itoa(len(args)+2), pageArgs...)
-	if err != nil {
+	var entities []AuthSessionEntity
+	if err := base().
+		Order("last_granted_at DESC NULLS LAST").
+		Limit(take).Offset(offset).
+		Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
-	sessions, err := scanSessions(rows)
-	if err != nil {
-		return nil, 0, err
+	var sessions []model.AuthSession
+	for i := range entities {
+		sessions = append(sessions, *sessionFromEntity(&entities[i]))
 	}
 	if err := s.fillChildrenCounts(ctx, sessions); err != nil {
 		return nil, 0, err
 	}
-	return sessions, total, nil
+	return sessions, int(total), nil
 }
 
 // ListSessionChildren lists the direct children of a parent session with
 // pagination (GetSessionChildren).
 func (s *Store) ListSessionChildren(ctx context.Context, accountID string, parentID uuid.UUID, take, offset int) ([]model.AuthSession, int, error) {
-	var total int
-	if err := s.queryRow(ctx, `SELECT COUNT(*) FROM auth_sessions
-		WHERE parent_session_id = $1 AND account_id = $2`, parentID, accountID).Scan(&total); err != nil {
+	where := func(query *gorm.DB) *gorm.DB {
+		return query.Where("parent_session_id = ? AND account_id = ?", parentID, accountID)
+	}
+
+	var total int64
+	if err := where(s.DB.WithContext(ctx).Unscoped().Model(&AuthSessionEntity{})).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.query(ctx, `SELECT `+sessionColumns+` FROM auth_sessions
-		WHERE parent_session_id = $1 AND account_id = $2
-		ORDER BY created_at DESC LIMIT $3 OFFSET $4`, parentID, accountID, take, offset)
-	if err != nil {
+	var entities []AuthSessionEntity
+	if err := where(s.DB.WithContext(ctx).Unscoped().Model(&AuthSessionEntity{})).
+		Order("created_at DESC").
+		Limit(take).Offset(offset).
+		Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
-	children, err := scanSessions(rows)
-	if err != nil {
-		return nil, 0, err
+	var children []model.AuthSession
+	for i := range entities {
+		children = append(children, *sessionFromEntity(&entities[i]))
 	}
 	if err := s.fillChildrenCounts(ctx, children); err != nil {
 		return nil, 0, err
 	}
-	return children, total, nil
+	return children, int(total), nil
 }
 
 // GetOwnedSession loads a session scoped to an account (DeleteSession /
 // GetSessionChildren parent check).
 func (s *Store) GetOwnedSession(ctx context.Context, accountID string, id uuid.UUID) (*model.AuthSession, error) {
-	row := s.queryRow(ctx, `SELECT `+sessionColumns+` FROM auth_sessions WHERE id = $1 AND account_id = $2`, id, accountID)
-	session, err := scanSession(row)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+	var entity AuthSessionEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Where("id = ? AND account_id = ?", id, accountID).
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
 	}
-	return session, nil
+	return sessionFromEntity(&entity), nil
 }
 
 func (s *Store) fillChildrenCounts(ctx context.Context, sessions []model.AuthSession) error {
@@ -113,23 +116,22 @@ func (s *Store) fillChildrenCounts(ctx context.Context, sessions []model.AuthSes
 	if len(ids) == 0 {
 		return nil
 	}
-	rows, err := s.query(ctx, `SELECT parent_session_id, COUNT(*) FROM auth_sessions
-		WHERE parent_session_id = ANY($1) GROUP BY parent_session_id`, ids)
-	if err != nil {
+	// The legacy query filtered on parent_session_id only (no deleted_at
+	// filter), so it counts soft-deleted children too.
+	var rows []struct {
+		ParentSessionID uuid.UUID `gorm:"column:parent_session_id"`
+		Children        int       `gorm:"column:children"`
+	}
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&AuthSessionEntity{}).
+		Select("parent_session_id, COUNT(*) AS children").
+		Where("parent_session_id IN ?", ids).
+		Group("parent_session_id").
+		Scan(&rows).Error; err != nil {
 		return err
 	}
-	defer rows.Close()
-	counts := map[string]int{}
-	for rows.Next() {
-		var parentID uuid.UUID
-		var count int
-		if err := rows.Scan(&parentID, &count); err != nil {
-			return err
-		}
-		counts[parentID.String()] = count
-	}
-	if err := rows.Err(); err != nil {
-		return err
+	counts := make(map[string]int, len(rows))
+	for _, row := range rows {
+		counts[row.ParentSessionID.String()] = row.Children
 	}
 	for i := range sessions {
 		if count, ok := counts[sessions[i].Id]; ok {
@@ -143,27 +145,25 @@ func (s *Store) fillChildrenCounts(ctx context.Context, sessions []model.AuthSes
 
 // ListDevices lists the account's devices with pagination (GetDevices).
 func (s *Store) ListDevices(ctx context.Context, accountID string, take, offset int) ([]model.AuthClient, int, error) {
-	var total int
-	if err := s.queryRow(ctx, `SELECT COUNT(*) FROM auth_clients
-		WHERE account_id = $1 AND deleted_at IS NULL`, accountID).Scan(&total); err != nil {
+	var total int64
+	if err := s.DB.WithContext(ctx).Model(&AuthClientEntity{}).
+		Where("account_id = ?", accountID).
+		Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.query(ctx, `SELECT `+clientColumns+` FROM auth_clients
-		WHERE account_id = $1 AND deleted_at IS NULL
-		ORDER BY created_at DESC LIMIT $2 OFFSET $3`, accountID, take, offset)
-	if err != nil {
+	var entities []AuthClientEntity
+	if err := s.DB.WithContext(ctx).
+		Where("account_id = ?", accountID).
+		Order("created_at DESC").
+		Limit(take).Offset(offset).
+		Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
 	var devices []model.AuthClient
-	for rows.Next() {
-		device, err := scanClient(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		devices = append(devices, *device)
+	for i := range entities {
+		devices = append(devices, authClientFromEntity(&entities[i]))
 	}
-	return devices, total, rows.Err()
+	return devices, int(total), nil
 }
 
 // ListSessionsByClientIDs loads sessions grouped by client id for the given
@@ -172,20 +172,19 @@ func (s *Store) ListSessionsByClientIDs(ctx context.Context, clientIDs []uuid.UU
 	if len(clientIDs) == 0 {
 		return map[string][]model.AuthSession{}, nil
 	}
-	rows, err := s.query(ctx, `SELECT `+sessionColumns+` FROM auth_sessions WHERE client_id = ANY($1)`, clientIDs)
-	if err != nil {
-		return nil, err
-	}
-	sessions, err := scanSessions(rows)
-	if err != nil {
+	var entities []AuthSessionEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Where("client_id IN ?", clientIDs).
+		Find(&entities).Error; err != nil {
 		return nil, err
 	}
 	grouped := map[string][]model.AuthSession{}
-	for _, session := range sessions {
+	for i := range entities {
+		session := sessionFromEntity(&entities[i])
 		if session.ClientId == nil {
 			continue
 		}
-		grouped[*session.ClientId] = append(grouped[*session.ClientId], session)
+		grouped[*session.ClientId] = append(grouped[*session.ClientId], *session)
 	}
 	return grouped, nil
 }
@@ -196,78 +195,75 @@ func (s *Store) ListClientsByAccountIDs(ctx context.Context, accountIDs []uuid.U
 	if len(accountIDs) == 0 {
 		return map[string][]model.AuthClient{}, nil
 	}
-	rows, err := s.query(ctx, `SELECT `+clientColumns+` FROM auth_clients
-		WHERE account_id = ANY($1) AND deleted_at IS NULL
-		ORDER BY created_at DESC`, accountIDs)
-	if err != nil {
+	var entities []AuthClientEntity
+	if err := s.DB.WithContext(ctx).
+		Where("account_id IN ?", accountIDs).
+		Order("created_at DESC").
+		Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	grouped := map[string][]model.AuthClient{}
-	for rows.Next() {
-		client, err := scanClient(rows)
-		if err != nil {
-			return nil, err
-		}
-		grouped[client.AccountId] = append(grouped[client.AccountId], *client)
+	for i := range entities {
+		client := authClientFromEntity(&entities[i])
+		grouped[client.AccountId] = append(grouped[client.AccountId], client)
 	}
-	return grouped, rows.Err()
+	return grouped, nil
 }
 
 // GetClientByDeviceID loads a device by (account_id, device_id).
 func (s *Store) GetClientByDeviceID(ctx context.Context, accountID, deviceID string) (*model.AuthClient, error) {
-	row := s.queryRow(ctx, `SELECT `+clientColumns+` FROM auth_clients
-		WHERE account_id = $1 AND device_id = $2`, accountID, deviceID)
-	device, err := scanClient(row)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+	var entity AuthClientEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Where("account_id = ? AND device_id = ?", accountID, deviceID).
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
 	}
-	return device, nil
+	client := authClientFromEntity(&entity)
+	return &client, nil
 }
 
 // GetClientByID loads a device by id (UpdateCurrentDeviceLabel).
 func (s *Store) GetClientByID(ctx context.Context, id uuid.UUID) (*model.AuthClient, error) {
-	row := s.queryRow(ctx, `SELECT `+clientColumns+` FROM auth_clients WHERE id = $1`, id)
-	device, err := scanClient(row)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+	var entity AuthClientEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Where("id = ?", id).
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
 	}
-	return device, nil
+	client := authClientFromEntity(&entity)
+	return &client, nil
 }
 
 // DeleteDevice expires every session bound to the device and soft-deletes
 // the device (AccountService.DeleteDevice).
 func (s *Store) DeleteDevice(ctx context.Context, accountID, deviceID string, now time.Time) error {
-	var clientID uuid.UUID
-	err := s.queryRow(ctx, `SELECT id FROM auth_clients WHERE account_id = $1 AND device_id = $2`,
-		accountID, deviceID).Scan(&clientID)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return ErrNotFound
-		}
+	var client AuthClientEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Select("id").
+		Where("account_id = ? AND device_id = ?", accountID, deviceID).
+		First(&client).Error; err != nil {
+		return mapNotFound(err)
+	}
+	// Both legacy updates ran without a deleted_at filter.
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&AuthSessionEntity{}).
+		Where("client_id = ?", client.ID).
+		Updates(map[string]any{"expired_at": now, "updated_at": now}).Error; err != nil {
 		return err
 	}
-	if _, err := s.exec(ctx, `UPDATE auth_sessions SET expired_at = $1, updated_at = $1 WHERE client_id = $2`, now, clientID); err != nil {
-		return err
-	}
-	_, err = s.exec(ctx, `UPDATE auth_clients SET deleted_at = $1, updated_at = $1 WHERE id = $2`, now, clientID)
-	return err
+	return s.DB.WithContext(ctx).Unscoped().Model(&AuthClientEntity{}).
+		Where("id = ?", client.ID).
+		Updates(map[string]any{"deleted_at": now, "updated_at": now}).Error
 }
 
 // UpdateDeviceName renames the device's display name (UpdateDeviceName).
 func (s *Store) UpdateDeviceName(ctx context.Context, accountID, deviceID, label string) error {
-	tag, err := s.exec(ctx, `UPDATE auth_clients SET device_name = $1, updated_at = $2
-		WHERE account_id = $3 AND device_id = $4`, label, time.Now().UTC(), accountID, deviceID)
-	if err != nil {
-		return err
+	res := s.DB.WithContext(ctx).Unscoped().Model(&AuthClientEntity{}).
+		Where("account_id = ? AND device_id = ?", accountID, deviceID).
+		Updates(map[string]any{"device_name": label, "updated_at": time.Now().UTC()})
+	if res.Error != nil {
+		return res.Error
 	}
-	if tag.RowsAffected() == 0 {
+	if res.RowsAffected == 0 {
 		return ErrNotFound
 	}
 	return nil
@@ -278,67 +274,79 @@ func (s *Store) UpdateDeviceName(ctx context.Context, accountID, deviceID, label
 // ListAllFactors lists every auth factor of the account (GetAuthFactors; no
 // soft-delete filter, matching the C# query).
 func (s *Store) ListAllFactors(ctx context.Context, accountID uuid.UUID) ([]model.AuthFactor, error) {
-	rows, err := s.query(ctx, `SELECT id, type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at, deleted_at
-		FROM account_auth_factors WHERE account_id = $1 ORDER BY created_at`, accountID)
-	if err != nil {
+	var entities []AuthFactorEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Where("account_id = ?", accountID).
+		Order("created_at").
+		Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var factors []model.AuthFactor
-	for rows.Next() {
-		factor, err := scanFactor(rows)
-		if err != nil {
-			return nil, err
-		}
-		factors = append(factors, *factor)
+	for i := range entities {
+		factors = append(factors, factorFromEntity(&entities[i]))
 	}
-	return factors, rows.Err()
+	return factors, nil
 }
 
 // GetAuthFactorByID loads one of the account's factors.
 func (s *Store) GetAuthFactorByID(ctx context.Context, accountID string, id uuid.UUID) (*model.AuthFactor, error) {
-	row := s.queryRow(ctx, `SELECT id, type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at, deleted_at
-		FROM account_auth_factors WHERE account_id = $1 AND id = $2`, accountID, id)
-	factor, err := scanFactor(row)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+	var entity AuthFactorEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Where("account_id = ? AND id = ?", accountID, id).
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
 	}
-	return factor, nil
+	factor := factorFromEntity(&entity)
+	return &factor, nil
 }
 
 // CheckAuthFactorExists reports whether the account already has a factor of
 // the given type (CheckAuthFactorExists).
 func (s *Store) CheckAuthFactorExists(ctx context.Context, accountID string, ftype model.AuthFactorType) (bool, error) {
-	var exists bool
-	err := s.queryRow(ctx, `SELECT EXISTS(
-		SELECT 1 FROM account_auth_factors WHERE account_id = $1 AND type = $2)`,
-		accountID, int(ftype)).Scan(&exists)
-	return exists, err
+	var count int64
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&AuthFactorEntity{}).
+		Where("account_id = ? AND type = ?", accountID, int(ftype)).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // InsertAuthFactor persists a new factor row.
 func (s *Store) InsertAuthFactor(ctx context.Context, f *model.AuthFactor) (*model.AuthFactor, error) {
 	now := time.Now().UTC()
-	var config []byte
+	accountID, err := uuid.Parse(f.AccountId)
+	if err != nil {
+		return nil, err
+	}
+	var config *datatypes.JSON
 	if len(f.Config) > 0 {
-		config, _ = json.Marshal(f.Config)
+		if encoded, err := encodeJSON(f.Config); err == nil {
+			config = &encoded
+		}
 	}
 	var secret *string
 	if f.Secret != "" {
 		secret = &f.Secret
 	}
-	var id uuid.UUID
-	err := s.queryRow(ctx, `INSERT INTO account_auth_factors
-		(id, type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at)
-		VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$8) RETURNING id`,
-		int(f.Type), secret, config, f.Trustworthy, f.EnabledAt, f.ExpiredAt, f.AccountId, now).Scan(&id)
-	if err != nil {
+	entity := &AuthFactorEntity{
+		ID: uuid.New(),
+		EntityBase: EntityBase{
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		AccountID:   accountID,
+		Config:      config,
+		EnabledAt:   timeValue(f.EnabledAt),
+		ExpiredAt:   timeValue(f.ExpiredAt),
+		Secret:      secret,
+		Trustworthy: f.Trustworthy,
+		Type:        int(f.Type),
+	}
+	if err := s.DB.WithContext(ctx).Create(entity).Error; err != nil {
 		return nil, err
 	}
-	f.Id = id.String()
+	f.Id = entity.ID.String()
 	f.CreatedAt = model.NewTime(now)
 	f.UpdatedAt = model.NewTime(now)
 	return f, nil
@@ -346,91 +354,106 @@ func (s *Store) InsertAuthFactor(ctx context.Context, f *model.AuthFactor) (*mod
 
 // UpdateAuthFactor persists the mutable factor columns.
 func (s *Store) UpdateAuthFactor(ctx context.Context, f *model.AuthFactor) error {
-	var config []byte
+	var config *datatypes.JSON
 	if len(f.Config) > 0 {
-		config, _ = json.Marshal(f.Config)
+		if encoded, err := encodeJSON(f.Config); err == nil {
+			config = &encoded
+		}
 	}
 	var secret *string
 	if f.Secret != "" {
 		secret = &f.Secret
 	}
-	_, err := s.exec(ctx, `UPDATE account_auth_factors SET
-		secret = $2, config = $3, trustworthy = $4, enabled_at = $5, expired_at = $6, updated_at = $7
-		WHERE id = $1`, f.Id, secret, config, f.Trustworthy, f.EnabledAt, f.ExpiredAt, time.Now().UTC())
-	return err
+	return s.DB.WithContext(ctx).Unscoped().Model(&AuthFactorEntity{}).
+		Where("id = ?", f.Id).
+		Updates(map[string]any{
+			"secret":      secret,
+			"config":      config,
+			"trustworthy": f.Trustworthy,
+			"enabled_at":  timeValue(f.EnabledAt),
+			"expired_at":  timeValue(f.ExpiredAt),
+			"updated_at":  time.Now().UTC(),
+		}).Error
 }
 
 // DeleteAuthFactorRow hard-deletes a factor row (DeleteAuthFactor).
 func (s *Store) DeleteAuthFactorRow(ctx context.Context, id uuid.UUID) error {
-	_, err := s.exec(ctx, `DELETE FROM account_auth_factors WHERE id = $1`, id)
-	return err
+	return s.DB.WithContext(ctx).Unscoped().
+		Where("id = ?", id).
+		Delete(&AuthFactorEntity{}).Error
 }
 
 // DeletePasskeysByAccount deletes every passkey of the account (used when the
 // Passkey factor itself is deleted).
 func (s *Store) DeletePasskeysByAccount(ctx context.Context, accountID string) error {
-	_, err := s.exec(ctx, `DELETE FROM account_passkeys WHERE account_id = $1`, accountID)
-	return err
+	return s.DB.WithContext(ctx).Unscoped().
+		Where("account_id = ?", accountID).
+		Delete(&PasskeyEntity{}).Error
 }
 
 // --- Passkeys ---
 
 // ListPasskeys lists the account's passkeys ordered by creation time.
 func (s *Store) ListPasskeys(ctx context.Context, accountID string) ([]model.Passkey, error) {
-	rows, err := s.query(ctx, `SELECT id, account_id, label, credential_id, credential, created_at, updated_at, deleted_at
-		FROM account_passkeys WHERE account_id = $1 ORDER BY created_at`, accountID)
-	if err != nil {
+	var entities []PasskeyEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Where("account_id = ?", accountID).
+		Order("created_at").
+		Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var passkeys []model.Passkey
-	for rows.Next() {
-		var p model.Passkey
-		if err := rows.Scan(&p.Id, &p.AccountId, &p.Label, &p.CredentialId, &p.Credential,
-			&p.CreatedAt, &p.UpdatedAt, &p.DeletedAt); err != nil {
-			return nil, err
-		}
-		passkeys = append(passkeys, p)
+	for i := range entities {
+		passkeys = append(passkeys, passkeyFromEntity(&entities[i]))
 	}
-	return passkeys, rows.Err()
+	return passkeys, nil
 }
 
 // GetPasskeyByID loads one of the account's passkeys.
 func (s *Store) GetPasskeyByID(ctx context.Context, accountID string, id uuid.UUID) (*model.Passkey, error) {
-	var p model.Passkey
-	err := s.queryRow(ctx, `SELECT id, account_id, label, credential_id, credential, created_at, updated_at, deleted_at
-		FROM account_passkeys WHERE id = $1 AND account_id = $2`, id, accountID).
-		Scan(&p.Id, &p.AccountId, &p.Label, &p.CredentialId, &p.Credential, &p.CreatedAt, &p.UpdatedAt, &p.DeletedAt)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+	var entity PasskeyEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Where("id = ? AND account_id = ?", id, accountID).
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
 	}
-	return &p, nil
+	passkey := passkeyFromEntity(&entity)
+	return &passkey, nil
 }
 
 // PasskeyCredentialIDExists checks the partial-unique credential id index.
 func (s *Store) PasskeyCredentialIDExists(ctx context.Context, credentialID string) (bool, error) {
-	var exists bool
-	err := s.queryRow(ctx, `SELECT EXISTS(
-		SELECT 1 FROM account_passkeys WHERE credential_id = $1 AND deleted_at IS NULL)`,
-		credentialID).Scan(&exists)
-	return exists, err
+	var count int64
+	if err := s.DB.WithContext(ctx).Model(&PasskeyEntity{}).
+		Where("credential_id = ?", credentialID).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // InsertPasskey persists a passkey row.
 func (s *Store) InsertPasskey(ctx context.Context, p *model.Passkey) (*model.Passkey, error) {
 	now := time.Now().UTC()
-	var id uuid.UUID
-	err := s.queryRow(ctx, `INSERT INTO account_passkeys
-		(id, account_id, label, credential_id, credential, created_at, updated_at)
-		VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$5) RETURNING id`,
-		p.AccountId, p.Label, p.CredentialId, p.Credential, now).Scan(&id)
+	accountID, err := uuid.Parse(p.AccountId)
 	if err != nil {
 		return nil, err
 	}
-	p.Id = id.String()
+	entity := &PasskeyEntity{
+		ID: uuid.New(),
+		EntityBase: EntityBase{
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		AccountID:    accountID,
+		Credential:   datatypes.JSON(p.Credential),
+		CredentialID: p.CredentialId,
+		Label:        p.Label,
+	}
+	if err := s.DB.WithContext(ctx).Create(entity).Error; err != nil {
+		return nil, err
+	}
+	p.Id = entity.ID.String()
 	p.CreatedAt = model.NewTime(now)
 	p.UpdatedAt = model.NewTime(now)
 	return p, nil
@@ -438,76 +461,82 @@ func (s *Store) InsertPasskey(ctx context.Context, p *model.Passkey) (*model.Pas
 
 // UpdatePasskeyLabel renames the passkey.
 func (s *Store) UpdatePasskeyLabel(ctx context.Context, id uuid.UUID, label string) (*model.Passkey, error) {
-	var p model.Passkey
-	err := s.queryRow(ctx, `UPDATE account_passkeys SET label = $1, updated_at = $2 WHERE id = $3
-		RETURNING id, account_id, label, credential_id, credential, created_at, updated_at, deleted_at`,
-		label, time.Now().UTC(), id).
-		Scan(&p.Id, &p.AccountId, &p.Label, &p.CredentialId, &p.Credential, &p.CreatedAt, &p.UpdatedAt, &p.DeletedAt)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+	res := s.DB.WithContext(ctx).Unscoped().Model(&PasskeyEntity{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"label": label, "updated_at": time.Now().UTC()})
+	if res.Error != nil {
+		return nil, res.Error
 	}
-	return &p, nil
+	if res.RowsAffected == 0 {
+		return nil, ErrNotFound
+	}
+	var entity PasskeyEntity
+	if err := s.DB.WithContext(ctx).Unscoped().Where("id = ?", id).First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	passkey := passkeyFromEntity(&entity)
+	return &passkey, nil
 }
 
 // DeletePasskeyRow hard-deletes a passkey row.
 func (s *Store) DeletePasskeyRow(ctx context.Context, id uuid.UUID) error {
-	_, err := s.exec(ctx, `DELETE FROM account_passkeys WHERE id = $1`, id)
-	return err
+	return s.DB.WithContext(ctx).Unscoped().
+		Where("id = ?", id).
+		Delete(&PasskeyEntity{}).Error
 }
 
 // --- Contacts ---
 
 // ListContacts lists the account's contact methods.
 func (s *Store) ListContacts(ctx context.Context, accountID string) ([]model.Contact, error) {
-	rows, err := s.query(ctx, `SELECT id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at
-		FROM account_contacts WHERE account_id = $1`, accountID)
-	if err != nil {
+	var entities []ContactEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Where("account_id = ?", accountID).
+		Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var contacts []model.Contact
-	for rows.Next() {
-		var c model.Contact
-		if err := rows.Scan(&c.Id, &c.Type, &c.VerifiedAt, &c.IsPrimary, &c.IsPublic, &c.Content,
-			&c.AccountId, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt); err != nil {
-			return nil, err
-		}
-		contacts = append(contacts, c)
+	for i := range entities {
+		contacts = append(contacts, contactFromEntity(&entities[i]))
 	}
-	return contacts, rows.Err()
+	return contacts, nil
 }
 
 // GetContactByID loads one of the account's contacts.
 func (s *Store) GetContactByID(ctx context.Context, accountID string, id uuid.UUID) (*model.Contact, error) {
-	var c model.Contact
-	err := s.queryRow(ctx, `SELECT id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at
-		FROM account_contacts WHERE id = $1 AND account_id = $2`, id, accountID).
-		Scan(&c.Id, &c.Type, &c.VerifiedAt, &c.IsPrimary, &c.IsPublic, &c.Content,
-			&c.AccountId, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+	var entity ContactEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Where("id = ? AND account_id = ?", id, accountID).
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
 	}
-	return &c, nil
+	contact := contactFromEntity(&entity)
+	return &contact, nil
 }
 
 // InsertContact persists a contact method (CreateContactMethod).
 func (s *Store) InsertContact(ctx context.Context, c *model.Contact) (*model.Contact, error) {
 	now := time.Now().UTC()
-	var id uuid.UUID
-	err := s.queryRow(ctx, `INSERT INTO account_contacts
-		(id, type, content, is_primary, is_public, account_id, created_at, updated_at)
-		VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$6) RETURNING id`,
-		c.Type, c.Content, c.IsPrimary, c.IsPublic, c.AccountId, now).Scan(&id)
+	accountID, err := uuid.Parse(c.AccountId)
 	if err != nil {
 		return nil, err
 	}
-	c.Id = id.String()
+	entity := &ContactEntity{
+		ID: uuid.New(),
+		EntityBase: EntityBase{
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		AccountID: accountID,
+		Content:   c.Content,
+		IsPrimary: c.IsPrimary,
+		IsPublic:  c.IsPublic,
+		Type:      c.Type,
+	}
+	if err := s.DB.WithContext(ctx).Create(entity).Error; err != nil {
+		return nil, err
+	}
+	c.Id = entity.ID.String()
 	c.CreatedAt = model.NewTime(now)
 	c.UpdatedAt = model.NewTime(now)
 	return c, nil
@@ -515,28 +544,34 @@ func (s *Store) InsertContact(ctx context.Context, c *model.Contact) (*model.Con
 
 // UpdateContact persists contact flag columns.
 func (s *Store) UpdateContact(ctx context.Context, c *model.Contact) error {
-	_, err := s.exec(ctx, `UPDATE account_contacts SET
-		is_primary = $2, is_public = $3, verified_at = $4, updated_at = $5 WHERE id = $1`,
-		c.Id, c.IsPrimary, c.IsPublic, c.VerifiedAt, time.Now().UTC())
-	return err
+	return s.DB.WithContext(ctx).Unscoped().Model(&ContactEntity{}).
+		Where("id = ?", c.Id).
+		Updates(map[string]any{
+			"is_primary":  c.IsPrimary,
+			"is_public":   c.IsPublic,
+			"verified_at": timeValue(c.VerifiedAt),
+			"updated_at":  time.Now().UTC(),
+		}).Error
 }
 
 // SetContactPrimary unmarks the other same-type contacts and marks the given
 // one primary (SetContactMethodPrimary).
 func (s *Store) SetContactPrimary(ctx context.Context, accountID string, ctype int, id uuid.UUID) error {
-	if _, err := s.exec(ctx, `UPDATE account_contacts SET is_primary = false, updated_at = $3
-		WHERE account_id = $1 AND type = $2`, accountID, ctype, time.Now().UTC()); err != nil {
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&ContactEntity{}).
+		Where("account_id = ? AND type = ?", accountID, ctype).
+		Updates(map[string]any{"is_primary": false, "updated_at": time.Now().UTC()}).Error; err != nil {
 		return err
 	}
-	_, err := s.exec(ctx, `UPDATE account_contacts SET is_primary = true, updated_at = $2 WHERE id = $1`,
-		id, time.Now().UTC())
-	return err
+	return s.DB.WithContext(ctx).Unscoped().Model(&ContactEntity{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"is_primary": true, "updated_at": time.Now().UTC()}).Error
 }
 
 // DeleteContactRow hard-deletes a contact method.
 func (s *Store) DeleteContactRow(ctx context.Context, id uuid.UUID) error {
-	_, err := s.exec(ctx, `DELETE FROM account_contacts WHERE id = $1`, id)
-	return err
+	return s.DB.WithContext(ctx).Unscoped().
+		Where("id = ?", id).
+		Delete(&ContactEntity{}).Error
 }
 
 // --- Authorized apps ---
@@ -544,37 +579,46 @@ func (s *Store) DeleteContactRow(ctx context.Context, id uuid.UUID) error {
 // ListAuthorizedApps lists the account's authorized apps, optionally filtered
 // by type, ordered by last used (falling back to last authorized).
 func (s *Store) ListAuthorizedApps(ctx context.Context, accountID string, typ *model.AuthorizedAppType, take, offset int) ([]model.AuthorizedApp, int, error) {
-	where := `account_id = $1 AND deleted_at IS NULL`
-	args := []any{accountID}
-	if typ != nil {
-		args = append(args, int(*typ))
-		where += ` AND type = $` + itoa(len(args))
-	}
-	var total int
-	if err := s.queryRow(ctx, `SELECT COUNT(*) FROM authorized_apps WHERE `+where, args...).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-	args = append(args, take, offset)
-	query := `SELECT id, type, account_id, app_id, app_slug, app_name, scopes, last_authorized_at, last_used_at, created_at, updated_at, deleted_at
-		FROM authorized_apps WHERE ` + where +
-		` ORDER BY COALESCE(last_used_at, last_authorized_at) DESC LIMIT $` + itoa(len(args)-1) + ` OFFSET $` + itoa(len(args))
-	rows, err := s.query(ctx, query, args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-	var apps []model.AuthorizedApp
-	for rows.Next() {
-		var app model.AuthorizedApp
-		var scopesRaw []byte
-		if err := rows.Scan(&app.Id, &app.Type, &app.AccountId, &app.AppId, &app.AppSlug, &app.AppName,
-			&scopesRaw, &app.LastAuthorizedAt, &app.LastUsedAt, &app.CreatedAt, &app.UpdatedAt, &app.DeletedAt); err != nil {
-			return nil, 0, err
+	base := func() *gorm.DB {
+		query := s.DB.WithContext(ctx).Model(&AuthorizedAppEntity{}).
+			Where("account_id = ?", accountID)
+		if typ != nil {
+			query = query.Where("type = ?", int(*typ))
 		}
-		app.Scopes = decodeJSONArray(scopesRaw)
+		return query
+	}
+
+	var total int64
+	if err := base().Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var entities []AuthorizedAppEntity
+	if err := base().
+		Order("COALESCE(last_used_at, last_authorized_at) DESC").
+		Limit(take).Offset(offset).
+		Find(&entities).Error; err != nil {
+		return nil, 0, err
+	}
+	var apps []model.AuthorizedApp
+	for i := range entities {
+		entity := &entities[i]
+		app := model.AuthorizedApp{
+			Id:               entity.ID.String(),
+			Type:             model.AuthorizedAppType(entity.Type),
+			AccountId:        entity.AccountID.String(),
+			AppId:            entity.AppID.String(),
+			AppSlug:          entity.AppSlug,
+			AppName:          entity.AppName,
+			LastAuthorizedAt: timePtr(&entity.LastAuthorizedAt),
+			LastUsedAt:       timePtr(entity.LastUsedAt),
+			CreatedAt:        timePtr(&entity.CreatedAt),
+			UpdatedAt:        timePtr(&entity.UpdatedAt),
+			DeletedAt:        deletedTime(entity.DeletedAt),
+		}
+		_ = decodeJSONValue(entity.Scopes, &app.Scopes)
 		apps = append(apps, app)
 	}
-	return apps, total, rows.Err()
+	return apps, int(total), nil
 }
 
 // --- API keys ---
@@ -592,134 +636,78 @@ type ApiKeyWithExpiry struct {
 // ListApiKeys lists the account's non-deleted API keys with their session
 // expiry, mirroring ListApiKeys.
 func (s *Store) ListApiKeys(ctx context.Context, accountID string) ([]ApiKeyWithExpiry, error) {
-	rows, err := s.query(ctx, `SELECT k.id, k.label, k.app_id, k.created_at, sess.expired_at
-		FROM api_keys k LEFT JOIN auth_sessions sess ON sess.id = k.session_id
-		WHERE k.account_id = $1 AND k.deleted_at IS NULL`, accountID)
-	if err != nil {
+	var keys []APIKeyEntity
+	if err := s.DB.WithContext(ctx).
+		Where("account_id = ?", accountID).
+		Find(&keys).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var keys []ApiKeyWithExpiry
-	for rows.Next() {
-		var key ApiKeyWithExpiry
-		if err := rows.Scan(&key.Id, &key.Label, &key.AppId, &key.CreatedAt, &key.ExpiredAt); err != nil {
+	// The legacy LEFT JOIN read session expiry without a deleted_at filter on
+	// auth_sessions, so the batch load stays Unscoped. A missing session (or
+	// missing row) leaves ExpiredAt nil, matching the LEFT JOIN.
+	sessionIDs := make([]uuid.UUID, 0, len(keys))
+	for i := range keys {
+		sessionIDs = append(sessionIDs, keys[i].SessionID)
+	}
+	sessions := make(map[uuid.UUID]AuthSessionEntity, len(sessionIDs))
+	if len(sessionIDs) > 0 {
+		var entities []AuthSessionEntity
+		if err := s.DB.WithContext(ctx).Unscoped().
+			Where("id IN ?", sessionIDs).
+			Find(&entities).Error; err != nil {
 			return nil, err
 		}
-		keys = append(keys, key)
-	}
-	return keys, rows.Err()
-}
-
-// --- scan helpers ---
-
-func scanSession(row rowScanner) (*model.AuthSession, error) {
-	session := &model.AuthSession{}
-	var (
-		audiencesRaw, scopesRaw                       []byte
-		location                                      []byte
-		clientID, parentSessionID, appID, challengeID *uuid.UUID
-		epoch                                         int
-	)
-	err := row.Scan(
-		&session.Id, &session.Type, &session.LastGrantedAt, &session.ExpiredAt, &audiencesRaw, &scopesRaw,
-		&session.IpAddress, &session.UserAgent, &location, &session.AccountId,
-		&clientID, &parentSessionID, &appID, &challengeID, &epoch,
-		&session.CreatedAt, &session.UpdatedAt, &session.DeletedAt,
-	)
-	if err != nil {
-		return nil, err
-	}
-	session.Audiences = decodeJSONArray(audiencesRaw)
-	session.Scopes = decodeJSONArray(scopesRaw)
-	if len(location) > 0 && string(location) != "null" {
-		var gp model.GeoPoint
-		if json.Unmarshal(location, &gp) == nil {
-			session.Location = &gp
+		for i := range entities {
+			sessions[entities[i].ID] = entities[i]
 		}
 	}
-	session.ClientId = uuidPtrStr(clientID)
-	session.ParentSessionId = uuidPtrStr(parentSessionID)
-	session.AppId = uuidPtrStr(appID)
-	session.ChallengeId = uuidPtrStr(challengeID)
-	session.Epoch = epoch
-	return session, nil
-}
-
-func scanSessions(rows rowsScanner) ([]model.AuthSession, error) {
-	defer rows.Close()
-	var sessions []model.AuthSession
-	for rows.Next() {
-		session, err := scanSession(rows)
-		if err != nil {
-			return nil, err
+	var result []ApiKeyWithExpiry
+	for i := range keys {
+		key := ApiKeyWithExpiry{
+			Id:        keys[i].ID.String(),
+			Label:     keys[i].Label,
+			AppId:     uuidPtrStr(keys[i].AppID),
+			CreatedAt: timePtr(&keys[i].CreatedAt),
 		}
-		sessions = append(sessions, *session)
+		if session, ok := sessions[keys[i].SessionID]; ok {
+			key.ExpiredAt = timePtr(session.ExpiredAt)
+		}
+		result = append(result, key)
 	}
-	return sessions, rows.Err()
+	return result, nil
 }
 
-func scanClient(row rowScanner) (*model.AuthClient, error) {
-	device := &model.AuthClient{}
-	err := row.Scan(&device.Id, &device.DeviceId, &device.DeviceName, &device.DeviceLabel,
-		&device.AccountId, &device.Platform, &device.CreatedAt, &device.UpdatedAt, &device.DeletedAt)
-	if err != nil {
-		return nil, err
-	}
-	return device, nil
-}
-
-func scanFactor(row rowScanner) (*model.AuthFactor, error) {
-	factor := &model.AuthFactor{}
-	var secret *string
-	var config []byte
-	err := row.Scan(&factor.Id, &factor.Type, &secret, &config, &factor.Trustworthy, &factor.EnabledAt,
-		&factor.ExpiredAt, &factor.AccountId, &factor.CreatedAt, &factor.UpdatedAt, &factor.DeletedAt)
-	if err != nil {
-		return nil, err
-	}
-	if secret != nil {
-		factor.Secret = *secret
-	}
-	if len(config) > 0 {
-		_ = json.Unmarshal(config, &factor.Config)
-	}
-	return factor, nil
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	digits := []byte{}
-	for n > 0 {
-		digits = append([]byte{byte('0' + n%10)}, digits...)
-		n /= 10
-	}
-	return string(digits)
-}
+// --- helpers ---
 
 // --- Security mode ---
 
 // GetSecurityMode loads the per-account security mode.
 func (s *Store) GetSecurityMode(ctx context.Context, accountID string) (model.SecurityMode, error) {
+	// accounts.security_mode is not mapped on AccountEntity; select it
+	// directly. The legacy lookup had no deleted_at filter.
 	var mode int
-	err := s.queryRow(ctx, `SELECT security_mode FROM accounts WHERE id = $1`, accountID).Scan(&mode)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return model.SecurityModeDefault, ErrNotFound
-		}
-		return model.SecurityModeDefault, err
+	res := s.DB.WithContext(ctx).Unscoped().Model(&AccountEntity{}).
+		Select("security_mode").
+		Where("id = ?", accountID).
+		Scan(&mode)
+	if res.Error != nil {
+		return model.SecurityModeDefault, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return model.SecurityModeDefault, ErrNotFound
 	}
 	return model.SecurityMode(mode), nil
 }
 
 // SetSecurityMode persists the per-account security mode.
 func (s *Store) SetSecurityMode(ctx context.Context, accountID string, mode model.SecurityMode) error {
-	tag, err := s.exec(ctx, `UPDATE accounts SET security_mode = $1, updated_at = now() WHERE id = $2`, int(mode), accountID)
-	if err != nil {
-		return err
+	res := s.DB.WithContext(ctx).Unscoped().Model(&AccountEntity{}).
+		Where("id = ?", accountID).
+		Updates(map[string]any{"security_mode": int(mode), "updated_at": gorm.Expr("now()")})
+	if res.Error != nil {
+		return res.Error
 	}
-	if tag.RowsAffected() == 0 {
+	if res.RowsAffected == 0 {
 		return ErrNotFound
 	}
 	return nil
@@ -731,21 +719,18 @@ func (s *Store) GetClientPlatformsByIDs(ctx context.Context, ids []uuid.UUID) (m
 	if len(ids) == 0 {
 		return map[string]model.ClientPlatform{}, nil
 	}
-	rows, err := s.query(ctx, `SELECT id, platform FROM auth_clients WHERE id = ANY($1)`, ids)
-	if err != nil {
+	var entities []AuthClientEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Select("id, platform").
+		Where("id IN ?", ids).
+		Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	result := make(map[string]model.ClientPlatform, len(ids))
-	for rows.Next() {
-		var id uuid.UUID
-		var platform model.ClientPlatform
-		if err := rows.Scan(&id, &platform); err != nil {
-			return nil, err
-		}
-		result[id.String()] = platform
+	for i := range entities {
+		result[entities[i].ID.String()] = model.ClientPlatform(entities[i].Platform)
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 // IsTrustedSession reports whether a session is trusted (native platform +

@@ -2,11 +2,10 @@ package store
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
@@ -21,25 +20,27 @@ type RevokedSession struct {
 }
 
 // RevokeSessions marks the given sessions expired, bumps their epoch, and
-// returns the revoked rows.
+// returns the revoked rows. Unscoped: the legacy UPDATE had no deleted_at
+// filter, so revoked sessions are reported even when soft-deleted.
 func (s *Store) RevokeSessions(ctx context.Context, ids []uuid.UUID, now time.Time) ([]RevokedSession, error) {
-	rows, err := s.query(ctx, `UPDATE auth_sessions SET expired_at = $1, epoch = epoch + 1, updated_at = $1
-		WHERE id = ANY($2) RETURNING id, account_id, client_id`, now, ids)
-	if err != nil {
+	var entities []AuthSessionEntity
+	if err := s.DB.WithContext(ctx).Unscoped().Where("id IN ?", ids).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var revoked []RevokedSession
-	for rows.Next() {
-		var r RevokedSession
-		var clientID *uuid.UUID
-		if err := rows.Scan(&r.SessionID, &r.AccountID, &clientID); err != nil {
-			return nil, err
-		}
-		r.ClientID = uuidPtrStr(clientID)
-		revoked = append(revoked, r)
+	revoked := make([]RevokedSession, 0, len(entities))
+	for _, e := range entities {
+		revoked = append(revoked, RevokedSession{
+			SessionID: e.ID.String(),
+			AccountID: e.AccountID.String(),
+			ClientID:  uuidPtrStr(e.ClientID),
+		})
 	}
-	if err := rows.Err(); err != nil {
+	if len(revoked) == 0 {
+		return revoked, nil
+	}
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&AuthSessionEntity{}).
+		Where("id IN ?", ids).
+		Updates(map[string]any{"expired_at": now, "epoch": gorm.Expr("epoch + 1"), "updated_at": now}).Error; err != nil {
 		return nil, err
 	}
 	// Fill device ids from auth_clients for the event payload.
@@ -50,25 +51,28 @@ func (s *Store) RevokeSessions(ctx context.Context, ids []uuid.UUID, now time.Ti
 }
 
 // RevokeAllSessions expires every live session of an account and rotates its
-// epoch. Live sessions may have no expiry or a future expiry.
+// epoch. Live sessions may have no expiry or a future expiry. Unscoped for
+// parity with the legacy UPDATE (no deleted_at filter).
 func (s *Store) RevokeAllSessions(ctx context.Context, accountID string, now time.Time) ([]RevokedSession, error) {
-	rows, err := s.query(ctx, `UPDATE auth_sessions SET expired_at = $1, epoch = epoch + 1, updated_at = $1
-		WHERE account_id = $2 AND (expired_at IS NULL OR expired_at > $1) RETURNING id, account_id, client_id`, now, accountID)
-	if err != nil {
+	where := "account_id = ? AND (expired_at IS NULL OR expired_at > ?)"
+	var entities []AuthSessionEntity
+	if err := s.DB.WithContext(ctx).Unscoped().Where(where, accountID, now).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var revoked []RevokedSession
-	for rows.Next() {
-		var r RevokedSession
-		var clientID *uuid.UUID
-		if err := rows.Scan(&r.SessionID, &r.AccountID, &clientID); err != nil {
-			return nil, err
-		}
-		r.ClientID = uuidPtrStr(clientID)
-		revoked = append(revoked, r)
+	revoked := make([]RevokedSession, 0, len(entities))
+	for _, e := range entities {
+		revoked = append(revoked, RevokedSession{
+			SessionID: e.ID.String(),
+			AccountID: e.AccountID.String(),
+			ClientID:  uuidPtrStr(e.ClientID),
+		})
 	}
-	if err := rows.Err(); err != nil {
+	if len(revoked) == 0 {
+		return revoked, nil
+	}
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&AuthSessionEntity{}).
+		Where(where, accountID, now).
+		Updates(map[string]any{"expired_at": now, "epoch": gorm.Expr("epoch + 1"), "updated_at": now}).Error; err != nil {
 		return nil, err
 	}
 	if err := s.fillDeviceIDs(ctx, revoked); err != nil {
@@ -78,13 +82,31 @@ func (s *Store) RevokeAllSessions(ctx context.Context, accountID string, now tim
 }
 
 func (s *Store) fillDeviceIDs(ctx context.Context, revoked []RevokedSession) error {
+	ids := make([]uuid.UUID, 0, len(revoked))
+	for _, r := range revoked {
+		if r.ClientID != nil {
+			if id, err := uuid.Parse(*r.ClientID); err == nil {
+				ids = append(ids, id)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	// Unscoped: the legacy lookup had no deleted_at filter on auth_clients.
+	var clients []AuthClientEntity
+	if err := s.DB.WithContext(ctx).Unscoped().Select("id", "device_id").Where("id IN ?", ids).Find(&clients).Error; err != nil {
+		return nil
+	}
+	deviceByClient := make(map[string]string, len(clients))
+	for _, c := range clients {
+		deviceByClient[c.ID.String()] = c.DeviceID
+	}
 	for i := range revoked {
 		if revoked[i].ClientID == nil {
 			continue
 		}
-		var deviceID string
-		err := s.queryRow(ctx, `SELECT device_id FROM auth_clients WHERE id = $1`, *revoked[i].ClientID).Scan(&deviceID)
-		if err == nil {
+		if deviceID, ok := deviceByClient[*revoked[i].ClientID]; ok {
 			revoked[i].DeviceID = &deviceID
 		}
 	}
@@ -93,36 +115,23 @@ func (s *Store) fillDeviceIDs(ctx context.Context, revoked []RevokedSession) err
 
 // GetEnabledFactor returns the enabled factor of the given type.
 func (s *Store) GetEnabledFactor(ctx context.Context, accountID string, ftype model.AuthFactorType) (*model.AuthFactor, error) {
-	var f model.AuthFactor
-	var secret *string
-	var config []byte
-	err := s.queryRow(ctx, `SELECT id, type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at, deleted_at
-		FROM account_auth_factors
-		WHERE account_id = $1 AND type = $2 AND enabled_at IS NOT NULL AND deleted_at IS NULL
-		ORDER BY created_at LIMIT 1`,
-		accountID, int(ftype)).Scan(&f.Id, &f.Type, &secret, &config, &f.Trustworthy, &f.EnabledAt,
-		&f.ExpiredAt, &f.AccountId, &f.CreatedAt, &f.UpdatedAt, &f.DeletedAt)
+	var entity AuthFactorEntity
+	err := s.DB.WithContext(ctx).
+		Where("account_id = ? AND type = ? AND enabled_at IS NOT NULL", accountID, int(ftype)).
+		Order("created_at").
+		First(&entity).Error
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+		return nil, mapNotFound(err)
 	}
-	if secret != nil {
-		f.Secret = *secret
-	}
-	if len(config) > 0 {
-		_ = json.Unmarshal(config, &f.Config)
-	}
-	return &f, nil
+	factor := factorFromEntity(&entity)
+	return &factor, nil
 }
 
 // HasEnabledFactor reports whether the account has an enabled factor of the type.
 func (s *Store) HasEnabledFactor(ctx context.Context, accountID string, ftype model.AuthFactorType) (bool, error) {
-	var exists bool
-	err := s.queryRow(ctx, `SELECT EXISTS(
-		SELECT 1 FROM account_auth_factors
-		WHERE account_id = $1 AND type = $2 AND enabled_at IS NOT NULL AND deleted_at IS NULL)`,
-		accountID, int(ftype)).Scan(&exists)
-	return exists, err
+	var count int64
+	err := s.DB.WithContext(ctx).Model(&AuthFactorEntity{}).
+		Where("account_id = ? AND type = ? AND enabled_at IS NOT NULL", accountID, int(ftype)).
+		Count(&count).Error
+	return count > 0, err
 }

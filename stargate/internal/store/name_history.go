@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
@@ -29,36 +30,33 @@ func (s *Store) RenameAccount(ctx context.Context, accountID uuid.UUID, newName 
 		return nil, errors.New("new name is the same as the current name")
 	}
 	var taken bool
-	if err := s.queryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM accounts WHERE lower(name) = lower($1) AND id <> $2)`,
-		newName, accountID).Scan(&taken); err != nil {
+	if err := s.DB.WithContext(ctx).Model(&AccountEntity{}).
+		Select("EXISTS(SELECT 1 FROM accounts WHERE lower(name) = lower(?) AND id <> ?)", newName, accountID).
+		Scan(&taken).Error; err != nil {
 		return nil, err
 	}
 	if taken {
 		return nil, ErrNameTaken
 	}
-	tx, err := s.begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
 	now := time.Now().UTC()
-	if _, err := tx.Exec(ctx,
-		`UPDATE account_name_history SET deleted_at = now(), updated_at = now()
-		 WHERE lower(name) = lower($1) AND deleted_at IS NULL`, account.Name); err != nil {
-		return nil, err
-	}
-	if _, err := tx.Exec(ctx,
-		`INSERT INTO account_name_history (id, account_id, name, created_at, updated_at)
-		 VALUES ($1,$2,$3,$4,$4)`,
-		uuid.NewString(), accountID, account.Name, now); err != nil {
-		return nil, err
-	}
-	if _, err := tx.Exec(ctx,
-		`UPDATE accounts SET name = $2, updated_at = now() WHERE id = $1`, accountID, newName); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
+	err = s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Unscoped().Model(&AccountNameHistoryEntity{}).
+			Where("lower(name) = lower(?) AND deleted_at IS NULL", account.Name).
+			Updates(map[string]any{"deleted_at": now, "updated_at": now}).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&AccountNameHistoryEntity{
+			ID:         uuid.New(),
+			EntityBase: EntityBase{CreatedAt: now, UpdatedAt: now},
+			AccountID:  accountID,
+			Name:       account.Name,
+		}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&AccountEntity{}).Where("id = ?", accountID).
+			Updates(map[string]any{"name": newName, "updated_at": now}).Error
+	})
+	if err != nil {
 		return nil, err
 	}
 	return s.GetAccountWithProfile(ctx, accountID)
@@ -68,15 +66,12 @@ func (s *Store) RenameAccount(ctx context.Context, accountID uuid.UUID, newName 
 // a name, or ErrNotFound when the name was never held (or its holder was
 // soft-deleted).
 func (s *Store) GetAccountNameHistoryOwner(ctx context.Context, name string) (*model.Account, error) {
-	var accountID uuid.UUID
-	if err := s.queryRow(ctx,
-		`SELECT account_id FROM account_name_history
-		 WHERE lower(name) = lower($1) AND deleted_at IS NULL
-		 ORDER BY created_at DESC LIMIT 1`, name).Scan(&accountID); err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+	var entity AccountNameHistoryEntity
+	if err := s.DB.WithContext(ctx).
+		Where("lower(name) = lower(?)", name).
+		Order("created_at DESC").
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
 	}
-	return s.GetAccountByID(ctx, accountID)
+	return s.GetAccountByID(ctx, entity.AccountID)
 }

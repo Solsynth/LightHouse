@@ -8,85 +8,81 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
 
 // Connection helpers for the social-login surface (account_connections).
 
+// connectionFromEntity maps a persisted connection row (including the
+// registration marker) to the API model.
+func connectionFromEntity(entity *ConnectionEntity) model.Connection {
+	connection := model.Connection{
+		Id:                 entity.ID.String(),
+		Provider:           entity.Provider,
+		ProvidedIdentifier: entity.ProvidedIdentifier,
+		LastUsedAt:         timePtr(entity.LastUsedAt),
+		IsPublic:           entity.IsPublic,
+		AccountId:          entity.AccountID.String(),
+		RegisteredAt:       timePtr(entity.RegisteredAt),
+		CreatedAt:          timePtr(&entity.CreatedAt),
+		UpdatedAt:          timePtr(&entity.UpdatedAt),
+		DeletedAt:          deletedTime(entity.DeletedAt),
+	}
+	_ = decodeJSONValue(entity.Meta, &connection.Meta)
+	if entity.AccessToken != nil {
+		connection.AccessToken = *entity.AccessToken
+	}
+	if entity.RefreshToken != nil {
+		connection.RefreshToken = *entity.RefreshToken
+	}
+	return connection
+}
+
 // GetConnectionWithAccount loads a connection joined with its account.
 func (s *Store) GetConnectionWithAccount(ctx context.Context, provider, providedIdentifier string) (*model.Connection, *model.Account, error) {
-	var c model.Connection
-	var meta []byte
-	var account model.Account
-	var automatedID *uuid.UUID
-	err := s.queryRow(ctx, `SELECT c.id, c.provider, c.provided_identifier, c.meta, c.last_used_at,
-		c.is_public, c.account_id, c.registered_at, c.created_at, c.updated_at, c.deleted_at,
-		a.id, a.name, a.nick, a.language, a.region, a.activated_at, a.is_superuser, a.automated_id, a.created_at, a.updated_at, a.deleted_at
-		FROM account_connections c
-		JOIN accounts a ON a.id = c.account_id
-		WHERE LOWER(c.provider) = LOWER($1) AND c.provided_identifier = $2 AND c.deleted_at IS NULL
-		LIMIT 1`, provider, providedIdentifier).Scan(
-		&c.Id, &c.Provider, &c.ProvidedIdentifier, &meta, &c.LastUsedAt,
-		&c.IsPublic, &c.AccountId, &c.RegisteredAt, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt,
-		&account.Id, &account.Name, &account.Nick, &account.Language, &account.Region, &account.ActivatedAt,
-		&account.IsSuperuser, &automatedID, &account.CreatedAt, &account.UpdatedAt, &account.DeletedAt)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, nil, ErrNotFound
-		}
-		return nil, nil, err
+	var entity ConnectionEntity
+	if err := s.DB.WithContext(ctx).
+		Where("LOWER(provider) = LOWER(?) AND provided_identifier = ?", provider, providedIdentifier).
+		First(&entity).Error; err != nil {
+		return nil, nil, mapNotFound(err)
 	}
-	if len(meta) > 0 {
-		_ = json.Unmarshal(meta, &c.Meta)
+	// The join never filtered the account's soft-delete flag, so neither do we.
+	var accountEntity AccountEntity
+	if err := s.DB.WithContext(ctx).Unscoped().Where("id = ?", entity.AccountID).First(&accountEntity).Error; err != nil {
+		return nil, nil, mapNotFound(err)
 	}
-	account.AutomatedId = uuidPtrStr(automatedID)
-	return &c, &account, nil
+	connection := connectionFromEntity(&entity)
+	return &connection, accountFromEntity(&accountEntity), nil
 }
 
 // GetConnectionByProviderIdentifier loads a connection by provider+identifier.
 func (s *Store) GetConnectionByProviderIdentifier(ctx context.Context, provider, providedIdentifier string) (*model.Connection, error) {
-	var c model.Connection
-	var meta []byte
-	err := s.queryRow(ctx, `SELECT id, provider, provided_identifier, meta, last_used_at, is_public, account_id, registered_at, created_at, updated_at, deleted_at
-		FROM account_connections
-		WHERE LOWER(provider) = LOWER($1) AND provided_identifier = $2 AND deleted_at IS NULL
-		LIMIT 1`, provider, providedIdentifier).Scan(
-		&c.Id, &c.Provider, &c.ProvidedIdentifier, &meta, &c.LastUsedAt,
-		&c.IsPublic, &c.AccountId, &c.RegisteredAt, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+	var entity ConnectionEntity
+	if err := s.DB.WithContext(ctx).
+		Where("LOWER(provider) = LOWER(?) AND provided_identifier = ?", provider, providedIdentifier).
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
 	}
-	if len(meta) > 0 {
-		_ = json.Unmarshal(meta, &c.Meta)
-	}
-	return &c, nil
+	connection := connectionFromEntity(&entity)
+	return &connection, nil
 }
 
 // GetConnectionByAccountAndProvider loads the account's newest connection for
 // a provider (case-insensitive provider match).
 func (s *Store) GetConnectionByAccountAndProvider(ctx context.Context, accountID, provider string) (*model.Connection, error) {
-	var c model.Connection
-	var meta []byte
-	err := s.queryRow(ctx, `SELECT id, provider, provided_identifier, meta, last_used_at, is_public, account_id, registered_at, created_at, updated_at, deleted_at
-		FROM account_connections
-		WHERE account_id = $1 AND LOWER(provider) = LOWER($2) AND deleted_at IS NULL
-		ORDER BY created_at LIMIT 1`, accountID, provider).Scan(
-		&c.Id, &c.Provider, &c.ProvidedIdentifier, &meta, &c.LastUsedAt,
-		&c.IsPublic, &c.AccountId, &c.RegisteredAt, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+	var entity ConnectionEntity
+	if err := s.DB.WithContext(ctx).
+		Where("account_id = ? AND LOWER(provider) = LOWER(?)", accountID, provider).
+		Order("created_at").
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
 	}
-	if len(meta) > 0 {
-		_ = json.Unmarshal(meta, &c.Meta)
-	}
-	return &c, nil
+	connection := connectionFromEntity(&entity)
+	return &connection, nil
 }
 
 // InsertConnection creates a new connection row, unless one already exists for
@@ -95,12 +91,15 @@ func (s *Store) GetConnectionByAccountAndProvider(ctx context.Context, accountID
 // connection created the account (OIDC registration).
 func (s *Store) InsertConnection(ctx context.Context, accountID, provider, providedIdentifier, accessToken, refreshToken string, meta map[string]any, registeredAt *time.Time, now time.Time) error {
 	metaJSON, _ := json.Marshal(meta)
-	_, err := s.exec(ctx, `INSERT INTO account_connections
+	// The conflict target is a partial unique index over the expression
+	// (account_id, LOWER(provider), provided_identifier) WHERE deleted_at IS
+	// NULL, which clause.OnConflict cannot express; keep the statement and
+	// let the database arbitrate the race.
+	return s.DB.WithContext(ctx).Exec(`INSERT INTO account_connections
 		(id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, registered_at, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,false,$8,$9,$10,$10)
+		VALUES (?,?,?,?,?,?,?,false,?,?,?,?)
 		ON CONFLICT (account_id, LOWER(provider), provided_identifier) WHERE deleted_at IS NULL DO NOTHING`,
-		uuid.NewString(), provider, providedIdentifier, metaJSON, nullStr(accessToken), nullStr(refreshToken), now, accountID, registeredAt, now)
-	return err
+		uuid.NewString(), provider, providedIdentifier, metaJSON, nullStr(accessToken), nullStr(refreshToken), now, accountID, registeredAt, now, now).Error
 }
 
 // UpsertConnection atomically updates an existing connection or inserts a new
@@ -112,13 +111,14 @@ func (s *Store) InsertConnection(ctx context.Context, accountID, provider, provi
 func (s *Store) UpsertConnection(ctx context.Context, accountID, provider, providedIdentifier, accessToken, refreshToken string, meta map[string]any, registeredAt *time.Time, now time.Time) (bool, error) {
 	metaJSON, _ := json.Marshal(meta)
 	var created bool
-	err := s.queryRow(ctx, `INSERT INTO account_connections
+	// Partial-expression conflict target: see InsertConnection.
+	err := s.DB.WithContext(ctx).Raw(`INSERT INTO account_connections
 		(id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, registered_at, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,false,$8,$9,$10,$10)
+		VALUES (?,?,?,?,?,?,?,false,?,?,?,?)
 		ON CONFLICT (account_id, LOWER(provider), provided_identifier) WHERE deleted_at IS NULL
 		DO UPDATE SET last_used_at = EXCLUDED.last_used_at, meta = EXCLUDED.meta, updated_at = EXCLUDED.updated_at
 		RETURNING (xmax = 0)`,
-		uuid.NewString(), provider, providedIdentifier, metaJSON, nullStr(accessToken), nullStr(refreshToken), now, accountID, registeredAt, now).Scan(&created)
+		uuid.NewString(), provider, providedIdentifier, metaJSON, nullStr(accessToken), nullStr(refreshToken), now, accountID, registeredAt, now, now).Scan(&created).Error
 	if err != nil {
 		return false, err
 	}
@@ -131,15 +131,16 @@ func (s *Store) UpsertConnection(ctx context.Context, accountID, provider, provi
 func (s *Store) TouchConnectionTokens(ctx context.Context, accountID, provider, providedIdentifier, accessToken, refreshToken string, meta map[string]any, registeredAt *time.Time, now time.Time) (bool, error) {
 	metaJSON, _ := json.Marshal(meta)
 	var created bool
-	err := s.queryRow(ctx, `INSERT INTO account_connections
+	// Partial-expression conflict target: see InsertConnection.
+	err := s.DB.WithContext(ctx).Raw(`INSERT INTO account_connections
 		(id, provider, provided_identifier, meta, access_token, refresh_token, last_used_at, is_public, account_id, registered_at, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,false,$8,$9,$10,$10)
+		VALUES (?,?,?,?,?,?,?,false,?,?,?,?)
 		ON CONFLICT (account_id, LOWER(provider), provided_identifier) WHERE deleted_at IS NULL
 		DO UPDATE SET access_token = COALESCE(EXCLUDED.access_token, account_connections.access_token),
 			refresh_token = COALESCE(EXCLUDED.refresh_token, account_connections.refresh_token),
 			last_used_at = EXCLUDED.last_used_at, meta = EXCLUDED.meta, updated_at = EXCLUDED.updated_at
 		RETURNING (xmax = 0)`,
-		uuid.NewString(), provider, providedIdentifier, metaJSON, nullStr(accessToken), nullStr(refreshToken), now, accountID, registeredAt, now).Scan(&created)
+		uuid.NewString(), provider, providedIdentifier, metaJSON, nullStr(accessToken), nullStr(refreshToken), now, accountID, registeredAt, now, now).Scan(&created).Error
 	if err != nil {
 		return false, err
 	}
@@ -148,12 +149,27 @@ func (s *Store) TouchConnectionTokens(ctx context.Context, accountID, provider, 
 
 // CreateOidcSession inserts an Oidc-typed session (type=2).
 func (s *Store) CreateOidcSession(ctx context.Context, accountID string, clientID, parentSessionID *uuid.UUID, expiredAt, now time.Time) (*model.AuthSession, error) {
-	var sessionID uuid.UUID
-	err := s.queryRow(ctx, `INSERT INTO auth_sessions
-		(id, type, created_at, last_granted_at, expired_at, account_id, app_id, client_id, parent_session_id, scopes, audiences, epoch, updated_at)
-		VALUES (gen_random_uuid(),2,$1,$1,$2,$3,$4,$5,$6,'[]','[]',0,$1) RETURNING id`,
-		now, expiredAt, accountID, clientID, clientID, parentSessionID).Scan(&sessionID)
+	parsedAccountID, err := ParseUUID(accountID)
 	if err != nil {
+		return nil, err
+	}
+	// audiences/scopes are jsonb NOT NULL: an empty JSON array, never NULL.
+	sessionID := uuid.New()
+	if err := s.DB.WithContext(ctx).Create(&AuthSessionEntity{
+		ID:              sessionID,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		AccountID:       parsedAccountID,
+		AppID:           clientID,
+		ClientID:        clientID,
+		ParentSessionID: parentSessionID,
+		Audiences:       datatypes.JSON([]byte("[]")),
+		Scopes:          datatypes.JSON([]byte("[]")),
+		Epoch:           0,
+		ExpiredAt:       &expiredAt,
+		LastGrantedAt:   &now,
+		Type:            int(model.SessionTypeOidc),
+	}).Error; err != nil {
 		return nil, err
 	}
 	return &model.AuthSession{
@@ -182,54 +198,60 @@ func (s *Store) CreateAccountFromSocial(ctx context.Context, name, nick, email s
 		return nil, errors.New("Account email has already been used.")
 	}
 
-	tx, err := s.begin(ctx)
+	var stored AccountEntity
+	err = s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		created := &AccountEntity{
+			ID:         uuid.New(),
+			EntityBase: EntityBase{CreatedAt: now, UpdatedAt: now},
+			Language:   "en-US",
+			Name:       name,
+			Nick:       nick,
+			Region:     "en",
+		}
+		if err := tx.Create(created).Error; err != nil {
+			return err
+		}
+		// automated_id is owned by the database (the INSERT returned it).
+		if err := tx.Where("id = ?", created.ID).First(&stored).Error; err != nil {
+			return err
+		}
+
+		var verifiedAt *time.Time
+		if emailVerified {
+			verifiedAt = &now
+		}
+		if err := tx.Create(&ContactEntity{
+			ID:         uuid.New(),
+			EntityBase: EntityBase{CreatedAt: now, UpdatedAt: now},
+			AccountID:  created.ID,
+			Content:    email,
+			IsPrimary:  true,
+			IsPublic:   false,
+			Type:       int(model.ContactTypeEmail),
+			VerifiedAt: verifiedAt,
+		}).Error; err != nil {
+			return err
+		}
+
+		// Enroll in the `default` permission group. A deployment without that
+		// group enrolls nobody, exactly like the INSERT ... SELECT it replaces.
+		var group PermissionGroupEntity
+		if err := tx.Where(`"key" = ?`, "default").First(&group).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			return err
+		}
+		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&PermissionGroupMemberEntity{
+			GroupID:    group.ID,
+			Actor:      created.ID.String(),
+			EntityBase: EntityBase{CreatedAt: now, UpdatedAt: now},
+		}).Error
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(ctx)
-
-	account := &model.Account{
-		Id:        uuid.NewString(),
-		Name:      name,
-		Nick:      nick,
-		Language:  "en-US",
-		Region:    "en",
-		CreatedAt: model.NewTime(now),
-		UpdatedAt: model.NewTime(now),
-	}
-	var automatedID *uuid.UUID
-	err = tx.QueryRow(ctx, `INSERT INTO accounts
-		(id, name, nick, language, region, activated_at, is_superuser, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,NULL,false,$6,$6) RETURNING automated_id`,
-		account.Id, account.Name, account.Nick, account.Language, account.Region, now).Scan(&automatedID)
-	if err != nil {
-		return nil, err
-	}
-	account.AutomatedId = uuidPtrStr(automatedID)
-
-	contactID := uuid.NewString()
-	var verifiedAt *time.Time
-	if emailVerified {
-		verifiedAt = &now
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO account_contacts
-		(id, type, content, is_primary, is_public, verified_at, account_id, created_at, updated_at)
-		VALUES ($1,0,$2,true,false,$3,$4,$5,$5)`,
-		contactID, email, verifiedAt, account.Id, now); err != nil {
-		return nil, err
-	}
-
-	// Enroll in the `default` permission group.
-	if _, err := tx.Exec(ctx, `INSERT INTO permission_group_members (group_id, actor, created_at, updated_at)
-		SELECT id, $1, $2, $2 FROM permission_groups WHERE key = 'default' AND deleted_at IS NULL
-		ON CONFLICT (group_id, actor) DO NOTHING`, account.Id, now); err != nil {
-		return nil, err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	return account, nil
+	return accountFromEntity(&stored), nil
 }
 
 func nullStr(s string) *string {
@@ -244,62 +266,42 @@ func nullStr(s string) *string {
 // ListConnections lists an account's connections WITHOUT a soft-delete filter
 // (C# GetConnections has none).
 func (s *Store) ListConnections(ctx context.Context, accountID string) ([]model.Connection, error) {
-	rows, err := s.query(ctx, `SELECT id, provider, provided_identifier, meta, last_used_at, is_public, account_id, registered_at, created_at, updated_at, deleted_at
-		FROM account_connections WHERE account_id = $1`, accountID)
-	if err != nil {
+	var entities []ConnectionEntity
+	if err := s.DB.WithContext(ctx).Unscoped().Where("account_id = ?", accountID).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var connections []model.Connection
-	for rows.Next() {
-		var c model.Connection
-		var meta []byte
-		if err := rows.Scan(&c.Id, &c.Provider, &c.ProvidedIdentifier, &meta, &c.LastUsedAt,
-			&c.IsPublic, &c.AccountId, &c.RegisteredAt, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt); err != nil {
-			return nil, err
-		}
-		if len(meta) > 0 && string(meta) != "null" {
-			_ = json.Unmarshal(meta, &c.Meta)
-		}
-		connections = append(connections, c)
+	for i := range entities {
+		connections = append(connections, connectionFromEntity(&entities[i]))
 	}
-	return connections, rows.Err()
+	return connections, nil
 }
 
 // GetConnectionByID loads a connection scoped to the account.
 func (s *Store) GetConnectionByID(ctx context.Context, accountID string, id uuid.UUID) (*model.Connection, error) {
-	var c model.Connection
-	var meta []byte
-	err := s.queryRow(ctx, `SELECT id, provider, provided_identifier, meta, last_used_at, is_public, account_id, registered_at, created_at, updated_at, deleted_at
-		FROM account_connections WHERE id = $1 AND account_id = $2`, id, accountID).Scan(
-		&c.Id, &c.Provider, &c.ProvidedIdentifier, &meta, &c.LastUsedAt,
-		&c.IsPublic, &c.AccountId, &c.RegisteredAt, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+	var entity ConnectionEntity
+	if err := s.DB.WithContext(ctx).Unscoped().Where("id = ? AND account_id = ?", id, accountID).First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
 	}
-	if len(meta) > 0 && string(meta) != "null" {
-		_ = json.Unmarshal(meta, &c.Meta)
-	}
-	return &c, nil
+	connection := connectionFromEntity(&entity)
+	return &connection, nil
 }
 
 // UpdateConnection applies the visibility toggle (is_public).
 func (s *Store) UpdateConnection(ctx context.Context, c *model.Connection) error {
-	_, err := s.exec(ctx, `UPDATE account_connections SET is_public = $1, updated_at = now() WHERE id = $2`, c.IsPublic, c.Id)
-	return err
+	return s.DB.WithContext(ctx).Unscoped().Model(&ConnectionEntity{}).
+		Where("id = ?", c.Id).
+		Updates(map[string]any{"is_public": c.IsPublic, "updated_at": gorm.Expr("now()")}).Error
 }
 
 // DeleteConnectionRow hard-deletes a connection row.
 func (s *Store) DeleteConnectionRow(ctx context.Context, id uuid.UUID) error {
-	_, err := s.exec(ctx, `DELETE FROM account_connections WHERE id = $1`, id)
-	return err
+	return s.DB.WithContext(ctx).Unscoped().Where("id = ?", id).Delete(&ConnectionEntity{}).Error
 }
 
 // SetConnectionVisibility toggles a connection's public flag.
 func (s *Store) SetConnectionVisibility(ctx context.Context, id uuid.UUID, isPublic bool) error {
-	_, err := s.exec(ctx, `UPDATE account_connections SET is_public = $1, updated_at = now() WHERE id = $2`, isPublic, id)
-	return err
+	return s.DB.WithContext(ctx).Unscoped().Model(&ConnectionEntity{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"is_public": isPublic, "updated_at": gorm.Expr("now()")}).Error
 }

@@ -9,13 +9,14 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
@@ -67,69 +68,59 @@ type AdminAccountFilters struct {
 // excluded via the accounts.deleted_at filter). Returns the page plus the
 // total matching count (X-Total).
 func (s *Store) AdminListAccounts(ctx context.Context, query, orderBy string, take, offset int, filters *AdminAccountFilters) ([]model.Account, int, error) {
-	where := `WHERE a.deleted_at IS NULL`
-	args := []any{}
-	if strings.TrimSpace(query) != "" {
-		args = append(args, "%"+strings.TrimSpace(query)+"%")
-		where += ` AND (a.name ILIKE $1 OR a.nick ILIKE $1)`
-	}
-	if filters != nil {
-		if filters.Activated != nil {
-			if *filters.Activated {
-				where += ` AND a.activated_at IS NOT NULL`
-			} else {
-				where += ` AND a.activated_at IS NULL`
+	base := func() *gorm.DB {
+		statement := s.DB.WithContext(ctx).Model(&AccountEntity{})
+		if strings.TrimSpace(query) != "" {
+			pattern := "%" + strings.TrimSpace(query) + "%"
+			statement = statement.Where("name ILIKE ? OR nick ILIKE ?", pattern, pattern)
+		}
+		if filters != nil {
+			if filters.Activated != nil {
+				if *filters.Activated {
+					statement = statement.Where("activated_at IS NOT NULL")
+				} else {
+					statement = statement.Where("activated_at IS NULL")
+				}
+			}
+			if filters.HasPunishment != nil && *filters.HasPunishment {
+				statement = statement.Where("EXISTS (SELECT 1 FROM punishments p WHERE p.account_id = accounts.id AND p.deleted_at IS NULL AND (p.expired_at IS NULL OR p.expired_at > now()))")
+			}
+			if filters.CreatedAfter != nil {
+				statement = statement.Where("created_at >= ?", *filters.CreatedAfter)
+			}
+			if filters.CreatedBefore != nil {
+				statement = statement.Where("created_at <= ?", *filters.CreatedBefore)
 			}
 		}
-		if filters.HasPunishment != nil && *filters.HasPunishment {
-			where += ` AND EXISTS (SELECT 1 FROM account_punishments p WHERE p.account_id = a.id AND p.deleted_at IS NULL AND (p.expired_at IS NULL OR p.expired_at > now()))`
-		}
-		if filters.CreatedAfter != nil {
-			args = append(args, *filters.CreatedAfter)
-			idx := len(args)
-			where += ` AND a.created_at >= $` + strconv.Itoa(idx)
-		}
-		if filters.CreatedBefore != nil {
-			args = append(args, *filters.CreatedBefore)
-			idx := len(args)
-			where += ` AND a.created_at <= $` + strconv.Itoa(idx)
-		}
+		return statement
 	}
+
+	var total int64
+	if err := base().Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
 	var order string
 	switch orderBy {
 	case "name":
-		order = `a.name`
+		order = "name"
 	case "name_desc":
-		order = `a.name DESC`
+		order = "name DESC"
 	case "created_at_desc":
-		order = `a.created_at DESC`
+		order = "created_at DESC"
 	default:
-		order = `a.id`
+		order = "id"
 	}
 
-	var total int
-	if err := s.queryRow(ctx, `SELECT count(*) FROM accounts a `+where, args...).Scan(&total); err != nil {
+	var entities []AccountEntity
+	if err := base().Order(order).Limit(take).Offset(offset).Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
-
-	args = append(args, take, offset)
-	rows, err := s.query(ctx, `SELECT `+accountColumns+` FROM accounts a `+where+` ORDER BY `+order+` LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
 	var accounts []model.Account
-	for rows.Next() {
-		account := &model.Account{}
-		var automatedID *uuid.UUID
-		if err := rows.Scan(&account.Id, &account.Name, &account.Nick, &account.Language, &account.Region,
-			&account.ActivatedAt, &account.IsSuperuser, &automatedID, &account.CreatedAt, &account.UpdatedAt, &account.DeletedAt); err != nil {
-			return nil, 0, err
-		}
-		account.AutomatedId = uuidPtrStr(automatedID)
-		accounts = append(accounts, *account)
+	for i := range entities {
+		accounts = append(accounts, *accountFromEntity(&entities[i]))
 	}
-	return accounts, total, rows.Err()
+	return accounts, int(total), nil
 }
 
 // AdminLookupAccount resolves an admin route identifier: a GUID is matched
@@ -141,30 +132,29 @@ func (s *Store) AdminLookupAccount(ctx context.Context, identifier string) (*mod
 		return s.GetAccountByID(ctx, id)
 	}
 	probe := strings.TrimSpace(identifier)
-	row := s.queryRow(ctx, `SELECT `+accountColumns+` FROM accounts WHERE name ILIKE $1 AND deleted_at IS NULL`, probe)
-	account, err := scanAccount(row)
+	var entity AccountEntity
+	err := s.DB.WithContext(ctx).Where("name ILIKE ?", probe).First(&entity).Error
 	if err == nil {
-		return account, nil
+		return accountFromEntity(&entity), nil
 	}
-	if !errors.Is(err, ErrNotFound) {
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
 	// Fall back to an email/phone contact lookup (contact.Account included).
-	row = s.queryRow(ctx, `SELECT a.id, a.name, a.nick, a.language, a.region, a.activated_at, a.is_superuser,
-		a.automated_id, a.created_at, a.updated_at, a.deleted_at
-		FROM account_contacts c
-		JOIN accounts a ON a.id = c.account_id
-		WHERE (c.type = 0 OR c.type = 1) AND c.content ILIKE $1
-		  AND c.deleted_at IS NULL AND a.deleted_at IS NULL
-		LIMIT 1`, probe)
-	contactAccount, err := scanAccount(row)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
+	var joined AccountEntity
+	if err := s.DB.WithContext(ctx).Table("account_contacts c").
+		Select(accountColsPrefixed("a")).
+		Joins("JOIN accounts a ON a.id = c.account_id").
+		Where("(c.type = 0 OR c.type = 1) AND c.content ILIKE ?", probe).
+		Where("c.deleted_at IS NULL AND a.deleted_at IS NULL").
+		Limit(1).
+		Scan(&joined).Error; err != nil {
 		return nil, err
 	}
-	return contactAccount, nil
+	if joined.ID == uuid.Nil {
+		return nil, ErrNotFound
+	}
+	return accountFromEntity(&joined), nil
 }
 
 // AdminContactSummaries returns per-account primary email + contact counts.
@@ -173,34 +163,27 @@ func (s *Store) AdminContactSummaries(ctx context.Context, accountIDs []uuid.UUI
 	if len(accountIDs) == 0 {
 		return result, nil
 	}
-	rows, err := s.query(ctx, `SELECT account_id, is_primary, verified_at, content FROM account_contacts
-		WHERE account_id = ANY($1) AND deleted_at IS NULL`, accountIDs)
-	if err != nil {
+	var entities []ContactEntity
+	if err := s.DB.WithContext(ctx).Where("account_id IN ?", accountIDs).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var accountID string
-		var isPrimary bool
-		var verifiedAt *model.Time
-		var content string
-		if err := rows.Scan(&accountID, &isPrimary, &verifiedAt, &content); err != nil {
-			return nil, err
-		}
+	for i := range entities {
+		entity := &entities[i]
+		accountID := entity.AccountID.String()
 		summary := result[accountID]
 		summary.Count++
 		// Primary email: prefer is_primary, then verified_at desc (C#
 		// OrderByDescending(IsPrimary).ThenByDescending(VerifiedAt)).
-		if summary.PrimaryEmail == nil && isPrimary {
-			email := content
+		if summary.PrimaryEmail == nil && entity.IsPrimary {
+			email := entity.Content
 			summary.PrimaryEmail = &email
-		} else if summary.PrimaryEmail == nil && verifiedAt != nil {
-			email := content
+		} else if summary.PrimaryEmail == nil && entity.VerifiedAt != nil {
+			email := entity.Content
 			summary.PrimaryEmail = &email
 		}
 		result[accountID] = summary
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 // AdminFactorSummaries returns per-account auth-factor count + has-password.
@@ -209,52 +192,46 @@ func (s *Store) AdminFactorSummaries(ctx context.Context, accountIDs []uuid.UUID
 	if len(accountIDs) == 0 {
 		return result, nil
 	}
-	rows, err := s.query(ctx, `SELECT account_id, type, enabled_at FROM account_auth_factors
-		WHERE account_id = ANY($1) AND deleted_at IS NULL`, accountIDs)
-	if err != nil {
+	var entities []AuthFactorEntity
+	if err := s.DB.WithContext(ctx).Where("account_id IN ?", accountIDs).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var accountID string
-		var ftype int
-		var enabledAt *model.Time
-		if err := rows.Scan(&accountID, &ftype, &enabledAt); err != nil {
-			return nil, err
-		}
+	for i := range entities {
+		entity := &entities[i]
+		accountID := entity.AccountID.String()
 		summary := result[accountID]
 		summary.Count++
-		if ftype == int(model.AuthFactorTypePassword) && enabledAt != nil {
+		if model.AuthFactorType(entity.Type) == model.AuthFactorTypePassword && entity.EnabledAt != nil {
 			summary.HasPassword = true
 		}
 		result[accountID] = summary
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 // AdminActiveSessionCounts returns per-account counts of sessions that are
-// not expired yet (expired_at IS NULL or future).
+// not expired yet (expired_at IS NULL or future). The legacy query carried no
+// deleted_at filter, so the aggregate stays Unscoped.
 func (s *Store) AdminActiveSessionCounts(ctx context.Context, accountIDs []uuid.UUID, now time.Time) (map[string]int, error) {
 	result := make(map[string]int, len(accountIDs))
 	if len(accountIDs) == 0 {
 		return result, nil
 	}
-	rows, err := s.query(ctx, `SELECT account_id, count(*) FROM auth_sessions
-		WHERE account_id = ANY($1) AND (expired_at IS NULL OR expired_at > $2)
-		GROUP BY account_id`, accountIDs, now)
-	if err != nil {
+	var rows []struct {
+		AccountID uuid.UUID `gorm:"column:account_id"`
+		Count     int       `gorm:"column:count"`
+	}
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&AuthSessionEntity{}).
+		Select("account_id, count(*) AS count").
+		Where("account_id IN ? AND (expired_at IS NULL OR expired_at > ?)", accountIDs, now).
+		Group("account_id").
+		Scan(&rows).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var accountID string
-		var count int
-		if err := rows.Scan(&accountID, &count); err != nil {
-			return nil, err
-		}
-		result[accountID] = count
+	for _, row := range rows {
+		result[row.AccountID.String()] = row.Count
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 // AdminActiveDeviceCounts returns per-account counts of non-deleted devices.
@@ -263,22 +240,21 @@ func (s *Store) AdminActiveDeviceCounts(ctx context.Context, accountIDs []uuid.U
 	if len(accountIDs) == 0 {
 		return result, nil
 	}
-	rows, err := s.query(ctx, `SELECT account_id, count(*) FROM auth_clients
-		WHERE account_id = ANY($1) AND deleted_at IS NULL
-		GROUP BY account_id`, accountIDs)
-	if err != nil {
+	var rows []struct {
+		AccountID uuid.UUID `gorm:"column:account_id"`
+		Count     int       `gorm:"column:count"`
+	}
+	if err := s.DB.WithContext(ctx).Model(&AuthClientEntity{}).
+		Select("account_id, count(*) AS count").
+		Where("account_id IN ?", accountIDs).
+		Group("account_id").
+		Scan(&rows).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var accountID string
-		var count int
-		if err := rows.Scan(&accountID, &count); err != nil {
-			return nil, err
-		}
-		result[accountID] = count
+	for _, row := range rows {
+		result[row.AccountID.String()] = row.Count
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 // AdminListActivePunishments returns punishments whose expiry is null/future
@@ -287,74 +263,84 @@ func (s *Store) AdminListActivePunishments(ctx context.Context, accountIDs []uui
 	if len(accountIDs) == 0 {
 		return nil, nil
 	}
-	return s.adminQueryPunishments(ctx, `WHERE p.account_id = ANY($1) AND p.deleted_at IS NULL
-		AND (p.expired_at IS NULL OR p.expired_at > $2)`, accountIDs, now)
+	return s.adminQueryPunishments(ctx, func(statement *gorm.DB) *gorm.DB {
+		return statement.Where("account_id IN ? AND (expired_at IS NULL OR expired_at > ?)", accountIDs, now)
+	})
 }
 
 // AdminPunishmentGet loads one punishment by id and account.
 func (s *Store) AdminPunishmentGet(ctx context.Context, accountID, punishmentID uuid.UUID) (*model.Punishment, error) {
-	punishments, err := s.adminQueryPunishments(ctx, `WHERE p.id = $1 AND p.account_id = $2 AND p.deleted_at IS NULL`, punishmentID, accountID)
-	if err != nil {
-		return nil, err
+	var entity PunishmentEntity
+	if err := s.DB.WithContext(ctx).Where("id = ? AND account_id = ?", punishmentID, accountID).
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
 	}
-	if len(punishments) == 0 {
-		return nil, ErrNotFound
-	}
-	return &punishments[0], nil
+	punishment := adminPunishmentFromEntity(&entity)
+	return &punishment, nil
 }
 
 // AdminPunishmentsCreatedBy lists punishments created by the given admin.
 func (s *Store) AdminPunishmentsCreatedBy(ctx context.Context, creatorID uuid.UUID, take, offset int) ([]model.Punishment, int, error) {
-	var total int
-	if err := s.queryRow(ctx, `SELECT count(*) FROM punishments WHERE creator_id = $1 AND deleted_at IS NULL`, creatorID).Scan(&total); err != nil {
+	var total int64
+	if err := s.DB.WithContext(ctx).Model(&PunishmentEntity{}).
+		Where("creator_id = ?", creatorID).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	punishments, err := s.adminQueryPunishments(ctx, `WHERE p.creator_id = $1 AND p.deleted_at IS NULL
-		ORDER BY p.created_at DESC LIMIT $2 OFFSET $3`, creatorID, take, offset)
+	punishments, err := s.adminQueryPunishments(ctx, func(statement *gorm.DB) *gorm.DB {
+		return statement.Where("creator_id = ?", creatorID).
+			Order("created_at DESC").Limit(take).Offset(offset)
+	})
 	if err != nil {
 		return nil, 0, err
 	}
-	return punishments, total, nil
+	return punishments, int(total), nil
 }
 
 // AdminActivePunishmentsForAccount lists the account's currently active
 // punishments (oldest-first by creation, mirroring the user-facing
 // AccountPunishmentController).
 func (s *Store) AdminActivePunishmentsForAccount(ctx context.Context, accountID uuid.UUID, now time.Time, take, offset int) ([]model.Punishment, int, error) {
-	var total int
-	if err := s.queryRow(ctx, `SELECT count(*) FROM punishments
-		WHERE account_id = $1 AND deleted_at IS NULL AND (expired_at IS NULL OR expired_at > $2)`, accountID, now).Scan(&total); err != nil {
+	var total int64
+	if err := s.DB.WithContext(ctx).Model(&PunishmentEntity{}).
+		Where("account_id = ? AND (expired_at IS NULL OR expired_at > ?)", accountID, now).
+		Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	punishments, err := s.adminQueryPunishments(ctx, `WHERE p.account_id = $1 AND p.deleted_at IS NULL
-		AND (p.expired_at IS NULL OR p.expired_at > $2)
-		ORDER BY p.created_at DESC LIMIT $3 OFFSET $4`, accountID, now, take, offset)
+	punishments, err := s.adminQueryPunishments(ctx, func(statement *gorm.DB) *gorm.DB {
+		return statement.Where("account_id = ? AND (expired_at IS NULL OR expired_at > ?)", accountID, now).
+			Order("created_at DESC").Limit(take).Offset(offset)
+	})
 	if err != nil {
 		return nil, 0, err
 	}
-	return punishments, total, nil
+	return punishments, int(total), nil
 }
 
 // AdminAllPunishmentsForAccount lists every punishment of an account
 // (me/punishments), most recent first.
 func (s *Store) AdminAllPunishmentsForAccount(ctx context.Context, accountID uuid.UUID, take, offset int) ([]model.Punishment, int, error) {
-	var total int
-	if err := s.queryRow(ctx, `SELECT count(*) FROM punishments WHERE account_id = $1 AND deleted_at IS NULL`, accountID).Scan(&total); err != nil {
+	var total int64
+	if err := s.DB.WithContext(ctx).Model(&PunishmentEntity{}).
+		Where("account_id = ?", accountID).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	punishments, err := s.adminQueryPunishments(ctx, `WHERE p.account_id = $1 AND p.deleted_at IS NULL
-		ORDER BY p.created_at DESC LIMIT $2 OFFSET $3`, accountID, take, offset)
+	punishments, err := s.adminQueryPunishments(ctx, func(statement *gorm.DB) *gorm.DB {
+		return statement.Where("account_id = ?", accountID).
+			Order("created_at DESC").Limit(take).Offset(offset)
+	})
 	if err != nil {
 		return nil, 0, err
 	}
-	return punishments, total, nil
+	return punishments, int(total), nil
 }
 
 // AdminPunishmentOverview returns the most severe active punishment of an
 // account, mirroring GetActivePunishmentOverview (null when none).
 func (s *Store) AdminPunishmentOverview(ctx context.Context, accountID uuid.UUID, now time.Time) (*model.Punishment, error) {
-	punishments, err := s.adminQueryPunishments(ctx, `WHERE p.account_id = $1 AND p.deleted_at IS NULL
-		AND (p.expired_at IS NULL OR p.expired_at > $2) ORDER BY p.type DESC`, accountID, now)
+	punishments, err := s.adminQueryPunishments(ctx, func(statement *gorm.DB) *gorm.DB {
+		return statement.Where("account_id = ? AND (expired_at IS NULL OR expired_at > ?)", accountID, now).
+			Order("type DESC")
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -387,32 +373,19 @@ func SelectMostSeverePunishment(punishments []model.Punishment) int {
 	return best
 }
 
-// adminQueryPunishments runs a punishment SELECT. The WHERE clause must start
-// with "WHERE p." and any extra params must follow the first argument. The
-// first argument is always the account/creator scope value.
-func (s *Store) adminQueryPunishments(ctx context.Context, where string, args ...any) ([]model.Punishment, error) {
-	query := `SELECT p.id, p.reason, p.expired_at, p.type, p.blocked_permissions, p.account_id,
-		p.creator_id, p.created_at, p.updated_at, p.deleted_at
-		FROM punishments p ` + where
-	rows, err := s.query(ctx, query, args...)
-	if err != nil {
+// adminQueryPunishments runs a punishment SELECT through the supplied query
+// builder and maps the rows. Soft-deleted punishments are always excluded, so
+// the builder receives the scoped statement for punishment entities.
+func (s *Store) adminQueryPunishments(ctx context.Context, build func(*gorm.DB) *gorm.DB) ([]model.Punishment, error) {
+	var entities []PunishmentEntity
+	if err := build(s.DB.WithContext(ctx).Model(&PunishmentEntity{})).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var punishments []model.Punishment
-	for rows.Next() {
-		var p model.Punishment
-		var blocked []string
-		var creatorID *uuid.UUID
-		if err := rows.Scan(&p.Id, &p.Reason, &p.ExpiredAt, &p.Type, &blocked, &p.AccountId,
-			&creatorID, &p.CreatedAt, &p.UpdatedAt, &p.DeletedAt); err != nil {
-			return nil, err
-		}
-		p.BlockedPermissions = blocked
-		p.CreatorId = uuidPtrStr(creatorID)
-		punishments = append(punishments, p)
+	for i := range entities {
+		punishments = append(punishments, adminPunishmentFromEntity(&entities[i]))
 	}
-	return punishments, rows.Err()
+	return punishments, nil
 }
 
 // AdminPunishmentCreate inserts a punishment and returns it.
@@ -420,188 +393,186 @@ func (s *Store) AdminPunishmentCreate(ctx context.Context, accountID, creatorID 
 	if blocked == nil {
 		blocked = []string{}
 	}
-	row := s.queryRow(ctx, `INSERT INTO punishments (id, account_id, creator_id, reason, expired_at, type, blocked_permissions, created_at, updated_at)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, now(), now())
-		RETURNING id, reason, expired_at, type, blocked_permissions, account_id, creator_id, created_at, updated_at, deleted_at`,
-		accountID, creatorID, reason, expiredAt, ptype, blocked)
-	p, err := scanPunishment(row)
+	blockedPermissions, err := encodeJSON(blocked)
 	if err != nil {
 		return nil, err
 	}
-	return p, nil
+	now := time.Now().UTC()
+	entity := &PunishmentEntity{
+		ID:                 uuid.New(),
+		EntityBase:         EntityBase{CreatedAt: now, UpdatedAt: now},
+		AccountID:          accountID,
+		BlockedPermissions: &blockedPermissions,
+		CreatorID:          &creatorID,
+		ExpiredAt:          expiredAt,
+		Reason:             reason,
+		Type:               ptype,
+	}
+	if err := s.DB.WithContext(ctx).Create(entity).Error; err != nil {
+		return nil, err
+	}
+	punishment := adminPunishmentFromEntity(entity)
+	return &punishment, nil
 }
 
 // AdminPunishmentUpdate applies the provided field updates to a punishment.
 // A nil field leaves the column untouched; blocked is only applied when
 // provided (the C# only updates when request.BlockedPermissions is not null).
 func (s *Store) AdminPunishmentUpdate(ctx context.Context, punishmentID uuid.UUID, reason *string, expiredAt *time.Time, ptype *int, blocked []string, hasBlocked bool, creatorID *uuid.UUID) (*model.Punishment, error) {
-	fields := []string{"updated_at = now()"}
-	args := []any{}
+	updates := map[string]any{"updated_at": time.Now().UTC()}
 	if reason != nil {
-		args = append(args, *reason)
-		fields = append(fields, "reason = $"+strconv.Itoa(len(args)))
+		updates["reason"] = *reason
 	}
 	if expiredAt != nil {
-		args = append(args, *expiredAt)
-		fields = append(fields, "expired_at = $"+strconv.Itoa(len(args)))
+		updates["expired_at"] = *expiredAt
 	}
 	if ptype != nil {
-		args = append(args, *ptype)
-		fields = append(fields, "type = $"+strconv.Itoa(len(args)))
+		updates["type"] = *ptype
 	}
 	if hasBlocked {
-		args = append(args, blocked)
-		fields = append(fields, "blocked_permissions = $"+strconv.Itoa(len(args)))
+		var blockedPermissions *datatypes.JSON
+		if blocked != nil {
+			encoded, err := encodeJSON(blocked)
+			if err != nil {
+				return nil, err
+			}
+			blockedPermissions = &encoded
+		}
+		updates["blocked_permissions"] = blockedPermissions
 	}
 	if creatorID != nil {
-		args = append(args, *creatorID)
-		fields = append(fields, "creator_id = $"+strconv.Itoa(len(args)))
+		updates["creator_id"] = *creatorID
 	}
-	args = append(args, punishmentID)
-	row := s.queryRow(ctx, `UPDATE punishments SET `+strings.Join(fields, ", ")+`
-		WHERE id = $`+strconv.Itoa(len(args))+` AND deleted_at IS NULL
-		RETURNING id, reason, expired_at, type, blocked_permissions, account_id, creator_id, created_at, updated_at, deleted_at`, args...)
-	p, err := scanPunishment(row)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+	res := s.DB.WithContext(ctx).Model(&PunishmentEntity{}).
+		Where("id = ?", punishmentID).
+		Updates(updates)
+	if res.Error != nil {
+		return nil, res.Error
 	}
-	return p, nil
+	if res.RowsAffected == 0 {
+		return nil, ErrNotFound
+	}
+	var entity PunishmentEntity
+	if err := s.DB.WithContext(ctx).Unscoped().Where("id = ?", punishmentID).First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	punishment := adminPunishmentFromEntity(&entity)
+	return &punishment, nil
 }
 
 // AdminPunishmentDelete soft-deletes a punishment (EF Remove semantics).
 func (s *Store) AdminPunishmentDelete(ctx context.Context, accountID, punishmentID uuid.UUID) (*model.Punishment, error) {
-	row := s.queryRow(ctx, `UPDATE punishments SET deleted_at = now(), updated_at = now()
-		WHERE id = $1 AND account_id = $2 AND deleted_at IS NULL
-		RETURNING id, reason, expired_at, type, blocked_permissions, account_id, creator_id, created_at, updated_at, deleted_at`, punishmentID, accountID)
-	p, err := scanPunishment(row)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+	now := time.Now().UTC()
+	res := s.DB.WithContext(ctx).Model(&PunishmentEntity{}).
+		Where("id = ? AND account_id = ?", punishmentID, accountID).
+		Updates(map[string]any{"deleted_at": now, "updated_at": now})
+	if res.Error != nil {
+		return nil, res.Error
 	}
-	return p, nil
-}
-
-func scanPunishment(row rowScanner) (*model.Punishment, error) {
-	var p model.Punishment
-	var blockedRaw []byte
-	var creatorID *uuid.UUID
-	err := row.Scan(&p.Id, &p.Reason, &p.ExpiredAt, &p.Type, &blockedRaw, &p.AccountId,
-		&creatorID, &p.CreatedAt, &p.UpdatedAt, &p.DeletedAt)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+	if res.RowsAffected == 0 {
+		return nil, ErrNotFound
 	}
-	p.BlockedPermissions = decodeJSONArray(blockedRaw)
-	p.CreatorId = uuidPtrStr(creatorID)
-	return &p, nil
+	var entity PunishmentEntity
+	if err := s.DB.WithContext(ctx).Unscoped().Where("id = ?", punishmentID).First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	punishment := adminPunishmentFromEntity(&entity)
+	return &punishment, nil
 }
 
 // AdminListDevices pages the account's auth clients, optionally including
 // soft-deleted ones, mirroring ListAccountDevices.
 func (s *Store) AdminListDevices(ctx context.Context, accountID uuid.UUID, includeDeleted bool, take, offset int) ([]model.AuthClient, int, error) {
-	where := `WHERE account_id = $1`
-	if !includeDeleted {
-		where += ` AND deleted_at IS NULL`
-	}
-	var total int
-	if err := s.queryRow(ctx, `SELECT count(*) FROM auth_clients `+where, accountID).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-	rows, err := s.query(ctx, `SELECT id, device_id, device_name, device_label, account_id, platform, created_at, updated_at, deleted_at
-		FROM auth_clients `+where+` ORDER BY created_at DESC LIMIT $2 OFFSET $3`, accountID, take, offset)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-	var devices []model.AuthClient
-	for rows.Next() {
-		var d model.AuthClient
-		if err := rows.Scan(&d.Id, &d.DeviceId, &d.DeviceName, &d.DeviceLabel, &d.AccountId, &d.Platform,
-			&d.CreatedAt, &d.UpdatedAt, &d.DeletedAt); err != nil {
-			return nil, 0, err
+	base := func() *gorm.DB {
+		statement := s.DB.WithContext(ctx).Model(&AuthClientEntity{})
+		if includeDeleted {
+			statement = statement.Unscoped()
 		}
-		devices = append(devices, d)
+		return statement.Where("account_id = ?", accountID)
 	}
-	return devices, total, rows.Err()
+
+	var total int64
+	if err := base().Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var entities []AuthClientEntity
+	if err := base().Order("created_at DESC").Limit(take).Offset(offset).Find(&entities).Error; err != nil {
+		return nil, 0, err
+	}
+	var devices []model.AuthClient
+	for i := range entities {
+		devices = append(devices, authClientFromEntity(&entities[i]))
+	}
+	return devices, int(total), nil
 }
 
 // AdminListDeviceSessions groups the devices' sessions by client id, newest
-// last_granted_at first (used to populate SnAuthClientWithSessions).
+// last_granted_at first (used to populate SnAuthClientWithSessions). The
+// legacy query carried no deleted_at filter, so it stays Unscoped.
 func (s *Store) AdminListDeviceSessions(ctx context.Context, clientIDs []uuid.UUID) (map[string][]model.AuthSession, error) {
 	result := make(map[string][]model.AuthSession)
 	if len(clientIDs) == 0 {
 		return result, nil
 	}
-	rows, err := s.query(ctx, `SELECT s.id, s.type, s.last_granted_at, s.expired_at, s.audiences, s.scopes,
-		s.ip_address, s.user_agent, s.location, s.account_id, s.client_id, s.parent_session_id, s.challenge_id,
-		s.app_id, s.epoch, s.created_at, s.updated_at, s.deleted_at
-		FROM auth_sessions s WHERE s.client_id = ANY($1)
-		ORDER BY s.last_granted_at DESC`, clientIDs)
-	if err != nil {
+	var entities []AuthSessionEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Where("client_id IN ?", clientIDs).
+		Order("last_granted_at DESC").
+		Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		session, err := scanAdminSession(rows)
-		if err != nil {
-			return nil, err
-		}
+	for i := range entities {
+		session := sessionFromEntity(&entities[i])
 		if session.ClientId != nil {
 			result[*session.ClientId] = append(result[*session.ClientId], *session)
 		}
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 // AdminGetDeviceByDeviceId loads an auth client by its stable device id.
 func (s *Store) AdminGetDeviceByDeviceId(ctx context.Context, accountID uuid.UUID, deviceID string) (*model.AuthClient, error) {
-	row := s.queryRow(ctx, `SELECT id, device_id, device_name, device_label, account_id, platform, created_at, updated_at, deleted_at
-		FROM auth_clients WHERE account_id = $1 AND device_id = $2 AND deleted_at IS NULL`, accountID, deviceID)
-	var d model.AuthClient
-	err := row.Scan(&d.Id, &d.DeviceId, &d.DeviceName, &d.DeviceLabel, &d.AccountId, &d.Platform,
-		&d.CreatedAt, &d.UpdatedAt, &d.DeletedAt)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+	var entity AuthClientEntity
+	if err := s.DB.WithContext(ctx).
+		Where("account_id = ? AND device_id = ?", accountID, deviceID).
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
 	}
-	return &d, nil
+	device := authClientFromEntity(&entity)
+	return &device, nil
 }
 
 // AdminUpdateDeviceLabel renames the device (device_name column, mirroring
 // UpdateDeviceName).
 func (s *Store) AdminUpdateDeviceLabel(ctx context.Context, accountID uuid.UUID, deviceID, label string) error {
-	tag, err := s.exec(ctx, `UPDATE auth_clients SET device_name = $1, updated_at = now()
-		WHERE account_id = $2 AND device_id = $3 AND deleted_at IS NULL`, label, accountID, deviceID)
-	if err != nil {
-		return err
+	res := s.DB.WithContext(ctx).Model(&AuthClientEntity{}).
+		Where("account_id = ? AND device_id = ?", accountID, deviceID).
+		Updates(map[string]any{"device_name": label, "updated_at": time.Now().UTC()})
+	if res.Error != nil {
+		return res.Error
 	}
-	if tag.RowsAffected() == 0 {
+	if res.RowsAffected == 0 {
 		return ErrNotFound
 	}
 	return nil
 }
 
 // AdminDeleteDevice expires all sessions of the client and soft-deletes the
-// auth client, mirroring AccountService.DeleteDevice.
+// auth client, mirroring AccountService.DeleteDevice. Both legacy statements
+// ran without a deleted_at filter, so they stay Unscoped.
 func (s *Store) AdminDeleteDevice(ctx context.Context, accountID uuid.UUID, deviceID string, now time.Time) (*model.AuthClient, error) {
 	device, err := s.AdminGetDeviceByDeviceId(ctx, accountID, deviceID)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.exec(ctx, `UPDATE auth_sessions SET expired_at = $1, updated_at = $1
-		WHERE client_id = $2`, now, device.Id); err != nil {
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&AuthSessionEntity{}).
+		Where("client_id = ?", device.Id).
+		Updates(map[string]any{"expired_at": now, "updated_at": now}).Error; err != nil {
 		return nil, err
 	}
-	if _, err := s.exec(ctx, `UPDATE auth_clients SET deleted_at = $1, updated_at = $1 WHERE id = $2`, now, device.Id); err != nil {
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&AuthClientEntity{}).
+		Where("id = ?", device.Id).
+		Updates(map[string]any{"deleted_at": now, "updated_at": now}).Error; err != nil {
 		return nil, err
 	}
 	return device, nil
@@ -609,286 +580,272 @@ func (s *Store) AdminDeleteDevice(ctx context.Context, accountID uuid.UUID, devi
 
 // AdminListSessions pages an account's sessions with the admin filters,
 // mirroring ListAccountSessions (children excluded unless includeChildren).
+// The legacy query carried no deleted_at filter, so it stays Unscoped.
 func (s *Store) AdminListSessions(ctx context.Context, accountID uuid.UUID, typ *int, clientID *uuid.UUID, includeChildren, activeOnly bool, take, offset int) ([]model.AuthSession, int, error) {
-	where := `WHERE s.account_id = $1`
-	args := []any{accountID}
-	if !includeChildren {
-		where += ` AND s.parent_session_id IS NULL`
-	}
-	if typ != nil {
-		args = append(args, *typ)
-		where += ` AND s.type = $` + strconv.Itoa(len(args))
-	}
-	if clientID != nil {
-		args = append(args, *clientID)
-		where += ` AND s.client_id = $` + strconv.Itoa(len(args))
-	}
-	if activeOnly {
-		args = append(args, time.Now().UTC())
-		where += ` AND (s.expired_at IS NULL OR s.expired_at > $` + strconv.Itoa(len(args)) + `)`
-	}
-	var total int
-	if err := s.queryRow(ctx, `SELECT count(*) FROM auth_sessions s `+where, args...).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-	args = append(args, take, offset)
-	rows, err := s.query(ctx, `SELECT s.id, s.type, s.last_granted_at, s.expired_at, s.audiences, s.scopes,
-		s.ip_address, s.user_agent, s.location, s.account_id, s.client_id, s.parent_session_id, s.challenge_id,
-		s.app_id, s.epoch, s.created_at, s.updated_at, s.deleted_at
-		FROM auth_sessions s `+where+` ORDER BY s.last_granted_at DESC LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-	var sessions []model.AuthSession
-	for rows.Next() {
-		session, err := scanAdminSession(rows)
-		if err != nil {
-			return nil, 0, err
+	base := func() *gorm.DB {
+		statement := s.DB.WithContext(ctx).Unscoped().Model(&AuthSessionEntity{}).
+			Where("account_id = ?", accountID)
+		if !includeChildren {
+			statement = statement.Where("parent_session_id IS NULL")
 		}
-		sessions = append(sessions, *session)
+		if typ != nil {
+			statement = statement.Where("type = ?", *typ)
+		}
+		if clientID != nil {
+			statement = statement.Where("client_id = ?", *clientID)
+		}
+		if activeOnly {
+			statement = statement.Where("(expired_at IS NULL OR expired_at > ?)", time.Now().UTC())
+		}
+		return statement
 	}
-	return sessions, total, rows.Err()
+
+	var total int64
+	if err := base().Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var entities []AuthSessionEntity
+	if err := base().Order("last_granted_at DESC").Limit(take).Offset(offset).Find(&entities).Error; err != nil {
+		return nil, 0, err
+	}
+	var sessions []model.AuthSession
+	for i := range entities {
+		sessions = append(sessions, *sessionFromEntity(&entities[i]))
+	}
+	return sessions, int(total), nil
 }
 
 // AdminListSessionChildren pages the direct children of one session,
-// mirroring ListAccountSessionChildren.
+// mirroring ListAccountSessionChildren. The legacy queries carried no
+// deleted_at filter, so they stay Unscoped.
 func (s *Store) AdminListSessionChildren(ctx context.Context, accountID, parentID uuid.UUID, take, offset int) ([]model.AuthSession, int, error) {
-	var total int
-	if err := s.queryRow(ctx, `SELECT count(*) FROM auth_sessions
-		WHERE parent_session_id = $1 AND account_id = $2`, parentID, accountID).Scan(&total); err != nil {
+	var total int64
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&AuthSessionEntity{}).
+		Where("parent_session_id = ? AND account_id = ?", parentID, accountID).
+		Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.query(ctx, `SELECT s.id, s.type, s.last_granted_at, s.expired_at, s.audiences, s.scopes,
-		s.ip_address, s.user_agent, s.location, s.account_id, s.client_id, s.parent_session_id, s.challenge_id,
-		s.app_id, s.epoch, s.created_at, s.updated_at, s.deleted_at
-		FROM auth_sessions s WHERE s.parent_session_id = $1 AND s.account_id = $2
-		ORDER BY s.last_granted_at DESC LIMIT $3 OFFSET $4`, parentID, accountID, take, offset)
-	if err != nil {
+	var entities []AuthSessionEntity
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&AuthSessionEntity{}).
+		Where("parent_session_id = ? AND account_id = ?", parentID, accountID).
+		Order("last_granted_at DESC").Limit(take).Offset(offset).
+		Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
 	var sessions []model.AuthSession
-	for rows.Next() {
-		session, err := scanAdminSession(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		sessions = append(sessions, *session)
+	for i := range entities {
+		sessions = append(sessions, *sessionFromEntity(&entities[i]))
 	}
-	return sessions, total, rows.Err()
+	return sessions, int(total), nil
 }
 
-// AdminGetSession loads one session belonging to the account.
+// AdminGetSession loads one session belonging to the account. The legacy
+// query carried no deleted_at filter, so it stays Unscoped.
 func (s *Store) AdminGetSession(ctx context.Context, accountID, sessionID uuid.UUID) (*model.AuthSession, error) {
-	row := s.queryRow(ctx, `SELECT s.id, s.type, s.last_granted_at, s.expired_at, s.audiences, s.scopes,
-		s.ip_address, s.user_agent, s.location, s.account_id, s.client_id, s.parent_session_id, s.challenge_id,
-		s.app_id, s.epoch, s.created_at, s.updated_at, s.deleted_at
-		FROM auth_sessions s WHERE s.id = $1 AND s.account_id = $2`, sessionID, accountID)
-	return scanAdminSession(row)
+	var entity AuthSessionEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Where("id = ? AND account_id = ?", sessionID, accountID).
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	return sessionFromEntity(&entity), nil
 }
 
 // AdminRevokeSession expires a single session and bumps its epoch (mirroring
 // AccountService.DeleteSession).
 func (s *Store) AdminRevokeSession(ctx context.Context, accountID, sessionID uuid.UUID, now time.Time) (*model.AuthSession, error) {
-	row := s.queryRow(ctx, `UPDATE auth_sessions SET expired_at = $1, epoch = epoch + 1, updated_at = $1
-		WHERE id = $2 AND account_id = $3 AND deleted_at IS NULL
-		RETURNING id, type, last_granted_at, expired_at, audiences, scopes, ip_address, user_agent, location,
-		account_id, client_id, parent_session_id, challenge_id, app_id, epoch, created_at, updated_at, deleted_at`, now, sessionID, accountID)
-	return scanAdminSession(row)
+	var entity AuthSessionEntity
+	if err := s.DB.WithContext(ctx).
+		Where("id = ? AND account_id = ?", sessionID, accountID).
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	if err := s.DB.WithContext(ctx).Model(&AuthSessionEntity{}).
+		Where("id = ?", entity.ID).
+		Updates(map[string]any{"expired_at": now, "epoch": gorm.Expr("epoch + 1"), "updated_at": now}).Error; err != nil {
+		return nil, err
+	}
+	entity.ExpiredAt = &now
+	entity.Epoch++
+	entity.UpdatedAt = now
+	return sessionFromEntity(&entity), nil
 }
 
 // AdminRevokeAllSessions expires every live session of the account (mirroring
 // AccountService.DeleteAllSessions) and returns the revoked sessions.
 func (s *Store) AdminRevokeAllSessions(ctx context.Context, accountID uuid.UUID, now time.Time) ([]model.AuthSession, error) {
-	rows, err := s.query(ctx, `UPDATE auth_sessions SET expired_at = $1, epoch = epoch + 1, updated_at = $1
-		WHERE account_id = $2 AND expired_at IS NULL AND deleted_at IS NULL
-		RETURNING id, type, last_granted_at, expired_at, audiences, scopes, ip_address, user_agent, location,
-		account_id, client_id, parent_session_id, challenge_id, app_id, epoch, created_at, updated_at, deleted_at`, now, accountID)
-	if err != nil {
+	where := "account_id = ? AND expired_at IS NULL"
+	var entities []AuthSessionEntity
+	if err := s.DB.WithContext(ctx).Where(where, accountID).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var sessions []model.AuthSession
-	for rows.Next() {
-		session, err := scanAdminSession(rows)
-		if err != nil {
-			return nil, err
-		}
-		sessions = append(sessions, *session)
+	if len(entities) == 0 {
+		return nil, nil
 	}
-	return sessions, rows.Err()
+	ids := make([]uuid.UUID, 0, len(entities))
+	var sessions []model.AuthSession
+	for i := range entities {
+		entity := &entities[i]
+		ids = append(ids, entity.ID)
+		entity.ExpiredAt = &now
+		entity.Epoch++
+		entity.UpdatedAt = now
+		sessions = append(sessions, *sessionFromEntity(entity))
+	}
+	if err := s.DB.WithContext(ctx).Model(&AuthSessionEntity{}).
+		Where("id IN ? AND expired_at IS NULL", ids).
+		Updates(map[string]any{"expired_at": now, "epoch": gorm.Expr("epoch + 1"), "updated_at": now}).Error; err != nil {
+		return nil, err
+	}
+	return sessions, nil
 }
 
-// AdminCountSessionChildren returns the child count of each session id.
+// AdminCountSessionChildren returns the child count of each session id. The
+// legacy query carried no deleted_at filter, so it stays Unscoped.
 func (s *Store) AdminCountSessionChildren(ctx context.Context, sessionIDs []uuid.UUID) (map[string]int, error) {
 	result := make(map[string]int, len(sessionIDs))
 	if len(sessionIDs) == 0 {
 		return result, nil
 	}
-	rows, err := s.query(ctx, `SELECT parent_session_id, count(*) FROM auth_sessions
-		WHERE parent_session_id = ANY($1) GROUP BY parent_session_id`, sessionIDs)
-	if err != nil {
+	var rows []struct {
+		ParentSessionID uuid.UUID `gorm:"column:parent_session_id"`
+		Count           int       `gorm:"column:count"`
+	}
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&AuthSessionEntity{}).
+		Select("parent_session_id, count(*) AS count").
+		Where("parent_session_id IN ?", sessionIDs).
+		Group("parent_session_id").
+		Scan(&rows).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var parentID string
-		var count int
-		if err := rows.Scan(&parentID, &count); err != nil {
-			return nil, err
-		}
-		result[parentID] = count
+	for _, row := range rows {
+		result[row.ParentSessionID.String()] = row.Count
 	}
-	return result, rows.Err()
-}
-
-func scanAdminSession(row rowScanner) (*model.AuthSession, error) {
-	session := &model.AuthSession{}
-	var (
-		audiencesRaw, scopesRaw                       []byte
-		location                                      []byte
-		clientID, parentSessionID, challengeID, appID *uuid.UUID
-		epoch                                         int
-	)
-	err := row.Scan(
-		&session.Id, &session.Type, &session.LastGrantedAt, &session.ExpiredAt, &audiencesRaw, &scopesRaw,
-		&session.IpAddress, &session.UserAgent, &location, &session.AccountId,
-		&clientID, &parentSessionID, &challengeID, &appID, &epoch,
-		&session.CreatedAt, &session.UpdatedAt, &session.DeletedAt,
-	)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	session.Audiences = decodeJSONArray(audiencesRaw)
-	session.Scopes = decodeJSONArray(scopesRaw)
-	if len(location) > 0 && string(location) != "null" {
-		var gp model.GeoPoint
-		if err := json.Unmarshal(location, &gp); err == nil {
-			session.Location = &gp
-		}
-	}
-	session.ClientId = uuidPtrStr(clientID)
-	session.ParentSessionId = uuidPtrStr(parentSessionID)
-	session.ChallengeId = uuidPtrStr(challengeID)
-	session.AppId = uuidPtrStr(appID)
-	session.Epoch = epoch
-	return session, nil
+	return result, nil
 }
 
 // AdminListContacts lists an account's contacts, mirroring the admin ordering
 // (primary first, then type, then content).
 func (s *Store) AdminListContacts(ctx context.Context, accountID uuid.UUID) ([]model.Contact, error) {
-	rows, err := s.query(ctx, `SELECT id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at
-		FROM account_contacts WHERE account_id = $1 AND deleted_at IS NULL
-		ORDER BY is_primary DESC, type, content`, accountID)
-	if err != nil {
+	var entities []ContactEntity
+	if err := s.DB.WithContext(ctx).
+		Where("account_id = ?", accountID).
+		Order("is_primary DESC, type, content").
+		Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var contacts []model.Contact
-	for rows.Next() {
-		var c model.Contact
-		if err := rows.Scan(&c.Id, &c.Type, &c.VerifiedAt, &c.IsPrimary, &c.IsPublic, &c.Content, &c.AccountId,
-			&c.CreatedAt, &c.UpdatedAt, &c.DeletedAt); err != nil {
-			return nil, err
-		}
-		contacts = append(contacts, c)
+	for i := range entities {
+		contacts = append(contacts, contactFromEntity(&entities[i]))
 	}
-	return contacts, rows.Err()
+	return contacts, nil
 }
 
 // AdminGetContact loads one contact of the account.
 func (s *Store) AdminGetContact(ctx context.Context, accountID, contactID uuid.UUID) (*model.Contact, error) {
-	row := s.queryRow(ctx, `SELECT id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at
-		FROM account_contacts WHERE id = $1 AND account_id = $2 AND deleted_at IS NULL`, contactID, accountID)
-	var c model.Contact
-	err := row.Scan(&c.Id, &c.Type, &c.VerifiedAt, &c.IsPrimary, &c.IsPublic, &c.Content, &c.AccountId,
-		&c.CreatedAt, &c.UpdatedAt, &c.DeletedAt)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+	var entity ContactEntity
+	if err := s.DB.WithContext(ctx).
+		Where("id = ? AND account_id = ?", contactID, accountID).
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
 	}
-	return &c, nil
+	contact := contactFromEntity(&entity)
+	return &contact, nil
 }
 
 // AdminCreateContact inserts a non-primary contact (CreateContactMethod).
 func (s *Store) AdminCreateContact(ctx context.Context, accountID uuid.UUID, ctype int, content string) (*model.Contact, error) {
-	row := s.queryRow(ctx, `INSERT INTO account_contacts (id, account_id, type, content, is_primary, is_public, created_at, updated_at)
-		VALUES (gen_random_uuid(), $1, $2, $3, false, false, now(), now())
-		RETURNING id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at`,
-		accountID, ctype, content)
-	return scanContact(row)
+	now := time.Now().UTC()
+	entity := &ContactEntity{
+		ID:         uuid.New(),
+		EntityBase: EntityBase{CreatedAt: now, UpdatedAt: now},
+		AccountID:  accountID,
+		Content:    content,
+		IsPrimary:  false,
+		IsPublic:   false,
+		Type:       ctype,
+	}
+	if err := s.DB.WithContext(ctx).Create(entity).Error; err != nil {
+		return nil, err
+	}
+	contact := contactFromEntity(entity)
+	return &contact, nil
 }
 
 // AdminUpdateContact applies type/content updates, clearing verified_at when
 // either changed (UpdateAccountContact semantics).
 func (s *Store) AdminUpdateContact(ctx context.Context, accountID, contactID uuid.UUID, ctype *int, content *string) (*model.Contact, error) {
-	var current model.Contact
-	row := s.queryRow(ctx, `SELECT id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at
-		FROM account_contacts WHERE id = $1 AND account_id = $2 AND deleted_at IS NULL`, contactID, accountID)
-	cur, err := scanContact(row)
-	if err != nil {
-		return nil, err
+	var entity ContactEntity
+	if err := s.DB.WithContext(ctx).
+		Where("id = ? AND account_id = ?", contactID, accountID).
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
 	}
-	current = *cur
-
-	typeChanged := ctype != nil && current.Type != *ctype
-	contentChanged := content != nil && current.Content != *content
+	typeChanged := ctype != nil && entity.Type != *ctype
+	contentChanged := content != nil && entity.Content != *content
 	if ctype != nil {
-		current.Type = *ctype
+		entity.Type = *ctype
 	}
 	if content != nil {
-		current.Content = *content
+		entity.Content = *content
 	}
 	if typeChanged || contentChanged {
-		current.VerifiedAt = nil
+		entity.VerifiedAt = nil
 	}
-	updated := s.queryRow(ctx, `UPDATE account_contacts SET type = $1, content = $2, verified_at = $3, updated_at = now()
-		WHERE id = $4 AND account_id = $5 AND deleted_at IS NULL
-		RETURNING id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at`,
-		current.Type, current.Content, current.VerifiedAt, contactID, accountID)
-	return scanContact(updated)
+	now := time.Now().UTC()
+	if err := s.DB.WithContext(ctx).Model(&ContactEntity{}).
+		Where("id = ?", entity.ID).
+		Updates(map[string]any{
+			"type":        entity.Type,
+			"content":     entity.Content,
+			"verified_at": entity.VerifiedAt,
+			"updated_at":  now,
+		}).Error; err != nil {
+		return nil, err
+	}
+	entity.UpdatedAt = now
+	contact := contactFromEntity(&entity)
+	return &contact, nil
 }
 
 // AdminSetContactVerified marks a contact verified at the given instant,
 // keeping the latest verification when one exists (MarkContactMethodVerified).
 func (s *Store) AdminSetContactVerified(ctx context.Context, accountID, contactID uuid.UUID, verifiedAt time.Time) (*model.Contact, error) {
-	row := s.queryRow(ctx, `UPDATE account_contacts SET verified_at = CASE
-			WHEN verified_at IS NULL OR verified_at < $1 THEN $1 ELSE verified_at END,
-			updated_at = now()
-		WHERE id = $2 AND account_id = $3 AND deleted_at IS NULL
-		RETURNING id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at`,
-		verifiedAt, contactID, accountID)
-	c, err := scanContact(row)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
+	var entity ContactEntity
+	if err := s.DB.WithContext(ctx).
+		Where("id = ? AND account_id = ?", contactID, accountID).
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	if entity.VerifiedAt == nil || entity.VerifiedAt.Before(verifiedAt) {
+		entity.VerifiedAt = &verifiedAt
+	}
+	now := time.Now().UTC()
+	if err := s.DB.WithContext(ctx).Model(&ContactEntity{}).
+		Where("id = ?", entity.ID).
+		Updates(map[string]any{"verified_at": entity.VerifiedAt, "updated_at": now}).Error; err != nil {
 		return nil, err
 	}
-	return c, nil
+	entity.UpdatedAt = now
+	contact := contactFromEntity(&entity)
+	return &contact, nil
 }
 
 // AdminClearContactVerified nulls the verified_at timestamp.
 func (s *Store) AdminClearContactVerified(ctx context.Context, accountID, contactID uuid.UUID) (*model.Contact, error) {
-	row := s.queryRow(ctx, `UPDATE account_contacts SET verified_at = NULL, updated_at = now()
-		WHERE id = $1 AND account_id = $2 AND deleted_at IS NULL
-		RETURNING id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at`,
-		contactID, accountID)
-	c, err := scanContact(row)
+	contact, err := s.AdminGetContact(ctx, accountID, contactID)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
 		return nil, err
 	}
-	return c, nil
+	now := time.Now().UTC()
+	if err := s.DB.WithContext(ctx).Model(&ContactEntity{}).
+		Where("id = ?", contactID).
+		Updates(map[string]any{"verified_at": nil, "updated_at": now}).Error; err != nil {
+		return nil, err
+	}
+	contact.VerifiedAt = nil
+	contact.UpdatedAt = timePtr(&now)
+	return contact, nil
 }
 
 // AdminSetContactPrimary clears is_primary for the account's contacts of the
@@ -898,119 +855,158 @@ func (s *Store) AdminSetContactPrimary(ctx context.Context, accountID, contactID
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.exec(ctx, `UPDATE account_contacts SET is_primary = false, updated_at = now()
-		WHERE account_id = $1 AND type = $2 AND deleted_at IS NULL`, accountID, contact.Type); err != nil {
+	now := time.Now().UTC()
+	if err := s.DB.WithContext(ctx).Model(&ContactEntity{}).
+		Where("account_id = ? AND type = ?", accountID, contact.Type).
+		Updates(map[string]any{"is_primary": false, "updated_at": now}).Error; err != nil {
 		return nil, err
 	}
-	row := s.queryRow(ctx, `UPDATE account_contacts SET is_primary = true, updated_at = now()
-		WHERE id = $1 AND account_id = $2 AND deleted_at IS NULL
-		RETURNING id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at`,
-		contactID, accountID)
-	return scanContact(row)
+	if err := s.DB.WithContext(ctx).Model(&ContactEntity{}).
+		Where("id = ? AND account_id = ?", contactID, accountID).
+		Updates(map[string]any{"is_primary": true, "updated_at": now}).Error; err != nil {
+		return nil, err
+	}
+	contact.IsPrimary = true
+	contact.UpdatedAt = timePtr(&now)
+	return contact, nil
 }
 
 // AdminSetContactPublic flips the is_public flag.
 func (s *Store) AdminSetContactPublic(ctx context.Context, accountID, contactID uuid.UUID, isPublic bool) (*model.Contact, error) {
-	row := s.queryRow(ctx, `UPDATE account_contacts SET is_public = $1, updated_at = now()
-		WHERE id = $2 AND account_id = $3 AND deleted_at IS NULL
-		RETURNING id, type, verified_at, is_primary, is_public, content, account_id, created_at, updated_at, deleted_at`,
-		isPublic, contactID, accountID)
-	c, err := scanContact(row)
+	contact, err := s.AdminGetContact(ctx, accountID, contactID)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
 		return nil, err
 	}
-	return c, nil
+	now := time.Now().UTC()
+	if err := s.DB.WithContext(ctx).Model(&ContactEntity{}).
+		Where("id = ? AND account_id = ?", contactID, accountID).
+		Updates(map[string]any{"is_public": isPublic, "updated_at": now}).Error; err != nil {
+		return nil, err
+	}
+	contact.IsPublic = isPublic
+	contact.UpdatedAt = timePtr(&now)
+	return contact, nil
 }
 
 // AdminDeleteContact soft-deletes a contact (EF Remove semantics).
 func (s *Store) AdminDeleteContact(ctx context.Context, accountID, contactID uuid.UUID) error {
-	tag, err := s.exec(ctx, `UPDATE account_contacts SET deleted_at = now(), updated_at = now()
-		WHERE id = $1 AND account_id = $2 AND deleted_at IS NULL`, contactID, accountID)
-	if err != nil {
-		return err
+	now := time.Now().UTC()
+	res := s.DB.WithContext(ctx).Model(&ContactEntity{}).
+		Where("id = ? AND account_id = ?", contactID, accountID).
+		Updates(map[string]any{"deleted_at": now, "updated_at": now})
+	if res.Error != nil {
+		return res.Error
 	}
-	if tag.RowsAffected() == 0 {
+	if res.RowsAffected == 0 {
 		return ErrNotFound
 	}
 	return nil
 }
 
-func scanContact(row rowScanner) (*model.Contact, error) {
-	var c model.Contact
-	err := row.Scan(&c.Id, &c.Type, &c.VerifiedAt, &c.IsPrimary, &c.IsPublic, &c.Content, &c.AccountId,
-		&c.CreatedAt, &c.UpdatedAt, &c.DeletedAt)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	return &c, nil
-}
-
 // AdminListAuthFactors lists all factors of an account (admin view), ordered
 // by type then enabled_at desc, mirroring ListAccountAuthFactors.
 func (s *Store) AdminListAuthFactors(ctx context.Context, accountID uuid.UUID) ([]model.AuthFactor, error) {
-	rows, err := s.query(ctx, `SELECT id, type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at, deleted_at
-		FROM account_auth_factors WHERE account_id = $1 AND deleted_at IS NULL
-		ORDER BY type, enabled_at DESC`, accountID)
-	if err != nil {
+	var entities []AuthFactorEntity
+	if err := s.DB.WithContext(ctx).
+		Where("account_id = ?", accountID).
+		Order("type, enabled_at DESC").
+		Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var factors []model.AuthFactor
-	for rows.Next() {
-		f, err := scanAdminAuthFactor(rows)
-		if err != nil {
-			return nil, err
-		}
-		factors = append(factors, *f)
+	for i := range entities {
+		factors = append(factors, factorFromEntity(&entities[i]))
 	}
-	return factors, rows.Err()
+	return factors, nil
 }
 
 // AdminGetAuthFactor loads one factor of the account.
 func (s *Store) AdminGetAuthFactor(ctx context.Context, accountID, factorID uuid.UUID) (*model.AuthFactor, error) {
-	row := s.queryRow(ctx, `SELECT id, type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at, deleted_at
-		FROM account_auth_factors WHERE id = $1 AND account_id = $2 AND deleted_at IS NULL`, factorID, accountID)
-	return scanAdminAuthFactor(row)
+	var entity AuthFactorEntity
+	if err := s.DB.WithContext(ctx).
+		Where("id = ? AND account_id = ?", factorID, accountID).
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	factor := factorFromEntity(&entity)
+	return &factor, nil
 }
 
 // AdminCheckAuthFactorExists reports whether the account has a factor of the
 // type (any state), mirroring CheckAuthFactorExists.
 func (s *Store) AdminCheckAuthFactorExists(ctx context.Context, accountID uuid.UUID, ftype int) (bool, error) {
-	var exists bool
-	err := s.queryRow(ctx, `SELECT EXISTS(SELECT 1 FROM account_auth_factors
-		WHERE account_id = $1 AND type = $2 AND deleted_at IS NULL)`, accountID, ftype).Scan(&exists)
-	return exists, err
+	var count int64
+	if err := s.DB.WithContext(ctx).Model(&AuthFactorEntity{}).
+		Where("account_id = ? AND type = ?", accountID, ftype).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // AdminInsertAuthFactor inserts a factor row and returns it.
 func (s *Store) AdminInsertAuthFactor(ctx context.Context, f *model.AuthFactor) (*model.AuthFactor, error) {
-	config, _ := json.Marshal(f.Config)
-	row := s.queryRow(ctx, `INSERT INTO account_auth_factors (id, account_id, type, secret, config, trustworthy, enabled_at, expired_at, created_at, updated_at)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, now(), now())
-		RETURNING id, type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at, deleted_at`,
-		f.AccountId, int(f.Type), f.Secret, config, f.Trustworthy, f.EnabledAt, f.ExpiredAt)
-	return scanAdminAuthFactor(row)
+	accountID, err := ParseUUID(f.AccountId)
+	if err != nil {
+		return nil, err
+	}
+	var config *datatypes.JSON
+	if len(f.Config) > 0 {
+		if encoded, err := encodeJSON(f.Config); err == nil {
+			config = &encoded
+		}
+	}
+	var secret *string
+	if f.Secret != "" {
+		secret = &f.Secret
+	}
+	now := time.Now().UTC()
+	entity := &AuthFactorEntity{
+		ID:          uuid.New(),
+		EntityBase:  EntityBase{CreatedAt: now, UpdatedAt: now},
+		AccountID:   accountID,
+		Config:      config,
+		EnabledAt:   timeValue(f.EnabledAt),
+		ExpiredAt:   timeValue(f.ExpiredAt),
+		Secret:      secret,
+		Trustworthy: f.Trustworthy,
+		Type:        int(f.Type),
+	}
+	if err := s.DB.WithContext(ctx).Create(entity).Error; err != nil {
+		return nil, err
+	}
+	factor := factorFromEntity(entity)
+	return &factor, nil
 }
 
 // AdminUpdateAuthFactor persists factor mutations (secret, config,
 // trustworthy, enabled_at, expired_at, created_response fields are computed
 // by the handler and stored via the columns below).
 func (s *Store) AdminUpdateAuthFactor(ctx context.Context, f *model.AuthFactor) error {
-	config, _ := json.Marshal(f.Config)
-	tag, err := s.exec(ctx, `UPDATE account_auth_factors
-		SET secret = $1, config = $2, trustworthy = $3, enabled_at = $4, expired_at = $5, updated_at = now()
-		WHERE id = $6 AND account_id = $7 AND deleted_at IS NULL`,
-		f.Secret, config, f.Trustworthy, f.EnabledAt, f.ExpiredAt, f.Id, f.AccountId)
-	if err != nil {
-		return err
+	var config *datatypes.JSON
+	if len(f.Config) > 0 {
+		if encoded, err := encodeJSON(f.Config); err == nil {
+			config = &encoded
+		}
 	}
-	if tag.RowsAffected() == 0 {
+	var secret *string
+	if f.Secret != "" {
+		secret = &f.Secret
+	}
+	res := s.DB.WithContext(ctx).Model(&AuthFactorEntity{}).
+		Where("id = ? AND account_id = ?", f.Id, f.AccountId).
+		Updates(map[string]any{
+			"secret":      secret,
+			"config":      config,
+			"trustworthy": f.Trustworthy,
+			"enabled_at":  timeValue(f.EnabledAt),
+			"expired_at":  timeValue(f.ExpiredAt),
+			"updated_at":  time.Now().UTC(),
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
 		return ErrNotFound
 	}
 	return nil
@@ -1018,12 +1014,14 @@ func (s *Store) AdminUpdateAuthFactor(ctx context.Context, f *model.AuthFactor) 
 
 // AdminDeleteAuthFactor soft-deletes a factor (EF Remove semantics).
 func (s *Store) AdminDeleteAuthFactor(ctx context.Context, accountID, factorID uuid.UUID) error {
-	tag, err := s.exec(ctx, `UPDATE account_auth_factors SET deleted_at = now(), updated_at = now()
-		WHERE id = $1 AND account_id = $2 AND deleted_at IS NULL`, factorID, accountID)
-	if err != nil {
-		return err
+	now := time.Now().UTC()
+	res := s.DB.WithContext(ctx).Model(&AuthFactorEntity{}).
+		Where("id = ? AND account_id = ?", factorID, accountID).
+		Updates(map[string]any{"deleted_at": now, "updated_at": now})
+	if res.Error != nil {
+		return res.Error
 	}
-	if tag.RowsAffected() == 0 {
+	if res.RowsAffected == 0 {
 		return ErrNotFound
 	}
 	return nil
@@ -1032,82 +1030,69 @@ func (s *Store) AdminDeleteAuthFactor(ctx context.Context, accountID, factorID u
 // AdminUpsertPasswordFactor creates or resets the account's Password factor,
 // mirroring ResetPasswordFactor (bcrypt hash supplied by the caller).
 func (s *Store) AdminUpsertPasswordFactor(ctx context.Context, accountID uuid.UUID, hash string, now time.Time) (*model.AuthFactor, error) {
-	var existingID uuid.UUID
-	err := s.queryRow(ctx, `SELECT id FROM account_auth_factors
-		WHERE account_id = $1 AND type = 0 AND deleted_at IS NULL LIMIT 1`, accountID).Scan(&existingID)
-	if err != nil && !errors.Is(err, ErrNotFound) {
-		return nil, err
-	}
-	if errors.Is(err, ErrNotFound) {
+	var existing AuthFactorEntity
+	err := s.DB.WithContext(ctx).
+		Where("account_id = ? AND type = ?", accountID, int(model.AuthFactorTypePassword)).
+		First(&existing).Error
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
 		// No password factor yet: insert enabled.
-		row := s.queryRow(ctx, `INSERT INTO account_auth_factors (id, account_id, type, secret, trustworthy, enabled_at, created_at, updated_at)
-			VALUES (gen_random_uuid(), $1, 0, $2, 1, $3, now(), now())
-			RETURNING id, type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at, deleted_at`,
-			accountID, hash, now)
-		return scanAdminAuthFactor(row)
+		secret := hash
+		entity := &AuthFactorEntity{
+			ID:          uuid.New(),
+			EntityBase:  EntityBase{CreatedAt: now, UpdatedAt: now},
+			AccountID:   accountID,
+			EnabledAt:   &now,
+			Secret:      &secret,
+			Trustworthy: 1,
+			Type:        int(model.AuthFactorTypePassword),
+		}
+		if err := s.DB.WithContext(ctx).Create(entity).Error; err != nil {
+			return nil, err
+		}
+		factor := factorFromEntity(entity)
+		return &factor, nil
+	case err != nil:
+		return nil, err
 	}
 	// Existing factor: reset secret + enable.
-	row := s.queryRow(ctx, `UPDATE account_auth_factors
-		SET secret = $1, enabled_at = COALESCE(enabled_at, $2), expired_at = NULL, updated_at = now()
-		WHERE id = $3 AND account_id = $4 AND deleted_at IS NULL
-		RETURNING id, type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at, deleted_at`,
-		hash, now, existingID, accountID)
-	return scanAdminAuthFactor(row)
-}
-
-func scanAdminAuthFactor(row rowScanner) (*model.AuthFactor, error) {
-	var f model.AuthFactor
-	var secret *string
-	var config []byte
-	err := row.Scan(&f.Id, &f.Type, &secret, &config, &f.Trustworthy, &f.EnabledAt, &f.ExpiredAt,
-		&f.AccountId, &f.CreatedAt, &f.UpdatedAt, &f.DeletedAt)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
+	if err := s.DB.WithContext(ctx).Model(&AuthFactorEntity{}).
+		Where("id = ?", existing.ID).
+		Updates(map[string]any{
+			"secret":     hash,
+			"enabled_at": gorm.Expr("COALESCE(enabled_at, ?)", now),
+			"expired_at": nil,
+			"updated_at": now,
+		}).Error; err != nil {
 		return nil, err
 	}
-	if secret != nil {
-		f.Secret = *secret
+	secret := hash
+	existing.Secret = &secret
+	if existing.EnabledAt == nil {
+		existing.EnabledAt = &now
 	}
-	if len(config) > 0 {
-		_ = json.Unmarshal(config, &f.Config)
-	}
-	return &f, nil
+	existing.ExpiredAt = nil
+	existing.UpdatedAt = now
+	factor := factorFromEntity(&existing)
+	return &factor, nil
 }
 
 // AdminResolveTargetAccountIDs resolves notification/email dispatch targets:
 // all non-deleted accounts for broadcast, otherwise the requested set
 // intersected with non-deleted accounts.
 func (s *Store) AdminResolveTargetAccountIDs(ctx context.Context, requested []uuid.UUID, broadcast bool) ([]uuid.UUID, error) {
-	query := `SELECT id FROM accounts WHERE deleted_at IS NULL`
-	args := []any{}
-	if !broadcast {
-		if len(requested) == 0 {
-			return nil, nil
-		}
-		args = append(args, requested)
-		query += ` AND id = ANY($1)`
+	if !broadcast && len(requested) == 0 {
+		return nil, nil
 	}
-	rows, err := s.query(ctx, query, args...)
-	if err != nil {
+	statement := s.DB.WithContext(ctx).Model(&AccountEntity{})
+	if !broadcast {
+		statement = statement.Where("id IN ?", requested)
+	}
+	var ids []uuid.UUID
+	if err := statement.Pluck("id", &ids).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	seen := make(map[uuid.UUID]struct{})
-	var ids []uuid.UUID
-	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
+	return ids, nil
 }
 
 // AdminListEmailContacts returns the dispatchable email contact of each
@@ -1117,19 +1102,25 @@ func (s *Store) AdminListEmailContacts(ctx context.Context, accountIDs []uuid.UU
 	if len(accountIDs) == 0 {
 		return nil, nil
 	}
-	query := `SELECT c.account_id, c.content, c.is_primary, c.verified_at, c.created_at,
-		a.name, a.nick
-		FROM account_contacts c
-		JOIN accounts a ON a.id = c.account_id
-		WHERE c.account_id = ANY($1) AND c.type = 0 AND c.deleted_at IS NULL AND a.deleted_at IS NULL`
+	statement := s.DB.WithContext(ctx).Table("account_contacts c").
+		Select("c.account_id, c.content, c.is_primary, c.verified_at, c.created_at, a.name, a.nick").
+		Joins("JOIN accounts a ON a.id = c.account_id").
+		Where("c.account_id IN ? AND c.type = 0 AND c.deleted_at IS NULL AND a.deleted_at IS NULL", accountIDs)
 	if verifiedOnly {
-		query += ` AND c.verified_at IS NOT NULL`
+		statement = statement.Where("c.verified_at IS NOT NULL")
 	}
-	rows, err := s.query(ctx, query, accountIDs)
-	if err != nil {
+	var rows []struct {
+		AccountID  uuid.UUID  `gorm:"column:account_id"`
+		Content    string     `gorm:"column:content"`
+		IsPrimary  bool       `gorm:"column:is_primary"`
+		VerifiedAt *time.Time `gorm:"column:verified_at"`
+		CreatedAt  time.Time  `gorm:"column:created_at"`
+		Name       string     `gorm:"column:name"`
+		Nick       string     `gorm:"column:nick"`
+	}
+	if err := statement.Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
 	// Per account: primary first, then verified_at desc, then created_at asc
 	// (matching the C# OrderByDescending(IsPrimary).ThenByDescending(VerifiedAt)
@@ -1150,22 +1141,17 @@ func (s *Store) AdminListEmailContacts(ctx context.Context, accountIDs []uuid.UU
 		}
 	}
 	best := make(map[string]candidate)
-	for rows.Next() {
-		var accountID, content, name, nick string
-		var isPrimary bool
-		var verifiedAt *model.Time
-		var createdAt time.Time
-		if err := rows.Scan(&accountID, &content, &isPrimary, &verifiedAt, &createdAt, &name, &nick); err != nil {
-			return nil, err
-		}
-		userName := name
-		if strings.TrimSpace(nick) != "" {
-			userName = nick
+	for i := range rows {
+		row := &rows[i]
+		accountID := row.AccountID.String()
+		userName := row.Name
+		if strings.TrimSpace(row.Nick) != "" {
+			userName = row.Nick
 		}
 		cand := candidate{
-			recipient:  AdminEmailRecipient{AccountID: accountID, Content: content, UserName: userName},
-			isPrimary:  isPrimary,
-			verifiedAt: verifiedAt,
+			recipient:  AdminEmailRecipient{AccountID: accountID, Content: row.Content, UserName: userName},
+			isPrimary:  row.IsPrimary,
+			verifiedAt: timePtr(row.VerifiedAt),
 		}
 		// Verified-at ordering applies within the same rank tier.
 		current, ok := best[accountID]
@@ -1174,9 +1160,6 @@ func (s *Store) AdminListEmailContacts(ctx context.Context, accountIDs []uuid.UU
 				current.verifiedAt != nil && cand.verifiedAt.Time().After(current.verifiedAt.Time())) {
 			best[accountID] = cand
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 	result := make([]AdminEmailRecipient, 0, len(best))
 	for _, c := range best {
@@ -1188,36 +1171,36 @@ func (s *Store) AdminListEmailContacts(ctx context.Context, accountIDs []uuid.UU
 // AdminLatestAccountLocations returns each account's most recent session
 // location since the cutoff, mirroring the geography stats query.
 func (s *Store) AdminLatestAccountLocations(ctx context.Context, since time.Time) ([]AdminAccountLocation, error) {
-	rows, err := s.query(ctx, `SELECT DISTINCT ON (session.account_id) session.account_id, session.location,
-		session.last_granted_at
-		FROM auth_sessions session
-		WHERE session.last_granted_at IS NOT NULL AND session.last_granted_at >= $1
-		  AND session.location IS NOT NULL AND session.location::text <> 'null'
-		  AND session.deleted_at IS NULL
-		ORDER BY session.account_id, session.last_granted_at DESC, session.created_at DESC`, since)
-	if err != nil {
+	var rows []struct {
+		AccountID     uuid.UUID       `gorm:"column:account_id"`
+		Location      *datatypes.JSON `gorm:"column:location"`
+		LastGrantedAt time.Time       `gorm:"column:last_granted_at"`
+	}
+	if err := s.DB.WithContext(ctx).Table("auth_sessions session").
+		Select("DISTINCT ON (session.account_id) session.account_id, session.location, session.last_granted_at").
+		Where("session.last_granted_at IS NOT NULL AND session.last_granted_at >= ?", since).
+		Where("session.location IS NOT NULL AND session.location::text <> 'null' AND session.deleted_at IS NULL").
+		Order("session.account_id, session.last_granted_at DESC, session.created_at DESC").
+		Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var locations []AdminAccountLocation
-	for rows.Next() {
-		var accountID string
-		var locationBytes []byte
-		var lastGrantedAt time.Time
-		if err := rows.Scan(&accountID, &locationBytes, &lastGrantedAt); err != nil {
-			return nil, err
-		}
-		var gp model.GeoPoint
-		if len(locationBytes) > 0 && string(locationBytes) != "null" {
-			if err := json.Unmarshal(locationBytes, &gp); err != nil {
-				continue
-			}
-		} else {
+	for i := range rows {
+		row := &rows[i]
+		if row.Location == nil || len(*row.Location) == 0 || string(*row.Location) == "null" {
 			continue
 		}
-		locations = append(locations, AdminAccountLocation{AccountID: accountID, Location: gp, LastGrantedAt: lastGrantedAt})
+		var point model.GeoPoint
+		if err := decodeJSON(row.Location, &point); err != nil {
+			continue
+		}
+		locations = append(locations, AdminAccountLocation{
+			AccountID:     row.AccountID.String(),
+			Location:      point,
+			LastGrantedAt: row.LastGrantedAt,
+		})
 	}
-	return locations, rows.Err()
+	return locations, nil
 }
 
 // AdminLoadProfiles batch-loads account profiles keyed by account id.
@@ -1226,60 +1209,15 @@ func (s *Store) AdminLoadProfiles(ctx context.Context, accountIDs []uuid.UUID) (
 	if len(accountIDs) == 0 {
 		return result, nil
 	}
-	rows, err := s.query(ctx, `SELECT `+profileColumns+` FROM account_profiles p
-		WHERE p.account_id = ANY($1) AND p.deleted_at IS NULL`, accountIDs)
-	if err != nil {
+	var entities []ProfileEntity
+	if err := s.DB.WithContext(ctx).Where("account_id IN ?", accountIDs).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		profile := &model.Profile{}
-		var (
-			links, usernameColor, verification, activeBadge, picture, background       []byte
-			profileID, profileAccountID                                                *string
-			firstName, middleName, lastName, bio, gender, pronouns, timeZone, location *string
-			birthday, lastSeenAt                                                       *model.Time
-			experience                                                                 int
-			socialCredits                                                              float64
-			profileCreated, profileUpdated, profileDeleted                             *model.Time
-		)
-		if err := rows.Scan(
-			&profileID, &firstName, &middleName, &lastName, &bio, &gender, &pronouns, &timeZone, &location,
-			&links, &usernameColor, &birthday, &lastSeenAt, &verification, &activeBadge, &experience, &socialCredits,
-			&picture, &background, &profileAccountID, &profileCreated, &profileUpdated, &profileDeleted,
-		); err != nil {
-			return nil, err
-		}
-		if profileID == nil {
-			continue
-		}
-		profile.Id = *profileID
-		profile.FirstName = firstName
-		profile.MiddleName = middleName
-		profile.LastName = lastName
-		profile.Bio = bio
-		profile.Gender = gender
-		profile.Pronouns = pronouns
-		profile.TimeZone = timeZone
-		profile.Location = location
-		profile.Birthday = birthday
-		profile.LastSeenAt = lastSeenAt
-		profile.Experience = experience
-		profile.SocialCredits = socialCredits
-		if profileAccountID != nil {
-			profile.AccountId = *profileAccountID
-		}
-		profile.CreatedAt = profileCreated
-		profile.UpdatedAt = profileUpdated
-		profile.DeletedAt = profileDeleted
-		_ = json.Unmarshal(links, &profile.Links)
-		_ = json.Unmarshal(usernameColor, &profile.UsernameColor)
-		_ = json.Unmarshal(verification, &profile.Verification)
-		_ = json.Unmarshal(picture, &profile.Picture)
-		_ = json.Unmarshal(background, &profile.Background)
+	for i := range entities {
+		profile := profileFromEntity(&entities[i])
 		result[profile.AccountId] = profile
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 // AdminLoadAccountsByIds batch-loads accounts keyed by id.
@@ -1288,166 +1226,99 @@ func (s *Store) AdminLoadAccountsByIds(ctx context.Context, ids []uuid.UUID) (ma
 	if len(ids) == 0 {
 		return result, nil
 	}
-	rows, err := s.query(ctx, `SELECT `+accountColumns+` FROM accounts WHERE id = ANY($1) AND deleted_at IS NULL`, ids)
-	if err != nil {
+	var entities []AccountEntity
+	if err := s.DB.WithContext(ctx).Where("id IN ?", ids).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		account := &model.Account{}
-		var automatedID *uuid.UUID
-		if err := rows.Scan(&account.Id, &account.Name, &account.Nick, &account.Language, &account.Region,
-			&account.ActivatedAt, &account.IsSuperuser, &automatedID, &account.CreatedAt, &account.UpdatedAt, &account.DeletedAt); err != nil {
-			return nil, err
-		}
-		account.AutomatedId = uuidPtrStr(automatedID)
+	for i := range entities {
+		account := accountFromEntity(&entities[i])
 		result[account.Id] = account
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 // AdminListOwnActionLogs pages one account's action logs (GET /api/actions).
 func (s *Store) AdminListOwnActionLogs(ctx context.Context, accountID uuid.UUID, action string, take, offset int) ([]model.ActionLog, int, error) {
-	where := `WHERE account_id = $1 AND deleted_at IS NULL`
-	args := []any{accountID}
-	if strings.TrimSpace(action) != "" {
-		args = append(args, action)
-		where += ` AND action = $` + strconv.Itoa(len(args))
-	}
-	var total int
-	if err := s.queryRow(ctx, `SELECT count(*) FROM action_logs `+where, args...).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-	args = append(args, take, offset)
-	rows, err := s.query(ctx, `SELECT id, action, meta, user_agent, ip_address, location, account_id, session_id, created_at, updated_at, deleted_at
-		FROM action_logs `+where+` ORDER BY created_at DESC LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-	var logs []model.ActionLog
-	for rows.Next() {
-		log, err := scanAdminActionLog(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		logs = append(logs, *log)
-	}
-	return logs, total, rows.Err()
-}
-
-func scanAdminActionLog(row rowScanner) (*model.ActionLog, error) {
-	var log model.ActionLog
-	var meta []byte
-	var location []byte
-	var sessionID *uuid.UUID
-	err := row.Scan(&log.Id, &log.Action, &meta, &log.UserAgent, &log.IpAddress, &location, &log.AccountId,
-		&sessionID, &log.CreatedAt, &log.UpdatedAt, &log.DeletedAt)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	if len(meta) > 0 && string(meta) != "null" {
-		_ = json.Unmarshal(meta, &log.Meta)
-	}
-	if len(location) > 0 && string(location) != "null" {
-		var gp model.GeoPoint
-		if err := json.Unmarshal(location, &gp); err == nil {
-			log.Location = &gp
-		}
-	}
-	log.SessionId = uuidPtrStr(sessionID)
-	return &log, nil
+	return s.adminQueryActionLogs(ctx, accountID, action, take, offset)
 }
 
 // AdminListAccountActionLogs is the admin route backing for listing action
 // logs scoped to a specific account. Mirrors AdminListOwnActionLogs with
 // an explicit admin-facing name.
 func (s *Store) AdminListAccountActionLogs(ctx context.Context, accountID uuid.UUID, action string, take, offset int) ([]model.ActionLog, int, error) {
-	where := `WHERE account_id = $1 AND deleted_at IS NULL`
-	args := []any{accountID}
-	if strings.TrimSpace(action) != "" {
-		args = append(args, action)
-		where += ` AND action = $` + strconv.Itoa(len(args))
-	}
-	var total int
-	if err := s.queryRow(ctx, `SELECT count(*) FROM action_logs `+where, args...).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-	args = append(args, take, offset)
-	rows, err := s.query(ctx, `SELECT id, action, meta, user_agent, ip_address, location, account_id, session_id, created_at, updated_at, deleted_at
-		FROM action_logs `+where+` ORDER BY created_at DESC LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-	var logs []model.ActionLog
-	for rows.Next() {
-		log, err := scanAdminActionLog(rows)
-		if err != nil {
-			return nil, 0, err
+	return s.adminQueryActionLogs(ctx, accountID, action, take, offset)
+}
+
+// adminQueryActionLogs pages the account's action logs, optionally filtered by
+// action, newest first.
+func (s *Store) adminQueryActionLogs(ctx context.Context, accountID uuid.UUID, action string, take, offset int) ([]model.ActionLog, int, error) {
+	base := func() *gorm.DB {
+		statement := s.DB.WithContext(ctx).Model(&ActionLogEntity{}).Where("account_id = ?", accountID)
+		if strings.TrimSpace(action) != "" {
+			statement = statement.Where("action = ?", action)
 		}
-		logs = append(logs, *log)
+		return statement
 	}
-	return logs, total, rows.Err()
+
+	var total int64
+	if err := base().Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var entities []ActionLogEntity
+	if err := base().Order("created_at DESC").Limit(take).Offset(offset).Find(&entities).Error; err != nil {
+		return nil, 0, err
+	}
+	var logs []model.ActionLog
+	for i := range entities {
+		logs = append(logs, adminActionLogFromEntity(&entities[i]))
+	}
+	return logs, int(total), nil
 }
 
 // AdminListConnections lists an account's connections (admin view),
 // filtering soft-deleted rows.
 func (s *Store) AdminListConnections(ctx context.Context, accountID uuid.UUID) ([]model.Connection, error) {
-	rows, err := s.query(ctx, `SELECT id, provider, provided_identifier, meta, last_used_at, is_public, account_id, registered_at, created_at, updated_at, deleted_at
-		FROM account_connections WHERE account_id = $1 AND deleted_at IS NULL ORDER BY created_at`, accountID)
-	if err != nil {
+	var entities []ConnectionEntity
+	if err := s.DB.WithContext(ctx).
+		Where("account_id = ?", accountID).
+		Order("created_at").
+		Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var connections []model.Connection
-	for rows.Next() {
-		var c model.Connection
-		var meta []byte
-		if err := rows.Scan(&c.Id, &c.Provider, &c.ProvidedIdentifier, &meta, &c.LastUsedAt,
-			&c.IsPublic, &c.AccountId, &c.RegisteredAt, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt); err != nil {
-			return nil, err
-		}
-		if len(meta) > 0 && string(meta) != "null" {
-			_ = json.Unmarshal(meta, &c.Meta)
-		}
-		connections = append(connections, c)
+	for i := range entities {
+		connections = append(connections, connectionFromEntity(&entities[i]))
 	}
-	return connections, rows.Err()
+	return connections, nil
 }
 
 // AdminListPasskeys lists an account's passkeys (admin view), filtering
 // soft-deleted rows.
 func (s *Store) AdminListPasskeys(ctx context.Context, accountID uuid.UUID) ([]model.Passkey, error) {
-	rows, err := s.query(ctx, `SELECT id, account_id, label, credential_id, credential, created_at, updated_at, deleted_at
-		FROM account_passkeys WHERE account_id = $1 AND deleted_at IS NULL ORDER BY created_at`, accountID)
-	if err != nil {
+	var entities []PasskeyEntity
+	if err := s.DB.WithContext(ctx).
+		Where("account_id = ?", accountID).
+		Order("created_at").
+		Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var passkeys []model.Passkey
-	for rows.Next() {
-		var p model.Passkey
-		if err := rows.Scan(&p.Id, &p.AccountId, &p.Label, &p.CredentialId, &p.Credential,
-			&p.CreatedAt, &p.UpdatedAt, &p.DeletedAt); err != nil {
-			return nil, err
-		}
-		passkeys = append(passkeys, p)
+	for i := range entities {
+		passkeys = append(passkeys, passkeyFromEntity(&entities[i]))
 	}
-	return passkeys, rows.Err()
+	return passkeys, nil
 }
 
 // AdminDeletePasskey hard-deletes a passkey row. Returns ErrNotFound when
 // the row does not exist or does not belong to the account.
 func (s *Store) AdminDeletePasskey(ctx context.Context, accountID, passkeyID uuid.UUID) error {
-	tag, err := s.exec(ctx, `DELETE FROM account_passkeys WHERE id = $1 AND account_id = $2`, passkeyID, accountID)
-	if err != nil {
-		return err
+	res := s.DB.WithContext(ctx).Unscoped().
+		Where("id = ? AND account_id = ?", passkeyID, accountID).
+		Delete(&PasskeyEntity{})
+	if res.Error != nil {
+		return res.Error
 	}
-	if tag.RowsAffected() == 0 {
+	if res.RowsAffected == 0 {
 		return ErrNotFound
 	}
 	return nil
@@ -1456,34 +1327,27 @@ func (s *Store) AdminDeletePasskey(ctx context.Context, accountID, passkeyID uui
 // AdminListRelationships lists an account's outgoing relationships with
 // related-account info, mirroring the admin relationship management surface.
 func (s *Store) AdminListRelationships(ctx context.Context, accountID uuid.UUID, status *int, take, offset int) ([]model.Relationship, int, error) {
-	where := `WHERE r.account_id = $1 AND r.deleted_at IS NULL`
-	args := []any{accountID}
-	if status != nil {
-		args = append(args, *status)
-		where += ` AND r.status = $` + strconv.Itoa(len(args))
-	}
-
-	var total int
-	if err := s.queryRow(ctx, `SELECT count(*) FROM account_relationships r `+where, args...).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-
-	args = append(args, take, offset)
-	rows, err := s.query(ctx, `SELECT `+relationshipColumns+` FROM account_relationships r
-		`+where+` ORDER BY r.created_at DESC LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-	var relationships []model.Relationship
-	for rows.Next() {
-		r, err := scanRelationship(rows)
-		if err != nil {
-			return nil, 0, err
+	base := func() *gorm.DB {
+		statement := s.DB.WithContext(ctx).Model(&RelationshipEntity{}).Where("account_id = ?", accountID)
+		if status != nil {
+			statement = statement.Where("status = ?", *status)
 		}
-		relationships = append(relationships, *r)
+		return statement
 	}
-	return relationships, total, rows.Err()
+
+	var total int64
+	if err := base().Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var entities []RelationshipEntity
+	if err := base().Order("created_at DESC").Limit(take).Offset(offset).Find(&entities).Error; err != nil {
+		return nil, 0, err
+	}
+	var relationships []model.Relationship
+	for i := range entities {
+		relationships = append(relationships, relationshipFromEntity(&entities[i]))
+	}
+	return relationships, int(total), nil
 }
 
 // AdminUpdateAccountProfile updates profile fields (admin management). Only
@@ -1531,31 +1395,108 @@ func (s *Store) AdminUpdateAccountBasicInfo(ctx context.Context, accountID uuid.
 }
 
 // AdminListAccountNameHistory lists name history for an account (paid
-// renames), ordered by creation time descending.
+// renames), ordered by creation time descending. The legacy query carried no
+// deleted_at filter, so it stays Unscoped.
 func (s *Store) AdminListAccountNameHistory(ctx context.Context, accountID uuid.UUID) ([]map[string]any, error) {
-	rows, err := s.query(ctx, `SELECT id, account_id, name, created_at, updated_at, deleted_at
-		FROM account_name_history WHERE account_id = $1 ORDER BY created_at DESC`, accountID)
-	if err != nil {
+	var entities []AccountNameHistoryEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Where("account_id = ?", accountID).
+		Order("created_at DESC").
+		Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var history []map[string]any
-	for rows.Next() {
-		var id, histAccountID, name string
-		var createdAt, updatedAt *model.Time
-		var deletedAt *model.Time
-		if err := rows.Scan(&id, &histAccountID, &name, &createdAt, &updatedAt, &deletedAt); err != nil {
-			return nil, err
-		}
-		entry := map[string]any{
-			"id":         id,
-			"account_id": histAccountID,
-			"name":       name,
-			"created_at": createdAt,
-			"updated_at": updatedAt,
-			"deleted_at": deletedAt,
-		}
-		history = append(history, entry)
+	for i := range entities {
+		entity := &entities[i]
+		history = append(history, map[string]any{
+			"id":         entity.ID.String(),
+			"account_id": entity.AccountID.String(),
+			"name":       entity.Name,
+			"created_at": timePtr(&entity.CreatedAt),
+			"updated_at": timePtr(&entity.UpdatedAt),
+			"deleted_at": deletedTime(entity.DeletedAt),
+		})
 	}
-	return history, rows.Err()
+	return history, nil
+}
+
+// --- Entity → model mappers for the admin surface ---
+
+// adminPunishmentFromEntity maps a punishments row to its wire model.
+func adminPunishmentFromEntity(entity *PunishmentEntity) model.Punishment {
+	punishment := model.Punishment{
+		Id:        entity.ID.String(),
+		Reason:    entity.Reason,
+		ExpiredAt: timePtr(entity.ExpiredAt),
+		Type:      model.PunishmentType(entity.Type),
+		AccountId: entity.AccountID.String(),
+		CreatorId: uuidPtrStr(entity.CreatorID),
+		CreatedAt: timePtr(&entity.CreatedAt),
+		UpdatedAt: timePtr(&entity.UpdatedAt),
+		DeletedAt: deletedTime(entity.DeletedAt),
+	}
+	_ = decodeJSON(entity.BlockedPermissions, &punishment.BlockedPermissions)
+	return punishment
+}
+
+// adminActionLogFromEntity maps an action_logs row to its wire model.
+func adminActionLogFromEntity(entity *ActionLogEntity) model.ActionLog {
+	log := model.ActionLog{
+		Id:        entity.ID.String(),
+		Action:    entity.Action,
+		UserAgent: entity.UserAgent,
+		IpAddress: entity.IPAddress,
+		AccountId: entity.AccountID.String(),
+		SessionId: uuidPtrStr(entity.SessionID),
+		CreatedAt: timePtr(&entity.CreatedAt),
+		UpdatedAt: timePtr(&entity.UpdatedAt),
+		DeletedAt: deletedTime(entity.DeletedAt),
+	}
+	_ = decodeJSONValue(entity.Meta, &log.Meta)
+	_ = decodeJSON(entity.Location, &log.Location)
+	return log
+}
+
+// adminRelationshipFromEntity was replaced by relationships.go's shared
+// relationshipFromEntity mapper.
+
+// AdminActivateAccount activates an account and (re)grants the `verified`
+// group membership, mirroring ActivateAccountAndGrantDefaultPermissions.
+// Unlike ActivateAccountAndGrantVerified (the spell path, which only fires
+// once), the admin endpoint refreshes activated_at when it is older than the
+// requested timestamp.
+func (s *Store) AdminActivateAccount(ctx context.Context, accountID uuid.UUID, activatedAt time.Time) error {
+	now := time.Now().UTC()
+	if err := s.DB.WithContext(ctx).Model(&AccountEntity{}).
+		Where("id = ? AND (activated_at IS NULL OR activated_at < ?)", accountID, activatedAt).
+		Updates(map[string]any{"activated_at": activatedAt, "updated_at": now}).Error; err != nil {
+		return err
+	}
+	var group PermissionGroupEntity
+	if err := s.DB.WithContext(ctx).Where(`"key" = ?`, "verified").First(&group).Error; err != nil {
+		return mapNotFound(err)
+	}
+	return s.DB.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "group_id"}, {Name: "actor"}},
+		DoUpdates: clause.Assignments(map[string]any{"affected_at": nil, "expired_at": nil, "updated_at": now}),
+	}).Create(&PermissionGroupMemberEntity{
+		GroupID:    group.ID,
+		Actor:      accountID.String(),
+		EntityBase: EntityBase{CreatedAt: now, UpdatedAt: now},
+	}).Error
+}
+
+// AdminSoftDeleteAccount tombstones the account's sessions and then the
+// account itself (the admin delete endpoint). Sessions are soft-deleted
+// (deleted_at), not expired — distinct from SoftDeleteAccountAndSessions,
+// which the gRPC bot flow uses.
+func (s *Store) AdminSoftDeleteAccount(ctx context.Context, accountID uuid.UUID, now time.Time) error {
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&AuthSessionEntity{}).
+		Where("account_id = ?", accountID).
+		Updates(map[string]any{"deleted_at": now, "updated_at": now}).Error; err != nil {
+		return err
+	}
+	return s.DB.WithContext(ctx).Unscoped().Model(&AccountEntity{}).
+		Where("id = ? AND deleted_at IS NULL", accountID).
+		Updates(map[string]any{"deleted_at": now, "updated_at": now}).Error
 }

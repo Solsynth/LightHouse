@@ -15,7 +15,11 @@ board updates indirectly via the profile read-model.
 - `internal/auth` — JWT (RS256), token validation, session/challenge logic
 - `internal/httpserver/*ctl` — controller packages per domain
 - `internal/grpcserver` — the gRPC surface the C# fleet calls
-- `internal/store` — SQL queries (schema in `internal/migrate/0001_initial.sql`)
+- `internal/store` — persistence layer: typed GORM entities + query builders
+  (schema in `internal/migrate/0001_initial.sql`)
+- `internal/dbtest` — dedicated-database helper for migration tests (the DDL
+  starts with `DROP TABLE IF EXISTS`, so isolated migrations must run in a
+  fresh database)
 - `internal/migrate` — embedded DDL, applied on boot
 - `internal/permission` — permission registry + evaluation + seed
 - `internal/grpcclient` — outbound clients (wallet, develop, drive, pass,

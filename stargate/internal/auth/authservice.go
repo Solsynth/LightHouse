@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/stargate/internal/config"
 	"src.solsynth.dev/sosys/stargate/internal/geo"
@@ -195,24 +196,14 @@ func (s *AuthService) collectSessionsToRevoke(ctx context.Context, root uuid.UUI
 			}
 			collected[id] = struct{}{}
 		}
-		rows, err := s.store.Query(ctx,
-			`SELECT id FROM auth_sessions WHERE parent_session_id = ANY($1)`, frontier)
-		if err != nil {
+		children := []uuid.UUID{}
+		if err := s.store.DB.WithContext(ctx).Unscoped().Model(&store.AuthSessionEntity{}).
+			Select("id").
+			Where("parent_session_id IN ?", frontier).
+			Find(&children).Error; err != nil {
 			return nil, err
 		}
-		frontier = frontier[:0]
-		for rows.Next() {
-			var id uuid.UUID
-			if err := rows.Scan(&id); err != nil {
-				rows.Close()
-				return nil, err
-			}
-			frontier = append(frontier, id)
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return nil, err
-		}
+		frontier = children
 	}
 	ids := make([]uuid.UUID, 0, len(collected))
 	for id := range collected {
@@ -315,24 +306,19 @@ func (s *AuthService) CreateSessionAndIssueTokens(ctx context.Context, challenge
 	}
 
 	// Reuse an existing session bound to this challenge.
-	var existingSessionID *uuid.UUID
-	err := s.store.QueryRow(ctx,
-		`SELECT id FROM auth_sessions WHERE challenge_id = $1 AND account_id = $2 LIMIT 1`,
-		challenge.Id, challenge.AccountId).Scan(&existingSessionID)
-	if err == nil && existingSessionID != nil {
-		_, _ = s.store.Exec(ctx,
-			`UPDATE auth_sessions SET last_granted_at = $1 WHERE id = $2`, now, *existingSessionID)
-		session, err := s.store.GetSessionWithAccount(ctx, *existingSessionID)
+	var existingSessionID uuid.UUID
+	err := s.store.DB.WithContext(ctx).Model(&store.AuthSessionEntity{}).
+		Select("id").
+		Where("challenge_id = ? AND account_id = ?", challenge.Id, challenge.AccountId).
+		Limit(1).Scan(&existingSessionID).Error
+	if err == nil && existingSessionID != uuid.Nil {
+		_ = s.store.DB.WithContext(ctx).Model(&store.AuthSessionEntity{}).
+			Where("id = ?", existingSessionID).Update("last_granted_at", now).Error
+		session, err := s.store.GetSessionWithAccount(ctx, existingSessionID)
 		if err == nil {
 			return s.CreateTokenPair(ctx, session)
 		}
 	}
-
-	tx, err := s.store.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
 
 	device, err := s.GetOrCreateDevice(ctx, challenge.AccountId, challenge.DeviceId, challenge.DeviceName, challenge.Platform)
 	if err != nil {
@@ -356,30 +342,22 @@ func (s *AuthService) CreateSessionAndIssueTokens(ctx context.Context, challenge
 		Epoch:           0,
 	}
 	var sessionID uuid.UUID
-	err = tx.QueryRow(ctx, `INSERT INTO auth_sessions
-		(id, type, last_granted_at, expired_at, account_id, ip_address, user_agent, location, scopes, audiences,
-		 challenge_id, client_id, parent_session_id, epoch, created_at, updated_at)
-		VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14)
-		RETURNING id`,
-		int(session.Type), session.LastGrantedAt, session.ExpiredAt, session.AccountId,
-		session.IpAddress, session.UserAgent, locationJSON,
-		session.Scopes, session.Audiences, session.ChallengeId, session.ClientId,
-		session.ParentSessionId, session.Epoch, now,
-	).Scan(&sessionID)
+	err = s.store.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		entity := sessionEntityFrom(session)
+		if err := tx.Create(&entity).Error; err != nil {
+			return err
+		}
+		sessionID = entity.ID
+		// Challenge is consumed.
+		challenge.ExpiredAt = model.NewTime(now)
+		return tx.Model(&store.ChallengeEntity{}).
+			Where("id = ?", challenge.Id).
+			Update("expired_at", challenge.ExpiredAt.Time()).Error
+	})
 	if err != nil {
 		return nil, err
 	}
 	session.Id = sessionID.String()
-
-	// Challenge is consumed.
-	challenge.ExpiredAt = model.NewTime(now)
-	_, err = tx.Exec(ctx, `UPDATE auth_challenges SET expired_at = $1 WHERE id = $2`, challenge.ExpiredAt, challenge.Id)
-	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
 
 	pair, err := s.CreateTokenPair(ctx, session)
 	if err != nil {
@@ -574,27 +552,23 @@ func (s *AuthService) RecoverAccountWithRecoveryCode(ctx context.Context, accoun
 		return nil, &ErrInvalid{Message: "Invalid recovery code."}
 	}
 
-	tx, err := s.store.Begin(ctx)
+	now := time.Now().UTC()
+	var disabledCount int64
+	err = s.store.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Disable all non-password, non-recovery factors + the recovery factor.
+		res := tx.Model(&store.AuthFactorEntity{}).
+			Where("account_id = ? AND enabled_at IS NOT NULL AND type NOT IN ?",
+				accountID, []int{int(model.AuthFactorTypePassword), int(model.AuthFactorTypeRecoveryCode)}).
+			Updates(map[string]any{"enabled_at": nil, "updated_at": now})
+		if res.Error != nil {
+			return res.Error
+		}
+		disabledCount = res.RowsAffected
+		return tx.Model(&store.AuthFactorEntity{}).
+			Where("account_id = ? AND id = ?", accountID, factor.Id).
+			Updates(map[string]any{"enabled_at": nil, "updated_at": now}).Error
+	})
 	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
-
-	// Disable all non-password, non-recovery factors + the recovery factor.
-	disabled, err := tx.Exec(ctx, `UPDATE account_auth_factors SET enabled_at = NULL
-		WHERE account_id = $1 AND enabled_at IS NOT NULL
-		AND type NOT IN ($2, $3)`,
-		accountID, int(model.AuthFactorTypePassword), int(model.AuthFactorTypeRecoveryCode))
-	if err != nil {
-		return nil, err
-	}
-	disabledCount := disabled.RowsAffected()
-	_, err = tx.Exec(ctx, `UPDATE account_auth_factors SET enabled_at = NULL
-		WHERE account_id = $1 AND id = $2`, accountID, factor.Id)
-	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 
@@ -608,7 +582,6 @@ func (s *AuthService) RecoverAccountWithRecoveryCode(ctx context.Context, accoun
 	if err != nil {
 		return nil, err
 	}
-	now := time.Now().UTC()
 	location := s.geo.GetPointFromIp(ipAddress)
 	locationJSON, _ := json.Marshal(location)
 	session := &model.AuthSession{
@@ -625,19 +598,14 @@ func (s *AuthService) RecoverAccountWithRecoveryCode(ctx context.Context, accoun
 		Scopes:    scopesWithFullScope(nil),
 		Audiences: []string{},
 	}
-	var sessionID uuid.UUID
-	err = s.store.QueryRow(ctx, `INSERT INTO auth_sessions
-		(id, type, created_at, last_granted_at, expired_at, account_id, ip_address, user_agent, location, client_id, audiences, scopes, epoch, updated_at)
-		VALUES (gen_random_uuid(),$1,$2,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,$2) RETURNING id`,
-		int(session.Type), now, session.ExpiredAt, session.AccountId, session.IpAddress,
-		session.UserAgent, locationJSON, session.ClientId, session.Audiences, session.Scopes).Scan(&sessionID)
-	if err != nil {
+	entity := sessionEntityFrom(session)
+	if err := s.store.DB.WithContext(ctx).Create(&entity).Error; err != nil {
 		return nil, err
 	}
-	session.Id = sessionID.String()
+	session.Id = entity.ID.String()
 	if s.logs != nil {
 		locText := string(locationJSON)
-		sid := sessionID.String()
+		sid := entity.ID.String()
 		_ = s.logs.Create(ctx, accountID, model.ActionLogAccountRecovery, map[string]any{
 			"factors_disabled": disabledCount,
 			"sessions_revoked": revokedCount,
@@ -652,46 +620,69 @@ func (s *AuthService) RecoverAccountWithRecoveryCode(ctx context.Context, accoun
 // reviving soft-deleted rows and retrying on unique violations.
 func (s *AuthService) GetOrCreateDevice(ctx context.Context, accountID, deviceID string, deviceName *string, platform model.ClientPlatform) (*model.AuthClient, error) {
 	now := time.Now().UTC()
-	var device model.AuthClient
-	err := s.store.QueryRow(ctx, `SELECT id, device_id, device_name, device_label, account_id, platform, created_at, updated_at, deleted_at
-		FROM auth_clients WHERE device_id = $1 AND account_id = $2`,
-		deviceID, accountID).Scan(&device.Id, &device.DeviceId, &device.DeviceName, &device.DeviceLabel,
-		&device.AccountId, &device.Platform, &device.CreatedAt, &device.UpdatedAt, &device.DeletedAt)
+	revive := func(id uuid.UUID) {
+		_ = s.store.DB.WithContext(ctx).Unscoped().Model(&store.AuthClientEntity{}).
+			Where("id = ?", id).
+			Updates(map[string]any{"deleted_at": nil, "updated_at": now}).Error
+	}
+	var entity store.AuthClientEntity
+	err := s.store.DB.WithContext(ctx).
+		Where("device_id = ? AND account_id = ?", deviceID, accountID).
+		First(&entity).Error
 	if err == nil {
-		if device.DeletedAt != nil {
-			_, _ = s.store.Exec(ctx,
-				`UPDATE auth_clients SET deleted_at = NULL, updated_at = $1 WHERE id = $2`, now, device.Id)
+		if entity.DeletedAt.Valid {
+			revive(entity.ID)
 		}
-		return &device, nil
+		return authClientModel(&entity), nil
 	}
-	device = model.AuthClient{
-		Platform:  platform,
-		DeviceId:  deviceID,
-		AccountId: accountID,
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
 	}
+	deviceNameValue := ""
 	if deviceName != nil {
-		device.DeviceName = *deviceName
+		deviceNameValue = *deviceName
 	}
-	device.Id = uuid.NewString()
-	err = s.store.QueryRow(ctx, `INSERT INTO auth_clients (id, platform, device_id, account_id, device_name, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$6) RETURNING id`,
-		device.Id, int(platform), deviceID, accountID, device.DeviceName, now).Scan(&device.Id)
+	entity = store.AuthClientEntity{
+		ID:         uuid.New(),
+		EntityBase: store.EntityBase{CreatedAt: now, UpdatedAt: now},
+		AccountID:  uuid.MustParse(accountID),
+		DeviceID:   deviceID,
+		DeviceName: deviceNameValue,
+		Platform:   int(platform),
+	}
+	err = s.store.DB.WithContext(ctx).Create(&entity).Error
 	if err != nil {
 		// Unique violation race: re-read including soft-deleted rows.
-		row := s.store.QueryRow(ctx, `SELECT id, device_id, device_name, device_label, account_id, platform, created_at, updated_at, deleted_at
-			FROM auth_clients WHERE device_id = $1 AND account_id = $2`,
-			deviceID, accountID)
-		err2 := row.Scan(&device.Id, &device.DeviceId, &device.DeviceName, &device.DeviceLabel,
-			&device.AccountId, &device.Platform, &device.CreatedAt, &device.UpdatedAt, &device.DeletedAt)
-		if err2 != nil {
+		var reRead store.AuthClientEntity
+		if err2 := s.store.DB.WithContext(ctx).Unscoped().
+			Where("device_id = ? AND account_id = ?", deviceID, accountID).
+			First(&reRead).Error; err2 != nil {
 			return nil, err
 		}
-		if device.DeletedAt != nil {
-			_, _ = s.store.Exec(ctx,
-				`UPDATE auth_clients SET deleted_at = NULL, updated_at = $1 WHERE id = $2`, now, device.Id)
+		if reRead.DeletedAt.Valid {
+			revive(reRead.ID)
 		}
+		entity = reRead
 	}
-	return &device, nil
+	return authClientModel(&entity), nil
+}
+
+// authClientModel maps a persisted client entity to the domain model.
+func authClientModel(entity *store.AuthClientEntity) *model.AuthClient {
+	client := &model.AuthClient{
+		Id:          entity.ID.String(),
+		DeviceId:    entity.DeviceID,
+		DeviceName:  entity.DeviceName,
+		DeviceLabel: entity.DeviceLabel,
+		AccountId:   entity.AccountID.String(),
+		Platform:    model.ClientPlatform(entity.Platform),
+		CreatedAt:   model.NewTime(entity.CreatedAt),
+		UpdatedAt:   model.NewTime(entity.UpdatedAt),
+	}
+	if entity.DeletedAt.Valid {
+		client.DeletedAt = model.NewTime(entity.DeletedAt.Time)
+	}
+	return client
 }
 
 // CreateSessionFromParent creates a child session for login/session flows.
@@ -729,18 +720,11 @@ func (s *AuthService) CreateSessionFromParent(ctx context.Context, parentSession
 		Scopes:          parent.Scopes,
 		AppId:           parent.AppId,
 	}
-	var sessionID uuid.UUID
-	locJSON, _ := json.Marshal(session.Location)
-	err = s.store.QueryRow(ctx, `INSERT INTO auth_sessions
-		(id, type, created_at, last_granted_at, expired_at, account_id, ip_address, user_agent, location,
-		 parent_session_id, client_id, audiences, scopes, app_id, epoch, updated_at)
-		VALUES (gen_random_uuid(),$1,$2,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,0,$2) RETURNING id`,
-		int(session.Type), now, session.ExpiredAt, session.AccountId, session.IpAddress, session.UserAgent,
-		locJSON, session.ParentSessionId, session.ClientId, session.Audiences, session.Scopes, session.AppId).Scan(&sessionID)
-	if err != nil {
+	entity := sessionEntityFrom(session)
+	if err := s.store.DB.WithContext(ctx).Create(&entity).Error; err != nil {
 		return nil, err
 	}
-	session.Id = sessionID.String()
+	session.Id = entity.ID.String()
 	return session, nil
 }
 

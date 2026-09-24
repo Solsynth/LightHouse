@@ -4,7 +4,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"reflect"
@@ -17,29 +16,8 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
 
-const accountColumns = `id, name, nick, language, region, activated_at, is_superuser, automated_id, created_at, updated_at, deleted_at`
-const profileColumns = `p.id, p.first_name, p.middle_name, p.last_name, p.bio, p.gender, p.pronouns, p.time_zone, p.location, p.links, p.username_color, p.birthday, p.last_seen_at, p.verification, p.active_badge, p.experience, p.social_credits, p.picture, p.background, p.account_id, p.created_at, p.updated_at, p.deleted_at`
-
 func accountColsPrefixed(alias string) string {
 	return alias + `.id, ` + alias + `.name, ` + alias + `.nick, ` + alias + `.language, ` + alias + `.region, ` + alias + `.activated_at, ` + alias + `.is_superuser, ` + alias + `.automated_id, ` + alias + `.created_at, ` + alias + `.updated_at, ` + alias + `.deleted_at`
-}
-
-func profileColsPrefixed(alias string) string {
-	return alias + `.id, ` + alias + `.first_name, ` + alias + `.middle_name, ` + alias + `.last_name, ` + alias + `.bio, ` + alias + `.gender, ` + alias + `.pronouns, ` + alias + `.time_zone, ` + alias + `.location, ` + alias + `.links, ` + alias + `.username_color, ` + alias + `.birthday, ` + alias + `.last_seen_at, ` + alias + `.verification, ` + alias + `.active_badge, ` + alias + `.experience, ` + alias + `.social_credits, ` + alias + `.picture, ` + alias + `.background, ` + alias + `.account_id, ` + alias + `.created_at, ` + alias + `.updated_at, ` + alias + `.deleted_at`
-}
-
-func scanAccount(row rowScanner) (*model.Account, error) {
-	account := &model.Account{}
-	var automatedID *uuid.UUID
-	if err := row.Scan(&account.Id, &account.Name, &account.Nick, &account.Language, &account.Region,
-		&account.ActivatedAt, &account.IsSuperuser, &automatedID, &account.CreatedAt, &account.UpdatedAt, &account.DeletedAt); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	account.AutomatedId = uuidPtrStr(automatedID)
-	return account, nil
 }
 
 var ErrNotFound = errors.New("not found")
@@ -175,6 +153,16 @@ func factorFromEntity(entity *AuthFactorEntity) model.AuthFactor {
 	}
 	_ = decodeJSON(entity.Config, &factor.Config)
 	return factor
+}
+
+func contactFromEntity(entity *ContactEntity) model.Contact {
+	return model.Contact{
+		Id: entity.ID.String(), Type: entity.Type, VerifiedAt: timePtr(entity.VerifiedAt),
+		IsPrimary: entity.IsPrimary, IsPublic: entity.IsPublic, Content: entity.Content,
+		AccountId: entity.AccountID.String(),
+		CreatedAt: timePtr(&entity.CreatedAt), UpdatedAt: timePtr(&entity.UpdatedAt),
+		DeletedAt: deletedTime(entity.DeletedAt),
+	}
 }
 
 func (s *Store) TouchLastActive(ctx context.Context, accountID, sessionID string, seenAt time.Time) error {

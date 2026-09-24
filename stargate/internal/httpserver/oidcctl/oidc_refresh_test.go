@@ -54,7 +54,7 @@ func (p stubAppProvider) GetCustomAppSlug(_ context.Context, _ string) (string, 
 	return p.slug, nil
 }
 
-func newRefreshTestService(t *testing.T) (*service, *store.Store, *auth.JWTService) {
+func newRefreshTestService(t *testing.T) (*service, *store.Store, *auth.JWTService, *pgxpool.Pool) {
 	t.Helper()
 	ctx := context.Background()
 	root := repoRoot(t)
@@ -109,15 +109,15 @@ func newRefreshTestService(t *testing.T) (*service, *store.Store, *auth.JWTServi
 	if err != nil {
 		t.Fatalf("oidc service: %v", err)
 	}
-	return svc, st, jwtSvc
+	return svc, st, jwtSvc, pool
 }
 
 func TestAuthorizationCodeFlowCreatesSessionWithJSONArrays(t *testing.T) {
 	ctx := context.Background()
-	svc, st, _ := newRefreshTestService(t)
+	svc, _, _, pool := newRefreshTestService(t)
 
 	var accountID string
-	if err := st.QueryRow(ctx, `SELECT id FROM accounts ORDER BY created_at LIMIT 1`).Scan(&accountID); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT id FROM accounts ORDER BY created_at LIMIT 1`).Scan(&accountID); err != nil {
 		t.Skipf("no local account to attach the session: %v", err)
 	}
 
@@ -135,11 +135,11 @@ func TestAuthorizationCodeFlowCreatesSessionWithJSONArrays(t *testing.T) {
 	}
 	sessionID := uuid.MustParse(session.Id)
 	t.Cleanup(func() {
-		_, _ = st.Exec(ctx, `DELETE FROM auth_sessions WHERE id = $1`, sessionID)
+		_, _ = pool.Exec(ctx, `DELETE FROM auth_sessions WHERE id = $1`, sessionID)
 	})
 
 	var audiencesRaw, scopesRaw []byte
-	if err := st.QueryRow(ctx, `SELECT audiences, scopes FROM auth_sessions WHERE id = $1`, sessionID).Scan(&audiencesRaw, &scopesRaw); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT audiences, scopes FROM auth_sessions WHERE id = $1`, sessionID).Scan(&audiencesRaw, &scopesRaw); err != nil {
 		t.Fatalf("load created OIDC session: %v", err)
 	}
 	var audiences, storedScopes []string
@@ -152,11 +152,11 @@ func TestAuthorizationCodeFlowCreatesSessionWithJSONArrays(t *testing.T) {
 
 func TestOidcRefreshTokenFlow(t *testing.T) {
 	ctx := context.Background()
-	svc, st, jwtSvc := newRefreshTestService(t)
+	svc, st, jwtSvc, pool := newRefreshTestService(t)
 
 	// Any local account satisfies the accounts JOIN in GetSessionWithAccount.
 	var accountID string
-	if err := st.QueryRow(ctx, `SELECT id FROM accounts ORDER BY created_at LIMIT 1`).Scan(&accountID); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT id FROM accounts ORDER BY created_at LIMIT 1`).Scan(&accountID); err != nil {
 		t.Skipf("no local account to attach the session: %v", err)
 	}
 
@@ -172,14 +172,14 @@ func TestOidcRefreshTokenFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal scopes: %v", err)
 	}
-	if _, err := st.Exec(ctx, `INSERT INTO auth_sessions
+	if _, err := pool.Exec(ctx, `INSERT INTO auth_sessions
 		(id, type, created_at, last_granted_at, account_id, app_id, audiences, scopes, epoch, updated_at)
 		VALUES ($1, $2, $3, $3, $4, $5, '[]', $6::jsonb, 0, $3)`,
 		sessionID, int(model.SessionTypeOAuth), now, accountID, clientID, string(scopesJSON)); err != nil {
 		t.Fatalf("seed oauth session: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = st.Exec(ctx, `DELETE FROM auth_sessions WHERE id = $1`, sessionID)
+		_, _ = pool.Exec(ctx, `DELETE FROM auth_sessions WHERE id = $1`, sessionID)
 	})
 
 	mintRefresh := func(session *model.AuthSession) string {
@@ -256,10 +256,10 @@ func TestOidcRefreshTokenFlow(t *testing.T) {
 
 func TestOidcRefreshSurvivesUnrelatedSessionRevocation(t *testing.T) {
 	ctx := context.Background()
-	svc, st, jwtSvc := newRefreshTestService(t)
+	svc, _, jwtSvc, pool := newRefreshTestService(t)
 
 	var accountID string
-	if err := st.QueryRow(ctx, `SELECT id FROM accounts ORDER BY created_at LIMIT 1`).Scan(&accountID); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT id FROM accounts ORDER BY created_at LIMIT 1`).Scan(&accountID); err != nil {
 		t.Skipf("no local account to attach the session: %v", err)
 	}
 
@@ -269,7 +269,7 @@ func TestOidcRefreshSurvivesUnrelatedSessionRevocation(t *testing.T) {
 	oidcSessionID := uuid.New()
 	otherSessionID := uuid.New()
 	for _, sessionID := range []uuid.UUID{oidcSessionID, otherSessionID} {
-		if _, err := st.Exec(ctx, `INSERT INTO auth_sessions
+		if _, err := pool.Exec(ctx, `INSERT INTO auth_sessions
 			(id, type, created_at, last_granted_at, account_id, app_id, audiences, scopes, epoch, updated_at)
 			VALUES ($1, $2, $3, $3, $4, $5, '[]', '["openid"]'::jsonb, 0, $3)`,
 			sessionID, int(model.SessionTypeOAuth), now, accountID, clientID); err != nil {
@@ -277,7 +277,7 @@ func TestOidcRefreshSurvivesUnrelatedSessionRevocation(t *testing.T) {
 		}
 	}
 	t.Cleanup(func() {
-		_, _ = st.Exec(ctx, `DELETE FROM auth_sessions WHERE id = ANY($1)`, []uuid.UUID{oidcSessionID, otherSessionID})
+		_, _ = pool.Exec(ctx, `DELETE FROM auth_sessions WHERE id = ANY($1)`, []uuid.UUID{oidcSessionID, otherSessionID})
 	})
 
 	refresh, err := jwtSvc.CreateRefreshToken(&model.AuthSession{
@@ -298,10 +298,10 @@ func TestOidcRefreshSurvivesUnrelatedSessionRevocation(t *testing.T) {
 
 func TestOidcRefreshFailsAfterAccountSessionRevocation(t *testing.T) {
 	ctx := context.Background()
-	svc, st, jwtSvc := newRefreshTestService(t)
+	svc, st, jwtSvc, pool := newRefreshTestService(t)
 
 	var accountID string
-	if err := st.QueryRow(ctx, `SELECT id FROM accounts ORDER BY created_at LIMIT 1`).Scan(&accountID); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT id FROM accounts ORDER BY created_at LIMIT 1`).Scan(&accountID); err != nil {
 		t.Skipf("no local account to attach the session: %v", err)
 	}
 
@@ -309,14 +309,14 @@ func TestOidcRefreshFailsAfterAccountSessionRevocation(t *testing.T) {
 	clientID := uuid.New()
 	clientIDStr := clientID.String()
 	sessionID := uuid.New()
-	if _, err := st.Exec(ctx, `INSERT INTO auth_sessions
+	if _, err := pool.Exec(ctx, `INSERT INTO auth_sessions
 		(id, type, created_at, last_granted_at, expired_at, account_id, app_id, audiences, scopes, epoch, updated_at)
 		VALUES ($1, $2, $3, $3, $4, $5, $6, '[]', '["openid"]'::jsonb, 0, $3)`,
 		sessionID, int(model.SessionTypeOAuth), now, now.Add(time.Hour), accountID, clientID); err != nil {
 		t.Fatalf("seed OIDC session: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = st.Exec(ctx, `DELETE FROM auth_sessions WHERE id = $1`, sessionID)
+		_, _ = pool.Exec(ctx, `DELETE FROM auth_sessions WHERE id = $1`, sessionID)
 	})
 	refresh, err := jwtSvc.CreateRefreshToken(&model.AuthSession{
 		Id: sessionID.String(), AccountId: accountID, AppId: &clientIDStr,
@@ -344,10 +344,10 @@ func TestOidcRefreshFailsAfterAccountSessionRevocation(t *testing.T) {
 
 func TestOidcConcurrentRefreshRotatesOnlyOnce(t *testing.T) {
 	ctx := context.Background()
-	svc, st, jwtSvc := newRefreshTestService(t)
+	svc, st, jwtSvc, pool := newRefreshTestService(t)
 
 	var accountID string
-	if err := st.QueryRow(ctx, `SELECT id FROM accounts ORDER BY created_at LIMIT 1`).Scan(&accountID); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT id FROM accounts ORDER BY created_at LIMIT 1`).Scan(&accountID); err != nil {
 		t.Skipf("no local account to attach the session: %v", err)
 	}
 
@@ -355,14 +355,14 @@ func TestOidcConcurrentRefreshRotatesOnlyOnce(t *testing.T) {
 	clientID := uuid.New()
 	clientIDStr := clientID.String()
 	sessionID := uuid.New()
-	if _, err := st.Exec(ctx, `INSERT INTO auth_sessions
+	if _, err := pool.Exec(ctx, `INSERT INTO auth_sessions
 		(id, type, created_at, last_granted_at, account_id, app_id, audiences, scopes, epoch, updated_at)
 		VALUES ($1, $2, $3, $3, $4, $5, '[]', '["openid"]'::jsonb, 0, $3)`,
 		sessionID, int(model.SessionTypeOAuth), now, accountID, clientID); err != nil {
 		t.Fatalf("seed session: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = st.Exec(ctx, `DELETE FROM auth_sessions WHERE id = $1`, sessionID)
+		_, _ = pool.Exec(ctx, `DELETE FROM auth_sessions WHERE id = $1`, sessionID)
 	})
 
 	refresh, err := jwtSvc.CreateRefreshToken(&model.AuthSession{

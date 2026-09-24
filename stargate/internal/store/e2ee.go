@@ -6,12 +6,14 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
 )
 
 // LegacyDeviceID mirrors E2EeService.LegacyDeviceId ("legacy-account"), used
@@ -170,77 +172,55 @@ type RevokeDeviceResult struct {
 	ControlEnvelopes []E2eeEnvelope
 }
 
-const (
-	e2eeDeviceColumns = `id, account_id, device_id, device_label, is_revoked, last_bundle_at, revoked_at, created_at, updated_at, deleted_at`
-
-	e2eeKeyBundleColumns = `id, account_id, device_id, algorithm, identity_key, signed_pre_key_id, signed_pre_key, signed_pre_key_signature, signed_pre_key_expires_at, meta, created_at, updated_at, deleted_at`
-
-	e2eeOneTimePreKeyColumns = `id, key_bundle_id, account_id, device_id, key_id, public_key, is_claimed, claimed_at, claimed_by_account_id, created_at, updated_at, deleted_at`
-
-	e2eeEnvelopeColumns = `id, sender_id, sender_device_id, recipient_id, recipient_account_id, recipient_device_id, session_id, type, group_id, client_message_id, sequence, ciphertext, header, signature, delivery_status, delivered_at, acked_at, expires_at, legacy_account_scoped, meta, created_at, updated_at, deleted_at`
-
-	mlsKeyPackageColumns = `id, account_id, device_id, device_label, key_package, ciphersuite, is_consumed, consumed_at, consumed_by_account_id, meta, created_at, updated_at, deleted_at`
-
-	mlsGroupStateColumns = `id, mls_group_id, epoch, state_version, last_commit_at, group_info, ratchet_tree, meta, created_at, updated_at, deleted_at`
-
-	mlsDeviceMembershipColumns = `id, mls_group_id, account_id, device_id, joined_epoch, last_seen_epoch, last_reshare_required_at, last_reshare_completed_at, created_at, updated_at, deleted_at`
-)
-
-// queryer is implemented by Store and sqlTx for transaction-scoped helpers.
-type queryer interface {
-	Query(ctx context.Context, statement string, args ...any) (rowsScanner, error)
-	QueryRow(ctx context.Context, statement string, args ...any) rowScanner
-	Exec(ctx context.Context, statement string, args ...any) (commandTag, error)
-}
-
 // --- Devices ---
 
 // GetE2eeDevice loads a device by (account_id, device_id), excluding
 // soft-deleted rows (the EF global query filter). Returns (nil, nil) when
 // absent.
 func (s *Store) GetE2eeDevice(ctx context.Context, accountID, deviceID string) (*E2eeDevice, error) {
-	row := s.queryRow(ctx, `SELECT `+e2eeDeviceColumns+` FROM e2ee_devices
-		WHERE account_id = $1 AND device_id = $2 AND deleted_at IS NULL`, accountID, deviceID)
-	return scanE2eeDevice(row)
+	var entities []E2EEDeviceEntity
+	if err := s.DB.WithContext(ctx).
+		Where("account_id = ? AND device_id = ?", accountID, deviceID).
+		Limit(1).Find(&entities).Error; err != nil {
+		return nil, err
+	}
+	if len(entities) == 0 {
+		return nil, nil
+	}
+	device := e2eeDeviceFromEntity(&entities[0])
+	return &device, nil
 }
 
 // ListActiveE2eeDevices lists the non-revoked devices of an account.
 func (s *Store) ListActiveE2eeDevices(ctx context.Context, accountID string) ([]E2eeDevice, error) {
-	rows, err := s.query(ctx, `SELECT `+e2eeDeviceColumns+` FROM e2ee_devices
-		WHERE account_id = $1 AND is_revoked = false AND deleted_at IS NULL ORDER BY created_at`, accountID)
-	if err != nil {
+	var entities []E2EEDeviceEntity
+	if err := s.DB.WithContext(ctx).
+		Where("account_id = ? AND is_revoked = false", accountID).
+		Order("created_at").Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var devices []E2eeDevice
-	for rows.Next() {
-		d, err := scanE2eeDevice(rows)
-		if err != nil {
-			return nil, err
-		}
-		devices = append(devices, *d)
+	for i := range entities {
+		devices = append(devices, e2eeDeviceFromEntity(&entities[i]))
 	}
-	return devices, rows.Err()
+	return devices, nil
 }
 
 // ListActiveE2eeDeviceIDs returns the device ids of an account's non-revoked
 // devices.
 func (s *Store) ListActiveE2eeDeviceIDs(ctx context.Context, accountID string) ([]string, error) {
-	rows, err := s.query(ctx, `SELECT device_id FROM e2ee_devices
-		WHERE account_id = $1 AND is_revoked = false AND deleted_at IS NULL`, accountID)
-	if err != nil {
+	var entities []E2EEDeviceEntity
+	if err := s.DB.WithContext(ctx).
+		Select("device_id").
+		Where("account_id = ? AND is_revoked = false", accountID).
+		Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
+	for i := range entities {
+		ids = append(ids, entities[i].DeviceID)
 	}
-	return ids, rows.Err()
+	return ids, nil
 }
 
 // UpsertE2eeDevice creates the device when absent, otherwise revives it and
@@ -252,32 +232,38 @@ func (s *Store) UpsertE2eeDevice(ctx context.Context, accountID, deviceID string
 		return nil, err
 	}
 	if device == nil {
-		device = &E2eeDevice{
-			Id:          uuid.NewString(),
-			AccountId:   accountID,
-			DeviceId:    deviceID,
-			DeviceLabel: deviceLabel,
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		}
-		_, err := s.exec(ctx, `INSERT INTO e2ee_devices (id, account_id, device_id, device_label, is_revoked, last_bundle_at, revoked_at, created_at, updated_at, deleted_at)
-			VALUES ($1, $2, $3, $4, false, $5, NULL, $6, $6, NULL)`,
-			device.Id, device.AccountId, device.DeviceId, device.DeviceLabel, now, now)
+		accountUUID, err := uuidValue(accountID)
 		if err != nil {
 			return nil, err
 		}
-		device.IsRevoked = false
-		device.LastBundleAt = &now
-		return device, nil
+		entity := &E2EEDeviceEntity{
+			ID:           uuid.New(),
+			EntityBase:   EntityBase{CreatedAt: now, UpdatedAt: now},
+			AccountID:    accountUUID,
+			DeviceID:     deviceID,
+			DeviceLabel:  deviceLabel,
+			IsRevoked:    false,
+			LastBundleAt: &now,
+		}
+		if err := s.DB.WithContext(ctx).Create(entity).Error; err != nil {
+			return nil, err
+		}
+		created := e2eeDeviceFromEntity(entity)
+		return &created, nil
 	}
 	label := device.DeviceLabel
 	if deviceLabel != nil && *deviceLabel != "" {
 		label = deviceLabel
 	}
-	_, err = s.exec(ctx, `UPDATE e2ee_devices
-		SET device_label = $2, is_revoked = false, revoked_at = NULL, last_bundle_at = $3, updated_at = $3
-		WHERE id = $1`, device.Id, label, now)
-	if err != nil {
+	if err := s.DB.WithContext(ctx).Model(&E2EEDeviceEntity{}).
+		Where("id = ?", device.Id).
+		Updates(map[string]any{
+			"device_label":   label,
+			"is_revoked":     false,
+			"revoked_at":     nil,
+			"last_bundle_at": now,
+			"updated_at":     now,
+		}).Error; err != nil {
 		return nil, err
 	}
 	device.DeviceLabel = label
@@ -320,12 +306,29 @@ func (s *Store) UpsertE2eeKeyBundle(ctx context.Context, accountID, deviceID str
 		return nil, err
 	}
 	if bundle == nil {
-		bundle = &E2eeKeyBundle{Id: uuid.NewString(), AccountId: accountID, DeviceId: deviceID, CreatedAt: now, UpdatedAt: now}
-		if _, err := s.exec(ctx, `INSERT INTO e2ee_key_bundles (id, account_id, device_id, algorithm, identity_key, signed_pre_key_id, signed_pre_key, signed_pre_key_signature, signed_pre_key_expires_at, meta, created_at, updated_at, deleted_at)
-			VALUES ($1, $2, $3, '', NULL, NULL, NULL, NULL, NULL, NULL, $4, $4, NULL)`,
-			bundle.Id, bundle.AccountId, bundle.DeviceId, now); err != nil {
+		accountUUID, err := uuidValue(accountID)
+		if err != nil {
 			return nil, err
 		}
+		// identity_key / signed_pre_key / signed_pre_key_signature are NOT NULL;
+		// the C# model used non-nullable byte[] fields, so a placeholder row
+		// stores empty arrays (the previous raw INSERT wrote NULL and always
+		// tripped the constraint).
+		entity := &E2EEKeyBundleEntity{
+			ID:                    uuid.New(),
+			EntityBase:            EntityBase{CreatedAt: now, UpdatedAt: now},
+			AccountID:             accountUUID,
+			DeviceID:              deviceID,
+			Algorithm:             "",
+			IdentityKey:           []byte{},
+			SignedPreKey:          []byte{},
+			SignedPreKeySignature: []byte{},
+		}
+		if err := s.DB.WithContext(ctx).Create(entity).Error; err != nil {
+			return nil, err
+		}
+		created := e2eeKeyBundleFromEntity(entity)
+		bundle = &created
 	}
 	if _, err := s.UpsertE2eeDevice(ctx, accountID, deviceID, deviceLabel, now); err != nil {
 		return nil, err
@@ -339,13 +342,18 @@ func (s *Store) UpsertE2eeKeyBundle(ctx context.Context, accountID, deviceID str
 	bundle.SignedPreKeyExpiresAt = req.SignedPreKeyExpiresAt
 	bundle.Meta = req.Meta
 	bundle.UpdatedAt = now
-	_, err = s.exec(ctx, `UPDATE e2ee_key_bundles
-		SET algorithm = $2, identity_key = $3, signed_pre_key_id = $4, signed_pre_key = $5,
-			signed_pre_key_signature = $6, signed_pre_key_expires_at = $7, meta = $8, updated_at = $9
-		WHERE id = $1`,
-		bundle.Id, bundle.Algorithm, bundle.IdentityKey, bundle.SignedPreKeyId, bundle.SignedPreKey,
-		bundle.SignedPreKeySignature, bundle.SignedPreKeyExpiresAt, jsonBytes(bundle.Meta), now)
-	if err != nil {
+	if err := s.DB.WithContext(ctx).Model(&E2EEKeyBundleEntity{}).
+		Where("id = ?", bundle.Id).
+		Updates(map[string]any{
+			"algorithm":                 bundle.Algorithm,
+			"identity_key":              bytesOrEmpty(bundle.IdentityKey),
+			"signed_pre_key_id":         bundle.SignedPreKeyId,
+			"signed_pre_key":            bytesOrEmpty(bundle.SignedPreKey),
+			"signed_pre_key_signature":  bytesOrEmpty(bundle.SignedPreKeySignature),
+			"signed_pre_key_expires_at": bundle.SignedPreKeyExpiresAt,
+			"meta":                      jsonMapPtr(bundle.Meta),
+			"updated_at":                now,
+		}).Error; err != nil {
 		return nil, err
 	}
 
@@ -354,13 +362,29 @@ func (s *Store) UpsertE2eeKeyBundle(ctx context.Context, accountID, deviceID str
 		if err != nil {
 			return nil, err
 		}
-		for _, k := range req.OneTimePreKeys {
-			if existing[k.KeyId] {
+		for _, key := range req.OneTimePreKeys {
+			if existing[key.KeyId] {
 				continue
 			}
-			if _, err := s.exec(ctx, `INSERT INTO e2ee_one_time_pre_keys (id, key_bundle_id, account_id, device_id, key_id, public_key, is_claimed, claimed_at, claimed_by_account_id, created_at, updated_at, deleted_at)
-				VALUES ($1, $2, $3, $4, $5, $6, false, NULL, NULL, $7, $7, NULL)`,
-				uuid.NewString(), bundle.Id, accountID, deviceID, k.KeyId, k.PublicKey, now); err != nil {
+			bundleUUID, err := uuidValue(bundle.Id)
+			if err != nil {
+				return nil, err
+			}
+			accountUUID, err := uuidValue(accountID)
+			if err != nil {
+				return nil, err
+			}
+			preKey := &E2EEOneTimePreKeyEntity{
+				ID:          uuid.New(),
+				EntityBase:  EntityBase{CreatedAt: now, UpdatedAt: now},
+				KeyBundleID: bundleUUID,
+				AccountID:   accountUUID,
+				DeviceID:    deviceID,
+				KeyID:       key.KeyId,
+				PublicKey:   key.PublicKey,
+				IsClaimed:   false,
+			}
+			if err := s.DB.WithContext(ctx).Create(preKey).Error; err != nil {
 				return nil, err
 			}
 		}
@@ -445,87 +469,104 @@ func (s *Store) GetPublicE2eeDeviceBundles(ctx context.Context, accountID, reque
 }
 
 func (s *Store) getE2eeKeyBundle(ctx context.Context, accountID, deviceID string) (*E2eeKeyBundle, error) {
-	row := s.queryRow(ctx, `SELECT `+e2eeKeyBundleColumns+` FROM e2ee_key_bundles
-		WHERE account_id = $1 AND device_id = $2 AND deleted_at IS NULL`, accountID, deviceID)
-	return scanE2eeKeyBundle(row)
+	var entities []E2EEKeyBundleEntity
+	if err := s.DB.WithContext(ctx).
+		Where("account_id = ? AND device_id = ?", accountID, deviceID).
+		Limit(1).Find(&entities).Error; err != nil {
+		return nil, err
+	}
+	if len(entities) == 0 {
+		return nil, nil
+	}
+	bundle := e2eeKeyBundleFromEntity(&entities[0])
+	return &bundle, nil
 }
 
 func (s *Store) getLatestE2eeKeyBundle(ctx context.Context, accountID string) (*E2eeKeyBundle, error) {
-	row := s.queryRow(ctx, `SELECT `+e2eeKeyBundleColumns+` FROM e2ee_key_bundles
-		WHERE account_id = $1 AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1`, accountID)
-	return scanE2eeKeyBundle(row)
+	var entities []E2EEKeyBundleEntity
+	if err := s.DB.WithContext(ctx).
+		Where("account_id = ?", accountID).
+		Order("updated_at DESC").Limit(1).Find(&entities).Error; err != nil {
+		return nil, err
+	}
+	if len(entities) == 0 {
+		return nil, nil
+	}
+	bundle := e2eeKeyBundleFromEntity(&entities[0])
+	return &bundle, nil
 }
 
 func (s *Store) listE2eeKeyBundles(ctx context.Context, accountID string) ([]E2eeKeyBundle, error) {
-	rows, err := s.query(ctx, `SELECT `+e2eeKeyBundleColumns+` FROM e2ee_key_bundles
-		WHERE account_id = $1 AND deleted_at IS NULL`, accountID)
-	if err != nil {
+	var entities []E2EEKeyBundleEntity
+	if err := s.DB.WithContext(ctx).
+		Where("account_id = ?", accountID).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var bundles []E2eeKeyBundle
-	for rows.Next() {
-		b, err := scanE2eeKeyBundle(rows)
-		if err != nil {
-			return nil, err
-		}
-		bundles = append(bundles, *b)
+	for i := range entities {
+		bundles = append(bundles, e2eeKeyBundleFromEntity(&entities[i]))
 	}
-	return bundles, rows.Err()
+	return bundles, nil
 }
 
 func (s *Store) listOneTimePreKeyIDs(ctx context.Context, keyBundleID string) (map[int]bool, error) {
-	rows, err := s.query(ctx, `SELECT key_id FROM e2ee_one_time_pre_keys
-		WHERE key_bundle_id = $1 AND deleted_at IS NULL`, keyBundleID)
-	if err != nil {
+	var entities []E2EEOneTimePreKeyEntity
+	if err := s.DB.WithContext(ctx).
+		Select("key_id").
+		Where("key_bundle_id = ?", keyBundleID).
+		Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	ids := map[int]bool{}
-	for rows.Next() {
-		var id int
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids[id] = true
+	for i := range entities {
+		ids[entities[i].KeyID] = true
 	}
-	return ids, rows.Err()
+	return ids, nil
 }
 
 // claimOneTimePreKey claims the oldest unclaimed pre key of a bundle inside a
 // SERIALIZABLE transaction (the C# serializes claiming reads so concurrent
 // claims cannot hand out the same pre key twice).
 func (s *Store) claimOneTimePreKey(ctx context.Context, keyBundleID, accountID, deviceID, requesterID string) (*E2eeOneTimePreKey, error) {
-	tx, err := s.beginSerializable(ctx)
+	var claimed *E2eeOneTimePreKey
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var entities []E2EEOneTimePreKeyEntity
+		if err := tx.
+			Where("key_bundle_id = ? AND account_id = ? AND device_id = ? AND is_claimed = false",
+				keyBundleID, accountID, deviceID).
+			Order("key_id").Limit(1).Find(&entities).Error; err != nil {
+			return err
+		}
+		if len(entities) == 0 {
+			return nil
+		}
+		preKey := e2eeOneTimePreKeyFromEntity(&entities[0])
+		now := time.Now().UTC()
+		claimedBy, err := uuidPtrOrNil(&requesterID)
+		if err != nil {
+			return err
+		}
+		if err := tx.Model(&E2EEOneTimePreKeyEntity{}).
+			Where("id = ?", preKey.Id).
+			Updates(map[string]any{
+				"is_claimed":            true,
+				"claimed_at":            now,
+				"claimed_by_account_id": claimedBy,
+				"updated_at":            now,
+			}).Error; err != nil {
+			return err
+		}
+		preKey.IsClaimed = true
+		preKey.ClaimedAt = &now
+		preKey.ClaimedByAccountId = &requesterID
+		preKey.UpdatedAt = now
+		claimed = &preKey
+		return nil
+	}, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(ctx)
-
-	row := tx.QueryRow(ctx, `SELECT `+e2eeOneTimePreKeyColumns+` FROM e2ee_one_time_pre_keys
-		WHERE key_bundle_id = $1 AND account_id = $2 AND device_id = $3 AND is_claimed = false AND deleted_at IS NULL
-		ORDER BY key_id LIMIT 1`, keyBundleID, accountID, deviceID)
-	preKey, err := scanE2eeOneTimePreKey(row)
-	if err != nil {
-		return nil, err
-	}
-	if preKey == nil {
-		return nil, tx.Commit(ctx)
-	}
-	now := time.Now().UTC()
-	if _, err := tx.Exec(ctx, `UPDATE e2ee_one_time_pre_keys
-		SET is_claimed = true, claimed_at = $2, claimed_by_account_id = $3, updated_at = $2
-		WHERE id = $1`, preKey.Id, now, requesterID); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	preKey.IsClaimed = true
-	preKey.ClaimedAt = &now
-	preKey.ClaimedByAccountId = &requesterID
-	preKey.UpdatedAt = now
-	return preKey, nil
+	return claimed, nil
 }
 
 // --- MLS key packages ---
@@ -533,34 +574,40 @@ func (s *Store) claimOneTimePreKey(ctx context.Context, keyBundleID, accountID, 
 // PurgeExpiredMlsKeyPackages deletes key packages older than the retention
 // cutoff (mirrors PurgeExpiredMlsKeyPackagesAsync; 30 days).
 func (s *Store) PurgeExpiredMlsKeyPackages(ctx context.Context, accountID string, cutoff time.Time) error {
-	_, err := s.exec(ctx, `DELETE FROM mls_key_packages WHERE account_id = $1 AND created_at < $2`, accountID, cutoff)
-	return err
+	// Hard delete of every matching row, soft-deleted ones included (the raw
+	// statement had no deleted_at filter).
+	return s.DB.WithContext(ctx).Unscoped().
+		Where("account_id = ? AND created_at < ?", accountID, cutoff).
+		Delete(&MLSKeyPackageEntity{}).Error
 }
 
 // CountMlsKeyPackagesUploadedSince counts key packages uploaded in the window
 // (used for the 10-per-account-per-24h upload limit).
 func (s *Store) CountMlsKeyPackagesUploadedSince(ctx context.Context, accountID string, since time.Time) (int64, error) {
 	var count int64
-	err := s.queryRow(ctx, `SELECT COUNT(*) FROM mls_key_packages
-		WHERE account_id = $1 AND created_at >= $2`, accountID, since).Scan(&count)
+	// Unscoped: the raw statement counted soft-deleted rows too.
+	err := s.DB.WithContext(ctx).Unscoped().Model(&MLSKeyPackageEntity{}).
+		Where("account_id = ? AND created_at >= ?", accountID, since).
+		Count(&count).Error
 	return count, err
 }
 
 // InsertMlsKeyPackage stores a published key package.
 func (s *Store) InsertMlsKeyPackage(ctx context.Context, kp *MlsKeyPackage) error {
-	_, err := s.exec(ctx, `INSERT INTO mls_key_packages (id, account_id, device_id, device_label, key_package, ciphersuite, is_consumed, consumed_at, consumed_by_account_id, meta, created_at, updated_at, deleted_at)
-		VALUES ($1, $2, $3, $4, $5, $6, false, NULL, NULL, $7, $8, $8, NULL)`,
-		kp.Id, kp.AccountId, kp.DeviceId, kp.DeviceLabel, kp.KeyPackage, kp.Ciphersuite, jsonBytes(kp.Meta), kp.CreatedAt)
-	return err
+	entity, err := mlsKeyPackageEntity(kp)
+	if err != nil {
+		return err
+	}
+	return s.DB.WithContext(ctx).Create(entity).Error
 }
 
 // CountUnconsumedMlsKeyPackages counts the non-consumed key packages of a
 // device (KP-depleted check).
 func (s *Store) CountUnconsumedMlsKeyPackages(ctx context.Context, accountID, deviceID string) (int64, error) {
 	var count int64
-	err := s.queryRow(ctx, `SELECT COUNT(*) FROM mls_key_packages
-		WHERE account_id = $1 AND device_id = $2 AND is_consumed = false AND deleted_at IS NULL`,
-		accountID, deviceID).Scan(&count)
+	err := s.DB.WithContext(ctx).Model(&MLSKeyPackageEntity{}).
+		Where("account_id = ? AND device_id = ? AND is_consumed = false", accountID, deviceID).
+		Count(&count).Error
 	return count, err
 }
 
@@ -570,67 +617,58 @@ func (s *Store) CountUnconsumedMlsKeyPackages(ctx context.Context, accountID, de
 // concurrent claims cannot return the same package twice; the consumed
 // devices are returned for the KP-depleted notification.
 func (s *Store) ListMlsDeviceKeyPackages(ctx context.Context, accountID string, requesterID *string, consume bool) ([]DeviceKeyPackage, []ConsumedDevice, error) {
-	q := queryer(s)
-	var tx *sqlTx
-	if consume {
-		var err error
-		tx, err = s.beginSerializable(ctx)
-		if err != nil {
-			return nil, nil, err
-		}
-		defer tx.Rollback(ctx)
-		q = tx
-	}
-
-	rows, err := q.Query(ctx, `SELECT `+e2eeDeviceColumns+` FROM e2ee_devices
-		WHERE account_id = $1 AND is_revoked = false AND deleted_at IS NULL ORDER BY created_at`, accountID)
-	if err != nil {
-		return nil, nil, err
-	}
-	var devices []E2eeDevice
-	for rows.Next() {
-		d, err := scanE2eeDevice(rows)
-		if err != nil {
-			rows.Close()
-			return nil, nil, err
-		}
-		devices = append(devices, *d)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, nil, err
-	}
-
 	var responses []DeviceKeyPackage
 	var consumed []ConsumedDevice
-	var dirty bool
-	for _, device := range devices {
-		row := q.QueryRow(ctx, `SELECT `+mlsKeyPackageColumns+` FROM mls_key_packages
-			WHERE account_id = $1 AND device_id = $2 AND is_consumed = false AND deleted_at IS NULL
-			ORDER BY created_at LIMIT 1`, accountID, device.DeviceId)
-		packageRow, err := scanMlsKeyPackage(row)
-		if err != nil {
-			return nil, nil, err
+	run := func(db *gorm.DB) error {
+		var deviceEntities []E2EEDeviceEntity
+		if err := db.
+			Where("account_id = ? AND is_revoked = false", accountID).
+			Order("created_at").Find(&deviceEntities).Error; err != nil {
+			return err
 		}
-		if packageRow == nil {
-			continue
-		}
-		if consume && !packageRow.IsConsumed {
-			now := time.Now().UTC()
-			if _, err := q.Exec(ctx, `UPDATE mls_key_packages
-				SET is_consumed = true, consumed_at = $2, consumed_by_account_id = $3, updated_at = $2
-				WHERE id = $1`, packageRow.Id, now, requesterID); err != nil {
-				return nil, nil, err
+		for i := range deviceEntities {
+			device := e2eeDeviceFromEntity(&deviceEntities[i])
+			var packageEntities []MLSKeyPackageEntity
+			if err := db.
+				Where("account_id = ? AND device_id = ? AND is_consumed = false", accountID, device.DeviceId).
+				Order("created_at").Limit(1).Find(&packageEntities).Error; err != nil {
+				return err
 			}
-			dirty = true
-			consumed = append(consumed, ConsumedDevice{DeviceID: device.DeviceId, DeviceLabel: device.DeviceLabel})
+			if len(packageEntities) == 0 {
+				continue
+			}
+			pkg := mlsKeyPackageFromEntity(&packageEntities[0])
+			if consume && !pkg.IsConsumed {
+				now := time.Now().UTC()
+				consumedBy, err := uuidPtrOrNil(requesterID)
+				if err != nil {
+					return err
+				}
+				if err := db.Model(&MLSKeyPackageEntity{}).
+					Where("id = ?", pkg.Id).
+					Updates(map[string]any{
+						"is_consumed":            true,
+						"consumed_at":            now,
+						"consumed_by_account_id": consumedBy,
+						"updated_at":             now,
+					}).Error; err != nil {
+					return err
+				}
+				consumed = append(consumed, ConsumedDevice{DeviceID: device.DeviceId, DeviceLabel: device.DeviceLabel})
+			}
+			responses = append(responses, DeviceKeyPackage{Device: device, Package: pkg})
 		}
-		responses = append(responses, DeviceKeyPackage{Device: device, Package: *packageRow})
+		return nil
 	}
-	if dirty && tx != nil {
-		if err := tx.Commit(ctx); err != nil {
+	if consume {
+		if err := s.DB.WithContext(ctx).
+			Transaction(run, &sql.TxOptions{Isolation: sql.LevelSerializable}); err != nil {
 			return nil, nil, err
 		}
+		return responses, consumed, nil
+	}
+	if err := run(s.DB.WithContext(ctx)); err != nil {
+		return nil, nil, err
 	}
 	return responses, consumed, nil
 }
@@ -646,52 +684,50 @@ type MlsKeyPackageStatus struct {
 // MlsKeyPackageStatusPerDevice returns the devices with fewer than 3
 // non-consumed key packages (mirrors GetMlsKeyPackageStatusAsync).
 func (s *Store) MlsKeyPackageStatusPerDevice(ctx context.Context, accountID string) ([]MlsKeyPackageStatus, error) {
-	rows, err := s.query(ctx, `SELECT d.device_id, d.device_label, COUNT(k.id)::int
-		FROM e2ee_devices d
-		LEFT JOIN mls_key_packages k ON k.account_id = d.account_id AND k.device_id = d.device_id
-			AND k.is_consumed = false AND k.deleted_at IS NULL
-		WHERE d.account_id = $1 AND d.is_revoked = false AND d.deleted_at IS NULL
-		GROUP BY d.device_id, d.device_label
-		HAVING COUNT(k.id) < 3`, accountID)
+	var statuses []MlsKeyPackageStatus
+	err := s.DB.WithContext(ctx).
+		Model(&E2EEDeviceEntity{}).
+		Select("e2ee_devices.device_id, e2ee_devices.device_label, COUNT(mls_key_packages.id)::int AS available_count").
+		Joins(`LEFT JOIN mls_key_packages
+			ON mls_key_packages.account_id = e2ee_devices.account_id
+			AND mls_key_packages.device_id = e2ee_devices.device_id
+			AND mls_key_packages.is_consumed = false AND mls_key_packages.deleted_at IS NULL`).
+		Where("e2ee_devices.account_id = ? AND e2ee_devices.is_revoked = false", accountID).
+		Group("e2ee_devices.device_id, e2ee_devices.device_label").
+		Having("COUNT(mls_key_packages.id) < 3").
+		Scan(&statuses).Error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var statuses []MlsKeyPackageStatus
-	for rows.Next() {
-		var st MlsKeyPackageStatus
-		if err := rows.Scan(&st.DeviceID, &st.DeviceLabel, &st.AvailableCount); err != nil {
-			return nil, err
-		}
-		statuses = append(statuses, st)
-	}
-	return statuses, rows.Err()
+	return statuses, nil
 }
 
 // GetCapableDevices returns the oldest unconsumed key package per group member
 // device (mirrors GetCapableDevicesAsync).
 func (s *Store) GetCapableDevices(ctx context.Context, groupID string) ([]MlsKeyPackage, error) {
-	rows, err := s.query(ctx, `SELECT `+mlsKeyPackageColumns+` FROM mls_device_memberships m
-		JOIN LATERAL (
+	var entities []MLSKeyPackageEntity
+	// Table() keeps the raw FROM/JOIN shape: the correlated LATERAL subquery
+	// cannot be expressed with a typed GORM association, and both membership
+	// soft-delete filters are part of the statement.
+	err := s.DB.WithContext(ctx).
+		Table("mls_device_memberships AS m").
+		Select("k.*").
+		Joins(`JOIN LATERAL (
 			SELECT k.* FROM mls_key_packages k
 			WHERE k.account_id = m.account_id AND k.device_id = m.device_id
 				AND k.is_consumed = false AND k.deleted_at IS NULL
 			ORDER BY k.created_at LIMIT 1
-		) k ON true
-		WHERE m.mls_group_id = $1 AND m.deleted_at IS NULL`, groupID)
+		) k ON true`).
+		Where("m.mls_group_id = ? AND m.deleted_at IS NULL", groupID).
+		Scan(&entities).Error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var packages []MlsKeyPackage
-	for rows.Next() {
-		p, err := scanMlsKeyPackage(rows)
-		if err != nil {
-			return nil, err
-		}
-		packages = append(packages, *p)
+	for i := range entities {
+		packages = append(packages, mlsKeyPackageFromEntity(&entities[i]))
 	}
-	return packages, rows.Err()
+	return packages, nil
 }
 
 // --- MLS group states ---
@@ -699,159 +735,156 @@ func (s *Store) GetCapableDevices(ctx context.Context, groupID string) ([]MlsKey
 // GetMlsGroupStateByGroupID loads the group state, returning (nil, nil) when
 // absent (FirstOrDefaultAsync semantics).
 func (s *Store) GetMlsGroupStateByGroupID(ctx context.Context, groupID string) (*MlsGroupState, error) {
-	row := s.queryRow(ctx, `SELECT `+mlsGroupStateColumns+` FROM mls_group_states
-		WHERE mls_group_id = $1 AND deleted_at IS NULL ORDER BY created_at LIMIT 1`, groupID)
-	return scanMlsGroupState(row)
+	var entities []MLSGroupStateEntity
+	if err := s.DB.WithContext(ctx).
+		Where("mls_group_id = ?", groupID).
+		Order("created_at").Limit(1).Find(&entities).Error; err != nil {
+		return nil, err
+	}
+	if len(entities) == 0 {
+		return nil, nil
+	}
+	state := mlsGroupStateFromEntity(&entities[0])
+	return &state, nil
 }
 
 // BootstrapMlsGroup creates the group state when absent inside a SERIALIZABLE
 // transaction; replaying a bootstrap returns the existing state unchanged
 // (mirrors BootstrapMlsGroupAsync).
 func (s *Store) BootstrapMlsGroup(ctx context.Context, accountID, groupID string, epoch, stateVersion int64, meta map[string]any, now time.Time) (*MlsGroupState, error) {
-	tx, err := s.beginSerializable(ctx)
+	var state *MlsGroupState
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var entities []MLSGroupStateEntity
+		if err := tx.
+			Where("mls_group_id = ?", groupID).
+			Order("created_at").Limit(1).Find(&entities).Error; err != nil {
+			return err
+		}
+		if len(entities) > 0 {
+			existing := mlsGroupStateFromEntity(&entities[0])
+			state = &existing
+			return nil
+		}
+		created, err := insertMlsGroupState(tx, groupID, epoch, stateVersion, []byte{}, []byte{}, meta, now)
+		if err != nil {
+			return err
+		}
+		state = created
+		return nil
+	}, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
-
-	row := tx.QueryRow(ctx, `SELECT `+mlsGroupStateColumns+` FROM mls_group_states
-		WHERE mls_group_id = $1 AND deleted_at IS NULL ORDER BY created_at LIMIT 1`, groupID)
-	existing, err := scanMlsGroupState(row)
-	if err != nil {
-		return nil, err
-	}
-	if existing != nil {
-		return existing, tx.Commit(ctx)
-	}
-
-	state := &MlsGroupState{
-		Id:           uuid.NewString(),
-		MlsGroupId:   groupID,
-		Epoch:        epoch,
-		StateVersion: stateVersion,
-		LastCommitAt: &now,
-		GroupInfo:    []byte{},
-		RatchetTree:  []byte{},
-		Meta:         meta,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO mls_group_states (id, mls_group_id, epoch, state_version, last_commit_at, group_info, ratchet_tree, meta, created_at, updated_at, deleted_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, NULL)`,
-		state.Id, state.MlsGroupId, state.Epoch, state.StateVersion, state.LastCommitAt,
-		state.GroupInfo, state.RatchetTree, jsonBytes(state.Meta), now); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return state, nil
 }
 
+// insertMlsGroupState writes a fresh mls_group_states row (group_info and
+// ratchet_tree are NOT NULL).
+func insertMlsGroupState(tx *gorm.DB, groupID string, epoch, stateVersion int64, groupInfo, ratchetTree []byte, meta map[string]any, now time.Time) (*MlsGroupState, error) {
+	entity := &MLSGroupStateEntity{
+		ID:           uuid.New(),
+		EntityBase:   EntityBase{CreatedAt: now, UpdatedAt: now},
+		MLSGroupID:   groupID,
+		Epoch:        epoch,
+		StateVersion: stateVersion,
+		LastCommitAt: &now,
+		GroupInfo:    groupInfo,
+		RatchetTree:  ratchetTree,
+		Meta:         jsonMapPtr(meta),
+	}
+	if err := tx.Create(entity).Error; err != nil {
+		return nil, err
+	}
+	state := mlsGroupStateFromEntity(entity)
+	return &state, nil
+}
+
 // UpdateMlsGroupState persists a mutated group state row.
 func (s *Store) UpdateMlsGroupState(ctx context.Context, state *MlsGroupState) error {
-	_, err := s.exec(ctx, `UPDATE mls_group_states
-		SET epoch = $2, state_version = $3, last_commit_at = $4, group_info = $5, ratchet_tree = $6, meta = $7, updated_at = $8
-		WHERE id = $1`,
-		state.Id, state.Epoch, state.StateVersion, state.LastCommitAt, state.GroupInfo,
-		state.RatchetTree, jsonBytes(state.Meta), state.UpdatedAt)
-	return err
+	// The raw statement matched on id alone: soft-deleted rows are updated too.
+	return s.DB.WithContext(ctx).Unscoped().Model(&MLSGroupStateEntity{}).
+		Where("id = ?", state.Id).
+		Updates(map[string]any{
+			"epoch":          state.Epoch,
+			"state_version":  state.StateVersion,
+			"last_commit_at": state.LastCommitAt,
+			"group_info":     state.GroupInfo,
+			"ratchet_tree":   state.RatchetTree,
+			"meta":           jsonMapPtr(state.Meta),
+			"updated_at":     state.UpdatedAt,
+		}).Error
 }
 
 // CreateMlsGroup inserts a fresh group state (mirrors CreateMlsGroupAsync,
 // used by the group reset flow).
 func (s *Store) CreateMlsGroup(ctx context.Context, groupID string, epoch, stateVersion int64, now time.Time) (*MlsGroupState, error) {
-	state := &MlsGroupState{
-		Id:           uuid.NewString(),
-		MlsGroupId:   groupID,
-		Epoch:        epoch,
-		StateVersion: stateVersion,
-		LastCommitAt: &now,
-		GroupInfo:    []byte{},
-		RatchetTree:  []byte{},
-		CreatedAt:    now,
-		UpdatedAt:    now,
-	}
-	if _, err := s.exec(ctx, `INSERT INTO mls_group_states (id, mls_group_id, epoch, state_version, last_commit_at, group_info, ratchet_tree, meta, created_at, updated_at, deleted_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8, $8, NULL)`,
-		state.Id, state.MlsGroupId, state.Epoch, state.StateVersion, state.LastCommitAt,
-		state.GroupInfo, state.RatchetTree, now); err != nil {
-		return nil, err
-	}
-	return state, nil
+	return insertMlsGroupState(s.DB.WithContext(ctx), groupID, epoch, stateVersion, []byte{}, []byte{}, nil, now)
 }
 
 // UploadGroupInfo writes the GroupInfo/RatchetTree for the expected epoch
 // inside a SERIALIZABLE transaction (mirrors UploadGroupInfoAsync).
 func (s *Store) UploadGroupInfo(ctx context.Context, groupID string, groupInfo, ratchetTree []byte, expectedEpoch *int64, now time.Time) (*UploadGroupInfoResult, error) {
-	tx, err := s.beginSerializable(ctx)
+	var result *UploadGroupInfoResult
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var entities []MLSGroupStateEntity
+		if err := tx.
+			Where("mls_group_id = ?", groupID).
+			Order("created_at").Limit(1).Find(&entities).Error; err != nil {
+			return err
+		}
+		if len(entities) == 0 { // no state row
+			if expectedEpoch != nil {
+				result = &UploadGroupInfoResult{Success: false, GroupID: groupID, Epoch: -1}
+				return nil
+			}
+			state, err := insertMlsGroupState(tx, groupID, 0, 0, groupInfo, ratchetTree, nil, now)
+			if err != nil {
+				return err
+			}
+			result = &UploadGroupInfoResult{Success: true, GroupID: state.MlsGroupId, Epoch: 0}
+			return nil
+		}
+		state := mlsGroupStateFromEntity(&entities[0])
+		if expectedEpoch != nil && state.Epoch != *expectedEpoch {
+			result = &UploadGroupInfoResult{Success: false, GroupID: state.MlsGroupId, Epoch: state.Epoch}
+			return nil
+		}
+		if err := tx.Model(&MLSGroupStateEntity{}).
+			Where("id = ?", state.Id).
+			Updates(map[string]any{
+				"group_info":   groupInfo,
+				"ratchet_tree": ratchetTree,
+				"updated_at":   now,
+			}).Error; err != nil {
+			return err
+		}
+		result = &UploadGroupInfoResult{Success: true, GroupID: state.MlsGroupId, Epoch: state.Epoch}
+		return nil
+	}, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(ctx)
-
-	row := tx.QueryRow(ctx, `SELECT `+mlsGroupStateColumns+` FROM mls_group_states
-		WHERE mls_group_id = $1 AND deleted_at IS NULL ORDER BY created_at LIMIT 1`, groupID)
-	state, err := scanMlsGroupState(row)
-	if err != nil {
-		return nil, err
-	}
-	if state == nil { // no state row
-		if expectedEpoch != nil {
-			return &UploadGroupInfoResult{Success: false, GroupID: groupID, Epoch: -1}, tx.Commit(ctx)
-		}
-		state = &MlsGroupState{
-			Id:           uuid.NewString(),
-			MlsGroupId:   groupID,
-			Epoch:        0,
-			StateVersion: 0,
-			GroupInfo:    groupInfo,
-			RatchetTree:  ratchetTree,
-			LastCommitAt: &now,
-			CreatedAt:    now,
-			UpdatedAt:    now,
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO mls_group_states (id, mls_group_id, epoch, state_version, last_commit_at, group_info, ratchet_tree, meta, created_at, updated_at, deleted_at)
-			VALUES ($1, $2, 0, 0, $3, $4, $5, NULL, $6, $6, NULL)`,
-			state.Id, state.MlsGroupId, now, groupInfo, ratchetTree, now); err != nil {
-			return nil, err
-		}
-		if err := tx.Commit(ctx); err != nil {
-			return nil, err
-		}
-		return &UploadGroupInfoResult{Success: true, GroupID: state.MlsGroupId, Epoch: 0}, nil
-	}
-
-	if expectedEpoch != nil && state.Epoch != *expectedEpoch {
-		return &UploadGroupInfoResult{Success: false, GroupID: state.MlsGroupId, Epoch: state.Epoch}, tx.Commit(ctx)
-	}
-	state.GroupInfo = groupInfo
-	state.RatchetTree = ratchetTree
-	state.UpdatedAt = now
-	if _, err := tx.Exec(ctx, `UPDATE mls_group_states SET group_info = $2, ratchet_tree = $3, updated_at = $4 WHERE id = $1`,
-		state.Id, groupInfo, ratchetTree, now); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	return &UploadGroupInfoResult{Success: true, GroupID: state.MlsGroupId, Epoch: state.Epoch}, nil
+	return result, nil
 }
 
 // DeleteMlsGroup soft-deletes the group states and member device rows of a
 // group (EF RemoveRange + the soft-delete save interceptor), returning the
 // number of deleted states.
 func (s *Store) DeleteMlsGroup(ctx context.Context, groupID string, now time.Time) (int64, error) {
-	tag, err := s.exec(ctx, `UPDATE mls_group_states SET deleted_at = $2, updated_at = $2
-		WHERE mls_group_id = $1 AND deleted_at IS NULL`, groupID, now)
-	if err != nil {
+	// The soft-delete save interceptor stamped updated_at as well, so the
+	// deleted_at column is written explicitly.
+	states := s.DB.WithContext(ctx).Model(&MLSGroupStateEntity{}).
+		Where("mls_group_id = ? AND deleted_at IS NULL", groupID).
+		Updates(map[string]any{"deleted_at": now, "updated_at": now})
+	if states.Error != nil {
+		return 0, states.Error
+	}
+	if err := s.DB.WithContext(ctx).Model(&MLSDeviceMembershipEntity{}).
+		Where("mls_group_id = ? AND deleted_at IS NULL", groupID).
+		Updates(map[string]any{"deleted_at": now, "updated_at": now}).Error; err != nil {
 		return 0, err
 	}
-	if _, err := s.exec(ctx, `UPDATE mls_device_memberships SET deleted_at = $2, updated_at = $2
-		WHERE mls_group_id = $1 AND deleted_at IS NULL`, groupID, now); err != nil {
-		return 0, err
-	}
-	return tag.RowsAffected(), nil
+	return states.RowsAffected, nil
 }
 
 // --- MLS device memberships ---
@@ -859,94 +892,96 @@ func (s *Store) DeleteMlsGroup(ctx context.Context, groupID string, now time.Tim
 // ListMlsMembershipsByGroup lists the member devices of a group (excludes
 // soft-deleted rows).
 func (s *Store) ListMlsMembershipsByGroup(ctx context.Context, groupID string) ([]MlsDeviceMembership, error) {
-	rows, err := s.query(ctx, `SELECT `+mlsDeviceMembershipColumns+` FROM mls_device_memberships
-		WHERE mls_group_id = $1 AND deleted_at IS NULL`, groupID)
-	if err != nil {
+	var entities []MLSDeviceMembershipEntity
+	if err := s.DB.WithContext(ctx).
+		Where("mls_group_id = ?", groupID).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var memberships []MlsDeviceMembership
-	for rows.Next() {
-		m, err := scanMlsDeviceMembership(rows)
-		if err != nil {
-			return nil, err
-		}
-		memberships = append(memberships, *m)
+	for i := range entities {
+		memberships = append(memberships, mlsDeviceMembershipFromEntity(&entities[i]))
 	}
-	return memberships, rows.Err()
+	return memberships, nil
 }
 
 // ListMlsGroupMemberAccountIDs returns the distinct member account ids of a
 // group (group reset notification).
 func (s *Store) ListMlsGroupMemberAccountIDs(ctx context.Context, groupID string) ([]string, error) {
-	rows, err := s.query(ctx, `SELECT DISTINCT account_id FROM mls_device_memberships
-		WHERE mls_group_id = $1 AND deleted_at IS NULL`, groupID)
-	if err != nil {
+	var entities []MLSDeviceMembershipEntity
+	if err := s.DB.WithContext(ctx).
+		Select("account_id").
+		Where("mls_group_id = ?", groupID).
+		Distinct().Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	seen := map[string]bool{}
 	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
+	for i := range entities {
+		id := entities[i].AccountID.String()
+		if seen[id] {
+			continue
 		}
+		seen[id] = true
 		ids = append(ids, id)
 	}
-	return ids, rows.Err()
+	return ids, nil
 }
 
 // IsMlsGroupMember reports whether (account, device) is a member of the group.
 func (s *Store) IsMlsGroupMember(ctx context.Context, accountID, deviceID, groupID string) (bool, error) {
-	var exists bool
-	err := s.queryRow(ctx, `SELECT EXISTS(
-		SELECT 1 FROM mls_device_memberships
-		WHERE mls_group_id = $1 AND account_id = $2 AND device_id = $3 AND deleted_at IS NULL)`,
-		groupID, accountID, deviceID).Scan(&exists)
-	return exists, err
+	var count int64
+	err := s.DB.WithContext(ctx).Model(&MLSDeviceMembershipEntity{}).
+		Where("mls_group_id = ? AND account_id = ? AND device_id = ?", groupID, accountID, deviceID).
+		Limit(1).Count(&count).Error
+	return count > 0, err
 }
 
 // MarkMlsReshareRequired creates or updates the membership with
 // last_reshare_required_at set (mirrors MarkMlsReshareRequiredAsync).
 func (s *Store) MarkMlsReshareRequired(ctx context.Context, groupID, accountID, deviceID string, epoch int64, now time.Time) (*MlsDeviceMembership, error) {
-	row := s.queryRow(ctx, `SELECT `+mlsDeviceMembershipColumns+` FROM mls_device_memberships
-		WHERE mls_group_id = $1 AND account_id = $2 AND device_id = $3 AND deleted_at IS NULL
-		LIMIT 1`, groupID, accountID, deviceID)
-	membership, err := scanMlsDeviceMembership(row)
-	if err != nil {
+	var entities []MLSDeviceMembershipEntity
+	if err := s.DB.WithContext(ctx).
+		Where("mls_group_id = ? AND account_id = ? AND device_id = ?", groupID, accountID, deviceID).
+		Limit(1).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	if membership == nil { // create
-		lastSeen := epoch
-		membership = &MlsDeviceMembership{
-			Id:          uuid.NewString(),
-			MlsGroupId:  groupID,
-			AccountId:   accountID,
-			DeviceId:    deviceID,
-			JoinedEpoch: epoch,
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		}
-		if _, err := s.exec(ctx, `INSERT INTO mls_device_memberships (id, mls_group_id, account_id, device_id, joined_epoch, last_seen_epoch, last_reshare_required_at, last_reshare_completed_at, created_at, updated_at, deleted_at)
-			VALUES ($1, $2, $3, $4, $5, $5, $6, NULL, $7, $7, NULL)`,
-			membership.Id, membership.MlsGroupId, membership.AccountId, membership.DeviceId,
-			membership.JoinedEpoch, now, now); err != nil {
+	if len(entities) == 0 { // create
+		accountUUID, err := uuidValue(accountID)
+		if err != nil {
 			return nil, err
 		}
-		membership.LastSeenEpoch = &lastSeen
-		membership.LastReshareRequiredAt = &now
-		return membership, nil
+		lastSeen := epoch
+		entity := &MLSDeviceMembershipEntity{
+			ID:                    uuid.New(),
+			EntityBase:            EntityBase{CreatedAt: now, UpdatedAt: now},
+			MLSGroupID:            groupID,
+			AccountID:             accountUUID,
+			DeviceID:              deviceID,
+			JoinedEpoch:           epoch,
+			LastSeenEpoch:         &lastSeen,
+			LastReshareRequiredAt: &now,
+		}
+		if err := s.DB.WithContext(ctx).Create(entity).Error; err != nil {
+			return nil, err
+		}
+		membership := mlsDeviceMembershipFromEntity(entity)
+		return &membership, nil
 	}
+	membership := mlsDeviceMembershipFromEntity(&entities[0])
 	lastSeen := epoch
-	if _, err := s.exec(ctx, `UPDATE mls_device_memberships
-		SET last_seen_epoch = $2, last_reshare_required_at = $3, updated_at = $3
-		WHERE id = $1`, membership.Id, epoch, now); err != nil {
+	if err := s.DB.WithContext(ctx).Model(&MLSDeviceMembershipEntity{}).
+		Where("id = ?", membership.Id).
+		Updates(map[string]any{
+			"last_seen_epoch":          epoch,
+			"last_reshare_required_at": now,
+			"updated_at":               now,
+		}).Error; err != nil {
 		return nil, err
 	}
 	membership.LastSeenEpoch = &lastSeen
 	membership.LastReshareRequiredAt = &now
 	membership.UpdatedAt = now
-	return membership, nil
+	return &membership, nil
 }
 
 // UpsertMlsDeviceMembership creates or revives the membership row. Unlike the
@@ -954,37 +989,45 @@ func (s *Store) MarkMlsReshareRequired(ctx context.Context, groupID, accountID, 
 // IgnoreQueryFilters) and clears the reshare markers (mirrors
 // AddMlsDeviceMembershipAsync).
 func (s *Store) UpsertMlsDeviceMembership(ctx context.Context, groupID, accountID, deviceID string, epoch int64, now time.Time) (*MlsDeviceMembership, error) {
-	row := s.queryRow(ctx, `SELECT `+mlsDeviceMembershipColumns+` FROM mls_device_memberships
-		WHERE mls_group_id = $1 AND account_id = $2 AND device_id = $3 LIMIT 1`, groupID, accountID, deviceID)
-	membership, err := scanMlsDeviceMembership(row)
-	if err != nil {
+	var entities []MLSDeviceMembershipEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Where("mls_group_id = ? AND account_id = ? AND device_id = ?", groupID, accountID, deviceID).
+		Limit(1).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	if membership == nil {
-		lastSeen := epoch
-		membership = &MlsDeviceMembership{
-			Id:            uuid.NewString(),
-			MlsGroupId:    groupID,
-			AccountId:     accountID,
-			DeviceId:      deviceID,
-			JoinedEpoch:   epoch,
-			LastSeenEpoch: &lastSeen,
-			CreatedAt:     now,
-			UpdatedAt:     now,
-		}
-		_, err := s.exec(ctx, `INSERT INTO mls_device_memberships (id, mls_group_id, account_id, device_id, joined_epoch, last_seen_epoch, last_reshare_required_at, last_reshare_completed_at, created_at, updated_at, deleted_at)
-			VALUES ($1, $2, $3, $4, $5, $5, NULL, NULL, $6, $6, NULL)`,
-			membership.Id, membership.MlsGroupId, membership.AccountId, membership.DeviceId,
-			membership.JoinedEpoch, now)
+	if len(entities) == 0 {
+		accountUUID, err := uuidValue(accountID)
 		if err != nil {
 			return nil, err
 		}
-		return membership, nil
+		lastSeen := epoch
+		entity := &MLSDeviceMembershipEntity{
+			ID:            uuid.New(),
+			EntityBase:    EntityBase{CreatedAt: now, UpdatedAt: now},
+			MLSGroupID:    groupID,
+			AccountID:     accountUUID,
+			DeviceID:      deviceID,
+			JoinedEpoch:   epoch,
+			LastSeenEpoch: &lastSeen,
+		}
+		if err := s.DB.WithContext(ctx).Create(entity).Error; err != nil {
+			return nil, err
+		}
+		membership := mlsDeviceMembershipFromEntity(entity)
+		return &membership, nil
 	}
+	membership := mlsDeviceMembershipFromEntity(&entities[0])
 	lastSeen := epoch
-	if _, err := s.exec(ctx, `UPDATE mls_device_memberships
-		SET deleted_at = NULL, last_seen_epoch = $2, last_reshare_required_at = NULL, last_reshare_completed_at = NULL, updated_at = $3
-		WHERE id = $1`, membership.Id, epoch, now); err != nil {
+	// Unscoped: the raw statement matched soft-deleted rows and revived them.
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&MLSDeviceMembershipEntity{}).
+		Where("id = ?", membership.Id).
+		Updates(map[string]any{
+			"deleted_at":                nil,
+			"last_seen_epoch":           epoch,
+			"last_reshare_required_at":  nil,
+			"last_reshare_completed_at": nil,
+			"updated_at":                now,
+		}).Error; err != nil {
 		return nil, err
 	}
 	membership.DeletedAt = nil
@@ -992,70 +1035,71 @@ func (s *Store) UpsertMlsDeviceMembership(ctx context.Context, groupID, accountI
 	membership.LastReshareRequiredAt = nil
 	membership.LastReshareCompletedAt = nil
 	membership.UpdatedAt = now
-	return membership, nil
+	return &membership, nil
 }
 
 // ListDeviceReshareStatus lists the pending reshare memberships of a device
 // (last_reshare_required_at set, last_reshare_completed_at null).
 func (s *Store) ListDeviceReshareStatus(ctx context.Context, accountID, deviceID string) ([]MlsDeviceMembership, error) {
-	rows, err := s.query(ctx, `SELECT `+mlsDeviceMembershipColumns+` FROM mls_device_memberships
-		WHERE account_id = $1 AND device_id = $2
-			AND last_reshare_required_at IS NOT NULL AND last_reshare_completed_at IS NULL
-			AND deleted_at IS NULL`, accountID, deviceID)
-	if err != nil {
+	var entities []MLSDeviceMembershipEntity
+	if err := s.DB.WithContext(ctx).
+		Where(`account_id = ? AND device_id = ?
+			AND last_reshare_required_at IS NOT NULL AND last_reshare_completed_at IS NULL`,
+			accountID, deviceID).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var memberships []MlsDeviceMembership
-	for rows.Next() {
-		m, err := scanMlsDeviceMembership(rows)
-		if err != nil {
-			return nil, err
-		}
-		memberships = append(memberships, *m)
+	for i := range entities {
+		memberships = append(memberships, mlsDeviceMembershipFromEntity(&entities[i]))
 	}
-	return memberships, rows.Err()
+	return memberships, nil
 }
 
 // CompleteMlsReshare sets last_reshare_completed_at on the membership.
 func (s *Store) CompleteMlsReshare(ctx context.Context, accountID, deviceID, groupID string, now time.Time) (bool, error) {
-	tag, err := s.exec(ctx, `UPDATE mls_device_memberships
-		SET last_reshare_completed_at = $2, updated_at = $2
-		WHERE account_id = $1 AND device_id = $2 AND mls_group_id = $3 AND deleted_at IS NULL`,
-		accountID, deviceID, groupID, now)
-	if err != nil {
-		return false, err
+	res := s.DB.WithContext(ctx).Model(&MLSDeviceMembershipEntity{}).
+		Where("account_id = ? AND device_id = ? AND mls_group_id = ?", accountID, deviceID, groupID).
+		Updates(map[string]any{"last_reshare_completed_at": now, "updated_at": now})
+	if res.Error != nil {
+		return false, res.Error
 	}
-	return tag.RowsAffected() > 0, nil
+	return res.RowsAffected > 0, nil
 }
 
 // MarkAllDevicesReshareRequired flags every group member device for reshare
 // (group reset), returning the number of memberships updated.
 func (s *Store) MarkAllDevicesReshareRequired(ctx context.Context, groupID string, now time.Time) (int64, error) {
-	tag, err := s.exec(ctx, `UPDATE mls_device_memberships
-		SET last_reshare_required_at = $2, last_reshare_completed_at = NULL, updated_at = $2
-		WHERE mls_group_id = $1 AND deleted_at IS NULL`, groupID, now)
-	if err != nil {
-		return 0, err
+	res := s.DB.WithContext(ctx).Model(&MLSDeviceMembershipEntity{}).
+		Where("mls_group_id = ?", groupID).
+		Updates(map[string]any{
+			"last_reshare_required_at":  now,
+			"last_reshare_completed_at": nil,
+			"updated_at":                now,
+		})
+	if res.Error != nil {
+		return 0, res.Error
 	}
-	return tag.RowsAffected(), nil
+	return res.RowsAffected, nil
 }
 
 // --- E2EE sessions / envelopes ---
 
 // AccountExists reports whether the account row exists.
 func (s *Store) AccountExists(ctx context.Context, accountID string) (bool, error) {
-	var exists bool
-	err := s.queryRow(ctx, `SELECT EXISTS(SELECT 1 FROM accounts WHERE id = $1 AND deleted_at IS NULL)`, accountID).Scan(&exists)
-	return exists, err
+	var count int64
+	if err := s.DB.WithContext(ctx).Model(&AccountEntity{}).
+		Where("id = ?", accountID).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // TouchE2eeSession bumps the session's last_message_at (fanout with a session
 // id).
 func (s *Store) TouchE2eeSession(ctx context.Context, sessionID string, now time.Time) error {
-	_, err := s.exec(ctx, `UPDATE e2ee_sessions SET last_message_at = $2, updated_at = $2
-		WHERE id = $1 AND deleted_at IS NULL`, sessionID, now)
-	return err
+	return s.DB.WithContext(ctx).Model(&E2EESessionEntity{}).
+		Where("id = ?", sessionID).
+		Updates(map[string]any{"last_message_at": now, "updated_at": now}).Error
 }
 
 // InsertEnvelope stores an envelope deduplicating on client_message_id and
@@ -1065,33 +1109,42 @@ func (s *Store) TouchE2eeSession(ctx context.Context, sessionID string, now time
 // nothing is inserted.
 func (s *Store) InsertEnvelope(ctx context.Context, env *E2eeEnvelope) (*E2eeEnvelope, error) {
 	if env.ClientMessageId != nil && *env.ClientMessageId != "" {
-		row := s.queryRow(ctx, `SELECT `+e2eeEnvelopeColumns+` FROM e2ee_envelopes
-			WHERE sender_id = $1 AND sender_device_id IS NOT DISTINCT FROM $2
-				AND recipient_account_id = $3 AND recipient_device_id IS NOT DISTINCT FROM $4
-				AND client_message_id = $5 AND deleted_at IS NULL
-			LIMIT 1`,
-			env.SenderId, env.SenderDeviceId, env.RecipientAccountId, env.RecipientDeviceId, env.ClientMessageId)
-		existing, err := scanE2eeEnvelope(row)
-		if err != nil {
+		var entities []E2EEEnvelopeEntity
+		if err := s.DB.WithContext(ctx).
+			Where(`sender_id = ? AND sender_device_id IS NOT DISTINCT FROM ?
+				AND recipient_account_id = ? AND recipient_device_id IS NOT DISTINCT FROM ?
+				AND client_message_id = ?`,
+				env.SenderId, env.SenderDeviceId, env.RecipientAccountId, env.RecipientDeviceId, env.ClientMessageId).
+			Limit(1).Find(&entities).Error; err != nil {
 			return nil, err
 		}
-		if existing != nil {
-			return existing, nil
+		if len(entities) > 0 {
+			existing := e2eeEnvelopeFromEntity(&entities[0])
+			return &existing, nil
 		}
 	}
 	var seq int64
-	if err := s.queryRow(ctx, `SELECT COALESCE(MAX(sequence),0)+1 FROM e2ee_envelopes
-		WHERE recipient_account_id = $1 AND recipient_device_id IS NOT DISTINCT FROM $2`,
-		env.RecipientAccountId, env.RecipientDeviceId).Scan(&seq); err != nil {
+	// Unscoped: the raw statement did not filter soft-deleted rows.
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&E2EEEnvelopeEntity{}).
+		Select("COALESCE(MAX(sequence),0)+1").
+		Where("recipient_account_id = ? AND recipient_device_id IS NOT DISTINCT FROM ?",
+			env.RecipientAccountId, env.RecipientDeviceId).
+		Scan(&seq).Error; err != nil {
 		return nil, err
 	}
 	env.Sequence = seq
-	_, err := s.exec(ctx, `INSERT INTO e2ee_envelopes (id, sender_id, sender_device_id, recipient_id, recipient_account_id, recipient_device_id, session_id, type, group_id, client_message_id, sequence, ciphertext, header, signature, delivery_status, delivered_at, acked_at, expires_at, legacy_account_scoped, meta, created_at, updated_at, deleted_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 0, NULL, NULL, $15, $16, $17, $18, $18, NULL)`,
-		env.Id, env.SenderId, env.SenderDeviceId, env.RecipientId, env.RecipientAccountId, env.RecipientDeviceId,
-		env.SessionId, env.Type, env.GroupId, env.ClientMessageId, env.Sequence, env.Ciphertext, env.Header,
-		env.Signature, env.ExpiresAt, env.LegacyAccountScoped, jsonBytes(env.Meta), env.CreatedAt)
+	entity, err := e2eeEnvelopeEntity(env)
 	if err != nil {
+		return nil, err
+	}
+	// The INSERT pinned the envelope to Pending and stamped created_at for both
+	// timestamps.
+	entity.Sequence = seq
+	entity.DeliveryStatus = 0
+	entity.DeliveredAt = nil
+	entity.AckedAt = nil
+	entity.UpdatedAt = env.CreatedAt
+	if err := s.DB.WithContext(ctx).Create(entity).Error; err != nil {
 		return nil, err
 	}
 	return env, nil
@@ -1102,45 +1155,41 @@ func (s *Store) InsertEnvelope(ctx context.Context, env *E2eeEnvelope) (*E2eeEnv
 // pending rows Delivered (mirrors GetPendingEnvelopesByDeviceAsync). Returns
 // an empty slice when the device is not active.
 func (s *Store) GetPendingEnvelopesByDevice(ctx context.Context, accountID, deviceID string, take int, now time.Time) ([]E2eeEnvelope, error) {
-	var active bool
-	if err := s.queryRow(ctx, `SELECT EXISTS(
-		SELECT 1 FROM e2ee_devices WHERE account_id = $1 AND device_id = $2 AND is_revoked = false AND deleted_at IS NULL)`,
-		accountID, deviceID).Scan(&active); err != nil {
+	var active int64
+	if err := s.DB.WithContext(ctx).Model(&E2EEDeviceEntity{}).
+		Where("account_id = ? AND device_id = ? AND is_revoked = false", accountID, deviceID).
+		Limit(1).Count(&active).Error; err != nil {
 		return nil, err
 	}
-	if !active {
+	if active == 0 {
 		return nil, nil
 	}
 
-	rows, err := s.query(ctx, `SELECT `+e2eeEnvelopeColumns+` FROM e2ee_envelopes
-		WHERE recipient_account_id = $1 AND recipient_device_id = $2
-			AND delivery_status <> 2
-			AND (expires_at IS NULL OR expires_at > $3)
-		ORDER BY sequence LIMIT $4`, accountID, deviceID, now, take)
-	if err != nil {
+	var entities []E2EEEnvelopeEntity
+	// Unscoped: the raw statement did not filter soft-deleted rows.
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Where(`recipient_account_id = ? AND recipient_device_id = ?
+			AND delivery_status <> 2 AND (expires_at IS NULL OR expires_at > ?)`,
+			accountID, deviceID, now).
+		Order("sequence").Limit(take).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var envelopes []E2eeEnvelope
 	var pendingIDs []string
-	for rows.Next() {
-		e, err := scanE2eeEnvelope(rows)
-		if err != nil {
-			return nil, err
+	for i := range entities {
+		envelope := e2eeEnvelopeFromEntity(&entities[i])
+		if envelope.DeliveryStatus == 0 { // Pending
+			pendingIDs = append(pendingIDs, envelope.Id)
+			envelope.DeliveryStatus = 1 // Delivered
+			envelope.DeliveredAt = &now
 		}
-		if e.DeliveryStatus == 0 { // Pending
-			pendingIDs = append(pendingIDs, e.Id)
-			e.DeliveryStatus = 1 // Delivered
-			e.DeliveredAt = &now
-		}
-		envelopes = append(envelopes, *e)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+		envelopes = append(envelopes, envelope)
 	}
 	if len(pendingIDs) > 0 {
-		if _, err := s.exec(ctx, `UPDATE e2ee_envelopes SET delivery_status = 1, delivered_at = $2, updated_at = $2
-			WHERE id = ANY($1)`, pendingIDs, now); err != nil {
+		// Unscoped: the raw statement matched on id alone.
+		if err := s.DB.WithContext(ctx).Unscoped().Model(&E2EEEnvelopeEntity{}).
+			Where("id IN ?", pendingIDs).
+			Updates(map[string]any{"delivery_status": 1, "delivered_at": now, "updated_at": now}).Error; err != nil {
 			return nil, err
 		}
 	}
@@ -1151,40 +1200,42 @@ func (s *Store) GetPendingEnvelopesByDevice(ctx context.Context, accountID, devi
 // device is inactive or the envelope is missing (both map to the C# null
 // result).
 func (s *Store) AckEnvelopeByDevice(ctx context.Context, accountID, deviceID, envelopeID string, now time.Time) (*E2eeEnvelope, error) {
-	var active bool
-	if err := s.queryRow(ctx, `SELECT EXISTS(
-		SELECT 1 FROM e2ee_devices WHERE account_id = $1 AND device_id = $2 AND is_revoked = false AND deleted_at IS NULL)`,
-		accountID, deviceID).Scan(&active); err != nil {
+	var active int64
+	if err := s.DB.WithContext(ctx).Model(&E2EEDeviceEntity{}).
+		Where("account_id = ? AND device_id = ? AND is_revoked = false", accountID, deviceID).
+		Limit(1).Count(&active).Error; err != nil {
 		return nil, err
 	}
-	if !active {
+	if active == 0 {
 		return nil, nil
 	}
-	row := s.queryRow(ctx, `SELECT `+e2eeEnvelopeColumns+` FROM e2ee_envelopes
-		WHERE id = $1 AND recipient_account_id = $2 AND recipient_device_id = $3 AND deleted_at IS NULL`,
-		envelopeID, accountID, deviceID)
-	env, err := scanE2eeEnvelope(row)
-	if err != nil {
+	var entities []E2EEEnvelopeEntity
+	if err := s.DB.WithContext(ctx).
+		Where("id = ? AND recipient_account_id = ? AND recipient_device_id = ?", envelopeID, accountID, deviceID).
+		Limit(1).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	if env == nil {
+	if len(entities) == 0 {
 		return nil, nil
 	}
-	if _, err := s.exec(ctx, `UPDATE e2ee_envelopes SET delivery_status = 2, acked_at = $2, updated_at = $2 WHERE id = $1`,
-		env.Id, now); err != nil {
+	envelope := e2eeEnvelopeFromEntity(&entities[0])
+	if err := s.DB.WithContext(ctx).Model(&E2EEEnvelopeEntity{}).
+		Where("id = ?", envelope.Id).
+		Updates(map[string]any{"delivery_status": 2, "acked_at": now, "updated_at": now}).Error; err != nil {
 		return nil, err
 	}
-	env.DeliveryStatus = 2
-	env.AckedAt = &now
-	env.UpdatedAt = now
-	return env, nil
+	envelope.DeliveryStatus = 2
+	envelope.AckedAt = &now
+	envelope.UpdatedAt = now
+	return &envelope, nil
 }
 
 // MarkEnvelopeDelivered flips a pushed envelope to Delivered.
 func (s *Store) MarkEnvelopeDelivered(ctx context.Context, envelopeID string, now time.Time) error {
-	_, err := s.exec(ctx, `UPDATE e2ee_envelopes SET delivery_status = 1, delivered_at = $2, updated_at = $2
-		WHERE id = $1`, envelopeID, now)
-	return err
+	// Unscoped: the raw statement matched on id alone.
+	return s.DB.WithContext(ctx).Unscoped().Model(&E2EEEnvelopeEntity{}).
+		Where("id = ?", envelopeID).
+		Updates(map[string]any{"delivery_status": 1, "delivered_at": now, "updated_at": now}).Error
 }
 
 // RevokeDevice marks the device revoked, purges its unacknowledged pending
@@ -1193,229 +1244,388 @@ func (s *Store) MarkEnvelopeDelivered(ctx context.Context, envelopeID string, no
 // SaveChanges transaction wraps the same steps).
 func (s *Store) RevokeDevice(ctx context.Context, accountID, deviceID string, now time.Time) (*RevokeDeviceResult, error) {
 	result := &RevokeDeviceResult{}
-	tx, err := s.beginSerializable(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
-
-	row := tx.QueryRow(ctx, `SELECT `+e2eeDeviceColumns+` FROM e2ee_devices
-		WHERE account_id = $1 AND device_id = $2 AND deleted_at IS NULL`, accountID, deviceID)
-	device, err := scanE2eeDevice(row)
-	if err != nil {
-		return nil, err
-	}
-	if device == nil {
-		return result, tx.Commit(ctx)
-	}
-	result.Found = true
-	if device.IsRevoked {
-		result.AlreadyRevoked = true
-		return result, tx.Commit(ctx)
-	}
-	if _, err := tx.Exec(ctx, `UPDATE e2ee_devices SET is_revoked = true, revoked_at = $2, updated_at = $2 WHERE id = $1`,
-		device.Id, now); err != nil {
-		return nil, err
-	}
-
-	// Purge pending envelopes for the revoked device.
-	rows, err := tx.Query(ctx, `DELETE FROM e2ee_envelopes
-		WHERE recipient_account_id = $1 AND recipient_device_id = $2 AND delivery_status <> 2 RETURNING id`,
-		accountID, deviceID)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		result.PurgedCount++
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	// Control envelopes for sibling devices.
-	siblingRows, err := tx.Query(ctx, `SELECT device_id FROM e2ee_devices
-		WHERE account_id = $1 AND is_revoked = false AND device_id <> $2 AND deleted_at IS NULL`, accountID, deviceID)
-	if err != nil {
-		return nil, err
-	}
-	var siblings []string
-	for siblingRows.Next() {
-		var id string
-		if err := siblingRows.Scan(&id); err != nil {
-			siblingRows.Close()
-			return nil, err
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var deviceEntities []E2EEDeviceEntity
+		if err := tx.
+			Where("account_id = ? AND device_id = ?", accountID, deviceID).
+			Limit(1).Find(&deviceEntities).Error; err != nil {
+			return err
 		}
-		siblings = append(siblings, id)
-	}
-	siblingRows.Close()
-	if err := siblingRows.Err(); err != nil {
-		return nil, err
-	}
+		if len(deviceEntities) == 0 {
+			return nil
+		}
+		device := e2eeDeviceFromEntity(&deviceEntities[0])
+		result.Found = true
+		if device.IsRevoked {
+			result.AlreadyRevoked = true
+			return nil
+		}
+		if err := tx.Model(&E2EEDeviceEntity{}).
+			Where("id = ?", device.Id).
+			Updates(map[string]any{"is_revoked": true, "revoked_at": now, "updated_at": now}).Error; err != nil {
+			return err
+		}
 
-	for _, targetDeviceID := range siblings {
-		clientMessageID := fmt.Sprintf("mls-revoke-%s-%d-%s", deviceID, now.UnixMilli(), targetDeviceID)
-		var seq int64
-		if err := tx.QueryRow(ctx, `SELECT COALESCE(MAX(sequence),0)+1 FROM e2ee_envelopes
-			WHERE recipient_account_id = $1 AND recipient_device_id IS NOT DISTINCT FROM $2`,
-			accountID, targetDeviceID).Scan(&seq); err != nil {
-			return nil, err
+		// Purge pending envelopes for the revoked device (hard delete).
+		purged := tx.Unscoped().
+			Where("recipient_account_id = ? AND recipient_device_id = ? AND delivery_status <> 2", accountID, deviceID).
+			Delete(&E2EEEnvelopeEntity{})
+		if purged.Error != nil {
+			return purged.Error
 		}
-		control := E2eeEnvelope{
-			Id:                 uuid.NewString(),
-			SenderId:           accountID,
-			SenderDeviceId:     strPtr(LegacyDeviceID),
-			RecipientId:        accountID,
-			RecipientAccountId: accountID,
-			RecipientDeviceId:  &targetDeviceID,
-			Type:               3, // Control
-			ClientMessageId:    &clientMessageID,
-			Sequence:           seq,
-			Ciphertext:         []byte{1},
-			Meta:               map[string]any{"event": "mls_device_revoked", "revoked_device_id": deviceID},
-			CreatedAt:          now,
-			UpdatedAt:          now,
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO e2ee_envelopes (id, sender_id, sender_device_id, recipient_id, recipient_account_id, recipient_device_id, session_id, type, group_id, client_message_id, sequence, ciphertext, header, signature, delivery_status, delivered_at, acked_at, expires_at, legacy_account_scoped, meta, created_at, updated_at, deleted_at)
-			VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, NULL, $8, $9, $10, NULL, NULL, 0, NULL, NULL, NULL, false, $11, $12, $12, NULL)`,
-			control.Id, control.SenderId, control.SenderDeviceId, control.RecipientId, control.RecipientAccountId,
-			control.RecipientDeviceId, control.Type, control.ClientMessageId, control.Sequence, control.Ciphertext,
-			jsonBytes(control.Meta), now); err != nil {
-			return nil, err
-		}
-		result.ControlEnvelopes = append(result.ControlEnvelopes, control)
-	}
+		result.PurgedCount = int(purged.RowsAffected)
 
-	if err := tx.Commit(ctx); err != nil {
+		// Control envelopes for sibling devices.
+		var siblingEntities []E2EEDeviceEntity
+		if err := tx.
+			Select("device_id").
+			Where("account_id = ? AND is_revoked = false AND device_id <> ?", accountID, deviceID).
+			Find(&siblingEntities).Error; err != nil {
+			return err
+		}
+
+		for i := range siblingEntities {
+			targetDeviceID := siblingEntities[i].DeviceID
+			clientMessageID := fmt.Sprintf("mls-revoke-%s-%d-%s", deviceID, now.UnixMilli(), targetDeviceID)
+			var seq int64
+			// Unscoped: the raw statement did not filter soft-deleted rows.
+			if err := tx.Unscoped().Model(&E2EEEnvelopeEntity{}).
+				Select("COALESCE(MAX(sequence),0)+1").
+				Where("recipient_account_id = ? AND recipient_device_id IS NOT DISTINCT FROM ?", accountID, targetDeviceID).
+				Scan(&seq).Error; err != nil {
+				return err
+			}
+			control := E2eeEnvelope{
+				Id:                 uuid.NewString(),
+				SenderId:           accountID,
+				SenderDeviceId:     strPtr(LegacyDeviceID),
+				RecipientId:        accountID,
+				RecipientAccountId: accountID,
+				RecipientDeviceId:  &targetDeviceID,
+				Type:               3, // Control
+				ClientMessageId:    &clientMessageID,
+				Sequence:           seq,
+				Ciphertext:         []byte{1},
+				Meta:               map[string]any{"event": "mls_device_revoked", "revoked_device_id": deviceID},
+				CreatedAt:          now,
+				UpdatedAt:          now,
+			}
+			entity, err := e2eeEnvelopeEntity(&control)
+			if err != nil {
+				return err
+			}
+			if err := tx.Create(entity).Error; err != nil {
+				return err
+			}
+			result.ControlEnvelopes = append(result.ControlEnvelopes, control)
+		}
+		return nil
+	}, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
-// --- scan helpers ---
+// --- entity -> model mappers ---
 
-func scanE2eeDevice(row rowScanner) (*E2eeDevice, error) {
-	var d E2eeDevice
-	err := row.Scan(&d.Id, &d.AccountId, &d.DeviceId, &d.DeviceLabel, &d.IsRevoked,
-		&d.LastBundleAt, &d.RevokedAt, &d.CreatedAt, &d.UpdatedAt, &d.DeletedAt)
-	if errors.Is(err, ErrNotFound) {
-		return nil, nil
+func e2eeDeviceFromEntity(entity *E2EEDeviceEntity) E2eeDevice {
+	device := E2eeDevice{
+		Id:           entity.ID.String(),
+		AccountId:    entity.AccountID.String(),
+		DeviceId:     entity.DeviceID,
+		DeviceLabel:  entity.DeviceLabel,
+		IsRevoked:    entity.IsRevoked,
+		LastBundleAt: entity.LastBundleAt,
+		RevokedAt:    entity.RevokedAt,
+		CreatedAt:    entity.CreatedAt,
+		UpdatedAt:    entity.UpdatedAt,
 	}
+	if entity.DeletedAt.Valid {
+		deleted := entity.DeletedAt.Time
+		device.DeletedAt = &deleted
+	}
+	return device
+}
+
+func e2eeKeyBundleFromEntity(entity *E2EEKeyBundleEntity) E2eeKeyBundle {
+	bundle := E2eeKeyBundle{
+		Id:                    entity.ID.String(),
+		AccountId:             entity.AccountID.String(),
+		DeviceId:              entity.DeviceID,
+		Algorithm:             entity.Algorithm,
+		IdentityKey:           entity.IdentityKey,
+		SignedPreKeyId:        entity.SignedPreKeyID,
+		SignedPreKey:          entity.SignedPreKey,
+		SignedPreKeySignature: entity.SignedPreKeySignature,
+		SignedPreKeyExpiresAt: entity.SignedPreKeyExpiresAt,
+		Meta:                  jsonMapBytes(entity.Meta),
+		CreatedAt:             entity.CreatedAt,
+		UpdatedAt:             entity.UpdatedAt,
+	}
+	if entity.DeletedAt.Valid {
+		deleted := entity.DeletedAt.Time
+		bundle.DeletedAt = &deleted
+	}
+	return bundle
+}
+
+func e2eeOneTimePreKeyFromEntity(entity *E2EEOneTimePreKeyEntity) E2eeOneTimePreKey {
+	preKey := E2eeOneTimePreKey{
+		Id:                 entity.ID.String(),
+		KeyBundleId:        entity.KeyBundleID.String(),
+		AccountId:          entity.AccountID.String(),
+		DeviceId:           entity.DeviceID,
+		KeyId:              entity.KeyID,
+		PublicKey:          entity.PublicKey,
+		IsClaimed:          entity.IsClaimed,
+		ClaimedAt:          entity.ClaimedAt,
+		ClaimedByAccountId: uuidStr(entity.ClaimedByAccountID),
+		CreatedAt:          entity.CreatedAt,
+		UpdatedAt:          entity.UpdatedAt,
+	}
+	if entity.DeletedAt.Valid {
+		deleted := entity.DeletedAt.Time
+		preKey.DeletedAt = &deleted
+	}
+	return preKey
+}
+
+func e2eeEnvelopeFromEntity(entity *E2EEEnvelopeEntity) E2eeEnvelope {
+	envelope := E2eeEnvelope{
+		Id:                  entity.ID.String(),
+		SenderId:            entity.SenderID.String(),
+		SenderDeviceId:      entity.SenderDeviceID,
+		RecipientId:         entity.RecipientID.String(),
+		RecipientAccountId:  entity.RecipientAccountID.String(),
+		RecipientDeviceId:   entity.RecipientDeviceID,
+		SessionId:           uuidStr(entity.SessionID),
+		Type:                entity.Type,
+		GroupId:             entity.GroupID,
+		ClientMessageId:     entity.ClientMessageID,
+		Sequence:            entity.Sequence,
+		Ciphertext:          entity.Ciphertext,
+		Header:              entity.Header,
+		Signature:           entity.Signature,
+		DeliveryStatus:      entity.DeliveryStatus,
+		DeliveredAt:         entity.DeliveredAt,
+		AckedAt:             entity.AckedAt,
+		ExpiresAt:           entity.ExpiresAt,
+		LegacyAccountScoped: entity.LegacyAccountScoped,
+		Meta:                jsonMapBytes(entity.Meta),
+		CreatedAt:           entity.CreatedAt,
+		UpdatedAt:           entity.UpdatedAt,
+	}
+	if entity.DeletedAt.Valid {
+		deleted := entity.DeletedAt.Time
+		envelope.DeletedAt = &deleted
+	}
+	return envelope
+}
+
+func mlsKeyPackageFromEntity(entity *MLSKeyPackageEntity) MlsKeyPackage {
+	pkg := MlsKeyPackage{
+		Id:                  entity.ID.String(),
+		AccountId:           entity.AccountID.String(),
+		DeviceId:            entity.DeviceID,
+		DeviceLabel:         entity.DeviceLabel,
+		KeyPackage:          entity.KeyPackage,
+		Ciphersuite:         entity.Ciphersuite,
+		IsConsumed:          entity.IsConsumed,
+		ConsumedAt:          entity.ConsumedAt,
+		ConsumedByAccountId: uuidStr(entity.ConsumedByAccountID),
+		Meta:                jsonMapBytes(entity.Meta),
+		CreatedAt:           entity.CreatedAt,
+		UpdatedAt:           entity.UpdatedAt,
+	}
+	if entity.DeletedAt.Valid {
+		deleted := entity.DeletedAt.Time
+		pkg.DeletedAt = &deleted
+	}
+	return pkg
+}
+
+func mlsGroupStateFromEntity(entity *MLSGroupStateEntity) MlsGroupState {
+	state := MlsGroupState{
+		Id:           entity.ID.String(),
+		MlsGroupId:   entity.MLSGroupID,
+		Epoch:        entity.Epoch,
+		StateVersion: entity.StateVersion,
+		LastCommitAt: entity.LastCommitAt,
+		GroupInfo:    entity.GroupInfo,
+		RatchetTree:  entity.RatchetTree,
+		Meta:         jsonMapBytes(entity.Meta),
+		CreatedAt:    entity.CreatedAt,
+		UpdatedAt:    entity.UpdatedAt,
+	}
+	if entity.DeletedAt.Valid {
+		deleted := entity.DeletedAt.Time
+		state.DeletedAt = &deleted
+	}
+	return state
+}
+
+func mlsDeviceMembershipFromEntity(entity *MLSDeviceMembershipEntity) MlsDeviceMembership {
+	membership := MlsDeviceMembership{
+		Id:                     entity.ID.String(),
+		MlsGroupId:             entity.MLSGroupID,
+		AccountId:              entity.AccountID.String(),
+		DeviceId:               entity.DeviceID,
+		JoinedEpoch:            entity.JoinedEpoch,
+		LastSeenEpoch:          entity.LastSeenEpoch,
+		LastReshareRequiredAt:  entity.LastReshareRequiredAt,
+		LastReshareCompletedAt: entity.LastReshareCompletedAt,
+		CreatedAt:              entity.CreatedAt,
+		UpdatedAt:              entity.UpdatedAt,
+	}
+	if entity.DeletedAt.Valid {
+		deleted := entity.DeletedAt.Time
+		membership.DeletedAt = &deleted
+	}
+	return membership
+}
+
+// --- model -> entity builders (create paths) ---
+
+// mlsKeyPackageEntity builds a publishable row. IsConsumed/consumed_* stay at
+// their defaults and created_at stamps updated_at too, matching the previous
+// INSERT (kp.UpdatedAt was not persisted).
+func mlsKeyPackageEntity(kp *MlsKeyPackage) (*MLSKeyPackageEntity, error) {
+	id, err := uuidValue(kp.Id)
 	if err != nil {
 		return nil, err
 	}
-	return &d, nil
-}
-
-func scanE2eeKeyBundle(row rowScanner) (*E2eeKeyBundle, error) {
-	var b E2eeKeyBundle
-	var meta []byte
-	err := row.Scan(&b.Id, &b.AccountId, &b.DeviceId, &b.Algorithm, &b.IdentityKey, &b.SignedPreKeyId,
-		&b.SignedPreKey, &b.SignedPreKeySignature, &b.SignedPreKeyExpiresAt, &meta,
-		&b.CreatedAt, &b.UpdatedAt, &b.DeletedAt)
-	if errors.Is(err, ErrNotFound) {
-		return nil, nil
-	}
+	accountUUID, err := uuidValue(kp.AccountId)
 	if err != nil {
 		return nil, err
 	}
-	b.Meta = parseJSONMap(meta)
-	return &b, nil
+	return &MLSKeyPackageEntity{
+		ID:          id,
+		EntityBase:  EntityBase{CreatedAt: kp.CreatedAt, UpdatedAt: kp.CreatedAt},
+		AccountID:   accountUUID,
+		DeviceID:    kp.DeviceId,
+		DeviceLabel: kp.DeviceLabel,
+		KeyPackage:  kp.KeyPackage,
+		Ciphersuite: kp.Ciphersuite,
+		IsConsumed:  false,
+		Meta:        jsonMapPtr(kp.Meta),
+	}, nil
 }
 
-func scanE2eeOneTimePreKey(row rowScanner) (*E2eeOneTimePreKey, error) {
-	var k E2eeOneTimePreKey
-	err := row.Scan(&k.Id, &k.KeyBundleId, &k.AccountId, &k.DeviceId, &k.KeyId, &k.PublicKey,
-		&k.IsClaimed, &k.ClaimedAt, &k.ClaimedByAccountId, &k.CreatedAt, &k.UpdatedAt, &k.DeletedAt)
-	if errors.Is(err, ErrNotFound) {
-		return nil, nil
-	}
+// e2eeEnvelopeEntity builds an envelope row. Soft-delete/consumed defaults stay
+// at their zero values; callers pin the persisted delivery state explicitly.
+func e2eeEnvelopeEntity(env *E2eeEnvelope) (*E2EEEnvelopeEntity, error) {
+	id, err := uuidValue(env.Id)
 	if err != nil {
 		return nil, err
 	}
-	return &k, nil
-}
-
-func scanE2eeEnvelope(row rowScanner) (*E2eeEnvelope, error) {
-	var e E2eeEnvelope
-	var meta []byte
-	err := row.Scan(&e.Id, &e.SenderId, &e.SenderDeviceId, &e.RecipientId, &e.RecipientAccountId,
-		&e.RecipientDeviceId, &e.SessionId, &e.Type, &e.GroupId, &e.ClientMessageId, &e.Sequence,
-		&e.Ciphertext, &e.Header, &e.Signature, &e.DeliveryStatus, &e.DeliveredAt, &e.AckedAt,
-		&e.ExpiresAt, &e.LegacyAccountScoped, &meta, &e.CreatedAt, &e.UpdatedAt, &e.DeletedAt)
-	if errors.Is(err, ErrNotFound) {
-		return nil, nil
-	}
+	senderID, err := uuidValue(env.SenderId)
 	if err != nil {
 		return nil, err
 	}
-	e.Meta = parseJSONMap(meta)
-	return &e, nil
-}
-
-func scanMlsKeyPackage(row rowScanner) (*MlsKeyPackage, error) {
-	var k MlsKeyPackage
-	var meta []byte
-	err := row.Scan(&k.Id, &k.AccountId, &k.DeviceId, &k.DeviceLabel, &k.KeyPackage, &k.Ciphersuite,
-		&k.IsConsumed, &k.ConsumedAt, &k.ConsumedByAccountId, &meta, &k.CreatedAt, &k.UpdatedAt, &k.DeletedAt)
-	if errors.Is(err, ErrNotFound) {
-		return nil, nil
-	}
+	recipientID, err := uuidValue(env.RecipientId)
 	if err != nil {
 		return nil, err
 	}
-	k.Meta = parseJSONMap(meta)
-	return &k, nil
-}
-
-func scanMlsGroupState(row rowScanner) (*MlsGroupState, error) {
-	var st MlsGroupState
-	var meta []byte
-	err := row.Scan(&st.Id, &st.MlsGroupId, &st.Epoch, &st.StateVersion, &st.LastCommitAt,
-		&st.GroupInfo, &st.RatchetTree, &meta, &st.CreatedAt, &st.UpdatedAt, &st.DeletedAt)
-	if errors.Is(err, ErrNotFound) {
-		return nil, nil
-	}
+	recipientAccountID, err := uuidValue(env.RecipientAccountId)
 	if err != nil {
 		return nil, err
 	}
-	st.Meta = parseJSONMap(meta)
-	return &st, nil
-}
-
-func scanMlsDeviceMembership(row rowScanner) (*MlsDeviceMembership, error) {
-	var m MlsDeviceMembership
-	err := row.Scan(&m.Id, &m.MlsGroupId, &m.AccountId, &m.DeviceId, &m.JoinedEpoch, &m.LastSeenEpoch,
-		&m.LastReshareRequiredAt, &m.LastReshareCompletedAt, &m.CreatedAt, &m.UpdatedAt, &m.DeletedAt)
-	if errors.Is(err, ErrNotFound) {
-		return nil, nil
-	}
+	sessionID, err := uuidPtrOrNil(env.SessionId)
 	if err != nil {
 		return nil, err
 	}
-	return &m, nil
+	return &E2EEEnvelopeEntity{
+		ID:                  id,
+		EntityBase:          EntityBase{CreatedAt: env.CreatedAt, UpdatedAt: env.UpdatedAt},
+		SenderID:            senderID,
+		SenderDeviceID:      env.SenderDeviceId,
+		RecipientID:         recipientID,
+		RecipientAccountID:  recipientAccountID,
+		RecipientDeviceID:   env.RecipientDeviceId,
+		SessionID:           sessionID,
+		Type:                env.Type,
+		GroupID:             env.GroupId,
+		ClientMessageID:     env.ClientMessageId,
+		Sequence:            env.Sequence,
+		Ciphertext:          env.Ciphertext,
+		Header:              env.Header,
+		Signature:           env.Signature,
+		DeliveryStatus:      env.DeliveryStatus,
+		DeliveredAt:         env.DeliveredAt,
+		AckedAt:             env.AckedAt,
+		ExpiresAt:           env.ExpiresAt,
+		LegacyAccountScoped: env.LegacyAccountScoped,
+		Meta:                jsonMapPtr(env.Meta),
+	}, nil
 }
 
-func parseJSONMap(b []byte) map[string]any {
-	if len(b) == 0 || string(b) == "null" {
+// --- json helpers ---
+
+// jsonMapPtr converts a nullable meta map into a nullable jsonb value: nil maps
+// stay SQL NULL and unmarshalable maps degrade to SQL NULL, mirroring the
+// previous jsonBytes helper.
+func jsonMapPtr(value map[string]any) *datatypes.JSON {
+	if value == nil {
 		return nil
 	}
-	var m map[string]any
-	if err := json.Unmarshal(b, &m); err != nil {
-		return nil
-	}
-	return m
-}
-
-func jsonBytes(m map[string]any) []byte {
-	if m == nil {
-		return nil
-	}
-	b, err := json.Marshal(m)
+	encoded, err := encodeJSON(value)
 	if err != nil {
 		return nil
 	}
-	return b
+	return &encoded
+}
+
+// jsonMapBytes decodes a nullable jsonb column into a meta map, mirroring the
+// previous parseJSONMap helper (SQL NULL, JSON null and malformed JSON all
+// yield nil).
+func jsonMapBytes(raw *datatypes.JSON) map[string]any {
+	if raw == nil || len(*raw) == 0 || string(*raw) == "null" {
+		return nil
+	}
+	var value map[string]any
+	if err := json.Unmarshal(*raw, &value); err != nil {
+		return nil
+	}
+	return value
+}
+
+// --- uuid helpers ---
+
+func uuidValue(value string) (uuid.UUID, error) { return uuid.Parse(value) }
+
+// uuidPtrOrNil parses an optional uuid string; nil or empty means SQL NULL.
+func uuidPtrOrNil(value *string) (*uuid.UUID, error) {
+	if value == nil {
+		return nil, nil
+	}
+	if *value == "" {
+		return nil, nil
+	}
+	parsed, err := uuid.Parse(*value)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
+}
+
+func uuidStr(value *uuid.UUID) *string {
+	if value == nil {
+		return nil
+	}
+	text := value.String()
+	return &text
+}
+
+// bytesOrEmpty keeps the NOT NULL bytea columns of e2ee_key_bundles writable
+// when a caller supplies no key material: the C# model used non-nullable
+// byte[] fields, so an absent key was persisted as an empty array (the previous
+// raw SQL wrote NULL and always tripped the constraint).
+func bytesOrEmpty(value []byte) []byte {
+	if value == nil {
+		return []byte{}
+	}
+	return value
 }
 
 func strPtr(s string) *string { return &s }

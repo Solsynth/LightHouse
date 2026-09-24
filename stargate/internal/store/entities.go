@@ -121,6 +121,7 @@ type ConnectionEntity struct {
 	ProvidedIdentifier string         `gorm:"column:provided_identifier"`
 	Provider           string         `gorm:"column:provider"`
 	RefreshToken       *string        `gorm:"column:refresh_token"`
+	RegisteredAt       *time.Time     `gorm:"column:registered_at"`
 }
 
 func (ConnectionEntity) TableName() string { return "account_connections" }
@@ -394,6 +395,15 @@ type RelationshipEntity struct {
 
 func (RelationshipEntity) TableName() string { return "account_relationships" }
 
+type AccountNameHistoryEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID uuid.UUID `gorm:"column:account_id"`
+	Name      string    `gorm:"column:name"`
+}
+
+func (AccountNameHistoryEntity) TableName() string { return "account_name_history" }
+
 type MagicSpellEntity struct {
 	ID uuid.UUID `gorm:"column:id;primaryKey"`
 	EntityBase
@@ -437,5 +447,5 @@ type SchemaMigrationEntity struct {
 func (SchemaMigrationEntity) TableName() string { return "schema_migrations" }
 
 var allEntityTables = []string{
-	"accounts", "permission_groups", "auth_clients", "auth_sessions", "api_keys", "account_auth_factors", "account_contacts", "account_connections", "account_passkeys", "punishments", "authorized_apps", "action_logs", "auth_challenges", "e2ee_devices", "e2ee_key_bundles", "e2ee_one_time_pre_keys", "e2ee_sessions", "e2ee_envelopes", "mls_key_packages", "mls_group_states", "mls_device_memberships", "permission_group_members", "permission_nodes", "account_profiles", "account_relationships", "magic_spells", "affiliation_spells", "affiliation_results",
+	"accounts", "permission_groups", "auth_clients", "auth_sessions", "api_keys", "account_auth_factors", "account_contacts", "account_connections", "account_passkeys", "punishments", "authorized_apps", "action_logs", "auth_challenges", "e2ee_devices", "e2ee_key_bundles", "e2ee_one_time_pre_keys", "e2ee_sessions", "e2ee_envelopes", "mls_key_packages", "mls_group_states", "mls_device_memberships", "permission_group_members", "permission_nodes", "account_profiles", "account_relationships", "account_name_history", "magic_spells", "affiliation_spells", "affiliation_results",
 }

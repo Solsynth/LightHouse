@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
@@ -18,9 +21,49 @@ import (
 
 // GetProfileByAccount loads an account's 1:1 profile row.
 func (s *Store) GetProfileByAccount(ctx context.Context, accountID uuid.UUID) (*model.Profile, error) {
-	row := s.queryRow(ctx, `SELECT `+profileColumns+` FROM account_profiles p
-		WHERE p.account_id = $1 AND p.deleted_at IS NULL`, accountID)
-	return scanProfile(row)
+	var entity ProfileEntity
+	if err := s.DB.WithContext(ctx).Where("account_id = ?", accountID).First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	return profileFromEntity(&entity), nil
+}
+
+// profileFromEntity maps an account_profiles row to the API model. jsonb
+// columns are nullable (*datatypes.JSON): nil is SQL NULL, the literal bytes
+// "null" are a JSON null — the two stay distinct all the way through
+// decodeActiveBadge (the SDK reads `active_badge == null` as "no badge").
+func profileFromEntity(entity *ProfileEntity) *model.Profile {
+	profile := &model.Profile{
+		Id:            entity.ID.String(),
+		FirstName:     entity.FirstName,
+		MiddleName:    entity.MiddleName,
+		LastName:      entity.LastName,
+		Bio:           entity.Bio,
+		Gender:        entity.Gender,
+		Pronouns:      entity.Pronouns,
+		TimeZone:      entity.TimeZone,
+		Location:      entity.Location,
+		Birthday:      timePtr(entity.Birthday),
+		LastSeenAt:    timePtr(entity.LastSeenAt),
+		Experience:    entity.Experience,
+		SocialCredits: entity.SocialCredits,
+		AccountId:     entity.AccountID.String(),
+		CreatedAt:     timePtr(&entity.CreatedAt),
+		UpdatedAt:     timePtr(&entity.UpdatedAt),
+		DeletedAt:     deletedTime(entity.DeletedAt),
+	}
+	profile.ComputeLeveling()
+	_ = decodeJSON(entity.Links, &profile.Links)
+	_ = decodeJSON(entity.UsernameColor, &profile.UsernameColor)
+	_ = decodeJSON(entity.Verification, &profile.Verification)
+	_ = decodeJSON(entity.Picture, &profile.Picture)
+	_ = decodeJSON(entity.Background, &profile.Background)
+	var activeBadge []byte
+	if entity.ActiveBadge != nil {
+		activeBadge = *entity.ActiveBadge
+	}
+	_ = decodeActiveBadge(profile, activeBadge)
+	return profile
 }
 
 // isBareProfile reports whether a profile carries no user-authored data at all
@@ -76,10 +119,19 @@ func (s *Store) GetOrCreateAccountProfile(ctx context.Context, accountID uuid.UU
 	// Profile row missing entirely (or tombstoned): create (or revive) it.
 	if errors.Is(err, ErrNotFound) {
 		now := time.Now().UTC()
-		if _, err := s.exec(ctx, `INSERT INTO account_profiles
-			(id, account_id, created_at, updated_at, experience, social_credits)
-			VALUES ($1, $2, $3, $3, 0, 100)
-			ON CONFLICT (account_id) DO NOTHING`, uuid.NewString(), accountID, now); err != nil {
+		// A fresh entity per attempt: Create mutates the model it is handed.
+		newProfile := func() *ProfileEntity {
+			return &ProfileEntity{
+				ID:            uuid.New(),
+				EntityBase:    EntityBase{CreatedAt: now, UpdatedAt: now},
+				AccountID:     accountID,
+				Experience:    0,
+				SocialCredits: 100,
+			}
+		}
+		if err := s.DB.WithContext(ctx).
+			Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "account_id"}}, DoNothing: true}).
+			Create(newProfile()).Error; err != nil {
 			return nil, err
 		}
 
@@ -92,12 +144,11 @@ func (s *Store) GetOrCreateAccountProfile(ctx context.Context, accountID uuid.UU
 			// index, so the insert above was a no-op. Hard-delete the tombstone
 			// and retry so the account gets a live profile (mirrors the C#
 			// filtered unique index).
-			if _, err := s.exec(ctx, `DELETE FROM account_profiles WHERE account_id = $1`, accountID); err != nil {
+			if err := s.DB.WithContext(ctx).Unscoped().
+				Where("account_id = ?", accountID).Delete(&ProfileEntity{}).Error; err != nil {
 				return nil, err
 			}
-			if _, err := s.exec(ctx, `INSERT INTO account_profiles
-				(id, account_id, created_at, updated_at, experience, social_credits)
-				VALUES ($1, $2, $3, $3, 0, 100)`, uuid.NewString(), accountID, now); err != nil {
+			if err := s.DB.WithContext(ctx).Create(newProfile()).Error; err != nil {
 				return nil, err
 			}
 		}
@@ -136,15 +187,17 @@ func (s *Store) HydrateAccountProfile(ctx context.Context, account *model.Accoun
 // with — and what the old Passport created on demand — so reads otherwise
 // emit data-less profiles for perfectly real accounts.
 func (s *Store) HealBareProfile(ctx context.Context, accountID uuid.UUID) error {
-	_, err := s.exec(ctx, `UPDATE account_profiles p SET first_name = a.name, updated_at = now()
-		FROM accounts a
-		WHERE p.account_id = a.id AND p.account_id = $1
-		  AND a.deleted_at IS NULL AND p.deleted_at IS NULL
-		  AND (p.first_name IS NULL OR btrim(p.first_name) = '')
-		  AND (p.last_name IS NULL OR btrim(p.last_name) = '')
-		  AND (p.bio IS NULL OR btrim(p.bio) = '')
-		  AND p.picture IS NULL`, accountID)
-	return err
+	return s.DB.WithContext(ctx).Model(&ProfileEntity{}).
+		Where(`account_id = ?
+			AND (first_name IS NULL OR btrim(first_name) = '')
+			AND (last_name IS NULL OR btrim(last_name) = '')
+			AND (bio IS NULL OR btrim(bio) = '')
+			AND picture IS NULL
+			AND EXISTS (SELECT 1 FROM accounts a WHERE a.id = account_profiles.account_id AND a.deleted_at IS NULL)`, accountID).
+		Updates(map[string]any{
+			"first_name": gorm.Expr("(SELECT a.name FROM accounts a WHERE a.id = account_profiles.account_id AND a.deleted_at IS NULL)"),
+			"updated_at": gorm.Expr("now()"),
+		}).Error
 }
 
 // GetProfilesByAccountIDs loads the 1:1 profile rows for the given accounts
@@ -155,19 +208,14 @@ func (s *Store) GetProfilesByAccountIDs(ctx context.Context, ids []uuid.UUID) (m
 	if len(ids) == 0 {
 		return profiles, nil
 	}
-	rows, err := s.query(ctx, `SELECT `+profileColumns+` FROM account_profiles p
-		WHERE p.account_id = ANY($1) AND p.deleted_at IS NULL`, ids)
-	if err != nil {
+	var entities []ProfileEntity
+	if err := s.DB.WithContext(ctx).Where("account_id IN ?", ids).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		profile, err := scanProfile(rows)
-		if err != nil {
-			return nil, err
-		}
+	for i := range entities {
+		profile := profileFromEntity(&entities[i])
 		if isBareProfile(profile) {
-			healed, err := s.GetOrCreateAccountProfile(ctx, mustParseUUID(profile.AccountId))
+			healed, err := s.GetOrCreateAccountProfile(ctx, entities[i].AccountID)
 			if err != nil {
 				return nil, err
 			}
@@ -175,7 +223,7 @@ func (s *Store) GetProfilesByAccountIDs(ctx context.Context, ids []uuid.UUID) (m
 		}
 		profiles[profile.AccountId] = profile
 	}
-	return profiles, rows.Err()
+	return profiles, nil
 }
 
 // ProfileFieldPatch carries the fields Passport features publish on
@@ -209,47 +257,39 @@ func (s *Store) ApplyProfileFieldPatch(ctx context.Context, accountID uuid.UUID,
 	if _, err := s.GetOrCreateAccountProfile(ctx, accountID); err != nil {
 		return err
 	}
-	sets := []string{"updated_at = now()"}
-	args := []any{}
-	add := func(column string, value any) {
-		args = append(args, value)
-		sets = append(sets, column+" = $"+itoa(len(args)))
-	}
+	updates := map[string]any{"updated_at": gorm.Expr("now()")}
 	if patch.LastSeenAt != nil {
-		add("last_seen_at", *patch.LastSeenAt)
+		updates["last_seen_at"] = *patch.LastSeenAt
 	}
 	// Preserve the legacy combine semantics when an event carries both an
 	// absolute experience and a delta: absolute first, then the delta on top.
 	switch {
 	case patch.Experience != nil && patch.ExperienceDelta != nil && *patch.ExperienceDelta != 0:
-		add("experience", *patch.Experience+*patch.ExperienceDelta)
+		updates["experience"] = *patch.Experience + *patch.ExperienceDelta
 	case patch.Experience != nil:
-		add("experience", *patch.Experience)
+		updates["experience"] = *patch.Experience
 	case patch.ExperienceDelta != nil && *patch.ExperienceDelta != 0:
-		args = append(args, *patch.ExperienceDelta)
-		sets = append(sets, "experience = experience + $"+itoa(len(args)))
+		updates["experience"] = gorm.Expr("experience + ?", *patch.ExperienceDelta)
 	}
 	if patch.SocialCredits != nil {
-		add("social_credits", *patch.SocialCredits)
+		updates["social_credits"] = *patch.SocialCredits
 	}
 	if patch.HasActiveBadge {
 		v, err := marshalJSONOrNull(patch.ActiveBadge)
 		if err != nil {
 			return err
 		}
-		add("active_badge", v)
+		updates["active_badge"] = v
 	}
 	if patch.HasVerification {
 		v, err := marshalJSONOrNull(patch.Verification)
 		if err != nil {
 			return err
 		}
-		add("verification", v)
+		updates["verification"] = v
 	}
-	args = append(args, accountID)
-	_, err := s.exec(ctx, `UPDATE account_profiles SET `+strings.Join(sets, ", ")+
-		` WHERE account_id = $`+itoa(len(args))+` AND deleted_at IS NULL`, args...)
-	return err
+	return s.DB.WithContext(ctx).Model(&ProfileEntity{}).
+		Where("account_id = ?", accountID).Updates(updates).Error
 }
 
 // SaveProfile writes the mutable profile columns (mirrors EF db.Update on
@@ -267,149 +307,103 @@ func (s *Store) SaveProfile(ctx context.Context, p *model.Profile) error {
 	if err != nil {
 		return err
 	}
-	sets := []string{"updated_at = now()"}
-	args := []any{}
-	add := func(column string, value any) {
-		args = append(args, value)
-		sets = append(sets, column+" = $"+itoa(len(args)))
+	updates := map[string]any{
+		"updated_at": gorm.Expr("now()"),
+		"links":      datatypes.JSON(links),
 	}
 	if p.FirstName != nil {
-		add("first_name", *p.FirstName)
+		updates["first_name"] = *p.FirstName
 	}
 	if p.MiddleName != nil {
-		add("middle_name", *p.MiddleName)
+		updates["middle_name"] = *p.MiddleName
 	}
 	if p.LastName != nil {
-		add("last_name", *p.LastName)
+		updates["last_name"] = *p.LastName
 	}
 	if p.Bio != nil {
-		add("bio", *p.Bio)
+		updates["bio"] = *p.Bio
 	}
 	if p.Gender != nil {
-		add("gender", *p.Gender)
+		updates["gender"] = *p.Gender
 	}
 	if p.Pronouns != nil {
-		add("pronouns", *p.Pronouns)
+		updates["pronouns"] = *p.Pronouns
 	}
 	if p.TimeZone != nil {
-		add("time_zone", *p.TimeZone)
+		updates["time_zone"] = *p.TimeZone
 	}
 	if p.Location != nil {
-		add("location", *p.Location)
+		updates["location"] = *p.Location
 	}
-	add("links", links)
 	if p.UsernameColor != nil {
 		v, err := marshalJSONOrNull(p.UsernameColor)
 		if err != nil {
 			return err
 		}
-		add("username_color", v)
+		updates["username_color"] = v
 	}
 	if p.Birthday != nil {
-		add("birthday", p.Birthday)
+		updates["birthday"] = p.Birthday
 	}
 	if p.LastSeenAt != nil {
-		add("last_seen_at", p.LastSeenAt)
+		updates["last_seen_at"] = p.LastSeenAt
 	}
 	if p.Verification != nil {
 		v, err := marshalJSONOrNull(p.Verification)
 		if err != nil {
 			return err
 		}
-		add("verification", v)
+		updates["verification"] = v
 	}
 	if p.ActiveBadge != nil {
 		v, err := marshalJSONOrNull(p.ActiveBadge)
 		if err != nil {
 			return err
 		}
-		add("active_badge", v)
+		updates["active_badge"] = v
 	}
-	add("experience", p.Experience)
-	add("social_credits", p.SocialCredits)
+	updates["experience"] = p.Experience
+	updates["social_credits"] = p.SocialCredits
 	if p.Picture != nil {
 		v, err := marshalJSONOrNull(p.Picture)
 		if err != nil {
 			return err
 		}
-		add("picture", v)
+		updates["picture"] = v
 	}
 	if p.Background != nil {
 		v, err := marshalJSONOrNull(p.Background)
 		if err != nil {
 			return err
 		}
-		add("background", v)
+		updates["background"] = v
 	}
-	args = append(args, p.Id)
-	_, err = s.exec(ctx, `UPDATE account_profiles SET `+strings.Join(sets, ", ")+
-		` WHERE id = $`+itoa(len(args))+` AND deleted_at IS NULL`, args...)
-	return err
+	return s.DB.WithContext(ctx).Model(&ProfileEntity{}).
+		Where("id = ?", p.Id).Updates(updates).Error
 }
 
 // UpdateAccountBasicInfo applies the PATCH /api/accounts/me BasicInfo patch
 // (only non-nil fields are written) and returns the refreshed account.
 func (s *Store) UpdateAccountBasicInfo(ctx context.Context, accountID uuid.UUID, nick, language, region *string) (*model.Account, error) {
 	now := time.Now().UTC()
+	updates := map[string]any{}
 	if nick != nil {
-		if _, err := s.exec(ctx, `UPDATE accounts SET nick = $1, updated_at = $2 WHERE id = $3 AND deleted_at IS NULL`, *nick, now, accountID); err != nil {
-			return nil, err
-		}
+		updates["nick"] = *nick
 	}
 	if language != nil {
-		if _, err := s.exec(ctx, `UPDATE accounts SET language = $1, updated_at = $2 WHERE id = $3 AND deleted_at IS NULL`, *language, now, accountID); err != nil {
-			return nil, err
-		}
+		updates["language"] = *language
 	}
 	if region != nil {
-		if _, err := s.exec(ctx, `UPDATE accounts SET region = $1, updated_at = $2 WHERE id = $3 AND deleted_at IS NULL`, *region, now, accountID); err != nil {
+		updates["region"] = *region
+	}
+	if len(updates) > 0 {
+		updates["updated_at"] = now
+		if err := s.DB.WithContext(ctx).Model(&AccountEntity{}).
+			Where("id = ?", accountID).Updates(updates).Error; err != nil {
 			return nil, err
 		}
 	}
 	return s.GetAccountByID(ctx, accountID)
-}
-
-func scanProfile(row rowScanner) (*model.Profile, error) {
-	profile := &model.Profile{}
-	var (
-		links, usernameColor, verification, activeBadge, picture, background []byte
-		firstName, middleName, lastName, bio, gender, pronouns, timeZone     *string
-		location                                                             *string
-		birthday, lastSeenAt                                                 *model.Time
-		experience                                                           int
-		socialCredits                                                        float64
-	)
-	err := row.Scan(
-		&profile.Id, &firstName, &middleName, &lastName, &bio, &gender, &pronouns, &timeZone, &location,
-		&links, &usernameColor, &birthday, &lastSeenAt, &verification, &activeBadge, &experience, &socialCredits,
-		&picture, &background, &profile.AccountId, &profile.CreatedAt, &profile.UpdatedAt, &profile.DeletedAt,
-	)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	profile.FirstName = firstName
-	profile.MiddleName = middleName
-	profile.LastName = lastName
-	profile.Bio = bio
-	profile.Gender = gender
-	profile.Pronouns = pronouns
-	profile.TimeZone = timeZone
-	profile.Location = location
-	profile.Birthday = birthday
-	profile.LastSeenAt = lastSeenAt
-	profile.Experience = experience
-	profile.SocialCredits = socialCredits
-	profile.ComputeLeveling()
-	_ = json.Unmarshal(links, &profile.Links)
-	_ = json.Unmarshal(usernameColor, &profile.UsernameColor)
-	_ = json.Unmarshal(verification, &profile.Verification)
-	_ = json.Unmarshal(picture, &profile.Picture)
-	_ = json.Unmarshal(background, &profile.Background)
-	_ = decodeActiveBadge(profile, activeBadge)
-	return profile, nil
 }
 
 // decodeActiveBadge canonicalizes the stored active-badge jsonb into the
@@ -513,7 +507,7 @@ func marshalJSONOrNull(v any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return b, nil
+	return datatypes.JSON(b), nil
 }
 
 // isNilValue reports whether v is nil, including typed nil pointers.
@@ -527,9 +521,4 @@ func isNilValue(v any) bool {
 		return rv.IsNil()
 	}
 	return false
-}
-
-func mustParseUUID(s string) uuid.UUID {
-	id, _ := uuid.Parse(s)
-	return id
 }

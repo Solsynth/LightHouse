@@ -3,6 +3,7 @@ package permission
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -11,8 +12,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+
+	"src.solsynth.dev/sosys/stargate/internal/store"
 )
 
 // Evaluation semantics (mirroring PermissionService.cs):
@@ -121,86 +126,78 @@ func (s *Service) ListPermissionKeys(ctx context.Context, accountID uuid.UUID) (
 	actor := accountID.String()
 	now := time.Now().UTC()
 
-	rows, err := s.Query(ctx, `
-		SELECT n.key
-		FROM permission_nodes n
-		WHERE n.deleted_at IS NULL
-		  AND (n.expired_at IS NULL OR n.expired_at > $2)
-		  AND (n.affected_at IS NULL OR n.affected_at <= $2)
-		  AND `+actorScopeSQL+`
-		ORDER BY n.key
-	`, actor, now)
+	var nodes []store.PermissionNodeEntity
+	err := s.DB.WithContext(ctx).Model(&store.PermissionNodeEntity{}).
+		Select("key").
+		Where(actorScopeWhere, actor, actorTypeAccount, actor, now, now).
+		Where("(expired_at IS NULL OR expired_at > ?)", now).
+		Where("(affected_at IS NULL OR affected_at <= ?)", now).
+		Order("key").
+		Find(&nodes).Error
 	if err != nil {
 		return nil, fmt.Errorf("permission: list keys: %w", err)
 	}
-	defer rows.Close()
 
-	seen := make(map[string]struct{}, 64)
-	keys := make([]string, 0, 64)
-	for rows.Next() {
-		var k string
-		if err := rows.Scan(&k); err != nil {
-			return nil, fmt.Errorf("permission: scan key: %w", err)
-		}
-		if _, ok := seen[k]; ok {
+	seen := make(map[string]struct{}, len(nodes))
+	keys := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		if _, ok := seen[node.Key]; ok {
 			continue
 		}
-		seen[k] = struct{}{}
-		keys = append(keys, k)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("permission: list keys: %w", err)
+		seen[node.Key] = struct{}{}
+		keys = append(keys, node.Key)
 	}
 	return keys, nil
 }
 
-// actorScopeSQL matches the C# FindPermissionNodeAsync scope: direct account
+// actorScopeWhere matches the C# FindPermissionNodeAsync scope: direct account
 // nodes (group_id IS NULL, actor, type=Account=0) plus nodes of any group the
 // actor is currently a member of (membership expiry and affected_at checked
-// here, exactly like the C# GetOrCacheUserGroupsAsync + Contains).
-// Parameters: $1 actor, $2 now.
-const actorScopeSQL = `(
-	(n.group_id IS NULL AND n.actor = $1 AND n.type = 0)
-	OR n.group_id IN (
+// here, exactly like the C# GetOrCacheUserGroupsAsync + Contains). The
+// soft-delete filters of the outer node query are added by GORM; the
+// membership subquery spells its own out because it is hand-written SQL.
+// Placeholders: actor, type, actor, now, now.
+const actorScopeWhere = `(
+	(group_id IS NULL AND actor = ? AND type = ?)
+	OR group_id IN (
 		SELECT gm.group_id
 		FROM permission_group_members gm
-		WHERE gm.actor = $1
+		WHERE gm.actor = ?
 		  AND gm.deleted_at IS NULL
-		  AND (gm.expired_at IS NULL OR gm.expired_at > $2)
-		  AND (gm.affected_at IS NULL OR gm.affected_at <= $2)
+		  AND (gm.expired_at IS NULL OR gm.expired_at > ?)
+		  AND (gm.affected_at IS NULL OR gm.affected_at <= ?)
 	)
 )`
 
 // blockedPermissions returns the case-folded set of permission keys blocked
 // for the actor by active PermissionModification punishments. The C# query
-// filters type, expiry and the global soft-delete filter, and flattens the
-// blocked_permissions jsonb arrays with an OrdinalIgnoreCase comparer.
+// filters type, expiry and the global soft-delete filter (the latter is added
+// by GORM for the soft-deletable entity), and flattens the blocked_permissions
+// jsonb arrays with an OrdinalIgnoreCase comparer.
 func (s *Service) blockedPermissions(ctx context.Context, actor string, now time.Time) (map[string]struct{}, error) {
-	rows, err := s.Query(ctx, `
-		SELECT blocked_permissions
-		FROM punishments
-		WHERE account_id = $1
-		  AND type = $2
-		  AND deleted_at IS NULL
-		  AND (expired_at IS NULL OR expired_at > $3)
-	`, actor, punishmentTypePermissionModification, now)
+	var punishments []store.PunishmentEntity
+	err := s.DB.WithContext(ctx).Model(&store.PunishmentEntity{}).
+		Select("blocked_permissions").
+		Where("account_id = ?::uuid", actor).
+		Where("type = ?", punishmentTypePermissionModification).
+		Where("(expired_at IS NULL OR expired_at > ?)", now).
+		Find(&punishments).Error
 	if err != nil {
 		return nil, fmt.Errorf("permission: blocked: %w", err)
 	}
-	defer rows.Close()
 
 	blocked := make(map[string]struct{})
-	for rows.Next() {
+	for _, punishment := range punishments {
+		if punishment.BlockedPermissions == nil {
+			continue
+		}
 		var perms []string
-		if err := rows.Scan(&perms); err != nil {
+		if err := json.Unmarshal(*punishment.BlockedPermissions, &perms); err != nil {
 			return nil, fmt.Errorf("permission: scan blocked: %w", err)
 		}
 		for _, p := range perms {
 			blocked[strings.ToLower(p)] = struct{}{}
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("permission: blocked: %w", err)
 	}
 	return blocked, nil
 }
@@ -260,72 +257,77 @@ func matchesWildcard(pattern, target string) bool {
 // candidates (EnableWildcardMatching=true, MaxWildcardMatches=100).
 func (s *Service) findPermissionNode(ctx context.Context, actor, key string, now time.Time) (bool, bool, error) {
 	// Exact match — highest priority.
-	value, found, err := s.queryPermissionValue(ctx, `
-		SELECT n.value
-		FROM permission_nodes n
-		WHERE n.deleted_at IS NULL
-		  AND n.key = $3
-		  AND (n.expired_at IS NULL OR n.expired_at > $2)
-		  AND (n.affected_at IS NULL OR n.affected_at <= $2)
-		  AND `+actorScopeSQL+`
-		LIMIT 1
-	`, actor, now, key)
+	value, found, err := queryPermissionValue(s.DB.WithContext(ctx).Model(&store.PermissionNodeEntity{}).
+		Select("value").
+		Where(`"key" = ?`, key).
+		Where(actorScopeWhere, actor, actorTypeAccount, actor, now, now).
+		Where("(expired_at IS NULL OR expired_at > ?)", now).
+		Where("(affected_at IS NULL OR affected_at <= ?)", now).
+		Limit(1))
 	if err != nil || found {
 		return value, found, err
 	}
 
 	// Wildcard candidates.
-	rows, err := s.Query(ctx, `
-		SELECT n.key, n.value
-		FROM permission_nodes n
-		WHERE n.deleted_at IS NULL
-		  AND n.key LIKE '%*%'
-		  AND (n.expired_at IS NULL OR n.expired_at > $2)
-		  AND (n.affected_at IS NULL OR n.affected_at <= $2)
-		  AND `+actorScopeSQL+`
-		ORDER BY n.key
-		LIMIT 100
-	`, actor, now)
+	var candidates []store.PermissionNodeEntity
+	err = s.DB.WithContext(ctx).Model(&store.PermissionNodeEntity{}).
+		Select("key", "value").
+		Where(`"key" LIKE ?`, "%*%").
+		Where(actorScopeWhere, actor, actorTypeAccount, actor, now, now).
+		Where("(expired_at IS NULL OR expired_at > ?)", now).
+		Where("(affected_at IS NULL OR affected_at <= ?)", now).
+		Order("key").
+		Limit(100).
+		Find(&candidates).Error
 	if err != nil {
 		return false, false, fmt.Errorf("permission: wildcard query: %w", err)
 	}
-	defer rows.Close()
 
 	bestKey := ""
 	bestValue := false
 	bestScore := -1
-	for rows.Next() {
-		var nodeKey string
-		var nodeValue bool
-		if err := rows.Scan(&nodeKey, &nodeValue); err != nil {
-			return false, false, fmt.Errorf("permission: scan wildcard: %w", err)
-		}
-		score := calculatePatternMatchScore(nodeKey, key)
+	for _, candidate := range candidates {
+		score := calculatePatternMatchScore(candidate.Key, key)
 		if score <= bestScore {
 			continue
 		}
-		bestKey, bestValue, bestScore = nodeKey, nodeValue, score
-	}
-	if err := rows.Err(); err != nil {
-		return false, false, fmt.Errorf("permission: wildcard query: %w", err)
+		value, err := decodePermissionValue(candidate.Value)
+		if err != nil {
+			return false, false, fmt.Errorf("permission: scan wildcard: %w", err)
+		}
+		bestKey, bestValue, bestScore = candidate.Key, value, score
 	}
 	return bestValue, bestKey != "", nil
 }
 
-// queryPermissionValue runs a SELECT returning a single jsonb value column
-// and scans it into a bool (seeded nodes store `true`; other JSON values are
-// decoded like the C# DeserializePermissionValue<bool>).
-func (s *Service) queryPermissionValue(ctx context.Context, query string, args ...any) (bool, bool, error) {
-	row := s.QueryRow(ctx, query, args...)
-	var value bool
-	err := row.Scan(&value)
-	if errors.Is(err, sql.ErrNoRows) {
+// queryPermissionValue runs the prepared node lookup (already scoped, ordered
+// and limited by the caller, and already carrying the request context) and
+// decodes the single jsonb value column into a bool (seeded nodes store
+// `true`; other JSON values are decoded like the C#
+// DeserializePermissionValue<bool>).
+func queryPermissionValue(query *gorm.DB) (bool, bool, error) {
+	var node store.PermissionNodeEntity
+	err := query.Take(&node).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return false, false, nil
 	}
 	if err != nil {
 		return false, false, fmt.Errorf("permission: node query: %w", err)
 	}
+	value, err := decodePermissionValue(node.Value)
+	if err != nil {
+		return false, false, fmt.Errorf("permission: node query: %w", err)
+	}
 	return value, true, nil
+}
+
+// decodePermissionValue decodes a permission_nodes.value jsonb literal.
+func decodePermissionValue(raw datatypes.JSON) (bool, error) {
+	var value bool
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return false, err
+	}
+	return value, nil
 }
 
 // calculatePatternMatchScore mirrors PermissionService.CalculatePatternMatchScore:
@@ -629,20 +631,34 @@ func (s *Service) GrantPermissionGroup(ctx context.Context, accountID uuid.UUID,
 	if groupKey == "" {
 		return false, nil
 	}
-	var groupID uuid.UUID
-	if err := s.QueryRow(ctx, `SELECT id FROM permission_groups
-		WHERE "key" = $1 AND deleted_at IS NULL`, groupKey).Scan(&groupID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return false, nil
-		}
+	var group store.PermissionGroupEntity
+	err := s.DB.WithContext(ctx).Model(&store.PermissionGroupEntity{}).
+		Where(`"key" = ?`, groupKey).
+		Take(&group).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
 		return false, fmt.Errorf("permission: lookup group %q: %w", groupKey, err)
 	}
 	actor := accountID.String()
-	if _, err := s.Exec(ctx, `INSERT INTO permission_group_members
-		(group_id, actor, affected_at, expired_at, created_at, updated_at)
-		VALUES ($1, $2, NULL, NULL, now(), now())
-		ON CONFLICT (group_id, actor) DO UPDATE SET affected_at = NULL, expired_at = NULL, updated_at = now()`,
-		groupID, actor); err != nil {
+	now := time.Now().UTC()
+	member := store.PermissionGroupMemberEntity{
+		GroupID: group.ID,
+		Actor:   actor,
+		EntityBase: store.EntityBase{
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+	if err := s.DB.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "group_id"}, {Name: "actor"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"affected_at": nil,
+			"expired_at":  nil,
+			"updated_at":  now,
+		}),
+	}).Create(&member).Error; err != nil {
 		return false, fmt.Errorf("permission: grant group %q to %s: %w", groupKey, actor, err)
 	}
 	return true, nil
@@ -655,61 +671,93 @@ func (s *Service) GrantPermissionGroup(ctx context.Context, accountID uuid.UUID,
 // every account is enrolled in `default` while activated accounts are
 // enrolled in `verified`. Idempotent and safe to run on every boot.
 func (s *Service) EnsureSeeded(ctx context.Context) error {
-	tx, err := s.Begin(ctx)
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		now := time.Now().UTC()
+
+		// Legacy "all-users" group is removed. The C# Remove() goes through the
+		// EF soft-delete interceptor (deleted_at = now), so this is an UPDATE,
+		// not a DELETE — members/nodes pointing at it stay untouched, matching
+		// the C# behavior. GORM adds the `deleted_at IS NULL` filter for the
+		// soft-deletable model on its own.
+		if err := tx.WithContext(ctx).Model(&store.PermissionGroupEntity{}).
+			Where(`"key" = ?`, legacyAllUsersGroupKey).
+			Updates(map[string]any{"deleted_at": now, "updated_at": now}).Error; err != nil {
+			return fmt.Errorf("permission: seed remove legacy group: %w", err)
+		}
+
+		groups := []seedGroup{
+			{key: DefaultGroupKey, keys: defaultPermissionKeys},
+			{key: VerifiedGroupKey, keys: verifiedPermissionKeys},
+			{key: ModeratorGroupKey, keys: moderatorPermissionKeys},
+			{key: DeveloperGroupKey, keys: developerPermissionKeys},
+		}
+		for _, g := range groups {
+			if err := ensureGroup(ctx, tx, g.key, g.keys); err != nil {
+				return err
+			}
+		}
+
+		// `default` group: every account (soft-delete filtered), matching
+		// db.Accounts.Select(x => x.Id.ToString()).
+		// `verified` group: only activated accounts.
+		memberSets := []struct {
+			groupKey      string
+			activatedOnly bool
+		}{
+			{groupKey: DefaultGroupKey},
+			{groupKey: VerifiedGroupKey, activatedOnly: true},
+		}
+		for _, ms := range memberSets {
+			if err := ensureMembers(ctx, tx, ms.groupKey, ms.activatedOnly, now); err != nil {
+				return err
+			}
+		}
+		return nil
+	}, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	return err
+}
+
+// ensureMembers enrolls every account (optionally only activated ones) in the
+// group named by groupKey. Missing or soft-deleted groups enroll nobody, which
+// is what the original INSERT ... SELECT ... JOIN permission_groups produced.
+func ensureMembers(ctx context.Context, tx *gorm.DB, groupKey string, activatedOnly bool, now time.Time) error {
+	var group store.PermissionGroupEntity
+	err := tx.WithContext(ctx).Model(&store.PermissionGroupEntity{}).
+		Where(`"key" = ?`, groupKey).
+		Take(&group).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
 	if err != nil {
-		return fmt.Errorf("permission: seed begin: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	// Legacy "all-users" group is removed. The C# Remove() goes through the
-	// EF soft-delete interceptor (deleted_at = now), so this is an UPDATE,
-	// not a DELETE — members/nodes pointing at it stay untouched, matching
-	// the C# behavior.
-	if _, err := tx.Exec(ctx, `
-		UPDATE permission_groups
-		SET deleted_at = now(), updated_at = now()
-		WHERE key = $1 AND deleted_at IS NULL
-	`, legacyAllUsersGroupKey); err != nil {
-		return fmt.Errorf("permission: seed remove legacy group: %w", err)
+		return fmt.Errorf("permission: seed find group %q for members: %w", groupKey, err)
 	}
 
-	groups := []seedGroup{
-		{key: DefaultGroupKey, keys: defaultPermissionKeys},
-		{key: VerifiedGroupKey, keys: verifiedPermissionKeys},
-		{key: ModeratorGroupKey, keys: moderatorPermissionKeys},
-		{key: DeveloperGroupKey, keys: developerPermissionKeys},
+	accountsQuery := tx.WithContext(ctx).Model(&store.AccountEntity{}).Select("id")
+	if activatedOnly {
+		accountsQuery = accountsQuery.Where("activated_at IS NOT NULL")
 	}
-	for _, g := range groups {
-		if err := ensureGroup(ctx, tx, g.key, g.keys); err != nil {
-			return err
-		}
+	var accounts []store.AccountEntity
+	if err := accountsQuery.Find(&accounts).Error; err != nil {
+		return fmt.Errorf("permission: seed list accounts for %q: %w", groupKey, err)
+	}
+	if len(accounts) == 0 {
+		return nil
 	}
 
-	// `default` group: every account (soft-delete filtered), matching
-	// db.Accounts.Select(x => x.Id.ToString()).
-	// `verified` group: only activated accounts.
-	memberSets := []struct {
-		groupKey    string
-		whereClause string
-	}{
-		{groupKey: DefaultGroupKey, whereClause: ""},
-		{groupKey: VerifiedGroupKey, whereClause: "AND a.activated_at IS NOT NULL"},
+	members := make([]store.PermissionGroupMemberEntity, 0, len(accounts))
+	for _, account := range accounts {
+		members = append(members, store.PermissionGroupMemberEntity{
+			GroupID: group.ID,
+			Actor:   account.ID.String(),
+			EntityBase: store.EntityBase{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+		})
 	}
-	for _, ms := range memberSets {
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO permission_group_members (group_id, actor, affected_at, expired_at, created_at, updated_at)
-			SELECT g.id, a.id::text, NULL, NULL, now(), now()
-			FROM accounts a
-			JOIN permission_groups g ON g.key = $1 AND g.deleted_at IS NULL
-			WHERE a.deleted_at IS NULL `+ms.whereClause+`
-			ON CONFLICT (group_id, actor) DO NOTHING
-		`, ms.groupKey); err != nil {
-			return fmt.Errorf("permission: seed members for %q: %w", ms.groupKey, err)
-		}
-
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("permission: seed commit: %w", err)
+	if err := tx.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).
+		CreateInBatches(members, 500).Error; err != nil {
+		return fmt.Errorf("permission: seed members for %q: %w", groupKey, err)
 	}
 	return nil
 }
@@ -718,56 +766,58 @@ func (s *Service) EnsureSeeded(ctx context.Context) error {
 // the group, then insert nodes for the keys it does not already have
 // (actor "group:{key}", type Group, value true). Nodes are soft-delete
 // filtered, matching the EF global query filter.
-func ensureGroup(ctx context.Context, tx interface {
-	Query(context.Context, string, ...any) (*sql.Rows, error)
-	QueryRow(context.Context, string, ...any) rowScanner
-	Exec(context.Context, string, ...any) (commandTag, error)
-}, key string, keys []string) error {
-	var groupID uuid.UUID
-	err := tx.QueryRow(ctx, `
-		SELECT id FROM permission_groups WHERE key = $1 AND deleted_at IS NULL
-	`, key).Scan(&groupID)
-	if errors.Is(err, sql.ErrNoRows) {
-		if err := tx.QueryRow(ctx, `
-			INSERT INTO permission_groups (id, key, created_at, updated_at)
-			VALUES (gen_random_uuid(), $1, now(), now())
-			RETURNING id
-		`, key).Scan(&groupID); err != nil {
+func ensureGroup(ctx context.Context, tx *gorm.DB, key string, keys []string) error {
+	now := time.Now().UTC()
+
+	var group store.PermissionGroupEntity
+	err := tx.WithContext(ctx).Model(&store.PermissionGroupEntity{}).
+		Where(`"key" = ?`, key).
+		Take(&group).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		group = store.PermissionGroupEntity{
+			ID:  uuid.New(),
+			Key: key,
+			EntityBase: store.EntityBase{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+		}
+		if err := tx.WithContext(ctx).Create(&group).Error; err != nil {
 			return fmt.Errorf("permission: seed create group %q: %w", key, err)
 		}
 	} else if err != nil {
 		return fmt.Errorf("permission: seed find group %q: %w", key, err)
 	}
 
-	existing := make(map[string]struct{}, len(keys))
-	rows, err := tx.Query(ctx, `
-		SELECT key FROM permission_nodes WHERE group_id = $1 AND deleted_at IS NULL
-	`, groupID)
-	if err != nil {
+	var nodes []store.PermissionNodeEntity
+	if err := tx.WithContext(ctx).Model(&store.PermissionNodeEntity{}).
+		Select("key").
+		Where("group_id = ?", group.ID).
+		Find(&nodes).Error; err != nil {
 		return fmt.Errorf("permission: seed list nodes %q: %w", key, err)
 	}
-	for rows.Next() {
-		var nodeKey string
-		if err := rows.Scan(&nodeKey); err != nil {
-			rows.Close()
-			return fmt.Errorf("permission: seed scan node %q: %w", key, err)
-		}
-		existing[nodeKey] = struct{}{}
+	existing := make(map[string]struct{}, len(nodes))
+	for _, node := range nodes {
+		existing[node.Key] = struct{}{}
 	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return fmt.Errorf("permission: seed list nodes %q: %w", key, err)
-	}
-	rows.Close()
 
 	for _, permissionKey := range keys {
 		if _, ok := existing[permissionKey]; ok {
 			continue
 		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO permission_nodes (id, actor, type, key, value, group_id, created_at, updated_at)
-			VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, now(), now())
-		`, "group:"+key, actorTypeGroup, permissionKey, "true", groupID); err != nil {
+		node := store.PermissionNodeEntity{
+			ID: uuid.New(),
+			EntityBase: store.EntityBase{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Actor:   "group:" + key,
+			GroupID: &group.ID,
+			Key:     permissionKey,
+			Type:    actorTypeGroup,
+			Value:   datatypes.JSON("true"),
+		}
+		if err := tx.WithContext(ctx).Create(&node).Error; err != nil {
 			return fmt.Errorf("permission: seed insert node %q in %q: %w", permissionKey, key, err)
 		}
 	}

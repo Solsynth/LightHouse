@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/stargate/internal/db"
+	"src.solsynth.dev/sosys/stargate/internal/dbtest"
 	"src.solsynth.dev/sosys/stargate/internal/migrate"
 )
 
@@ -30,8 +31,25 @@ func TestEntitySchemaAndRoundTrip(t *testing.T) {
 		t.Skipf("postgres unavailable: %v", err)
 	}
 	if os.Getenv("STARGATE_TEST_DSN") != "" {
+		// The migrations begin with unqualified `DROP TABLE IF EXISTS`
+		// statements, which fall through the search_path: with public on the
+		// path they drop the live database's tables before the CREATEs land
+		// in the test schema. Run them in a fresh dedicated database so the
+		// DROPs can only ever hit an empty public. public stays on the
+		// search_path solely so pg_trgm's gin_trgm_ops resolves — the
+		// extension is not installed in the fresh database, so
+		// `CREATE EXTENSION IF NOT EXISTS pg_trgm` installs it into the test
+		// schema, the first schema on the path.
+		dedicatedDSN, cleanupDB, dbErr := dbtest.NewDatabase(ctx, baseDSN)
+		if dbErr != nil {
+			t.Skipf("cannot create dedicated database: %v", dbErr)
+		}
+		t.Cleanup(cleanupDB)
+		// Close the schema connection before cleanupDB drops the database
+		// (t.Cleanup runs LIFO).
+		t.Cleanup(func() { _ = db.Close(database) })
 		schema := "stargate_entities_" + strings.ReplaceAll(uuid.NewString(), "-", "")
-		admin, adminErr := db.Connect(ctx, baseDSN)
+		admin, adminErr := db.Connect(ctx, dedicatedDSN)
 		if adminErr != nil {
 			t.Skipf("postgres unavailable: %v", adminErr)
 		}
@@ -39,32 +57,24 @@ func TestEntitySchemaAndRoundTrip(t *testing.T) {
 			_ = db.Close(admin)
 			t.Fatal(err)
 		}
+		_ = db.Close(admin)
 		_ = db.Close(database)
-		schemaDSN := baseDSN + " search_path=" + schema
-		if strings.HasPrefix(baseDSN, "postgres://") || strings.HasPrefix(baseDSN, "postgresql://") {
+		schemaDSN := dedicatedDSN + " search_path='" + schema + ", public'"
+		if strings.HasPrefix(dedicatedDSN, "postgres://") || strings.HasPrefix(dedicatedDSN, "postgresql://") {
 			separator := "?"
-			if strings.Contains(baseDSN, "?") {
+			if strings.Contains(dedicatedDSN, "?") {
 				separator = "&"
 			}
-			schemaDSN = baseDSN + separator + "options=-csearch_path%3D" + schema
+			schemaDSN = dedicatedDSN + separator + "options=-csearch_path%3D" + schema + "%2C%20public"
 		}
 		database, err = db.Connect(ctx, schemaDSN)
 		if err != nil {
-			_ = admin.Exec("DROP SCHEMA IF EXISTS " + schema + " CASCADE")
-			_ = db.Close(admin)
 			t.Fatal(err)
 		}
 		if err := migrate.Run(ctx, database); err != nil {
 			_ = db.Close(database)
-			_ = admin.Exec("DROP SCHEMA IF EXISTS " + schema + " CASCADE")
-			_ = db.Close(admin)
 			t.Fatal(err)
 		}
-		t.Cleanup(func() {
-			_ = db.Close(database)
-			_ = admin.Exec("DROP SCHEMA IF EXISTS " + schema + " CASCADE").Error
-			_ = db.Close(admin)
-		})
 	} else {
 		defer db.Close(database)
 	}

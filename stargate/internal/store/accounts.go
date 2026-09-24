@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 
 	"github.com/google/uuid"
@@ -75,11 +74,7 @@ func (s *Store) ListPublicContacts(ctx context.Context, accountID uuid.UUID) ([]
 	}
 	contacts := make([]model.Contact, 0, len(entities))
 	for i := range entities {
-		entity := &entities[i]
-		contacts = append(contacts, model.Contact{Id: entity.ID.String(), Type: entity.Type,
-			VerifiedAt: timePtr(entity.VerifiedAt), IsPrimary: entity.IsPrimary, IsPublic: entity.IsPublic,
-			Content: entity.Content, AccountId: entity.AccountID.String(), CreatedAt: timePtr(&entity.CreatedAt),
-			UpdatedAt: timePtr(&entity.UpdatedAt), DeletedAt: deletedTime(entity.DeletedAt)})
+		contacts = append(contacts, contactFromEntity(&entities[i]))
 	}
 	return contacts, nil
 }
@@ -92,26 +87,7 @@ func (s *Store) ListPublicConnections(ctx context.Context, accountID uuid.UUID) 
 	}
 	connections := make([]model.Connection, 0, len(entities))
 	for i := range entities {
-		entity := &entities[i]
-		connection := model.Connection{Id: entity.ID.String(), Provider: entity.Provider,
-			ProvidedIdentifier: entity.ProvidedIdentifier, LastUsedAt: timePtr(entity.LastUsedAt),
-			IsPublic: entity.IsPublic, AccountId: entity.AccountID.String(),
-			CreatedAt: timePtr(&entity.CreatedAt), UpdatedAt: timePtr(&entity.UpdatedAt),
-			DeletedAt: deletedTime(entity.DeletedAt)}
-		_ = decodeJSONValue(entity.Meta, &connection.Meta)
-		connections = append(connections, connection)
+		connections = append(connections, connectionFromEntity(&entities[i]))
 	}
 	return connections, nil
-}
-
-func unmarshalMeta(raw []byte, dest *map[string]any) error {
-	if len(raw) == 0 || string(raw) == "null" {
-		*dest = map[string]any{}
-		return nil
-	}
-	if err := json.Unmarshal(raw, dest); err != nil {
-		*dest = map[string]any{}
-		return err
-	}
-	return nil
 }

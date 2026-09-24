@@ -2,11 +2,10 @@ package store
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm/clause"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
@@ -14,140 +13,161 @@ import (
 // Spell storage for the magic-spell + affiliation-spell surface migrated from
 // Passport's MagicSpellService / AffiliationSpellService.
 
-const magicSpellColumns = `id, spell, type, expires_at, affected_at, meta, account_id, created_at, updated_at, deleted_at`
-
-func scanMagicSpell(row rowScanner) (*model.MagicSpell, error) {
-	spell := &model.MagicSpell{}
-	var meta []byte
-	var accountID *string
-	err := row.Scan(&spell.Id, &spell.Spell, &spell.Type, &spell.ExpiresAt, &spell.AffectedAt, &meta,
-		&accountID, &spell.CreatedAt, &spell.UpdatedAt, &spell.DeletedAt)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+func magicSpellFromEntity(entity *MagicSpellEntity) *model.MagicSpell {
+	spell := &model.MagicSpell{
+		Id:         entity.ID.String(),
+		Spell:      entity.Spell,
+		Type:       model.MagicSpellType(entity.Type),
+		ExpiresAt:  timePtr(entity.ExpiresAt),
+		AffectedAt: timePtr(entity.AffectedAt),
+		Meta:       map[string]any{},
+		CreatedAt:  timePtr(&entity.CreatedAt),
+		UpdatedAt:  timePtr(&entity.UpdatedAt),
+		DeletedAt:  deletedTime(entity.DeletedAt),
 	}
-	if accountID != nil {
-		spell.AccountId = *accountID
+	if entity.AccountID != nil {
+		spell.AccountId = entity.AccountID.String()
 	}
-	spell.Meta = map[string]any{}
-	if len(meta) > 0 {
-		_ = json.Unmarshal(meta, &spell.Meta)
-	}
-	return spell, nil
+	_ = decodeJSONValue(entity.Meta, &spell.Meta)
+	return spell
 }
 
 // CreateMagicSpell inserts a spell (ids and timestamps must be set).
 func (s *Store) CreateMagicSpell(ctx context.Context, spell *model.MagicSpell) error {
-	meta, _ := json.Marshal(spell.Meta)
-	if spell.Meta == nil {
-		meta = []byte("{}")
+	metaValue := spell.Meta
+	if metaValue == nil {
+		metaValue = map[string]any{}
 	}
-	_, err := s.exec(ctx, `INSERT INTO magic_spells
-		(id, spell, type, expires_at, affected_at, meta, account_id, created_at, updated_at, deleted_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-		spell.Id, spell.Spell, int(spell.Type), spell.ExpiresAt, spell.AffectedAt, meta,
-		nullableUUID(spell.AccountId), spell.CreatedAt, spell.UpdatedAt, spell.DeletedAt)
-	return err
+	meta, err := encodeJSON(metaValue)
+	if err != nil {
+		return err
+	}
+	id, err := uuid.Parse(spell.Id)
+	if err != nil {
+		return err
+	}
+	var accountID *uuid.UUID
+	if spell.AccountId != "" {
+		parsed, err := uuid.Parse(spell.AccountId)
+		if err != nil {
+			return err
+		}
+		accountID = &parsed
+	}
+	entity := &MagicSpellEntity{
+		ID:         id,
+		Spell:      spell.Spell,
+		Type:       int(spell.Type),
+		ExpiresAt:  timeValue(spell.ExpiresAt),
+		AffectedAt: timeValue(spell.AffectedAt),
+		Meta:       meta,
+		AccountID:  accountID,
+	}
+	if spell.CreatedAt != nil {
+		entity.CreatedAt = time.Time(*spell.CreatedAt)
+	}
+	if spell.UpdatedAt != nil {
+		entity.UpdatedAt = time.Time(*spell.UpdatedAt)
+	}
+	return s.DB.WithContext(ctx).Create(entity).Error
 }
 
 // FindLiveMagicSpell returns a non-expired, non-deleted spell of the given
 // type for an account (the C# preventRepeat lookup).
 func (s *Store) FindLiveMagicSpell(ctx context.Context, accountID string, typ model.MagicSpellType) (*model.MagicSpell, error) {
-	row := s.queryRow(ctx, `SELECT `+magicSpellColumns+` FROM magic_spells
-		WHERE account_id = $1 AND type = $2 AND deleted_at IS NULL
-		  AND (expires_at IS NULL OR expires_at > $3)
-		ORDER BY created_at DESC LIMIT 1`,
-		accountID, int(typ), time.Now().UTC())
-	return scanMagicSpell(row)
+	var entity MagicSpellEntity
+	err := s.DB.WithContext(ctx).
+		Where("account_id = ? AND type = ? AND (expires_at IS NULL OR expires_at > ?)", accountID, int(typ), time.Now().UTC()).
+		Order("created_at DESC").
+		First(&entity).Error
+	if err != nil {
+		return nil, mapNotFound(err)
+	}
+	return magicSpellFromEntity(&entity), nil
 }
 
 // GetMagicSpellByWord loads a spell by its secret word (not deleted).
 func (s *Store) GetMagicSpellByWord(ctx context.Context, word string) (*model.MagicSpell, error) {
-	row := s.queryRow(ctx, `SELECT `+magicSpellColumns+` FROM magic_spells
-		WHERE spell = $1 AND deleted_at IS NULL`, word)
-	return scanMagicSpell(row)
+	var entity MagicSpellEntity
+	if err := s.DB.WithContext(ctx).Where("spell = ?", word).First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	return magicSpellFromEntity(&entity), nil
 }
 
 // ListMagicSpellsByAccount returns an account's spells, newest first (the
 // C# admin list: no deleted_at filter, OrderByDescending(CreatedAt)).
 func (s *Store) ListMagicSpellsByAccount(ctx context.Context, accountID string) ([]*model.MagicSpell, error) {
-	rows, err := s.query(ctx, `SELECT `+magicSpellColumns+` FROM magic_spells
-		WHERE account_id = $1 ORDER BY created_at DESC`, accountID)
-	if err != nil {
+	var entities []MagicSpellEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Where("account_id = ?", accountID).
+		Order("created_at DESC").
+		Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var spells = []*model.MagicSpell{}
-	for rows.Next() {
-		spell, err := scanMagicSpell(rows)
-		if err != nil {
-			return nil, err
-		}
-		spells = append(spells, spell)
+	spells := make([]*model.MagicSpell, 0, len(entities))
+	for i := range entities {
+		spells = append(spells, magicSpellFromEntity(&entities[i]))
 	}
-	return spells, rows.Err()
+	return spells, nil
 }
 
 // GetMagicSpellByID loads a spell by id (the C# resend lookup has no
 // deleted_at filter).
 func (s *Store) GetMagicSpellByID(ctx context.Context, id uuid.UUID) (*model.MagicSpell, error) {
-	row := s.queryRow(ctx, `SELECT `+magicSpellColumns+` FROM magic_spells WHERE id = $1`, id)
-	return scanMagicSpell(row)
+	var entity MagicSpellEntity
+	if err := s.DB.WithContext(ctx).Unscoped().Where("id = ?", id).First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	return magicSpellFromEntity(&entity), nil
 }
 
 // GetContactVerificationSpell returns an account's contact-verification
 // spell (the C# resend lookup: no deleted_at/expiry filters).
 func (s *Store) GetContactVerificationSpell(ctx context.Context, accountID string) (*model.MagicSpell, error) {
-	row := s.queryRow(ctx, `SELECT `+magicSpellColumns+` FROM magic_spells
-		WHERE type = $1 AND account_id = $2 ORDER BY created_at DESC LIMIT 1`,
-		int(model.MagicSpellTypeContactVerification), accountID)
-	return scanMagicSpell(row)
+	var entity MagicSpellEntity
+	err := s.DB.WithContext(ctx).Unscoped().
+		Where("type = ? AND account_id = ?", int(model.MagicSpellTypeContactVerification), accountID).
+		Order("created_at DESC").
+		First(&entity).Error
+	if err != nil {
+		return nil, mapNotFound(err)
+	}
+	return magicSpellFromEntity(&entity), nil
 }
 
 // DeleteMagicSpell hard-deletes a spell (C# db.Remove semantics).
 func (s *Store) DeleteMagicSpell(ctx context.Context, id string) error {
-	_, err := s.exec(ctx, `DELETE FROM magic_spells WHERE id = $1`, id)
-	return err
+	return s.DB.WithContext(ctx).Unscoped().Delete(&MagicSpellEntity{}, "id = ?", id).Error
 }
 
 // GetEmailContactForNotify returns an account's email contact for spell
 // delivery: primary first, optionally verified only (NotifyMagicSpell's
 // remote contact lookup with verifiedOnly: !bypassVerify).
 func (s *Store) GetEmailContactForNotify(ctx context.Context, accountID string, verifiedOnly bool) (*model.Contact, error) {
-	q := `SELECT id, type, verified_at, is_primary, is_public, content, account_id,
-		created_at, updated_at, deleted_at
-		FROM account_contacts
-		WHERE account_id = $1 AND type = $2 AND deleted_at IS NULL`
+	query := s.DB.WithContext(ctx).
+		Where("account_id = ? AND type = ?", accountID, int(model.ContactTypeEmail))
 	if verifiedOnly {
-		q += ` AND verified_at IS NOT NULL`
+		query = query.Where("verified_at IS NOT NULL")
 	}
-	q += ` ORDER BY is_primary DESC, created_at LIMIT 1`
-	row := s.queryRow(ctx, q, accountID, int(model.ContactTypeEmail))
-	contact := &model.Contact{}
-	err := row.Scan(&contact.Id, &contact.Type, &contact.VerifiedAt, &contact.IsPrimary, &contact.IsPublic,
-		&contact.Content, &contact.AccountId, &contact.CreatedAt, &contact.UpdatedAt, &contact.DeletedAt)
-	if err != nil {
-		if err == ErrNotFound {
-			return nil, ErrNotFound
-		}
-		return nil, err
+	var entity ContactEntity
+	if err := query.Order("is_primary DESC").Order("created_at").First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
 	}
-	return contact, nil
+	contact := contactFromEntity(&entity)
+	return &contact, nil
 }
 
 // MarkContactVerified sets verified_at on a contact, mirroring
 // AccountService.MarkContactMethodVerified (only moves the stamp forward).
 func (s *Store) MarkContactVerified(ctx context.Context, accountID, contactID string, verifiedAt time.Time) (bool, error) {
-	tag, err := s.exec(ctx, `UPDATE account_contacts
-		SET verified_at = $1, updated_at = $1
-		WHERE account_id = $2 AND id = $3 AND (verified_at IS NULL OR verified_at < $1)`,
-		verifiedAt, accountID, contactID)
-	if err != nil {
-		return false, err
+	res := s.DB.WithContext(ctx).Model(&ContactEntity{}).
+		Where("account_id = ? AND id = ? AND (verified_at IS NULL OR verified_at < ?)", accountID, contactID, verifiedAt).
+		Updates(map[string]any{"verified_at": verifiedAt, "updated_at": verifiedAt})
+	if res.Error != nil {
+		return false, res.Error
 	}
-	return tag.RowsAffected() > 0, nil
+	return res.RowsAffected > 0, nil
 }
 
 // ActivateAccountAndGrantVerified sets activated_at and upserts the
@@ -157,26 +177,32 @@ func (s *Store) MarkContactVerified(ctx context.Context, accountID, contactID st
 // stamp + grant group + clear permission cache). It reports whether the
 // account was newly activated (false when already activated or missing).
 func (s *Store) ActivateAccountAndGrantVerified(ctx context.Context, accountID uuid.UUID, activatedAt time.Time) (bool, error) {
-	tag, err := s.exec(ctx, `UPDATE accounts
-		SET activated_at = $1, updated_at = now()
-		WHERE id = $2 AND activated_at IS NULL`,
-		activatedAt, accountID)
-	if err != nil {
-		return false, err
+	now := time.Now().UTC()
+	res := s.DB.WithContext(ctx).Model(&AccountEntity{}).
+		Where("id = ? AND activated_at IS NULL", accountID).
+		Updates(map[string]any{"activated_at": activatedAt, "updated_at": now})
+	if res.Error != nil {
+		return false, res.Error
 	}
-	if tag.RowsAffected() == 0 {
+	if res.RowsAffected == 0 {
 		return false, nil
 	}
-	var groupID uuid.UUID
-	if err := s.queryRow(ctx, `SELECT id FROM permission_groups
-		WHERE "key" = $1 AND deleted_at IS NULL`, "verified").Scan(&groupID); err != nil {
-		return false, err
+	var group PermissionGroupEntity
+	if err := s.DB.WithContext(ctx).Where(`"key" = ?`, "verified").First(&group).Error; err != nil {
+		return false, mapNotFound(err)
 	}
-	if _, err := s.exec(ctx, `INSERT INTO permission_group_members
-		(group_id, actor, affected_at, expired_at, created_at, updated_at)
-		VALUES ($1, $2, NULL, NULL, now(), now())
-		ON CONFLICT (group_id, actor) DO UPDATE SET affected_at = NULL, expired_at = NULL, updated_at = now()`,
-		groupID, accountID.String()); err != nil {
+	err := s.DB.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "group_id"}, {Name: "actor"}},
+		DoUpdates: clause.Assignments(map[string]any{"affected_at": nil, "expired_at": nil, "updated_at": now}),
+	}).Create(&PermissionGroupMemberEntity{
+		GroupID: group.ID,
+		Actor:   accountID.String(),
+		EntityBase: EntityBase{
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}).Error
+	if err != nil {
 		return false, err
 	}
 	return true, nil
@@ -185,73 +211,77 @@ func (s *Store) ActivateAccountAndGrantVerified(ctx context.Context, accountID u
 // ResetPasswordFactor replaces an account's password auth factor secret,
 // mirroring the C# ResetPasswordFactorAsync on the account service.
 func (s *Store) ResetPasswordFactor(ctx context.Context, accountID, passwordHash string) error {
-	_, err := s.exec(ctx, `UPDATE account_auth_factors
-		SET secret = $2, updated_at = now()
-		WHERE account_id = $1 AND type = $3 AND deleted_at IS NULL`,
-		accountID, passwordHash, int(model.AuthFactorTypePassword))
-	return err
+	now := time.Now().UTC()
+	return s.DB.WithContext(ctx).Model(&AuthFactorEntity{}).
+		Where("account_id = ? AND type = ?", accountID, int(model.AuthFactorTypePassword)).
+		Updates(map[string]any{"secret": passwordHash, "updated_at": now}).Error
 }
 
 // ─────────────────────────── Affiliation spells ───────────────────────────
 
-const affiliationSpellColumns = `id, spell, type, expires_at, affected_at, meta, account_id, created_at, updated_at, deleted_at`
-
-func scanAffiliationSpell(row rowScanner) (*model.AffiliationSpell, error) {
-	spell := &model.AffiliationSpell{}
-	var meta []byte
-	var accountID *string
-	err := row.Scan(&spell.Id, &spell.Spell, &spell.Type, &spell.ExpiresAt, &spell.AffectedAt, &meta,
-		&accountID, &spell.CreatedAt, &spell.UpdatedAt, &spell.DeletedAt)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+func affiliationSpellFromEntity(entity *AffiliationSpellEntity) *model.AffiliationSpell {
+	spell := &model.AffiliationSpell{
+		Id:         entity.ID.String(),
+		Spell:      entity.Spell,
+		Type:       model.AffiliationSpellType(entity.Type),
+		ExpiresAt:  timePtr(entity.ExpiresAt),
+		AffectedAt: timePtr(entity.AffectedAt),
+		Meta:       map[string]any{},
+		CreatedAt:  timePtr(&entity.CreatedAt),
+		UpdatedAt:  timePtr(&entity.UpdatedAt),
+		DeletedAt:  deletedTime(entity.DeletedAt),
 	}
-	if accountID != nil {
-		spell.AccountId = *accountID
+	if entity.AccountID != nil {
+		spell.AccountId = entity.AccountID.String()
 	}
-	spell.Meta = map[string]any{}
-	if len(meta) > 0 {
-		_ = json.Unmarshal(meta, &spell.Meta)
-	}
-	return spell, nil
+	_ = decodeJSONValue(entity.Meta, &spell.Meta)
+	return spell
 }
 
 // GetAffiliationSpellByWord loads an affiliation spell by its word and type
 // (the C# ConsumeRegistrationInvite lookup has no deleted_at filter).
 func (s *Store) GetAffiliationSpellByWord(ctx context.Context, word string, typ model.AffiliationSpellType) (*model.AffiliationSpell, error) {
-	row := s.queryRow(ctx, `SELECT `+affiliationSpellColumns+` FROM affiliation_spells
-		WHERE spell = $1 AND type = $2`, word, int(typ))
-	return scanAffiliationSpell(row)
+	var entity AffiliationSpellEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Where("spell = ? AND type = ?", word, int(typ)).
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	return affiliationSpellFromEntity(&entity), nil
 }
 
 // CountAffiliationResults counts the recorded uses of an affiliation spell.
 func (s *Store) CountAffiliationResults(ctx context.Context, spellID string) (int, error) {
-	var count int
-	err := s.queryRow(ctx, `SELECT count(*) FROM affiliation_results WHERE spell_id = $1 AND deleted_at IS NULL`, spellID).Scan(&count)
-	return count, err
+	var count int64
+	if err := s.DB.WithContext(ctx).Model(&AffiliationResultEntity{}).
+		Where("spell_id = ?", spellID).
+		Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return int(count), nil
 }
 
 // CreateAffiliationResult records one use of an affiliation spell.
 func (s *Store) CreateAffiliationResult(ctx context.Context, spellID, resourceIdentifier string) error {
+	spell, err := uuid.Parse(spellID)
+	if err != nil {
+		return err
+	}
 	now := time.Now().UTC()
-	_, err := s.exec(ctx, `INSERT INTO affiliation_results
-		(id, resource_identifier, spell_id, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$4)`,
-		uuid.NewString(), resourceIdentifier, spellID, now)
-	return err
+	return s.DB.WithContext(ctx).Create(&AffiliationResultEntity{
+		ID:                 uuid.New(),
+		ResourceIdentifier: resourceIdentifier,
+		SpellID:            spell,
+		EntityBase: EntityBase{
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}).Error
 }
 
 // SetAffiliationSpellAffected stamps affected_at (max_usages == 1 case).
 func (s *Store) SetAffiliationSpellAffected(ctx context.Context, spellID string, at time.Time) error {
-	_, err := s.exec(ctx, `UPDATE affiliation_spells SET affected_at = $2, updated_at = $2 WHERE id = $1`, spellID, at)
-	return err
-}
-
-func nullableUUID(s string) any {
-	if s == "" {
-		return nil
-	}
-	return s
+	return s.DB.WithContext(ctx).Unscoped().Model(&AffiliationSpellEntity{}).
+		Where("id = ?", spellID).
+		Updates(map[string]any{"affected_at": at, "updated_at": at}).Error
 }

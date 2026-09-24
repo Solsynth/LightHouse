@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
@@ -14,49 +18,48 @@ import (
 // This file adds the auth-challenge / account-registration query helpers used
 // by internal/httpserver/authctl. It never touches existing store files.
 
-const challengeColumns = `id, account_id, approved_at, approved_by_session_id, audiences, blacklist_factors,
-	created_at, declined_at, deleted_at, device_id, device_name, expired_at, failed_attempts, ip_address,
-	location, nonce, platform, scopes, step_remain, step_total, updated_at, user_agent`
-
-func scanChallenge(row rowScanner) (*model.AuthChallenge, error) {
-	ch := &model.AuthChallenge{}
-	var (
-		accountID                             *string
-		audiencesRaw, scopesRaw, blacklistRaw []byte
-		location                              []byte
-		approvedBySessionID                   *uuid.UUID
-	)
-	err := row.Scan(
-		&ch.Id, &accountID, &ch.ApprovedAt, &approvedBySessionID,
-		&audiencesRaw, &blacklistRaw, &ch.CreatedAt, &ch.DeclinedAt, &ch.DeletedAt,
-		&ch.DeviceId, &ch.DeviceName, &ch.ExpiredAt, &ch.FailedAttempts, &ch.IpAddress,
-		&location, &ch.Nonce, &ch.Platform, &scopesRaw, &ch.StepRemain, &ch.StepTotal,
-		&ch.UpdatedAt, &ch.UserAgent,
-	)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+// challengeFromEntity maps a persisted challenge row to the API model. A NULL
+// account_id — anonymous challenges (discoverable passkey login, QR login) —
+// normalizes back to the all-zero sentinel the handlers compare against.
+func challengeFromEntity(entity *ChallengeEntity) *model.AuthChallenge {
+	if entity == nil {
+		return nil
 	}
-	ch.AccountId = accountIDOrSentinel(accountID)
-	ch.Audiences = decodeJSONArray(audiencesRaw)
-	ch.Scopes = decodeJSONArray(scopesRaw)
-	ch.BlacklistFactors = decodeJSONArray(blacklistRaw)
-	ch.ApprovedBySessionId = uuidPtrStr(approvedBySessionID)
-	if len(location) > 0 && string(location) != "null" {
-		var gp model.GeoPoint
-		if err := json.Unmarshal(location, &gp); err == nil {
-			ch.Location = &gp
-		}
+	challenge := &model.AuthChallenge{
+		Id:                  entity.ID.String(),
+		AccountId:           accountIDOrSentinel(uuidPtrStr(entity.AccountID)),
+		ExpiredAt:           timePtr(entity.ExpiredAt),
+		StepRemain:          entity.StepRemain,
+		StepTotal:           entity.StepTotal,
+		FailedAttempts:      entity.FailedAttempts,
+		IpAddress:           entity.IPAddress,
+		UserAgent:           entity.UserAgent,
+		DeviceId:            entity.DeviceID,
+		DeviceName:          entity.DeviceName,
+		Platform:            model.ClientPlatform(entity.Platform),
+		Nonce:               entity.Nonce,
+		ApprovedAt:          timePtr(entity.ApprovedAt),
+		DeclinedAt:          timePtr(entity.DeclinedAt),
+		ApprovedBySessionId: uuidPtrStr(entity.ApprovedBySessionID),
+		CreatedAt:           timePtr(&entity.CreatedAt),
+		UpdatedAt:           timePtr(&entity.UpdatedAt),
+		DeletedAt:           deletedTime(entity.DeletedAt),
 	}
-	return ch, nil
+	_ = decodeJSONValue(entity.Audiences, &challenge.Audiences)
+	_ = decodeJSONValue(entity.Scopes, &challenge.Scopes)
+	_ = decodeJSONValue(entity.BlacklistFactors, &challenge.BlacklistFactors)
+	_ = decodeJSON(entity.Location, &challenge.Location)
+	return challenge
 }
 
-// GetAuthChallenge loads a challenge by id.
+// GetAuthChallenge loads a challenge by id. Soft-deleted rows stay readable
+// (the previous query never filtered deleted_at).
 func (s *Store) GetAuthChallenge(ctx context.Context, id uuid.UUID) (*model.AuthChallenge, error) {
-	row := s.queryRow(ctx, `SELECT `+challengeColumns+` FROM auth_challenges WHERE id = $1`, id)
-	return scanChallenge(row)
+	var entity ChallengeEntity
+	if err := s.DB.WithContext(ctx).Unscoped().First(&entity, "id = ?", id).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	return challengeFromEntity(&entity), nil
 }
 
 // nullableAccountID maps the all-zero-UUID sentinel to NULL so anonymous
@@ -78,21 +81,89 @@ func accountIDOrSentinel(accountID *string) string {
 	return *accountID
 }
 
+// accountUUID is the typed sibling of nullableAccountID for entity writes:
+// anonymous challenges (sentinel/empty) persist a NULL account_id, everything
+// else must be a valid uuid.
+func accountUUID(accountID string) (*uuid.UUID, error) {
+	if accountID == "" || accountID == uuid.Nil.String() {
+		return nil, nil
+	}
+	id, err := uuid.Parse(accountID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid account id %q: %w", accountID, err)
+	}
+	return &id, nil
+}
+
+// parseUUIDPtr parses an optional uuid string; nil and "" yield nil so the
+// nullable column receives NULL.
+func parseUUIDPtr(value *string) (*uuid.UUID, error) {
+	if value == nil || *value == "" {
+		return nil, nil
+	}
+	id, err := uuid.Parse(*value)
+	if err != nil {
+		return nil, fmt.Errorf("invalid uuid %q: %w", *value, err)
+	}
+	return &id, nil
+}
+
 // CreateAuthChallenge inserts a challenge (ids and timestamps must be set).
 func (s *Store) CreateAuthChallenge(ctx context.Context, ch *model.AuthChallenge) error {
-	locationJSON, _ := json.Marshal(ch.Location)
-	audiences := jsonbOrEmpty(ch.Audiences)
-	scopes := jsonbOrEmpty(ch.Scopes)
-	blacklist := jsonbOrEmpty(ch.BlacklistFactors)
-	_, err := s.exec(ctx, `INSERT INTO auth_challenges
-		(id, account_id, approved_at, approved_by_session_id, audiences, blacklist_factors, created_at,
-		 declined_at, deleted_at, device_id, device_name, expired_at, failed_attempts, ip_address,
-		 location, nonce, platform, scopes, step_remain, step_total, updated_at, user_agent)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
-		ch.Id, nullableAccountID(ch.AccountId), ch.ApprovedAt, ch.ApprovedBySessionId, audiences, blacklist, ch.CreatedAt,
-		ch.DeclinedAt, ch.DeletedAt, ch.DeviceId, ch.DeviceName, ch.ExpiredAt, ch.FailedAttempts, ch.IpAddress,
-		locationJSON, ch.Nonce, int(ch.Platform), scopes, ch.StepRemain, ch.StepTotal, ch.UpdatedAt, ch.UserAgent)
-	return err
+	id, err := uuid.Parse(ch.Id)
+	if err != nil {
+		return fmt.Errorf("invalid challenge id %q: %w", ch.Id, err)
+	}
+	accountID, err := accountUUID(ch.AccountId)
+	if err != nil {
+		return err
+	}
+	approvedBy, err := parseUUIDPtr(ch.ApprovedBySessionId)
+	if err != nil {
+		return err
+	}
+	// location is nullable jsonb: a nil GeoPoint stores SQL NULL (a boxed nil
+	// pointer would marshal to the JSON literal "null").
+	var location *datatypes.JSON
+	if ch.Location != nil {
+		encoded, err := encodeJSONPtr(ch.Location)
+		if err != nil {
+			return err
+		}
+		location = encoded
+	}
+	createdAt, updatedAt := timeValue(ch.CreatedAt), timeValue(ch.UpdatedAt)
+	if createdAt == nil || updatedAt == nil {
+		return fmt.Errorf("challenge %s must carry created_at and updated_at", ch.Id)
+	}
+	base := EntityBase{CreatedAt: *createdAt, UpdatedAt: *updatedAt}
+	if deletedAt := timeValue(ch.DeletedAt); deletedAt != nil {
+		base.DeletedAt = gorm.DeletedAt{Time: *deletedAt, Valid: true}
+	}
+	return s.DB.WithContext(ctx).Create(&ChallengeEntity{
+		ID:                  id,
+		EntityBase:          base,
+		AccountID:           accountID,
+		ApprovedAt:          timeValue(ch.ApprovedAt),
+		ApprovedBySessionID: approvedBy,
+		// audiences/scopes/blacklist_factors are jsonb NOT NULL: jsonbOrEmpty
+		// keeps a nil slice as '[]' instead of SQL NULL.
+		Audiences:        datatypes.JSON(jsonbOrEmpty(ch.Audiences)),
+		BlacklistFactors: datatypes.JSON(jsonbOrEmpty(ch.BlacklistFactors)),
+		DeclinedAt:       timeValue(ch.DeclinedAt),
+		DeviceID:         ch.DeviceId,
+		DeviceName:       ch.DeviceName,
+		ExpiredAt:        timeValue(ch.ExpiredAt),
+		FailedAttempts:   ch.FailedAttempts,
+		IPAddress:        ch.IpAddress,
+		Location:         location,
+		Nonce:            ch.Nonce,
+		Platform:         int(ch.Platform),
+		Scopes:           datatypes.JSON(jsonbOrEmpty(ch.Scopes)),
+		StepRemain:       ch.StepRemain,
+		StepTotal:        ch.StepTotal,
+		UserAgent:        ch.UserAgent,
+	}).Error
 }
 
 // jsonbOrEmpty marshals a slice as JSON, using '[]' for nil so jsonb NOT NULL
@@ -108,162 +179,188 @@ func jsonbOrEmpty[T any](v []T) []byte {
 	return b
 }
 
-// UpdateAuthChallenge persists the mutable challenge fields.
+// UpdateAuthChallenge persists the mutable challenge fields. Unscoped mirrors
+// the previous statement, which updated rows regardless of deleted_at.
 func (s *Store) UpdateAuthChallenge(ctx context.Context, ch *model.AuthChallenge) error {
-	_, err := s.exec(ctx, `UPDATE auth_challenges SET
-		account_id = $2, approved_at = $3, approved_by_session_id = $4, blacklist_factors = $5,
-		declined_at = $6, expired_at = $7, failed_attempts = $8, step_remain = $9, step_total = $10,
-		updated_at = $11
-		WHERE id = $1`,
-		ch.Id, nullableAccountID(ch.AccountId), ch.ApprovedAt, ch.ApprovedBySessionId, ch.BlacklistFactors,
-		ch.DeclinedAt, ch.ExpiredAt, ch.FailedAttempts, ch.StepRemain, ch.StepTotal, ch.UpdatedAt)
-	return err
+	id, err := uuid.Parse(ch.Id)
+	if err != nil {
+		return fmt.Errorf("invalid challenge id %q: %w", ch.Id, err)
+	}
+	approvedBy, err := parseUUIDPtr(ch.ApprovedBySessionId)
+	if err != nil {
+		return err
+	}
+	// updated_at comes from the caller (all call sites set it right before
+	// invoking), mirroring the legacy `updated_at = $11` binding.
+	return s.DB.WithContext(ctx).Unscoped().Model(&ChallengeEntity{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"account_id":             nullableAccountID(ch.AccountId),
+			"approved_at":            timeValue(ch.ApprovedAt),
+			"approved_by_session_id": approvedBy,
+			"blacklist_factors":      datatypes.JSON(jsonbOrEmpty(ch.BlacklistFactors)),
+			"declined_at":            timeValue(ch.DeclinedAt),
+			"expired_at":             timeValue(ch.ExpiredAt),
+			"failed_attempts":        ch.FailedAttempts,
+			"step_remain":            ch.StepRemain,
+			"step_total":             ch.StepTotal,
+			"updated_at":             timeValue(ch.UpdatedAt),
+		}).Error
 }
 
 // FindLiveChallenge returns the newest live challenge for the same
 // (account, ip, user-agent, device) triple, mirroring the reuse semantics of
 // AuthController.CreateChallenge.
 func (s *Store) FindLiveChallenge(ctx context.Context, accountID, ipAddress, userAgent, deviceID string) (*model.AuthChallenge, error) {
-	row := s.queryRow(ctx, `SELECT `+challengeColumns+` FROM auth_challenges
-		WHERE account_id = $1 AND ip_address = $2 AND user_agent = $3 AND device_id = $4
-		  AND step_remain > 0 AND expired_at IS NOT NULL AND expired_at > now() AND deleted_at IS NULL
-		ORDER BY created_at DESC LIMIT 1`,
-		accountID, ipAddress, userAgent, deviceID)
-	return scanChallenge(row)
+	var entity ChallengeEntity
+	result := s.DB.WithContext(ctx).
+		Where("account_id = ? AND ip_address = ? AND user_agent = ? AND device_id = ?",
+			accountID, ipAddress, userAgent, deviceID).
+		Where("step_remain > 0 AND expired_at IS NOT NULL AND expired_at > now()").
+		Order("created_at DESC").Limit(1).Find(&entity)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil, ErrNotFound
+	}
+	return challengeFromEntity(&entity), nil
 }
 
 // ListPendingChallenges lists the account's pending (unapproved, undeclined,
 // live) challenges newest first.
 func (s *Store) ListPendingChallenges(ctx context.Context, accountID string) ([]model.AuthChallenge, error) {
-	rows, err := s.query(ctx, `SELECT `+challengeColumns+` FROM auth_challenges
-		WHERE account_id = $1 AND approved_at IS NULL AND declined_at IS NULL AND step_remain > 0
-		  AND (expired_at IS NULL OR expired_at > now()) AND deleted_at IS NULL
-		ORDER BY created_at DESC`, accountID)
-	if err != nil {
+	var entities []ChallengeEntity
+	if err := s.DB.WithContext(ctx).
+		Where("account_id = ?", accountID).
+		Where("approved_at IS NULL AND declined_at IS NULL AND step_remain > 0").
+		Where("expired_at IS NULL OR expired_at > now()").
+		Order("created_at DESC").Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var challenges []model.AuthChallenge
-	for rows.Next() {
-		ch, err := scanChallenge(rows)
-		if err != nil {
-			return nil, err
-		}
-		challenges = append(challenges, *ch)
+	for i := range entities {
+		challenges = append(challenges, *challengeFromEntity(&entities[i]))
 	}
-	return challenges, rows.Err()
+	return challenges, nil
 }
 
-// UpdateAccountBasicInfo updates the nullable basic-info fields and returns
-// enabled state (callers check EnabledAt themselves).
+// GetAuthFactorByType loads the account's oldest non-deleted factor of the
+// given type.
 func (s *Store) GetAuthFactorByType(ctx context.Context, accountID string, ftype model.AuthFactorType) (*model.AuthFactor, error) {
-	var f model.AuthFactor
-	var secret *string
-	var config []byte
-	err := s.queryRow(ctx, `SELECT id, type, secret, config, trustworthy, enabled_at, expired_at, account_id, created_at, updated_at, deleted_at
-		FROM account_auth_factors
-		WHERE account_id = $1 AND type = $2 AND deleted_at IS NULL
-		ORDER BY created_at LIMIT 1`,
-		accountID, int(ftype)).Scan(&f.Id, &f.Type, &secret, &config, &f.Trustworthy, &f.EnabledAt,
-		&f.ExpiredAt, &f.AccountId, &f.CreatedAt, &f.UpdatedAt, &f.DeletedAt)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+	var entity AuthFactorEntity
+	if err := s.DB.WithContext(ctx).
+		Where("account_id = ? AND type = ?", accountID, int(ftype)).
+		Order("created_at").First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
 	}
-	if secret != nil {
-		f.Secret = *secret
-	}
-	if len(config) > 0 {
-		_ = json.Unmarshal(config, &f.Config)
-	}
-	return &f, nil
+	factor := factorFromEntity(&entity)
+	return &factor, nil
 }
 
 // LookupAccount resolves an account by name (case-insensitive) then by
 // email/phone contact, mirroring AccountService.LookupAccount.
 func (s *Store) LookupAccount(ctx context.Context, probe string) (*model.Account, error) {
-	row := s.queryRow(ctx, `SELECT `+accountColumns+` FROM accounts
-		WHERE name ILIKE $1 AND deleted_at IS NULL LIMIT 1`, probe)
-	account, err := scanAccount(row)
+	var account AccountEntity
+	err := s.DB.WithContext(ctx).Where("name ILIKE ?", probe).First(&account).Error
 	if err == nil {
-		return account, nil
+		return accountFromEntity(&account), nil
 	}
-	if !errors.Is(err, ErrNotFound) {
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
-	var id uuid.UUID
-	err = s.queryRow(ctx, `SELECT c.account_id FROM account_contacts c
-		WHERE c.type IN ($1, $2) AND c.deleted_at IS NULL AND c.content ILIKE $3 LIMIT 1`,
-		int(model.ContactTypeEmail), int(model.ContactTypePhoneNumber), probe).Scan(&id)
+	var contact ContactEntity
+	err = s.DB.WithContext(ctx).
+		Where("type IN ?", []int{int(model.ContactTypeEmail), int(model.ContactTypePhoneNumber)}).
+		Where("content ILIKE ?", probe).First(&contact).Error
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+		return nil, mapNotFound(err)
 	}
-	return s.GetAccountByID(ctx, id)
+	return s.GetAccountByID(ctx, contact.AccountID)
 }
 
 // CheckAccountNameTaken reports whether the name is already used
-// (case-insensitive), mirroring CheckAccountNameHasTaken.
+// (case-insensitive), mirroring CheckAccountNameHasTaken. Soft-deleted
+// accounts hold their name (the previous query had no deleted_at filter).
 func (s *Store) CheckAccountNameTaken(ctx context.Context, name string) (bool, error) {
-	var exists bool
-	err := s.queryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM accounts WHERE lower(name) = lower($1))`, name).Scan(&exists)
-	return exists, err
+	var count int64
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&AccountEntity{}).
+		Where("lower(name) = lower(?)", name).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // CheckEmailUsed reports whether an email contact already exists
 // (case-insensitive), mirroring CheckEmailHasBeenUsed.
 func (s *Store) CheckEmailUsed(ctx context.Context, email string) (bool, error) {
-	var exists bool
-	err := s.queryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM account_contacts c WHERE c.type = $1 AND c.deleted_at IS NULL AND c.content ILIKE $2)`,
-		int(model.ContactTypeEmail), email).Scan(&exists)
-	return exists, err
+	var count int64
+	if err := s.DB.WithContext(ctx).Model(&ContactEntity{}).
+		Where("type = ? AND content ILIKE ?", int(model.ContactTypeEmail), email).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // CreateAccountWithRegistration atomically creates the account, its primary
 // email contact, its password auth factor (bcrypt hash) and the `default`
 // permission-group membership, mirroring AccountService.CreateAccount.
 func (s *Store) CreateAccountWithRegistration(ctx context.Context, acc *model.Account, email string, passwordHash string) error {
-	tx, err := s.begin(ctx)
+	accountID, err := uuid.Parse(acc.Id)
 	if err != nil {
-		return err
+		return fmt.Errorf("invalid account id %q: %w", acc.Id, err)
 	}
-	defer tx.Rollback(ctx)
 	now := time.Now().UTC()
-	_, err = tx.Exec(ctx, `INSERT INTO accounts
-		(id, name, nick, language, region, is_superuser, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,false,$6,$6)`,
-		acc.Id, acc.Name, acc.Nick, acc.Language, acc.Region, now)
-	if err != nil {
-		return err
-	}
-	_, err = tx.Exec(ctx, `INSERT INTO account_contacts
-		(id, account_id, content, is_primary, is_public, type, created_at, updated_at)
-		VALUES ($1,$2,$3,true,false,$4,$5,$5)`,
-		uuid.NewString(), acc.Id, email, int(model.ContactTypeEmail), now)
-	if err != nil {
-		return err
-	}
-	_, err = tx.Exec(ctx, `INSERT INTO account_auth_factors
-		(id, account_id, type, secret, trustworthy, enabled_at, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,1,$5,$5,$5)`,
-		uuid.NewString(), acc.Id, int(model.AuthFactorTypePassword), passwordHash, now)
-	if err != nil {
-		return err
-	}
-	_, err = tx.Exec(ctx, `INSERT INTO permission_group_members (group_id, actor, created_at, updated_at)
-		SELECT g.id, $1, now(), now() FROM permission_groups g
-		WHERE g.key = 'default' AND g.deleted_at IS NULL
-		ON CONFLICT DO NOTHING`, acc.Id)
-	if err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&AccountEntity{
+			ID:          accountID,
+			EntityBase:  EntityBase{CreatedAt: now, UpdatedAt: now},
+			IsSuperuser: false,
+			Language:    acc.Language,
+			Name:        acc.Name,
+			Nick:        acc.Nick,
+			Region:      acc.Region,
+		}).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&ContactEntity{
+			ID:         uuid.New(),
+			EntityBase: EntityBase{CreatedAt: now, UpdatedAt: now},
+			AccountID:  accountID,
+			Content:    email,
+			IsPrimary:  true,
+			IsPublic:   false,
+			Type:       int(model.ContactTypeEmail),
+		}).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&AuthFactorEntity{
+			ID:          uuid.New(),
+			EntityBase:  EntityBase{CreatedAt: now, UpdatedAt: now},
+			AccountID:   accountID,
+			EnabledAt:   &now,
+			Secret:      &passwordHash,
+			Trustworthy: 1,
+			Type:        int(model.AuthFactorTypePassword),
+		}).Error; err != nil {
+			return err
+		}
+		// The INSERT..SELECT this replaces matched the `default` group and
+		// inserted nothing when it was absent.
+		var group PermissionGroupEntity
+		if err := tx.Where(&PermissionGroupEntity{Key: "default"}).First(&group).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			return err
+		}
+		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&PermissionGroupMemberEntity{
+			GroupID:    group.ID,
+			Actor:      acc.Id,
+			EntityBase: EntityBase{CreatedAt: now, UpdatedAt: now},
+		}).Error
+	})
 }
 
 // RecentSessionInfo carries the fields DetectChallengeRisk needs from the
@@ -279,22 +376,24 @@ type RecentSessionInfo struct {
 // ListRecentSessions returns the account's most recent sessions (by
 // last_granted_at desc), mirroring DetectChallengeRisk's query.
 func (s *Store) ListRecentSessions(ctx context.Context, accountID string, limit int) ([]RecentSessionInfo, error) {
-	rows, err := s.query(ctx, `SELECT id, last_granted_at, challenge_id, client_id, created_at
-		FROM auth_sessions WHERE account_id = $1 AND last_granted_at IS NOT NULL AND deleted_at IS NULL
-		ORDER BY last_granted_at DESC LIMIT $2`, accountID, limit)
-	if err != nil {
+	var entities []AuthSessionEntity
+	if err := s.DB.WithContext(ctx).
+		Select("id", "last_granted_at", "challenge_id", "client_id", "created_at").
+		Where("account_id = ? AND last_granted_at IS NOT NULL", accountID).
+		Order("last_granted_at DESC").Limit(limit).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var sessions []RecentSessionInfo
-	for rows.Next() {
-		var s RecentSessionInfo
-		if err := rows.Scan(&s.ID, &s.LastGrantedAt, &s.ChallengeID, &s.ClientID, &s.CreatedAt); err != nil {
-			return nil, err
-		}
-		sessions = append(sessions, s)
+	for i := range entities {
+		sessions = append(sessions, RecentSessionInfo{
+			ID:            entities[i].ID,
+			LastGrantedAt: timePtr(entities[i].LastGrantedAt),
+			ChallengeID:   entities[i].ChallengeID,
+			ClientID:      entities[i].ClientID,
+			CreatedAt:     entities[i].CreatedAt,
+		})
 	}
-	return sessions, rows.Err()
+	return sessions, nil
 }
 
 // ChallengeProbe carries the ip/user-agent history used by
@@ -306,33 +405,40 @@ type ChallengeProbe struct {
 }
 
 // ListChallengesByIDs loads the ip/user-agent of the given challenges.
+// Unscoped mirrors the previous query, which did not filter deleted_at.
 func (s *Store) ListChallengesByIDs(ctx context.Context, ids []uuid.UUID) ([]ChallengeProbe, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	rows, err := s.query(ctx, `SELECT id, ip_address, user_agent FROM auth_challenges WHERE id = ANY($1)`, ids)
-	if err != nil {
+	var entities []ChallengeEntity
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Select("id", "ip_address", "user_agent").
+		Where("id IN ?", ids).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var probes []ChallengeProbe
-	for rows.Next() {
-		var p ChallengeProbe
-		if err := rows.Scan(&p.ID, &p.IpAddress, &p.UserAgent); err != nil {
-			return nil, err
-		}
-		probes = append(probes, p)
+	for i := range entities {
+		probes = append(probes, ChallengeProbe{
+			ID:        entities[i].ID,
+			IpAddress: entities[i].IPAddress,
+			UserAgent: entities[i].UserAgent,
+		})
 	}
-	return probes, rows.Err()
+	return probes, nil
 }
 
 // SumRecentFailedChallengeAttempts sums failed_attempts across challenges
 // created after since, mirroring DetectChallengeRisk's risk component.
+// Unscoped mirrors the previous query, which did not filter deleted_at.
 func (s *Store) SumRecentFailedChallengeAttempts(ctx context.Context, accountID string, since time.Time) (int, error) {
-	var total int
-	err := s.queryRow(ctx, `SELECT COALESCE(SUM(failed_attempts), 0) FROM auth_challenges
-		WHERE account_id = $1 AND created_at > $2 AND failed_attempts > 0`, accountID, since).Scan(&total)
-	return total, err
+	var total int64
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&ChallengeEntity{}).
+		Select("COALESCE(SUM(failed_attempts), 0)").
+		Where("account_id = ? AND created_at > ? AND failed_attempts > 0", accountID, since).
+		Scan(&total).Error; err != nil {
+		return 0, err
+	}
+	return int(total), nil
 }
 
 // PunishmentOverview mirrors SnAccountPunishment minus the hydrated account.
@@ -345,64 +451,69 @@ type PunishmentOverview struct {
 // (DisableAccount > BlockLogin > PermissionModification > Strike), mirroring
 // AccountService.GetActivePunishmentOverview.
 func (s *Store) GetActivePunishmentOverview(ctx context.Context, accountID string) (*PunishmentOverview, error) {
-	var p PunishmentOverview
-	err := s.queryRow(ctx, `SELECT type, reason FROM punishments
-		WHERE account_id = $1 AND deleted_at IS NULL AND (expired_at IS NULL OR expired_at > now())
-		ORDER BY CASE type WHEN 2 THEN 0 WHEN 1 THEN 1 WHEN 0 THEN 2 WHEN 3 THEN 3 ELSE 99 END
-		LIMIT 1`, accountID).Scan(&p.Type, &p.Reason)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, nil
-		}
+	var entities []PunishmentEntity
+	if err := s.DB.WithContext(ctx).
+		Select("type", "reason").
+		Where("account_id = ?", accountID).
+		Where("expired_at IS NULL OR expired_at > now()").
+		Order("CASE type WHEN 2 THEN 0 WHEN 1 THEN 1 WHEN 0 THEN 2 WHEN 3 THEN 3 ELSE 99 END").
+		Limit(1).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	return &p, nil
+	if len(entities) == 0 {
+		return nil, nil
+	}
+	return &PunishmentOverview{
+		Type:   model.PunishmentType(entities[0].Type),
+		Reason: entities[0].Reason,
+	}, nil
 }
 
-const passkeyColumns = `id, account_id, label, credential_id, credential, created_at, updated_at, deleted_at`
-
-func scanPasskey(row rowScanner) (*model.Passkey, error) {
-	p := &model.Passkey{}
-	err := row.Scan(&p.Id, &p.AccountId, &p.Label, &p.CredentialId, &p.Credential,
-		&p.CreatedAt, &p.UpdatedAt, &p.DeletedAt)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
+// passkeyFromEntity maps a persisted passkey row to the API model.
+func passkeyFromEntity(entity *PasskeyEntity) model.Passkey {
+	return model.Passkey{
+		Id:           entity.ID.String(),
+		AccountId:    entity.AccountID.String(),
+		Label:        entity.Label,
+		CredentialId: entity.CredentialID,
+		Credential:   string(entity.Credential),
+		CreatedAt:    timePtr(&entity.CreatedAt),
+		UpdatedAt:    timePtr(&entity.UpdatedAt),
+		DeletedAt:    deletedTime(entity.DeletedAt),
 	}
-	return p, nil
 }
 
 // ListPasskeysByAccount lists the account's registered passkeys.
 func (s *Store) ListPasskeysByAccount(ctx context.Context, accountID string) ([]model.Passkey, error) {
-	rows, err := s.query(ctx, `SELECT `+passkeyColumns+` FROM account_passkeys
-		WHERE account_id = $1 AND deleted_at IS NULL`, accountID)
-	if err != nil {
+	var entities []PasskeyEntity
+	if err := s.DB.WithContext(ctx).Where("account_id = ?", accountID).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var passkeys []model.Passkey
-	for rows.Next() {
-		p, err := scanPasskey(rows)
-		if err != nil {
-			return nil, err
-		}
-		passkeys = append(passkeys, *p)
+	for i := range entities {
+		passkeys = append(passkeys, passkeyFromEntity(&entities[i]))
 	}
-	return passkeys, rows.Err()
+	return passkeys, nil
 }
 
 // GetPasskeyByCredentialID loads a passkey by its normalized credential id.
 func (s *Store) GetPasskeyByCredentialID(ctx context.Context, credentialID string) (*model.Passkey, error) {
-	row := s.queryRow(ctx, `SELECT `+passkeyColumns+` FROM account_passkeys
-		WHERE credential_id = $1 AND deleted_at IS NULL`, credentialID)
-	return scanPasskey(row)
+	var entity PasskeyEntity
+	if err := s.DB.WithContext(ctx).Where("credential_id = ?", credentialID).First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	passkey := passkeyFromEntity(&entity)
+	return &passkey, nil
 }
 
 // GetPasskeyByAccountAndCredentialID loads a passkey scoped to the account.
 func (s *Store) GetPasskeyByAccountAndCredentialID(ctx context.Context, accountID, credentialID string) (*model.Passkey, error) {
-	row := s.queryRow(ctx, `SELECT `+passkeyColumns+` FROM account_passkeys
-		WHERE account_id = $1 AND credential_id = $2 AND deleted_at IS NULL`, accountID, credentialID)
-	return scanPasskey(row)
+	var entity PasskeyEntity
+	if err := s.DB.WithContext(ctx).
+		Where("account_id = ? AND credential_id = ?", accountID, credentialID).
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	passkey := passkeyFromEntity(&entity)
+	return &passkey, nil
 }

@@ -2,11 +2,13 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"github.com/google/uuid"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/store"
@@ -17,33 +19,20 @@ import (
 // GetApiKey loads an API key with its session; scoped to an account when
 // accountID is non-nil.
 func (s *AuthService) GetApiKey(ctx context.Context, id uuid.UUID, accountID *uuid.UUID) (*model.ApiKey, error) {
-	var key model.ApiKey
-	var sessionID uuid.UUID
-	var appID *uuid.UUID
-	var deletedAt *time.Time
-	var expiredAt *time.Time
-	query := `SELECT id, label, account_id, app_id, session_id, created_at, updated_at, deleted_at
-		FROM api_keys WHERE id = $1`
-	args := []any{id}
+	// Unscoped: the legacy lookup returned soft-deleted keys with their
+	// deleted_at populated.
+	query := s.store.DB.WithContext(ctx).Unscoped().Model(&store.APIKeyEntity{}).Where("id = ?", id)
 	if accountID != nil {
-		query += ` AND account_id = $2`
-		args = append(args, *accountID)
+		query = query.Where("account_id = ?", *accountID)
 	}
-	err := s.store.QueryRow(ctx, query, args...).Scan(
-		&key.Id, &key.Label, &key.AccountId, &appID, &sessionID, &key.CreatedAt, &key.UpdatedAt, &deletedAt)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) || err.Error() == "no rows in result set" {
+	var entity store.APIKeyEntity
+	if err := query.First(&entity).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, store.ErrNotFound
 		}
 		return nil, err
 	}
-	key.SessionId = sessionID.String()
-	key.AppId = uuidPtrToStr(appID)
-	if deletedAt != nil {
-		key.DeletedAt = model.NewTime(*deletedAt)
-	}
-	_ = expiredAt
-	return &key, nil
+	return apiKeyModel(&entity), nil
 }
 
 // CreateApiKey creates an API key with its backing ApiKey-typed session.
@@ -99,12 +88,13 @@ func (s *AuthService) IssueApiKeyToken(ctx context.Context, key *model.ApiKey) (
 		return "", errors.New("API key session is not available.")
 	}
 	now := time.Now().UTC()
-	tag, err := s.store.Exec(ctx, `UPDATE auth_sessions SET last_granted_at = $1, updated_at = $1
-		WHERE id = $2 AND (expired_at IS NULL OR expired_at > $1)`, now, sessionID)
-	if err != nil {
-		return "", err
+	res := s.store.DB.WithContext(ctx).Unscoped().Model(&store.AuthSessionEntity{}).
+		Where("id = ? AND (expired_at IS NULL OR expired_at > ?)", sessionID, now).
+		Updates(map[string]any{"last_granted_at": now, "updated_at": now})
+	if res.Error != nil {
+		return "", res.Error
 	}
-	if tag.RowsAffected() == 0 {
+	if res.RowsAffected == 0 {
 		return "", errors.New("API key session has expired or does not exist.")
 	}
 	session, err := s.store.GetSessionWithAccount(ctx, sessionID)
@@ -114,88 +104,98 @@ func (s *AuthService) IssueApiKeyToken(ctx context.Context, key *model.ApiKey) (
 	return s.jwt.CreateBotToken(key, session)
 }
 
-// RevokeApiKeyToken soft-deletes the key and revokes its session.
+// RevokeApiKeyToken soft-deletes the key and revokes its session. The
+// soft-delete is rolled back when session revocation fails, matching the
+// legacy transaction.
 func (s *AuthService) RevokeApiKeyToken(ctx context.Context, key *model.ApiKey) error {
 	now := time.Now().UTC()
-	tx, err := s.store.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, `UPDATE api_keys SET deleted_at = $1, updated_at = $1 WHERE id = $2`, now, key.Id); err != nil {
-		return err
-	}
 	sessionID, err := uuid.Parse(key.SessionId)
 	if err != nil {
+		return err
+	}
+	tx := s.store.DB.WithContext(ctx).Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := tx.Unscoped().Model(&store.APIKeyEntity{}).
+		Where("id = ?", key.Id).
+		Updates(map[string]any{"deleted_at": now, "updated_at": now}).Error; err != nil {
 		return err
 	}
 	if _, err := s.RevokeSession(ctx, sessionID); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	return tx.Commit().Error
 }
 
 // RotateApiKeyToken rotates the key to a fresh session (old tokens die via
 // epoch bump).
 func (s *AuthService) RotateApiKeyToken(ctx context.Context, key *model.ApiKey) (*model.ApiKey, error) {
 	now := time.Now().UTC()
-	tx, err := s.store.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
-
 	sessionID, err := uuid.Parse(key.SessionId)
 	if err != nil {
 		return nil, err
 	}
 	var (
-		oldType      int
-		oldAppID     *uuid.UUID
-		oldClientID  *uuid.UUID
-		oldParentID  *uuid.UUID
-		oldExpiry    *time.Time
-		oldAudiences []string
-		oldScopes    []string
-		oldIP, oldUA *string
-		oldLocation  []byte
+		newSessionID uuid.UUID
+		newAppID     *uuid.UUID
 	)
-	err = tx.QueryRow(ctx, `SELECT type, app_id, client_id, parent_session_id, expired_at, audiences, scopes, ip_address, user_agent, location
-		FROM auth_sessions WHERE id = $1 AND account_id = $2`, sessionID, key.AccountId).Scan(
-		&oldType, &oldAppID, &oldClientID, &oldParentID, &oldExpiry, &oldAudiences, &oldScopes, &oldIP, &oldUA, &oldLocation)
+	err = s.store.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var old store.AuthSessionEntity
+		if err := tx.Unscoped().
+			Where("id = ? AND account_id = ?", sessionID, key.AccountId).
+			First(&old).Error; err != nil {
+			return errors.New("API key session was not found.")
+		}
+		// Expire old session + bump epoch.
+		if err := tx.Unscoped().Model(&store.AuthSessionEntity{}).
+			Where("id = ?", sessionID).
+			Updates(map[string]any{
+				"expired_at": now, "last_granted_at": now,
+				"epoch": gorm.Expr("epoch + 1"), "updated_at": now,
+			}).Error; err != nil {
+			return err
+		}
+		// Create the replacement session mirroring the old one.
+		replacement := store.AuthSessionEntity{
+			ID:              uuid.New(),
+			CreatedAt:       now,
+			UpdatedAt:       now,
+			AccountID:       old.AccountID,
+			Type:            old.Type,
+			AppID:           old.AppID,
+			ClientID:        old.ClientID,
+			ParentSessionID: old.ParentSessionID,
+			Audiences:       old.Audiences,
+			Scopes:          old.Scopes,
+			IPAddress:       old.IPAddress,
+			UserAgent:       old.UserAgent,
+			Location:        old.Location,
+			LastGrantedAt:   &now,
+			ExpiredAt:       old.ExpiredAt,
+			Epoch:           0,
+		}
+		if err := tx.Create(&replacement).Error; err != nil {
+			return err
+		}
+		newSessionID = replacement.ID
+		newAppID = old.AppID
+		// Re-point the key at the new session.
+		return tx.Unscoped().Model(&store.APIKeyEntity{}).
+			Where("id = ?", key.Id).
+			Updates(map[string]any{"session_id": newSessionID, "app_id": old.AppID, "updated_at": now}).Error
+	})
 	if err != nil {
-		return nil, errors.New("API key session was not found.")
-	}
-	// Expire old session + bump epoch.
-	if _, err := tx.Exec(ctx, `UPDATE auth_sessions SET expired_at = $1, last_granted_at = $1, epoch = epoch + 1, updated_at = $1 WHERE id = $2`, now, sessionID); err != nil {
-		return nil, err
-	}
-	// Create the replacement session.
-	var newSessionID uuid.UUID
-	err = tx.QueryRow(ctx, `INSERT INTO auth_sessions
-		(id, type, created_at, last_granted_at, expired_at, account_id, app_id, client_id, parent_session_id,
-		 audiences, scopes, ip_address, user_agent, location, epoch, updated_at)
-		VALUES (gen_random_uuid(),$1,$2,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,0,$2) RETURNING id`,
-		oldType, now, oldExpiry, key.AccountId, oldAppID, oldClientID, oldParentID,
-		oldAudiences, oldScopes, oldIP, oldUA, oldLocation).Scan(&newSessionID)
-	if err != nil {
-		return nil, err
-	}
-	// Re-point the key at the new session.
-	if _, err := tx.Exec(ctx, `UPDATE api_keys SET session_id = $1, app_id = $2, updated_at = $3 WHERE id = $4`,
-		newSessionID, oldAppID, now, key.Id); err != nil {
 		return nil, err
 	}
 	if s.redis != nil && s.redis.Available() {
 		_ = s.redis.Cache.Remove(ctx, "auth:session:"+sessionID.String())
 		_ = s.redis.Raw.Del(ctx, "auth:session_tokens:"+sessionID.String()).Err()
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
 
 	key.SessionId = newSessionID.String()
-	key.AppId = uuidPtrToStr(oldAppID)
+	key.AppId = uuidPtrToStr(newAppID)
 	return key, nil
 }
 
@@ -229,6 +229,14 @@ func mergeAuthorizedAppScopes(existing, requested []string) []string {
 // UpsertAuthorizedAppAsync creates or updates an authorized-app record.
 func (s *AuthService) UpsertAuthorizedAppAsync(ctx context.Context, accountID, appID string, appType model.AuthorizedAppType, appSlug, appName *string, scopes []string) (*model.AuthorizedApp, error) {
 	now := time.Now().UTC()
+	accountUUID, err := uuid.Parse(accountID)
+	if err != nil {
+		return nil, err
+	}
+	appUUID, err := uuid.Parse(appID)
+	if err != nil {
+		return nil, err
+	}
 	var normalized []string
 	seen := map[string]struct{}{}
 	for _, scope := range scopes {
@@ -241,46 +249,33 @@ func (s *AuthService) UpsertAuthorizedAppAsync(ctx context.Context, accountID, a
 			normalized = append(normalized, scope)
 		}
 	}
-	var existing model.AuthorizedApp
-	var slug, name *string
-	var scopesRaw []byte
-	err := s.store.QueryRow(ctx, `SELECT id, app_slug, app_name, scopes FROM authorized_apps
-		WHERE account_id = $1 AND app_id = $2 AND type = $3 AND deleted_at IS NULL`,
-		accountID, appID, int(appType)).Scan(&existing.Id, &slug, &name, &scopesRaw)
-	if err == nil {
-		if decodeErr := json.Unmarshal(scopesRaw, &existing.Scopes); decodeErr != nil {
-			return nil, decodeErr
-		}
-	}
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		return nil, err
-	}
+	var entity store.AuthorizedAppEntity
+	err = s.store.DB.WithContext(ctx).
+		Where("account_id = ? AND app_id = ? AND type = ?", accountUUID, appUUID, int(appType)).
+		First(&entity).Error
 	if err != nil {
-		existing = model.AuthorizedApp{
-			Type:             appType,
-			AccountId:        accountID,
-			AppId:            appID,
-			AppSlug:          appSlug,
-			AppName:          appName,
-			Scopes:           mergeAuthorizedAppScopes(nil, normalized),
-			LastAuthorizedAt: model.NewTime(now),
-			LastUsedAt:       model.NewTime(now),
-		}
-		var id string
-		if err := s.store.QueryRow(ctx, `INSERT INTO authorized_apps
-			(id, type, account_id, app_id, app_slug, app_name, scopes, last_authorized_at, last_used_at, created_at, updated_at)
-			VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$7,$8,$8) RETURNING id`,
-			int(appType), accountID, appID, appSlug, appName, existing.Scopes, now, now).Scan(&id); err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, err
 		}
-		existing.Id = id
-		existing.CreatedAt = model.NewTime(now)
-		existing.UpdatedAt = model.NewTime(now)
-		return &existing, nil
+		created := store.AuthorizedAppEntity{
+			ID:               uuid.New(),
+			EntityBase:       store.EntityBase{CreatedAt: now, UpdatedAt: now},
+			Type:             int(appType),
+			AccountID:        accountUUID,
+			AppID:            appUUID,
+			AppSlug:          appSlug,
+			AppName:          appName,
+			Scopes:           datatypes.JSON(mustJSON(mergeAuthorizedAppScopes(nil, normalized))),
+			LastAuthorizedAt: now,
+			LastUsedAt:       &now,
+		}
+		if err := s.store.DB.WithContext(ctx).Create(&created).Error; err != nil {
+			return nil, err
+		}
+		return authorizedAppModel(&created), nil
 	}
-	// Update.
-	existing.AppSlug = slug
-	existing.AppName = name
+
+	existing := authorizedAppModel(&entity)
 	if appSlug != nil && *appSlug != "" {
 		existing.AppSlug = appSlug
 	}
@@ -291,88 +286,81 @@ func (s *AuthService) UpsertAuthorizedAppAsync(ctx context.Context, accountID, a
 	existing.LastAuthorizedAt = model.NewTime(now)
 	existing.LastUsedAt = model.NewTime(now)
 	existing.UpdatedAt = model.NewTime(now)
-	_, err = s.store.Exec(ctx, `UPDATE authorized_apps SET last_authorized_at = $1, last_used_at = $1, updated_at = $1,
-		app_slug = $2, app_name = $3, scopes = $4 WHERE id = $5`,
-		now, existing.AppSlug, existing.AppName, existing.Scopes, existing.Id)
-	if err != nil {
+	if err := s.store.DB.WithContext(ctx).Model(&store.AuthorizedAppEntity{}).
+		Where("id = ?", entity.ID).
+		Updates(map[string]any{
+			"last_authorized_at": now, "last_used_at": now, "updated_at": now,
+			"app_slug": existing.AppSlug, "app_name": existing.AppName,
+			"scopes": datatypes.JSON(mustJSON(existing.Scopes)),
+		}).Error; err != nil {
 		return nil, err
 	}
-	return &existing, nil
+	return existing, nil
 }
 
 // RevokeAuthorizedAppAccessByIdAsync revokes access by authorized-app record id.
 func (s *AuthService) RevokeAuthorizedAppAccessByIdAsync(ctx context.Context, accountID, recordID string, appType *model.AuthorizedAppType) (int, error) {
-	query := `SELECT app_id FROM authorized_apps WHERE account_id = $1 AND id = $2 AND deleted_at IS NULL`
-	args := []any{accountID, recordID}
+	query := s.store.DB.WithContext(ctx).Model(&store.AuthorizedAppEntity{}).
+		Where("account_id = ? AND id = ?", accountID, recordID)
 	if appType != nil {
-		query += ` AND type = $3`
-		args = append(args, int(*appType))
+		query = query.Where("type = ?", int(*appType))
 	}
-	var appID string
-	err := s.store.QueryRow(ctx, query, args...).Scan(&appID)
-	if err != nil {
+	var entity store.AuthorizedAppEntity
+	if err := query.First(&entity).Error; err != nil {
 		return 0, nil
 	}
-	return s.RevokeAuthorizedAppAccessAsync(ctx, accountID, appID, appType)
+	return s.RevokeAuthorizedAppAccessAsync(ctx, accountID, entity.AppID.String(), appType)
 }
 
 // RevokeAuthorizedAppAccessAsync soft-deletes authorized apps and revokes
 // their sessions and API keys.
 func (s *AuthService) RevokeAuthorizedAppAccessAsync(ctx context.Context, accountID, appID string, appType *model.AuthorizedAppType) (int, error) {
 	now := time.Now().UTC()
-	query := `UPDATE authorized_apps SET deleted_at = $1, last_used_at = $1, updated_at = $1
-		WHERE account_id = $2 AND app_id = $3 AND deleted_at IS NULL`
-	args := []any{now, accountID, appID}
-	if appType != nil {
-		query += ` AND type = $4`
-		args = append(args, int(*appType))
-	}
-	tag, err := s.store.Exec(ctx, query, args...)
+	accountUUID, err := uuid.Parse(accountID)
 	if err != nil {
 		return 0, err
 	}
-	count := int(tag.RowsAffected())
+	appUUID, err := uuid.Parse(appID)
+	if err != nil {
+		return 0, err
+	}
+	// Unscoped with an explicit deleted_at IS NULL: the statement sets
+	// deleted_at itself, so GORM's soft-delete filter must not be relied on.
+	update := s.store.DB.WithContext(ctx).Unscoped().Model(&store.AuthorizedAppEntity{}).
+		Where("account_id = ? AND app_id = ? AND deleted_at IS NULL", accountUUID, appUUID)
+	if appType != nil {
+		update = update.Where("type = ?", int(*appType))
+	}
+	res := update.Updates(map[string]any{"deleted_at": now, "last_used_at": now, "updated_at": now})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	count := int(res.RowsAffected)
 	if count == 0 {
 		return 0, nil
 	}
 
 	// Revoke the app's sessions.
-	sessionRows, err := s.store.Query(ctx, `SELECT id FROM auth_sessions
-		WHERE account_id = $1 AND app_id = $2 AND (expired_at IS NULL OR expired_at > $3)`, accountID, appID, now)
-	if err != nil {
+	var sessionIDs []uuid.UUID
+	if err := s.store.DB.WithContext(ctx).Model(&store.AuthSessionEntity{}).Select("id").
+		Where("account_id = ? AND app_id = ? AND (expired_at IS NULL OR expired_at > ?)", accountUUID, appUUID, now).
+		Find(&sessionIDs).Error; err != nil {
 		return count, err
 	}
-	var sessionIDs []uuid.UUID
-	for sessionRows.Next() {
-		var id uuid.UUID
-		if err := sessionRows.Scan(&id); err != nil {
-			sessionRows.Close()
-			return count, err
-		}
-		sessionIDs = append(sessionIDs, id)
-	}
-	sessionRows.Close()
 	for _, id := range sessionIDs {
 		_, _ = s.RevokeSession(ctx, id)
 	}
 
 	// Revoke the app's API keys.
-	keyRows, err := s.store.Query(ctx, `SELECT id, session_id FROM api_keys
-		WHERE account_id = $1 AND app_id = $2 AND deleted_at IS NULL`, accountID, appID)
-	if err != nil {
+	var keyEntities []store.APIKeyEntity
+	if err := s.store.DB.WithContext(ctx).
+		Where("account_id = ? AND app_id = ?", accountUUID, appUUID).
+		Find(&keyEntities).Error; err != nil {
 		return count, err
 	}
-	var keys []*model.ApiKey
-	for keyRows.Next() {
-		var id, sessionID uuid.UUID
-		if err := keyRows.Scan(&id, &sessionID); err != nil {
-			keyRows.Close()
-			return count, err
-		}
-		keys = append(keys, &model.ApiKey{Id: id.String(), SessionId: sessionID.String(), AccountId: accountID})
-	}
-	keyRows.Close()
-	for _, key := range keys {
+	for _, entity := range keyEntities {
+		key := apiKeyModel(&entity)
+		key.AccountId = accountID
 		_ = s.RevokeApiKeyToken(ctx, key)
 	}
 
