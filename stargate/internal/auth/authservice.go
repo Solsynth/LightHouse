@@ -620,13 +620,17 @@ func (s *AuthService) RecoverAccountWithRecoveryCode(ctx context.Context, accoun
 		UserAgent:     &userAgent,
 		Location:      location,
 		ClientId:      &device.Id,
+		// A recovered account is a fresh login: full-scope access, no app
+		// audiences. Non-empty jsonb is required by the schema.
+		Scopes:    scopesWithFullScope(nil),
+		Audiences: []string{},
 	}
 	var sessionID uuid.UUID
 	err = s.store.QueryRow(ctx, `INSERT INTO auth_sessions
-		(id, type, created_at, last_granted_at, expired_at, account_id, ip_address, user_agent, location, client_id, epoch, updated_at)
-		VALUES (gen_random_uuid(),$1,$2,$2,$3,$4,$5,$6,$7,$8,0,$2) RETURNING id`,
+		(id, type, created_at, last_granted_at, expired_at, account_id, ip_address, user_agent, location, client_id, audiences, scopes, epoch, updated_at)
+		VALUES (gen_random_uuid(),$1,$2,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,$2) RETURNING id`,
 		int(session.Type), now, session.ExpiredAt, session.AccountId, session.IpAddress,
-		session.UserAgent, locationJSON, session.ClientId).Scan(&sessionID)
+		session.UserAgent, locationJSON, session.ClientId, session.Audiences, session.Scopes).Scan(&sessionID)
 	if err != nil {
 		return nil, err
 	}
