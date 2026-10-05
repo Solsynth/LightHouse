@@ -40,6 +40,31 @@ func TestTokenExpired(t *testing.T) {
 	}
 }
 
+// TestAccessTokenExpiredExemptsApiKeys pins the legacy behavior that api_key
+// (bot) tokens are not rejected by their JWT exp claim: their backing session
+// expiry is the sole authority. Every other token use still honors exp.
+func TestAccessTokenExpiredExemptsApiKeys(t *testing.T) {
+	now := time.Now().Unix()
+	expired := jwt.MapClaims{"exp": float64(now - 10)}
+	cases := []struct {
+		name     string
+		claims   jwt.MapClaims
+		tokenUse string
+		want     bool
+	}{
+		{"api_key expired claim", expired, TokenUseApiKey, false},
+		{"api_key missing claim", jwt.MapClaims{}, TokenUseApiKey, false},
+		{"user expired claim", expired, TokenUseUser, true},
+		{"refresh expired claim", expired, TokenUseRefresh, true},
+		{"user future claim", jwt.MapClaims{"exp": float64(now + 3600)}, TokenUseUser, false},
+	}
+	for _, tc := range cases {
+		if got := accessTokenExpired(tc.claims, tc.tokenUse); got != tc.want {
+			t.Errorf("accessTokenExpired(%s) = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
 // stubPerkProvider returns a fixed subscription or error.
 type stubPerkProvider struct {
 	sub *model.SnSubscriptionReferenceObject

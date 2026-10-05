@@ -45,6 +45,18 @@ func tokenExpired(claims jwt.MapClaims) bool {
 	return ok && time.Now().Unix() > int64(exp)
 }
 
+// accessTokenExpired reports whether the JWT exp claim should reject this
+// token. API-key (bot) tokens are exempt: legacy Padlock skipped lifetime
+// validation for api_key tokens and governed them solely by the backing
+// session's expiry (checked separately), so a token minted with the old
+// fixed 30-day exp keeps working past it while its session stays valid.
+func accessTokenExpired(claims jwt.MapClaims, tokenUse string) bool {
+	if tokenUse == TokenUseApiKey {
+		return false
+	}
+	return tokenExpired(claims)
+}
+
 // TokenType mirrors Padlock's TokenType enum (wire context value).
 type TokenType int
 
@@ -165,8 +177,10 @@ func (t *TokenAuthService) AuthenticateToken(ctx context.Context, token, ipAddre
 	// JWT exp is enforced here, unlike ValidateJwt (which mirrors the C# and
 	// skips it): an expired access token is a refreshable condition, so it
 	// gets a distinct rejection the HTTP layer maps to the TOKEN_EXPIRED
-	// ApiError code. Session expiry below still governs the session itself.
-	if tokenExpired(claims) {
+	// ApiError code. API-key (bot) tokens are exempt, matching the C# which
+	// never applied lifetime validation to api_key tokens; their session
+	// expiry below is the only authority.
+	if accessTokenExpired(claims, tokenUse) {
 		return false, nil, MsgTokenExpired, tokenUse
 	}
 
