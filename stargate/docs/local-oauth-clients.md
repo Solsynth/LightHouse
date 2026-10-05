@@ -83,6 +83,20 @@ The authorization request for a public client must include a supported
 `code_challenge` and `code_challenge_method`. The token request must include the
 matching `code_verifier`.
 
+## Device identity on the device authorization request
+
+`POST /api/auth/open/device/code` accepts optional `device_id`, `device_name`
+and `platform` parameters so the device can declare itself, and a
+`client_id`-scoped device is otherwise derived from the request's user agent and
+IP. Both are untrusted labels: the session is authorized only by the user
+approving the `user_code`.
+
+See [oauth-session-devices.md](oauth-session-devices.md) for the parameters, the
+device binding rules, and the standards notes. The authorization-code flow needs
+no such parameters: the session already carries the device the user authorized
+from, because the app runs on the same device as the browser completing the
+request.
+
 ## Migration from Develop
 
 To move a client locally:

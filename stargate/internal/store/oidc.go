@@ -11,13 +11,18 @@ import (
 )
 
 // FindValidOauthSession loads the most recent non-expired OAuth-typed session
-// for an account + app pair, mirroring OidcProviderService.FindValidSessionAsync
-// (s.Type == SessionType.OAuth, app_id == client id, not expired, newest first).
-func (s *Store) FindValidOauthSession(ctx context.Context, accountID, appID string) (*model.AuthSession, error) {
+// for an account + app + device triple, mirroring
+// OidcProviderService.FindValidSessionAsync (s.Type == SessionType.OAuth,
+// app_id == client id, not expired, newest first) extended with the authorizing
+// device: an OAuth app can be authorized from another device, so reuse is
+// scoped to the session's authorizing client (auth_clients.id). A nil clientID
+// matches device-less sessions only (IS NOT DISTINCT FROM), so authorizing from
+// one device never extends a session that belongs to a different one.
+func (s *Store) FindValidOauthSession(ctx context.Context, accountID, appID string, clientID *string) (*model.AuthSession, error) {
 	var entity AuthSessionEntity
 	err := s.DB.WithContext(ctx).
-		Where("account_id = ? AND app_id = ? AND (expired_at IS NULL OR expired_at > ?) AND type = ?",
-			accountID, appID, time.Now().UTC(), int(model.SessionTypeOAuth)).
+		Where("account_id = ? AND app_id = ? AND (expired_at IS NULL OR expired_at > ?) AND type = ? AND client_id IS NOT DISTINCT FROM ?",
+			accountID, appID, time.Now().UTC(), int(model.SessionTypeOAuth), clientID).
 		Order("created_at DESC").
 		First(&entity).Error
 	if err != nil {

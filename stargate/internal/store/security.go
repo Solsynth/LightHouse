@@ -735,9 +735,14 @@ func (s *Store) GetClientPlatformsByIDs(ctx context.Context, ids []uuid.UUID) (m
 
 // IsTrustedSession reports whether a session is trusted (native platform +
 // recent activity within the maxGap window). Returns false when the session
-// has no client or the client was deleted.
+// has no client or the client was deleted. OAuth/OIDC sessions are never
+// trusted even though they now carry a device: they authenticate third-party
+// apps, and trust unlocks interactive challenge approval and QR scanning.
 func (s *Store) IsTrustedSession(ctx context.Context, session *model.AuthSession, maxGap time.Duration) (bool, error) {
 	if session.ClientId == nil {
+		return false, nil
+	}
+	if session.Type == model.SessionTypeOAuth || session.Type == model.SessionTypeOidc {
 		return false, nil
 	}
 	clientID, err := uuid.Parse(*session.ClientId)

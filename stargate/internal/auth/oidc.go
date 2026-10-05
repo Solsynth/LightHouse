@@ -17,7 +17,10 @@ import (
 // AuthService.CreateSessionForOidcAsync. customAppID != nil produces an OAuth
 // session (authorizing a third-party app) with type=OAuth (1); nil produces
 // an Oidc session (2). parentSessionID links sub-sessions (device flow).
-func (s *AuthService) CreateSessionForOidc(ctx context.Context, database *gorm.DB, accountID string, customAppID *string, parentSessionID *string, ipAddress, userAgent string) (*model.AuthSession, error) {
+// clientID (auth_clients.id) is the device the authorization was performed
+// from; it is persisted so the session appears under that device and reuse can
+// be scoped to it. Nil leaves the session without a device (legacy behavior).
+func (s *AuthService) CreateSessionForOidc(ctx context.Context, database *gorm.DB, accountID string, customAppID *string, parentSessionID *string, clientID *string, ipAddress, userAgent string) (*model.AuthSession, error) {
 	now := time.Now().UTC()
 	location := s.geo.GetPointFromIp(ipAddress)
 	locationJSON, _ := json.Marshal(location)
@@ -55,6 +58,7 @@ func (s *AuthService) CreateSessionForOidc(ctx context.Context, database *gorm.D
 		Location:        location,
 		AppId:           customAppID,
 		ParentSessionId: parentSessionID,
+		ClientId:        clientID,
 		CreatedAt:       model.NewTime(now),
 		LastGrantedAt:   model.NewTime(now),
 		Audiences:       []string{},
@@ -74,7 +78,7 @@ func (s *AuthService) CreateSessionForOidc(ctx context.Context, database *gorm.D
 	}
 	sessionID := uuid.New()
 	if err := database.WithContext(ctx).Create(&store.AuthSessionEntity{
-		ID: sessionID, AccountID: accountUUID, AppID: appIDUUID, ParentSessionID: parentUUID,
+		ID: sessionID, AccountID: accountUUID, AppID: appIDUUID, ParentSessionID: parentUUID, ClientID: uuidPtr(clientID),
 		Type: int(sessionType), Audiences: datatypes.JSON(audiences), Scopes: datatypes.JSON(scopes),
 		IPAddress: ipPtr, UserAgent: uaPtr, Location: locationValue, Epoch: 0,
 		LastGrantedAt: &now,

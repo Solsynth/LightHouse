@@ -12,6 +12,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -94,7 +95,10 @@ type authorizationCodeInfo struct {
 	CodeChallenge       *string           `json:"code_challenge"`
 	CodeChallengeMethod *string           `json:"code_challenge_method"`
 	Nonce               *string           `json:"nonce"`
-	CreatedAt           time.Time         `json:"created_at"`
+	// DeviceId is the authorizing session's device (auth_clients.id). It binds
+	// the resulting OAuth session to the device the user authorized from.
+	DeviceId  *string   `json:"device_id,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // externalUserInfo mirrors ExternalUserInfo.
@@ -122,6 +126,14 @@ type deviceCodeInfo struct {
 	LastPolledAt           *time.Time `json:"last_polled_at"`
 	ApprovedAt             *time.Time `json:"approved_at"`
 	ApprovedBySessionId    *string    `json:"approved_by_session_id"`
+	// DeviceId/DeviceName/DevicePlatform are declared by the polling client in
+	// its device authorization request. RFC 8628 treats the device as
+	// untrusted (Section 5.6: public clients), so these only label the granted
+	// session's device and never gate authorization or trust. Absent => the
+	// session is created without a device.
+	DeviceId       *string `json:"device_id,omitempty"`
+	DeviceName     *string `json:"device_name,omitempty"`
+	DevicePlatform int     `json:"device_platform,omitempty"`
 }
 
 // service is the Go port of OidcProviderService.
@@ -543,7 +555,7 @@ func isSupportedCodeChallengeMethod(method string) bool {
 
 // --- Authorization codes ---
 
-func (s *service) generateAuthorizationCode(ctx context.Context, clientID, accountID, redirectURI string, scopes []string, codeChallenge, codeChallengeMethod, nonce *string) (string, error) {
+func (s *service) generateAuthorizationCode(ctx context.Context, clientID, accountID, redirectURI string, scopes []string, codeChallenge, codeChallengeMethod, nonce, deviceID *string) (string, error) {
 	info := &authorizationCodeInfo{
 		ClientId:            clientID,
 		AccountId:           &accountID,
@@ -552,6 +564,7 @@ func (s *service) generateAuthorizationCode(ctx context.Context, clientID, accou
 		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallengeMethod,
 		Nonce:               nonce,
+		DeviceId:            deviceID,
 		CreatedAt:           time.Now().UTC(),
 	}
 	return s.storeAuthorizationCode(ctx, info)
@@ -631,7 +644,16 @@ func verifyCodeChallengeWithFallback(codeVerifier, codeChallenge string, method 
 
 // --- Device codes ---
 
-func (s *service) generateDeviceCode(ctx context.Context, clientID string, scopes []string, nonce *string) (*deviceCodeInfo, error) {
+// oauthDeviceIdentity is the device identity a client declares for its own
+// OAuth session (the device the app runs on, not the device that approves).
+// It is untrusted client input: it only labels the session's device row.
+type oauthDeviceIdentity struct {
+	Id       string
+	Name     *string
+	Platform model.ClientPlatform
+}
+
+func (s *service) generateDeviceCode(ctx context.Context, clientID string, scopes []string, nonce *string, device *oauthDeviceIdentity) (*deviceCodeInfo, error) {
 	if !s.cacheAvailable() {
 		return nil, errors.New("OIDC device authorization requires the cache service")
 	}
@@ -646,6 +668,12 @@ func (s *service) generateDeviceCode(ctx context.Context, clientID string, scope
 		CreatedAt:              now,
 		ExpiresAt:              now.Add(deviceCodeLifetime),
 		PollingIntervalSeconds: deviceCodePollingIntervalSeconds,
+	}
+	if device != nil && device.Id != "" {
+		id := device.Id
+		info.DeviceId = &id
+		info.DeviceName = device.Name
+		info.DevicePlatform = int(device.Platform)
 	}
 	if err := s.redis.Cache.Set(ctx, cacheKeyPrefixDeviceCode+info.DeviceCode, info, deviceCodeLifetime); err != nil {
 		return nil, err
@@ -700,6 +728,119 @@ func (s *service) updateDeviceCode(ctx context.Context, info *deviceCodeInfo) er
 	return s.redis.Cache.Set(ctx, cacheKeyPrefixUserCode+info.UserCode, info.DeviceCode, remaining)
 }
 
+const (
+	oauthDeviceKeyPrefix = "oauth:"
+	// auth_clients.device_id / device_name are varchar(1024).
+	maxAuthClientDeviceID = 1024
+	maxDeviceNameRunes    = 1024
+	// Declared device ids are namespaced under this prefix; cap the declared
+	// part well below the column limit so the composed key normally fits.
+	maxDeclaredDeviceIDRunes = 512
+)
+
+// oauthDeviceKey namespaces a client-declared device id by the OAuth app, so a
+// client can never attach its session to a real (wsgateway) device row by
+// guessing a device id. Over-long ids collapse to a hash of the declared value
+// to stay within the column limit without sharing a row between distinct ids.
+func oauthDeviceKey(appID, declaredID string) string {
+	key := oauthDeviceKeyPrefix + appID + ":" + declaredID
+	if len(key) <= maxAuthClientDeviceID {
+		return key
+	}
+	sum := sha256.Sum256([]byte(declaredID))
+	return oauthDeviceKeyPrefix + appID + ":sha256:" + hex.EncodeToString(sum[:])
+}
+
+// grantDeviceClientID resolves the granted session's device from the identity
+// the client declared in its device authorization request, creating the
+// auth_clients row on first use. A client that declares no device gets a
+// device-less session: RFC 8628 Section 5.3 notes the approving user's device
+// is not the client device, so the approver's device must not be used instead.
+func (s *service) grantDeviceClientID(ctx context.Context, accountID string, info *deviceCodeInfo) (*string, error) {
+	if info.DeviceId == nil || *info.DeviceId == "" {
+		return nil, nil
+	}
+	device, err := s.authSvc.GetOrCreateDevice(ctx, accountID, oauthDeviceKey(info.ClientId, *info.DeviceId),
+		info.DeviceName, model.ClientPlatform(info.DevicePlatform))
+	if err != nil {
+		return nil, err
+	}
+	return &device.Id, nil
+}
+
+// oauthDeviceFingerprint derives a stable device key from the request's user
+// agent and IP address. It is the last-resort identity for a session that
+// neither declares a device nor inherits one from an authorizing session.
+func oauthDeviceFingerprint(userAgent, ipAddress string) string {
+	sum := sha256.Sum256([]byte(userAgent + "\x00" + ipAddress))
+	return hex.EncodeToString(sum[:])
+}
+
+// fallbackDeviceClientID assigns the session's device from the request's user
+// agent and IP address when nothing better identifies the device. Like a
+// declared device it is namespaced, so it can never collide with a real device
+// row. A request with neither a user agent nor an IP gets no device.
+func (s *service) fallbackDeviceClientID(ctx context.Context, accountID, appID, ipAddress, userAgent string) (*string, error) {
+	userAgent = strings.TrimSpace(userAgent)
+	ipAddress = strings.TrimSpace(ipAddress)
+	if userAgent == "" && ipAddress == "" {
+		return nil, nil
+	}
+	platform := clientPlatformFromUserAgent(userAgent)
+	label := clientPlatformLabel(platform)
+	device, err := s.authSvc.GetOrCreateDevice(ctx, accountID,
+		oauthDeviceKey(appID, "fp:"+oauthDeviceFingerprint(userAgent, ipAddress)), &label, platform)
+	if err != nil {
+		return nil, err
+	}
+	return &device.Id, nil
+}
+
+// clientPlatformFromUserAgent is a best-effort platform guess for a device that
+// only reveals itself through its user agent. It never grants trust (OAuth
+// sessions are never trusted); it only picks the device's display category.
+func clientPlatformFromUserAgent(userAgent string) model.ClientPlatform {
+	ua := strings.ToLower(userAgent)
+	switch {
+	case ua == "":
+		return model.ClientPlatformUnidentified
+	case strings.Contains(ua, "android"):
+		return model.ClientPlatformAndroid
+	case strings.Contains(ua, "iphone"), strings.Contains(ua, "ipad"), strings.Contains(ua, "ios"):
+		return model.ClientPlatformIos
+	case strings.Contains(ua, "macintosh"), strings.Contains(ua, "mac os x"):
+		return model.ClientPlatformMacOs
+	case strings.Contains(ua, "windows"):
+		return model.ClientPlatformWindows
+	case strings.Contains(ua, "linux"), strings.Contains(ua, "x11"):
+		return model.ClientPlatformLinux
+	case strings.Contains(ua, "mozilla"), strings.Contains(ua, "webkit"), strings.Contains(ua, "gecko"),
+		strings.Contains(ua, "curl"), strings.Contains(ua, "okhttp"):
+		return model.ClientPlatformWeb
+	default:
+		return model.ClientPlatformUnidentified
+	}
+}
+
+func clientPlatformLabel(platform model.ClientPlatform) string {
+	switch platform {
+	case model.ClientPlatformWeb:
+		return "Web browser"
+	case model.ClientPlatformIos:
+		return "iOS device"
+	case model.ClientPlatformAndroid:
+		return "Android device"
+	case model.ClientPlatformMacOs:
+		return "macOS device"
+	case model.ClientPlatformWindows:
+		return "Windows device"
+	case model.ClientPlatformLinux:
+		return "Linux device"
+	default:
+		return "Unknown device"
+	}
+}
+
 // --- Token flows ---
 
 // handleAuthorizationCodeFlow mirrors HandleAuthorizationCodeFlowAsync.
@@ -707,12 +848,23 @@ func (s *service) handleAuthorizationCodeFlow(ctx context.Context, authCode *aut
 	if authCode.AccountId == nil {
 		return nil, nil, nil, errors.New("Invalid authorization code, account id is missing.")
 	}
-	session, err := s.findValidSession(ctx, *authCode.AccountId, clientID)
+	// The authorizing session's device identifies the device the app runs on.
+	// When it has none (a legacy session), fall back to the request's user
+	// agent and IP so the granted session still lands under a device.
+	deviceClientID := authCode.DeviceId
+	if deviceClientID == nil {
+		var err error
+		deviceClientID, err = s.fallbackDeviceClientID(ctx, *authCode.AccountId, clientID, ipAddress, userAgent)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+	}
+	session, err := s.findValidSession(ctx, *authCode.AccountId, clientID, deviceClientID)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	if session == nil {
-		session, err = s.authSvc.CreateSessionForOidc(ctx, s.store.DB, *authCode.AccountId, &clientID, nil, ipAddress, userAgent)
+		session, err = s.authSvc.CreateSessionForOidc(ctx, s.store.DB, *authCode.AccountId, &clientID, nil, deviceClientID, ipAddress, userAgent)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -885,12 +1037,24 @@ func (s *service) handleDeviceCodeGrant(ctx context.Context, deviceCode, clientI
 	if err != nil {
 		return nil, errors.New("Account not found.")
 	}
-	session, err := s.findValidSession(ctx, account.Id, clientID)
+	deviceClientID, err := s.grantDeviceClientID(ctx, account.Id, info)
+	if err != nil {
+		return nil, err
+	}
+	if deviceClientID == nil {
+		// No declared device: fall back to the polling request's user agent
+		// and IP so the granted session still lands under a device.
+		deviceClientID, err = s.fallbackDeviceClientID(ctx, account.Id, clientID, ipAddress, userAgent)
+		if err != nil {
+			return nil, err
+		}
+	}
+	session, err := s.findValidSession(ctx, account.Id, clientID, deviceClientID)
 	if err != nil {
 		return nil, err
 	}
 	if session == nil {
-		session, err = s.authSvc.CreateSessionForOidc(ctx, s.store.DB, account.Id, &clientID, nil, ipAddress, userAgent)
+		session, err = s.authSvc.CreateSessionForOidc(ctx, s.store.DB, account.Id, &clientID, nil, deviceClientID, ipAddress, userAgent)
 		if err != nil {
 			return nil, err
 		}
@@ -1090,8 +1254,8 @@ func (s *service) setSessionScopes(ctx context.Context, session *model.AuthSessi
 	return nil
 }
 
-func (s *service) findValidSession(ctx context.Context, accountID, clientID string) (*model.AuthSession, error) {
-	session, err := s.store.FindValidOauthSession(ctx, accountID, clientID)
+func (s *service) findValidSession(ctx context.Context, accountID, clientID string, deviceID *string) (*model.AuthSession, error) {
+	session, err := s.store.FindValidOauthSession(ctx, accountID, clientID, deviceID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, nil

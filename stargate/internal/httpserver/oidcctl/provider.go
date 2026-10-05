@@ -5,8 +5,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -218,6 +220,14 @@ func (s *service) handleAuthorizePost(c *gin.Context) {
 		c.Status(http.StatusUnauthorized)
 		return
 	}
+	// The OAuth session is bound to the device the user authorizes from, so
+	// the same app on another device gets its own session instead of
+	// extending this one.
+	session := middleware.CurrentSession(ctx)
+	var deviceID *string
+	if session != nil {
+		deviceID = session.ClientId
+	}
 	authorize := c.PostForm("authorize")
 	clientId := c.PostForm("client_id")
 	redirectUriForm := postFormOrNil(c, "redirect_uri")
@@ -302,7 +312,7 @@ func (s *service) handleAuthorizePost(c *gin.Context) {
 	}
 
 	authorizationCode, err := s.generateAuthorizationCode(ctx, client.Id, account.Id, redirectUri, normalizedScopes,
-		strPtrOrNil(codeChallenge), strPtrOrNil(codeChallengeMethod), strPtrOrNil(nonce))
+		strPtrOrNil(codeChallenge), strPtrOrNil(codeChallengeMethod), strPtrOrNil(nonce), deviceID)
 	if err != nil {
 		if s.log != nil {
 			s.log.Error("error processing authorization request", "error", err)
@@ -514,7 +524,9 @@ func (s *service) handleDeviceCode(c *gin.Context) {
 		return
 	}
 
-	info, err := s.generateDeviceCode(ctx, client.Id, normalizedScopes, strPtrOrNil(nonce))
+	device := parseOAuthDeviceIdentity(c.PostForm("device_id"), c.PostForm("device_name"), c.PostForm("platform"))
+
+	info, err := s.generateDeviceCode(ctx, client.Id, normalizedScopes, strPtrOrNil(nonce), device)
 	if err != nil {
 		s.serverError(c, err)
 		return
@@ -731,6 +743,35 @@ func parseBool(s string) (bool, error) {
 }
 
 var errNotBool = errors.New("not a bool")
+
+// parseOAuthDeviceIdentity reads the optional device metadata a client declares
+// for its own OAuth session on the device authorization request. The values are
+// untrusted client input (RFC 8628: device clients are public clients), so they
+// are clamped to the auth_clients column limits and only label the granted
+// session's device. A blank device_id means no device was declared.
+func parseOAuthDeviceIdentity(deviceID, deviceName, platform string) *oauthDeviceIdentity {
+	deviceID = strings.TrimSpace(deviceID)
+	if deviceID == "" {
+		return nil
+	}
+	identity := &oauthDeviceIdentity{Id: truncateRunes(deviceID, maxDeclaredDeviceIDRunes)}
+	if name := strings.TrimSpace(deviceName); name != "" {
+		identity.Name = strPtr(truncateRunes(name, maxDeviceNameRunes))
+	}
+	if p, err := strconv.Atoi(strings.TrimSpace(platform)); err == nil &&
+		p >= int(model.ClientPlatformUnidentified) && p <= int(model.ClientPlatformLinux) {
+		identity.Platform = model.ClientPlatform(p)
+	}
+	return identity
+}
+
+// truncateRunes caps s at max runes (auth_clients columns are varchar).
+func truncateRunes(s string, max int) string {
+	if max <= 0 || utf8.RuneCountInString(s) <= max {
+		return s
+	}
+	return string([]rune(s)[:max])
+}
 
 func strPtrOrNil(s string) *string {
 	if s == "" {

@@ -1404,11 +1404,16 @@ func (c *controller) getDevices(ctx *gin.Context) {
 		}
 		item.Category = model.SessionCategory(device.Platform)
 		if sessions, ok := sessionsByClient[device.Id]; ok {
-			// Annotate nested sessions and compute device-level trust
-			// from the most recent granted-at timestamp across sessions.
+			// Annotate nested sessions and compute device-level trust from the
+			// most recent granted-at timestamp across login sessions. OAuth
+			// sessions carry a (client-declared) device too, but they never
+			// authorize interactively, so they must not mark a device trusted.
 			c.annotateSessions(reqCtx, sessions, online)
 			item.Sessions = sessions
 			for _, s := range sessions {
+				if s.Type != model.SessionTypeLogin {
+					continue
+				}
 				if model.SessionTrusted(device.Platform, s.LastGrantedAt, now, gap) {
 					item.Trusted = true
 					break

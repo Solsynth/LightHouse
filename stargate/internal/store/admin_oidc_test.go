@@ -69,7 +69,7 @@ func TestAdminPunishmentScalarArgs(t *testing.T) {
 // qualified (the unqualified accountColumns made `id` ambiguous).
 func TestFindValidOauthSessionQualifiedColumns(t *testing.T) {
 	s := adminRegressionStore(t)
-	_, err := s.FindValidOauthSession(context.Background(), sentinelUUID.String(), sentinelUUID.String())
+	_, err := s.FindValidOauthSession(context.Background(), sentinelUUID.String(), sentinelUUID.String(), nil)
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("FindValidOauthSession: got err %v, want ErrNotFound (query must execute)", err)
 	}
