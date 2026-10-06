@@ -331,7 +331,7 @@ func (d Deps) handleLoginOrRegistration(c *gin.Context, svc provider, data *call
 		c.JSON(http.StatusBadRequest, errs.New("OIDC_CALLBACK_PROCESS_FAILED", "Error processing callback: "+err.Error(), http.StatusBadRequest))
 		return
 	}
-	if userInfo.Email == "" || userInfo.UserId == "" {
+	if userInfo.UserId == "" {
 		c.JSON(http.StatusBadRequest, errs.New("OIDC_MISSING_EMAIL_OR_USER_ID", fmt.Sprintf("Email or user ID is missing from %s's response.", providerName), http.StatusBadRequest))
 		return
 	}
@@ -368,6 +368,15 @@ func (d Deps) handleLoginOrRegistration(c *gin.Context, svc provider, data *call
 	}
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
+		return
+	}
+
+	// Provisioning a new account (or linking the provider to an account found
+	// by email) needs an email. Providers that never expose one — Last.fm — can
+	// therefore still sign in an already-linked account above, but cannot
+	// register a new one.
+	if userInfo.Email == "" {
+		c.JSON(http.StatusBadRequest, errs.New("OIDC_MISSING_EMAIL_OR_USER_ID", fmt.Sprintf("Email or user ID is missing from %s's response.", providerName), http.StatusBadRequest))
 		return
 	}
 
@@ -506,15 +515,25 @@ func (d Deps) createSessionForUser(c *gin.Context, svc provider, userInfo *userI
 	providerName := svc.name()
 	now := time.Now().UTC()
 
-	// The connection was created by the caller (FindOrCreateAccount /
-	// HandleLoginOrRegistration); only insert when it is missing.
-	_, err := d.Store.GetConnectionByAccountAndProvider(ctx, account.Id, providerName)
+	// The connection row was created by the caller (FindOrCreateAccount /
+	// HandleLoginOrRegistration). Refresh its token pair when the provider
+	// returned one for this callback: downstream services consume the stored
+	// pair, and rotating providers (e.g. X) invalidate a superseded refresh
+	// token. TouchConnectionTokens COALESCEs empty values, so a provider that
+	// returns no token — Steam, Afdian — never blanks the stored one, and the
+	// write is skipped when the account's provider identity has changed (the
+	// row is then keyed by a different identifier).
+	existing, err := d.Store.GetConnectionByAccountAndProvider(ctx, account.Id, providerName)
 	if errors.Is(err, store.ErrNotFound) {
 		if err := d.Store.InsertConnection(ctx, account.Id, providerName, userInfo.UserId, userInfo.AccessToken, userInfo.RefreshToken, userInfo.toMetadata(), nil, now); err != nil {
 			return nil, err
 		}
 	} else if err != nil {
 		return nil, err
+	} else if existing.ProvidedIdentifier == userInfo.UserId {
+		if _, err := d.Store.TouchConnectionTokens(ctx, account.Id, providerName, userInfo.UserId, userInfo.AccessToken, userInfo.RefreshToken, userInfo.toMetadata(), nil, now); err != nil {
+			return nil, err
+		}
 	}
 
 	device, err := d.Auth.GetOrCreateDevice(ctx, account.Id, deviceID, deviceName, platform)
@@ -808,6 +827,9 @@ func providerAvailable(name string, d Deps) bool {
 	case "twitter":
 		return strings.TrimSpace(d.Cfg.Oidc.Twitter.ClientId) != "" &&
 			strings.TrimSpace(d.Cfg.Oidc.Twitter.ClientSecret) != ""
+	case "lastfm":
+		return strings.TrimSpace(d.Cfg.Oidc.LastFm.ApiKey) != "" &&
+			strings.TrimSpace(d.Cfg.Oidc.LastFm.ApiSecret) != ""
 	default:
 		return false
 	}

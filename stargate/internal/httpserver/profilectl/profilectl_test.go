@@ -187,6 +187,14 @@ func TestBuildPublicConnectionUrl(t *testing.T) {
 	if got := buildPublicConnectionUrl(other); got != "" {
 		t.Errorf("other url = %q", got)
 	}
+	lastfm := &model.Connection{Provider: "lastfm", ProvidedIdentifier: "some user"}
+	if got := buildPublicConnectionUrl(lastfm); got != "https://www.last.fm/user/some%20user" {
+		t.Errorf("lastfm url = %q", got)
+	}
+	lastfmNoName := &model.Connection{Provider: "lastfm"}
+	if got := buildPublicConnectionUrl(lastfmNoName); got != "" {
+		t.Errorf("lastfm url without identifier = %q", got)
+	}
 }
 
 func TestBadgeToJSONSnakeCase(t *testing.T) {

@@ -194,6 +194,11 @@ func buildPublicConnectionUrl(connection *model.Connection) string {
 			return "https://github.com/" + url.PathEscape(username)
 		}
 	}
+	if strings.EqualFold(connection.Provider, "lastfm") {
+		if username := strings.TrimSpace(connection.ProvidedIdentifier); username != "" {
+			return "https://www.last.fm/user/" + url.PathEscape(username)
+		}
+	}
 	return ""
 }
 

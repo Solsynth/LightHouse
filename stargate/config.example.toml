@@ -137,6 +137,10 @@ discord = { clientId = "", clientSecret = "" }
 github = { clientId = "", clientSecret = "" }
 afdian = { clientId = "", clientSecret = "" }
 twitter = { clientId = "", clientSecret = "" }
+# Last.fm uses an API key + shared secret instead of OAuth2 client
+# credentials. Register {SiteUrl}/auth/callback/lastfm as the API account's
+# callback URL.
+lastfm = { apiKey = "", apiSecret = "" }
 
 # Security controls: fail2ban (IP-level blocking after repeated failures),
 # challenge risk escalation, and per-account security mode preferences.

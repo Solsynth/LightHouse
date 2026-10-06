@@ -128,6 +128,7 @@ type Config struct {
 		GitHub    GitHubClient    `toml:"github"`
 		Afdian    AfdianClient    `toml:"afdian"`
 		Twitter   TwitterClient   `toml:"twitter"`
+		LastFm    LastFmClient    `toml:"lastfm"`
 	} `toml:"oidc"`
 
 	Security SecurityConfig `toml:"security"`
@@ -264,6 +265,16 @@ type TwitterClient struct {
 	ClientSecret string `toml:"clientSecret"`
 }
 
+// LastFmClient configures the Last.fm web-application API account. Last.fm has
+// no OAuth2 client registration: the API key is the 32-character public
+// identifier and the shared secret signs every call. The callback URL must be
+// registered on the Last.fm API account page and match
+// {SiteUrl}/auth/callback/lastfm.
+type LastFmClient struct {
+	ApiKey    string `toml:"apiKey"`
+	ApiSecret string `toml:"apiSecret"`
+}
+
 // Default returns a config with production-shaped defaults so a missing
 // optional section never zeroes a critical value.
 func Default() *Config {
@@ -344,6 +355,8 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("STARGATE_OIDC_PROVIDER_ISSUER", &cfg.OidcProvider.IssuerUri)
 	setStr("STARGATE_OIDC_TWITTER_CLIENT_ID", &cfg.Oidc.Twitter.ClientId)
 	setStr("STARGATE_OIDC_TWITTER_CLIENT_SECRET", &cfg.Oidc.Twitter.ClientSecret)
+	setStr("STARGATE_OIDC_LASTFM_API_KEY", &cfg.Oidc.LastFm.ApiKey)
+	setStr("STARGATE_OIDC_LASTFM_API_SECRET", &cfg.Oidc.LastFm.ApiSecret)
 	setStr("STARGATE_SERVICES_DRIVE__GRPC", &cfg.Services.Drive.GRPC)
 	setStr("STARGATE_SERVICES_WALLET__GRPC", &cfg.Services.Wallet.GRPC)
 	setStr("STARGATE_SERVICES_PASS__GRPC", &cfg.Services.Pass.GRPC)
