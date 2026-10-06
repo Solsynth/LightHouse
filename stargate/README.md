@@ -98,7 +98,9 @@ zero-filled per type.
   ints; times are UTC RFC3339; nulls are omitted.
 - JWTs use the same RSA keys as the C# fleet (`Keys/`), so in-flight tokens
   keep validating; refresh rotation bumps the session epoch and revokes
-  prior tokens.
+  prior tokens. The immediately previous refresh token stays acceptable for
+  `auth.refreshGracePeriod` (default `60s`) after a rotation so a lost or
+  timed-out refresh response retries instead of forcing a re-login.
 - Session cache keys (`dyson:auth:session:*`), account versions and the
   `auth.session.revoked` JetStream events interoperate with the C# fleet
   and downstream Go services.

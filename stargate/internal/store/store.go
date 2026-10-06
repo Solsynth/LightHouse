@@ -121,7 +121,8 @@ func sessionFromEntity(entity *AuthSessionEntity) *model.AuthSession {
 	session := &model.AuthSession{
 		Id: entity.ID.String(), Type: model.SessionType(entity.Type),
 		LastGrantedAt: timePtr(entity.LastGrantedAt), ExpiredAt: timePtr(entity.ExpiredAt),
-		AccountId: entity.AccountID.String(), IpAddress: entity.IPAddress,
+		RefreshedAt: timePtr(entity.RefreshedAt),
+		AccountId:   entity.AccountID.String(), IpAddress: entity.IPAddress,
 		UserAgent: entity.UserAgent, CreatedAt: timePtr(&entity.CreatedAt),
 		UpdatedAt: timePtr(&entity.UpdatedAt), DeletedAt: deletedTime(entity.DeletedAt),
 		ClientId: uuidPtrStr(entity.ClientID), ParentSessionId: uuidPtrStr(entity.ParentSessionID),

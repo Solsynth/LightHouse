@@ -69,6 +69,7 @@ type Config struct {
 		PrivateKeyPath       string   `toml:"privateKeyPath"`
 		AccessTokenLifetime  string   `toml:"accessTokenLifetime"`
 		RefreshTokenLifetime string   `toml:"refreshTokenLifetime"`
+		RefreshGracePeriod   string   `toml:"refreshGracePeriod"`
 		CookieDomain         string   `toml:"cookieDomain"`
 		CookieSecure         bool     `toml:"cookieSecure"`
 	} `toml:"auth"`
@@ -288,6 +289,7 @@ func Default() *Config {
 	cfg.Auth.Audiences = []string{"http://localhost:5071", "https://localhost:7099"}
 	cfg.Auth.AccessTokenLifetime = "5m"
 	cfg.Auth.RefreshTokenLifetime = "720h"
+	cfg.Auth.RefreshGracePeriod = "60s"
 	cfg.Auth.CookieDomain = "localhost"
 	cfg.OidcProvider.IssuerUri = "https://nt.solian.app"
 	cfg.OidcProvider.AccessTokenLifetime = "5m"
@@ -352,6 +354,7 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("STARGATE_AUTH_PRIVATE_KEY", &cfg.Auth.PrivateKeyPath)
 	setStr("STARGATE_AUTH_ACCESS_TOKEN_LIFETIME", &cfg.Auth.AccessTokenLifetime)
 	setStr("STARGATE_AUTH_REFRESH_TOKEN_LIFETIME", &cfg.Auth.RefreshTokenLifetime)
+	setStr("STARGATE_AUTH_REFRESH_GRACE_PERIOD", &cfg.Auth.RefreshGracePeriod)
 	setStr("STARGATE_OIDC_PROVIDER_ISSUER", &cfg.OidcProvider.IssuerUri)
 	setStr("STARGATE_OIDC_TWITTER_CLIENT_ID", &cfg.Oidc.Twitter.ClientId)
 	setStr("STARGATE_OIDC_TWITTER_CLIENT_SECRET", &cfg.Oidc.Twitter.ClientSecret)
@@ -413,6 +416,16 @@ func (c *Config) RefreshTokenLifetime() time.Duration {
 		return d
 	}
 	return 30 * 24 * time.Hour
+}
+
+// RefreshGracePeriod parses how long the immediately previous refresh token
+// remains acceptable after a rotation. A zero/negative/invalid value disables
+// the window (a replayed previous token is rejected immediately).
+func (c *Config) RefreshGracePeriod() time.Duration {
+	if d, err := time.ParseDuration(c.Auth.RefreshGracePeriod); err == nil && d > 0 {
+		return d
+	}
+	return 0
 }
 
 // CaptchaEnabled reports whether an external captcha verifier is configured.

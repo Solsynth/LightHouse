@@ -40,6 +40,12 @@ publicKeyPath = "Keys/PublicKey.pem"
 privateKeyPath = "Keys/PrivateKey.pem"
 accessTokenLifetime = "5m"
 refreshTokenLifetime = "720h"
+# How long the immediately previous refresh token is still accepted after a
+# rotation. Refresh rotation revokes the presented token before the replacement
+# is delivered, so a dropped/timed-out response (or a concurrent duplicate)
+# would otherwise force a re-login. Longer = more tolerant, wider replay
+# window. "0s" disables the grace.
+refreshGracePeriod = "60s"
 cookieDomain = "localhost"
 cookieSecure = false
 

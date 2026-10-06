@@ -63,6 +63,7 @@ type AuthSessionEntity struct {
 	ExpiredAt       *time.Time      `gorm:"column:expired_at"`
 	IPAddress       *string         `gorm:"column:ip_address"`
 	LastGrantedAt   *time.Time      `gorm:"column:last_granted_at"`
+	RefreshedAt     *time.Time      `gorm:"column:refreshed_at"`
 	Location        *datatypes.JSON `gorm:"column:location;type:jsonb"`
 	ParentSessionID *uuid.UUID      `gorm:"column:parent_session_id"`
 	Scopes          datatypes.JSON  `gorm:"column:scopes;type:jsonb"`

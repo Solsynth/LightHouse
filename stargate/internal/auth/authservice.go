@@ -392,9 +392,30 @@ func scopesWithFullScope(scopes []string) []string {
 	return append(out, fullScope)
 }
 
+// RefreshGraceAccepted reports whether a presented refresh-token epoch is the
+// session's immediately previous rotation and still inside [window]. A
+// non-positive window disables the grace (previous tokens are rejected
+// immediately, the pre-grace behavior).
+//
+// The window exists because rotation revokes the presented token before the
+// replacement is delivered: a dropped or timed-out refresh response (or a
+// concurrent duplicate) would otherwise leave the caller holding a dead token
+// and force a re-login even though the session is intact.
+func RefreshGraceAccepted(session *model.AuthSession, presentedEpoch int, now time.Time, window time.Duration) bool {
+	if window <= 0 || session == nil || session.RefreshedAt == nil {
+		return false
+	}
+	if presentedEpoch != session.Epoch-1 {
+		return false
+	}
+	return !session.RefreshedAt.Time().Add(window).Before(now)
+}
+
 // RefreshSessionAndIssueTokens rotates a refresh token (epoch bump) and
 // returns a new pair plus the rotated session (the session powers the
-// middleware auto-renew path without re-loading it).
+// middleware auto-renew path without re-loading it). A refresh token from the
+// immediately previous rotation is served idempotently while inside the
+// configured grace window.
 func (s *AuthService) RefreshSessionAndIssueTokens(ctx context.Context, refreshToken string) (*TokenPair, *model.AuthSession, error) {
 	isValid, claims := s.jwt.ValidateJwt(refreshToken)
 	if !isValid || claims == nil {
@@ -429,7 +450,22 @@ func (s *AuthService) RefreshSessionAndIssueTokens(ctx context.Context, refreshT
 	if session.ExpiredAt != nil && !session.ExpiredAt.Time().After(now) {
 		return nil, nil, &ErrInvalid{Message: "Session has been expired."}
 	}
-	if tokenEpoch, ok := ClaimInt(claims, "epoch"); ok && tokenEpoch != session.Epoch {
+
+	tokenEpoch, hasEpoch := ClaimInt(claims, "epoch")
+	if hasEpoch && tokenEpoch != session.Epoch {
+		// A token exactly one rotation behind, inside the grace window, is a
+		// duplicate of a rotation whose replacement never reached the caller
+		// (dropped or timed-out response) or of a concurrent duplicate. Serve
+		// it idempotently from the already-rotated session instead of rejecting
+		// it — rejecting forces a re-login even though the session is alive.
+		// Anything further behind is a replay and stays rejected.
+		if RefreshGraceAccepted(session, tokenEpoch, now, s.cfg.RefreshGracePeriod()) {
+			pair, err := s.CreateTokenPair(ctx, session)
+			if err != nil {
+				return nil, nil, err
+			}
+			return pair, session, nil
+		}
 		return nil, nil, &ErrInvalid{Message: "Refresh token has been revoked."}
 	}
 
@@ -439,10 +475,29 @@ func (s *AuthService) RefreshSessionAndIssueTokens(ctx context.Context, refreshT
 		return nil, nil, err
 	}
 	if !rotated {
+		// Lost a race to a concurrent rotation of the same token (the epoch we
+		// held no longer matches). Re-read and, when the winner's rotation is
+		// inside the grace window, hand back a pair for its session rather than
+		// failing the caller.
+		reloaded, rerr := s.store.GetSessionWithAccount(ctx, sessionID)
+		if rerr != nil {
+			return nil, nil, rerr
+		}
+		if reloaded.ExpiredAt != nil && !reloaded.ExpiredAt.Time().After(now) {
+			return nil, nil, &ErrInvalid{Message: "Session has been expired."}
+		}
+		if RefreshGraceAccepted(reloaded, session.Epoch, now, s.cfg.RefreshGracePeriod()) {
+			pair, perr := s.CreateTokenPair(ctx, reloaded)
+			if perr != nil {
+				return nil, nil, perr
+			}
+			return pair, reloaded, nil
+		}
 		return nil, nil, &ErrInvalid{Message: "Refresh token has been revoked."}
 	}
 	session.LastGrantedAt = model.NewTime(now)
 	session.ExpiredAt = model.NewTime(newExpiry)
+	session.RefreshedAt = model.NewTime(now)
 	session.Epoch++
 
 	if s.redis != nil && s.redis.Available() {

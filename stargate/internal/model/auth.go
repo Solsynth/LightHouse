@@ -67,6 +67,9 @@ type AuthSession struct {
 	AppId           *string `json:"-"`
 	ChallengeId     *string `json:"-"`
 	Epoch           int     `json:"-"`
+	// RefreshedAt is when the epoch was last rotated by a refresh grant; it
+	// anchors the rotation grace window (persisted, never on the wire).
+	RefreshedAt *Time `json:"-"`
 	// Category is "browser" or "device", derived from the client platform.
 	Category string `json:"category,omitempty"`
 	// Trusted indicates whether this session qualifies for challenge

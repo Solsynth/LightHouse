@@ -928,7 +928,14 @@ func (s *service) handleRefreshTokenFlow(ctx context.Context, clientID, refreshT
 			}
 		}
 	}
-	if tokenEpoch, ok := auth.ClaimInt(claims, "epoch"); ok && tokenEpoch != session.Epoch {
+	tokenEpoch, hasEpoch := auth.ClaimInt(claims, "epoch")
+	if hasEpoch && tokenEpoch != session.Epoch {
+		// Same grace contract as the login refresh: the immediately previous
+		// token is served idempotently for a short window so a lost response
+		// cannot strand the client.
+		if auth.RefreshGraceAccepted(session, tokenEpoch, now, s.cfg.RefreshGracePeriod()) {
+			return session, nil, session.Scopes, nil
+		}
 		return nil, nil, nil, errors.New("Refresh token has been revoked")
 	}
 	newExpiry := now.Add(s.refreshLifetime)
@@ -937,10 +944,21 @@ func (s *service) handleRefreshTokenFlow(ctx context.Context, clientID, refreshT
 		return nil, nil, nil, err
 	}
 	if !rotated {
+		reloaded, rerr := s.store.GetSessionWithAccount(ctx, sessionID)
+		if rerr != nil {
+			return nil, nil, nil, rerr
+		}
+		if reloaded.ExpiredAt != nil && reloaded.ExpiredAt.Time().Before(now) {
+			return nil, nil, nil, errors.New("Session has expired")
+		}
+		if auth.RefreshGraceAccepted(reloaded, session.Epoch, now, s.cfg.RefreshGracePeriod()) {
+			return reloaded, nil, reloaded.Scopes, nil
+		}
 		return nil, nil, nil, errors.New("Refresh token has been revoked")
 	}
 	session.LastGrantedAt = model.NewTime(now)
 	session.ExpiredAt = model.NewTime(newExpiry)
+	session.RefreshedAt = model.NewTime(now)
 	session.Epoch++
 	if s.cacheAvailable() {
 		_ = s.redis.Cache.Remove(ctx, "auth:session:"+session.Id)

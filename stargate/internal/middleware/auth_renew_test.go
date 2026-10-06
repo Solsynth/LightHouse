@@ -40,6 +40,7 @@ func testAuthConfig(privPath, pubPath string) *config.Config {
 		PrivateKeyPath       string   `toml:"privateKeyPath"`
 		AccessTokenLifetime  string   `toml:"accessTokenLifetime"`
 		RefreshTokenLifetime string   `toml:"refreshTokenLifetime"`
+		RefreshGracePeriod   string   `toml:"refreshGracePeriod"`
 		CookieDomain         string   `toml:"cookieDomain"`
 		CookieSecure         bool     `toml:"cookieSecure"`
 	}{

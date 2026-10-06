@@ -79,15 +79,18 @@ func (s *Store) UpdateSessionScopes(ctx context.Context, sessionID string, scope
 		Updates(map[string]any{"scopes": datatypes.JSON(jsonbOrEmpty(scopes)), "updated_at": now}).Error
 }
 
-// UpdateSessionRefresh atomically rotates an OIDC refresh token. The update
-// only succeeds when [expectedEpoch] matches the epoch embedded in the
+// UpdateSessionRefresh atomically rotates a session's refresh token. The
+// update only succeeds when [expectedEpoch] matches the epoch embedded in the
 // presented token, so concurrent refreshes cannot both issue a replacement.
+// refreshed_at records the rotation instant for the grace window (see
+// RefreshSessionAndIssueTokens).
 func (s *Store) UpdateSessionRefresh(ctx context.Context, sessionID string, expectedEpoch int, lastGrantedAt, expiredAt time.Time) (bool, error) {
 	res := s.DB.WithContext(ctx).Unscoped().Model(&AuthSessionEntity{}).
 		Where("id = ? AND epoch = ?", sessionID, expectedEpoch).
 		Updates(map[string]any{
 			"last_granted_at": lastGrantedAt, "expired_at": expiredAt,
-			"epoch": gorm.Expr("epoch + 1"), "updated_at": lastGrantedAt,
+			"refreshed_at": lastGrantedAt,
+			"epoch":        gorm.Expr("epoch + 1"), "updated_at": lastGrantedAt,
 		})
 	if res.Error != nil {
 		return false, res.Error
