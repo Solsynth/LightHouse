@@ -172,6 +172,15 @@ func (h *handler) allRequiredStepCount(ctx context.Context, accountID string) (i
 // — with one exception: when it is the account's only enabled factor, the
 // challenge still counts one step, because a trusted session can satisfy it
 // by approving from another device.
+//
+// The score is a sum of ip/user-agent novelty, time since the last granted
+// login, recent failed attempts, factor strength and device age; under the
+// default (balanced) mode it is then scaled to a fraction of the account's
+// completable factors. A login completed inside
+// [security] recentLoginGrace from the same user agent cancels the
+// ip-novelty terms, so roaming clients are not re-challenged with MFA
+// seconds after a successful login. Lockdown and lockoff bypass the score
+// entirely (all factors / password only).
 func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress, userAgent string, mode model.SecurityMode) (int, error) {
 	factors, err := h.d.Store.GetAuthFactors(ctx, uuid.MustParse(accountID))
 	if err != nil {
@@ -224,6 +233,10 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 	if err != nil {
 		return 0, err
 	}
+	probesByChallenge := make(map[uuid.UUID]store.ChallengeProbe, len(recentChallenges))
+	for _, p := range recentChallenges {
+		probesByChallenge[p.ID] = p
+	}
 
 	if strings.TrimSpace(ipAddress) == "" {
 		riskScore += 10
@@ -255,7 +268,7 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 	} else {
 		uaPreviouslyUsed := false
 		for _, ch := range recentChallenges {
-			if ch.UserAgent != nil && *ch.UserAgent != "" && strings.EqualFold(*ch.UserAgent, userAgent) {
+			if sameUserAgent(ch.UserAgent, userAgent) {
 				uaPreviouslyUsed = true
 				break
 			}
@@ -267,13 +280,27 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 
 	now := time.Now().UTC()
 	if len(recentSessions) > 0 && recentSessions[0].LastGrantedAt != nil {
-		hoursSinceLastLogin := now.Sub(recentSessions[0].LastGrantedAt.Time()).Hours()
-		if hoursSinceLastLogin > 720 {
+		sinceLastLogin := now.Sub(recentSessions[0].LastGrantedAt.Time())
+		switch hoursSinceLastLogin := sinceLastLogin.Hours(); {
+		case hoursSinceLastLogin > 720:
 			riskScore += 9
-		} else if hoursSinceLastLogin > 168 {
+		case hoursSinceLastLogin > 168:
 			riskScore += 6
-		} else if hoursSinceLastLogin > 24 {
+		case hoursSinceLastLogin > 24:
 			riskScore += 3
+		}
+		// A login completed moments ago from the same client is the strongest
+		// trust signal available: the account just proved every factor it was
+		// asked for from this exact user agent, so a rotated IP — mobile NAT,
+		// IPv6 privacy addresses, a Wi-Fi/cellular switch — must not escalate
+		// the next challenge. Keyed on the user agent (not the IP) because an
+		// unrecognised client keeps its full IP score.
+		if sinceLastLogin <= h.d.Cfg.Security.RecentLoginGraceDuration() {
+			if challengeID := recentSessions[0].ChallengeID; challengeID != nil {
+				if probe, ok := probesByChallenge[*challengeID]; ok && sameUserAgent(probe.UserAgent, userAgent) {
+					riskScore -= recentLoginRiskCredit
+				}
+			}
 		}
 	} else {
 		riskScore += 7
@@ -322,10 +349,7 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 	}
 
 	riskScore = math.Max(0, math.Min(riskScore, 20))
-	riskWeight := 0.5
-	if maxSteps > 0 {
-		riskWeight = riskScore / 20.0
-	}
+	riskWeight := riskScore / 20.0
 	totalRequiredSteps := roundHalfToEven(float64(maxSteps) * riskWeight)
 	if totalRequiredSteps > maxSteps {
 		totalRequiredSteps = maxSteps
@@ -334,6 +358,18 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 		totalRequiredSteps = 1
 	}
 	return totalRequiredSteps, nil
+}
+
+// recentLoginRiskCredit cancels the IP-novelty terms (+8 for an unseen IP and
+// +6 for one differing from the last known IP) when the account completed a
+// login from the same user agent inside the configured recent-login grace.
+const recentLoginRiskCredit = 8.0
+
+// sameUserAgent reports a non-empty, case-insensitive user-agent match. An
+// absent user agent never matches: clients that send none must not look like
+// a known client.
+func sameUserAgent(stored *string, current string) bool {
+	return current != "" && stored != nil && *stored != "" && strings.EqualFold(*stored, current)
 }
 
 // roundHalfToEven mirrors Math.Round's default banker's rounding.

@@ -161,6 +161,11 @@ fail2banBlockFor = "30m"
 # escalated to require all available factors (unless the account's mode
 # overrides it).
 challengeFailEscalateAfter = 2
+# After a login completes, a new challenge from the same user agent within
+# this window ignores the IP-novelty risk terms: a rotated IP (mobile NAT,
+# IPv6 privacy addresses, Wi-Fi/cellular switches) is not a device change.
+# "0" disables the suppression.
+recentLoginGrace = "30m"
 # Maximum time since last activity for a native-device session to be
 # considered "trusted" (only trusted sessions may approve/decline logins).
 trustedSessionMaxGap = "720h"

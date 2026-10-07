@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"src.solsynth.dev/sosys/stargate/internal/config"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
@@ -129,4 +130,139 @@ func TestDetectChallengeRiskSkipsUncompletableFactors(t *testing.T) {
 			t.Fatalf("lockoff steps = %d, want 1", steps)
 		}
 	})
+}
+
+// seedCompletedLogin inserts what a finished login leaves behind: a challenge
+// holding the ip/user-agent/failure count plus the session it minted, granted
+// grantedAgo before now. clientBound mirrors the device binding a
+// username-challenge login always writes (auth_clients row + client_id).
+func seedCompletedLogin(t *testing.T, ctx context.Context, pool *pgxpool.Pool, accountID, ip, ua string, grantedAgo time.Duration, failedAttempts int) {
+	t.Helper()
+	granted := time.Now().UTC().Add(-grantedAgo)
+	challengeID := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO auth_challenges (id, account_id, step_total, step_remain, device_id, platform, ip_address, user_agent, blacklist_factors, failed_attempts, scopes, audiences, created_at, updated_at, expired_at)
+		VALUES ($1,$2,1,0,'grace-device',0,$3,$4,'[]',$5,'[]','[]',$6,$6,$6)`,
+		challengeID, accountID, ip, ua, failedAttempts, granted); err != nil {
+		t.Fatalf("seed challenge: %v", err)
+	}
+	clientID := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO auth_clients (id, account_id, device_id, device_name, platform, created_at, updated_at)
+		VALUES ($1,$2,'grace-device','grace device',0,$3,$3)`, clientID, accountID, granted); err != nil {
+		t.Fatalf("seed client: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO auth_sessions (id, account_id, type, epoch, challenge_id, client_id, ip_address, user_agent, last_granted_at, expired_at, refreshed_at, scopes, audiences, created_at, updated_at)
+		VALUES ($1,$2,0,0,$3,$4,$5,$6,$7,$8,$7,'[]','[]',$7,$7)`,
+		uuid.New(), accountID, challengeID, clientID, ip, ua, granted, granted.Add(720*time.Hour)); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+}
+
+// TestDetectChallengeRiskRecentLoginGrace pins the roaming-client contract: a
+// login completed inside [security] recentLoginGrace from the same user agent
+// cancels the ip-novelty terms, so a rotated IP (mobile NAT, IPv6 privacy
+// addresses, Wi-Fi/cellular switch) cannot demand MFA again seconds after a
+// successful login. The grace is anchored on the user agent — an
+// unrecognised client, a blank stored user agent, a login older than the
+// grace, or renewed failures all keep the escalated step count.
+func TestDetectChallengeRiskRecentLoginGrace(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(), smokeDSN)
+	if err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	defer pool.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := pool.Ping(ctx); err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+
+	const (
+		lastIP   = "203.0.113.7"
+		lastUA   = "Solian/1.9.2 (macOS)"
+		roamedIP = "198.51.100.9"
+		otherUA  = "Solian/1.9.3 (macOS)"
+	)
+	// password + email code + NFC token: three completable factors, so the
+	// escalated count is 2 and a single step is unambiguous.
+	seedAccount := func(t *testing.T) string {
+		t.Helper()
+		return seedRiskAccount(t, ctx, pool,
+			model.AuthFactorTypePassword, model.AuthFactorTypeEmailCode, model.AuthFactorTypeNfcToken)
+	}
+	handlerWithGrace := func(grace string) *handler {
+		return &handler{d: Deps{
+			Store: store.New(pool),
+			Cfg:   &config.Config{Security: config.SecurityConfig{RecentLoginGrace: grace}},
+		}}
+	}
+
+	cases := []struct {
+		name           string
+		grace          string
+		storedIP       string
+		storedUA       string
+		grantedAgo     time.Duration
+		failedAttempts int
+		requestIP      string
+		requestUA      string
+		want           int
+	}{
+		{
+			name:     "rotated IP from the same client inside the grace stays at one step",
+			grace:    "30m",
+			storedIP: lastIP, storedUA: lastUA,
+			requestIP: roamedIP, requestUA: lastUA,
+			want: 1,
+		},
+		{
+			name:     "unrecognised client still escalates on a rotated IP",
+			grace:    "30m",
+			storedIP: lastIP, storedUA: lastUA,
+			requestIP: roamedIP, requestUA: otherUA,
+			want: 2,
+		},
+		{
+			name:     "blank stored user agent never earns the grace",
+			grace:    "30m",
+			storedIP: lastIP, storedUA: "",
+			requestIP: roamedIP, requestUA: otherUA,
+			want: 2,
+		},
+		{
+			name:     "login outside the grace escalates again",
+			grace:    "30m",
+			storedIP: lastIP, storedUA: lastUA,
+			grantedAgo: 45 * time.Minute,
+			requestIP:  roamedIP, requestUA: lastUA,
+			want: 2,
+		},
+		{
+			name:     "grace disabled by config escalates on a rotated IP",
+			grace:    "0",
+			storedIP: lastIP, storedUA: lastUA,
+			requestIP: roamedIP, requestUA: lastUA,
+			want: 2,
+		},
+		{
+			name:     "failures inside the grace still escalate",
+			grace:    "30m",
+			storedIP: lastIP, storedUA: lastUA,
+			failedAttempts: 4,
+			requestIP:      roamedIP, requestUA: lastUA,
+			want: 2,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			accountID := seedAccount(t)
+			seedCompletedLogin(t, ctx, pool, accountID, tc.storedIP, tc.storedUA, tc.grantedAgo, tc.failedAttempts)
+			steps, err := handlerWithGrace(tc.grace).detectChallengeRisk(ctx, accountID, tc.requestIP, tc.requestUA, model.SecurityModeDefault)
+			if err != nil {
+				t.Fatalf("detectChallengeRisk: %v", err)
+			}
+			if steps != tc.want {
+				t.Fatalf("steps = %d, want %d", steps, tc.want)
+			}
+		})
+	}
 }

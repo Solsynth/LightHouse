@@ -143,7 +143,11 @@ type SecurityConfig struct {
 	Fail2banWindow             string `toml:"fail2banWindow"`
 	Fail2banBlockFor           string `toml:"fail2banBlockFor"`
 	ChallengeFailEscalateAfter int    `toml:"challengeFailEscalateAfter"`
-	TrustedSessionMaxGap       string `toml:"trustedSessionMaxGap"`
+	// RecentLoginGrace is how long a completed login from the same client
+	// user agent suppresses the IP-novelty risk terms of the next challenge
+	// (see hint in config.example.toml). "0" disables the suppression.
+	RecentLoginGrace     string `toml:"recentLoginGrace"`
+	TrustedSessionMaxGap string `toml:"trustedSessionMaxGap"`
 }
 
 // Fail2banWindowDuration parses the fail2ban counting window.
@@ -157,6 +161,19 @@ func (s SecurityConfig) Fail2banWindowDuration() time.Duration {
 // Fail2banBlockForDuration parses the fail2ban block duration.
 func (s SecurityConfig) Fail2banBlockForDuration() time.Duration {
 	if d, err := time.ParseDuration(s.Fail2banBlockFor); err == nil && d > 0 {
+		return d
+	}
+	return 30 * time.Minute
+}
+
+// RecentLoginGraceDuration parses the window in which a completed login from
+// the same client user agent suppresses the IP-novelty risk terms. A missing
+// or unparsable value falls back to 30 minutes; "0" disables the suppression.
+func (s SecurityConfig) RecentLoginGraceDuration() time.Duration {
+	if s.RecentLoginGrace == "" {
+		return 30 * time.Minute
+	}
+	if d, err := time.ParseDuration(s.RecentLoginGrace); err == nil && d >= 0 {
 		return d
 	}
 	return 30 * time.Minute
@@ -312,6 +329,7 @@ func Default() *Config {
 	cfg.Security.Fail2banWindow = "15m"
 	cfg.Security.Fail2banBlockFor = "30m"
 	cfg.Security.ChallengeFailEscalateAfter = 2
+	cfg.Security.RecentLoginGrace = "30m"
 	cfg.Security.TrustedSessionMaxGap = "720h"
 	return cfg
 }
@@ -380,6 +398,7 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("STARGATE_SECURITY_FAIL2BANBLOCKFOR", &cfg.Security.Fail2banBlockFor)
 	setInt("STARGATE_SECURITY_CHALLENGEFAILESCALATEAFTER", &cfg.Security.ChallengeFailEscalateAfter)
 	setStr("STARGATE_SECURITY_TRUSTEDSESSIONMAXGAP", &cfg.Security.TrustedSessionMaxGap)
+	setStr("STARGATE_SECURITY_RECENTLOGINGRACE", &cfg.Security.RecentLoginGrace)
 }
 
 func setStr(key string, dst *string) {
