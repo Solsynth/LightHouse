@@ -508,6 +508,16 @@ func (h *handler) createChallenge(c *gin.Context) {
 		return
 	}
 
+	// Per-IP new-challenge quota. The slot is claimed before any further work
+	// and released once the challenge mints a session, so successful logins
+	// never count against the limit.
+	challengeID := uuid.NewString()
+	if !risk.ChallengeAllowed(ctx, h.d.Redis, h.d.Cfg, ipAddress, challengeID) {
+		c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+			"Too many sign-in attempts from this network. Try again later.", http.StatusTooManyRequests))
+		return
+	}
+
 	mode, err := h.d.Store.GetSecurityMode(ctx, account.Id)
 	if err != nil {
 		mode = model.SecurityModeDefault // degrade: never fail login on a preference-read error
@@ -520,7 +530,7 @@ func (h *handler) createChallenge(c *gin.Context) {
 	}
 
 	challenge := &model.AuthChallenge{
-		Id:         uuid.NewString(),
+		Id:         challengeID,
 		ExpiredAt:  model.NewTime(now.Add(time.Hour)),
 		StepTotal:  steps,
 		StepRemain: steps,
@@ -538,6 +548,7 @@ func (h *handler) createChallenge(c *gin.Context) {
 	}
 	if err := h.d.Store.CreateAuthChallenge(ctx, challenge); err != nil {
 		h.logError("create challenge", err)
+		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challenge.Id)
 		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
 		return
 	}
@@ -1220,8 +1231,16 @@ func (h *handler) startPasskeyLogin(c *gin.Context) {
 	if req.DeviceName != nil {
 		deviceName = *req.DeviceName
 	}
+	// Per-IP new-challenge quota (see createChallenge): the slot is released
+	// once the passkey challenge mints a session.
+	challengeID := uuid.NewString()
+	if !risk.ChallengeAllowed(ctx, h.d.Redis, h.d.Cfg, ipAddress, challengeID) {
+		c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+			"Too many sign-in attempts from this network. Try again later.", http.StatusTooManyRequests))
+		return
+	}
 	challenge := &model.AuthChallenge{
-		Id:         uuid.NewString(),
+		Id:         challengeID,
 		StepTotal:  1,
 		StepRemain: 1,
 		DeviceId:   req.DeviceId,
@@ -1239,12 +1258,14 @@ func (h *handler) startPasskeyLogin(c *gin.Context) {
 	}
 	if err := h.d.Store.CreateAuthChallenge(ctx, challenge); err != nil {
 		h.logError("create passkey challenge", err)
+		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challenge.Id)
 		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
 		return
 	}
 	assertionChallenge, err := h.generatePasskeyAssertionChallenge(ctx, challenge.Id)
 	if err != nil {
 		h.logError("generate passkey assertion challenge", err)
+		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challenge.Id)
 		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
 		return
 	}
@@ -1514,6 +1535,11 @@ func (h *handler) declineChallenge(c *gin.Context) {
 	if err := h.escalateChallenge(ctx, challenge); err != nil {
 		h.logError("escalate challenge", err)
 	}
+
+	// A decline is charged to the IP that started the login, so an IP that
+	// keeps requesting challenges for an account whose owner keeps declining
+	// them gets fail2banned (see risk.RecordDecline).
+	risk.RecordDecline(ctx, h.d.Redis, h.d.Cfg, derefStr(challenge.IpAddress))
 
 	h.publishWS(ctx, user.Id, "auth.challenge.declined", map[string]any{
 		"challenge_id":       challenge.Id,

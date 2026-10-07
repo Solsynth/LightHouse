@@ -139,10 +139,22 @@ type Config struct {
 // session thresholds. The defaults are production-shaped so a missing
 // [security] section never weakens the deployment.
 type SecurityConfig struct {
-	Fail2banMaxFails           int    `toml:"fail2banMaxFails"`
-	Fail2banWindow             string `toml:"fail2banWindow"`
-	Fail2banBlockFor           string `toml:"fail2banBlockFor"`
-	ChallengeFailEscalateAfter int    `toml:"challengeFailEscalateAfter"`
+	Fail2banMaxFails int    `toml:"fail2banMaxFails"`
+	Fail2banWindow   string `toml:"fail2banWindow"`
+	Fail2banBlockFor string `toml:"fail2banBlockFor"`
+	// Fail2banDeclineMax is how many declined challenges (declined by a
+	// trusted session) the requesting IP may accumulate within Fail2banWindow
+	// before it is blocked for Fail2banBlockFor. Declines are counted against
+	// the IP that started the login, not the one that declined it. "0"
+	// disables the tracking.
+	Fail2banDeclineMax         int `toml:"fail2banDeclineMax"`
+	ChallengeFailEscalateAfter int `toml:"challengeFailEscalateAfter"`
+	// MaxChallengesPerIp caps how many new challenges a single IP may create
+	// within ChallengeWindow before it is rate limited. A challenge that
+	// completes into a session releases its slot, so successful logins never
+	// count against the quota. "0" disables the quota.
+	MaxChallengesPerIp int    `toml:"maxChallengesPerIp"`
+	ChallengeWindow    string `toml:"challengeWindow"`
 	// RecentLoginGrace is how long a completed login from the same client
 	// user agent suppresses the IP-novelty risk terms of the next challenge
 	// (see hint in config.example.toml). "0" disables the suppression.
@@ -164,6 +176,14 @@ func (s SecurityConfig) Fail2banBlockForDuration() time.Duration {
 		return d
 	}
 	return 30 * time.Minute
+}
+
+// ChallengeWindowDuration parses the new-challenge quota window.
+func (s SecurityConfig) ChallengeWindowDuration() time.Duration {
+	if d, err := time.ParseDuration(s.ChallengeWindow); err == nil && d > 0 {
+		return d
+	}
+	return time.Hour
 }
 
 // RecentLoginGraceDuration parses the window in which a completed login from
@@ -328,7 +348,10 @@ func Default() *Config {
 	cfg.Security.Fail2banMaxFails = 5
 	cfg.Security.Fail2banWindow = "15m"
 	cfg.Security.Fail2banBlockFor = "30m"
+	cfg.Security.Fail2banDeclineMax = 3
 	cfg.Security.ChallengeFailEscalateAfter = 2
+	cfg.Security.MaxChallengesPerIp = 3
+	cfg.Security.ChallengeWindow = "1h"
 	cfg.Security.RecentLoginGrace = "30m"
 	cfg.Security.TrustedSessionMaxGap = "720h"
 	return cfg
@@ -396,7 +419,10 @@ func applyEnvOverrides(cfg *Config) {
 	setInt("STARGATE_SECURITY_FAIL2BANMAXFAILS", &cfg.Security.Fail2banMaxFails)
 	setStr("STARGATE_SECURITY_FAIL2BANWINDOW", &cfg.Security.Fail2banWindow)
 	setStr("STARGATE_SECURITY_FAIL2BANBLOCKFOR", &cfg.Security.Fail2banBlockFor)
+	setInt("STARGATE_SECURITY_FAIL2BANDECLINEMAX", &cfg.Security.Fail2banDeclineMax)
 	setInt("STARGATE_SECURITY_CHALLENGEFAILESCALATEAFTER", &cfg.Security.ChallengeFailEscalateAfter)
+	setInt("STARGATE_SECURITY_MAXCHALLENGESPERIP", &cfg.Security.MaxChallengesPerIp)
+	setStr("STARGATE_SECURITY_CHALLENGEWINDOW", &cfg.Security.ChallengeWindow)
 	setStr("STARGATE_SECURITY_TRUSTEDSESSIONMAXGAP", &cfg.Security.TrustedSessionMaxGap)
 	setStr("STARGATE_SECURITY_RECENTLOGINGRACE", &cfg.Security.RecentLoginGrace)
 }

@@ -3,6 +3,9 @@ package auth
 import (
 	"testing"
 
+	"google.golang.org/protobuf/encoding/protojson"
+	gen "src.solsynth.dev/sosys/go/proto"
+
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
 
@@ -99,5 +102,35 @@ func TestProfileToProtoCarriesProfileMarkers(t *testing.T) {
 	}
 	if got.Verification == nil || got.Verification.Type != 1 {
 		t.Fatalf("profile verification = %+v, want type 1", got.Verification)
+	}
+}
+
+// TestSessionTypeCacheRoundTrip pins the session-cache type contract: the
+// proto enum is offset from the model's (DY_LOGIN = 1, model Login = 0), so
+// decoding a cached session must not shift its type. A login session read back
+// as OAuth is rejected by IsTrustedSession, which made every approve/decline
+// and QR scan 403 for a warm session cache.
+func TestSessionTypeCacheRoundTrip(t *testing.T) {
+	for _, want := range []model.SessionType{
+		model.SessionTypeLogin, model.SessionTypeOAuth, model.SessionTypeOidc, model.SessionTypeApiKey,
+	} {
+		session := &model.AuthSession{
+			Id:        "11111111-1111-1111-1111-111111111111",
+			AccountId: "22222222-2222-2222-2222-222222222222",
+			Type:      want,
+		}
+		// Mirror the shared cache service: protojson with proto field names.
+		blob, err := protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}.
+			Marshal(SessionToProto(session))
+		if err != nil {
+			t.Fatalf("marshal session type %d: %v", want, err)
+		}
+		var decoded gen.DyAuthSession
+		if err := protojson.Unmarshal(blob, &decoded); err != nil {
+			t.Fatalf("unmarshal session type %d: %v", want, err)
+		}
+		if got := sessionFromProto(&decoded); got.Type != want {
+			t.Errorf("session type %d round-tripped as %d", want, got.Type)
+		}
 	}
 }

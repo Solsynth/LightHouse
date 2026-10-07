@@ -316,6 +316,7 @@ func (s *AuthService) CreateSessionAndIssueTokens(ctx context.Context, challenge
 			Where("id = ?", existingSessionID).Update("last_granted_at", now).Error
 		session, err := s.store.GetSessionWithAccount(ctx, existingSessionID)
 		if err == nil {
+			risk.ReleaseChallenge(ctx, s.redis, deref(challenge.IpAddress), challenge.Id)
 			return s.CreateTokenPair(ctx, session)
 		}
 	}
@@ -372,6 +373,9 @@ func (s *AuthService) CreateSessionAndIssueTokens(ctx context.Context, challenge
 		}, deref(challenge.UserAgent), deref(challenge.IpAddress), &locText, &sid)
 	}
 	risk.ClearFailures(ctx, s.redis, deref(challenge.IpAddress))
+	// A completed challenge no longer counts against the per-IP new-challenge
+	// quota.
+	risk.ReleaseChallenge(ctx, s.redis, deref(challenge.IpAddress), challenge.Id)
 	return pair, nil
 }
 

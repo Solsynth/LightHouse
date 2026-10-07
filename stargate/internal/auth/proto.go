@@ -319,6 +319,24 @@ func sessionTypeToProto(t model.SessionType) gen.DySessionType {
 	}
 }
 
+// sessionTypeFromProto is the inverse of sessionTypeToProto. The proto enum is
+// offset by one from the C#/model numbering (DY_LOGIN = 1, model Login = 0),
+// so a raw SessionType(p.Type) cast would turn every cached login session into
+// an OAuth one — which IsTrustedSession rejects, breaking approve/decline and
+// QR scan for a warm session cache.
+func sessionTypeFromProto(t gen.DySessionType) model.SessionType {
+	switch t {
+	case gen.DySessionType_DY_OAUTH:
+		return model.SessionTypeOAuth
+	case gen.DySessionType_DY_OIDC:
+		return model.SessionTypeOidc
+	case gen.DySessionType_DY_API_KEY:
+		return model.SessionTypeApiKey
+	default:
+		return model.SessionTypeLogin
+	}
+}
+
 func derefOrEmpty(s *string) string {
 	if s == nil {
 		return ""

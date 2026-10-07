@@ -157,10 +157,21 @@ fail2banMaxFails = 5
 fail2banWindow = "15m"
 # Duration an IP stays blocked once the limit is reached.
 fail2banBlockFor = "30m"
+# Number of challenges an IP may start that get declined by a trusted session
+# before that IP is blocked for fail2banBlockFor. Declines are charged to the
+# IP that started the login, and a later successful login from it does not
+# clear them. The counting window is fail2banWindow. "0" disables the tracking.
+fail2banDeclineMax = 3
 # After this many failures within a single challenge, the challenge is
 # escalated to require all available factors (unless the account's mode
 # overrides it).
 challengeFailEscalateAfter = 2
+# Maximum number of new challenges a single IP may create within
+# challengeWindow. A challenge that completes into a session releases its
+# slot, so successful logins never count against the quota. "0" disables it.
+maxChallengesPerIp = 3
+# Rolling window for the per-IP new-challenge quota.
+challengeWindow = "1h"
 # After a login completes, a new challenge from the same user agent within
 # this window ignores the IP-novelty risk terms: a rotated IP (mobile NAT,
 # IPv6 privacy addresses, Wi-Fi/cellular switches) is not a device change.

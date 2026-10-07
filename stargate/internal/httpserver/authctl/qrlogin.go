@@ -12,6 +12,7 @@ import (
 	"src.solsynth.dev/sosys/go/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
+	"src.solsynth.dev/sosys/stargate/internal/risk"
 )
 
 // QrLoginController port. Redis keys use the RAW go-redis client
@@ -101,8 +102,17 @@ func (h *handler) generateQrChallenge(c *gin.Context) {
 		deviceName = *req.DeviceName
 	}
 
+	// Per-IP new-challenge quota: a QR challenge occupies a slot until a phone
+	// approves it into a session (ReleaseChallenge in CreateSessionAndIssueTokens).
+	authChallengeID := uuid.NewString()
+	if !risk.ChallengeAllowed(ctx, h.d.Redis, h.d.Cfg, ipAddress, authChallengeID) {
+		c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+			"Too many sign-in attempts from this network. Try again later.", http.StatusTooManyRequests))
+		return
+	}
+
 	authChallenge := &model.AuthChallenge{
-		Id:         uuid.NewString(),
+		Id:         authChallengeID,
 		StepTotal:  1,
 		StepRemain: 1,
 		DeviceId:   req.DeviceId,
@@ -122,6 +132,7 @@ func (h *handler) generateQrChallenge(c *gin.Context) {
 	}
 	if err := h.d.Store.CreateAuthChallenge(ctx, authChallenge); err != nil {
 		h.logError("create qr auth challenge", err)
+		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, authChallenge.Id)
 		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
 		return
 	}
@@ -369,6 +380,14 @@ func (h *handler) declineQrChallenge(c *gin.Context) {
 	ttl := time.Until(qr.ExpiresAt.Time())
 	if err := h.setQrChallenge(ctx, id.String(), &declined, ttl); err != nil {
 		h.logError("update qr challenge", err)
+	}
+
+	// Charge the decline to the IP that requested the QR login (the session
+	// scanning/declining is the trusted one the user is already using).
+	if authChallenge, err := h.d.Store.GetAuthChallenge(ctx, uuid.MustParse(qr.AuthChallengeId)); err != nil {
+		h.logError("load declined qr auth challenge", err)
+	} else {
+		risk.RecordDecline(ctx, h.d.Redis, h.d.Cfg, derefStr(authChallenge.IpAddress))
 	}
 
 	h.publishWS(ctx, user.Id, "auth.qr.declined", map[string]any{

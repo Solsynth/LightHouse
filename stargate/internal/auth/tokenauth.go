@@ -472,7 +472,7 @@ func sessionFromProto(p *gen.DyAuthSession) *model.AuthSession {
 		AccountId:     p.AccountId,
 		Audiences:     p.Audiences,
 		Scopes:        p.Scopes,
-		Type:          model.SessionType(p.Type),
+		Type:          sessionTypeFromProto(p.Type),
 		Epoch:         int(p.Epoch),
 	}
 	if p.IpAddress != nil {
