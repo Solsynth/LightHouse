@@ -161,72 +161,83 @@ type updateAdminDeviceLabelRequest struct {
 
 // registerAccountAdmin mounts the /api/admin/accounts route family.
 func registerAccountAdmin(g *gin.RouterGroup, d Deps) {
-	g.GET("", requirePerm(d, permission.AccountsView), listAccounts(d))
-	g.GET("emails/export", requirePerm(d, permission.EmailsSend), exportEmailContactsCsv(d))
-	g.GET("punishments/created", requirePerm(d, permission.PunishmentsView), getCreatedPunishments(d))
-	g.POST("notifications", requirePerm(d, permission.NotificationsSend), sendNotification(d))
-	g.POST("emails", requirePerm(d, permission.EmailsSend), sendEmails(d))
+	mountAdminRoutes(g, d, accountAdminRoutes(d))
+}
 
-	g.GET(":name", requirePerm(d, permission.AccountsView), getAccount(d))
-	g.DELETE(":name", requirePerm(d, permission.AccountsDeletion), adminDeleteAccount(d))
-	g.POST(":name/activate", requirePerm(d, permission.AccountsManage), activateAccount(d))
-	g.POST(":name/sessions/revoke", requirePerm(d, permission.AccountsManage), revokeAllSessions(d))
-	g.POST(":name/suspend", requirePerm(d, permission.PunishmentsCreate), suspendAccount(d))
-	g.POST(":name/punishments", requirePerm(d, permission.PunishmentsCreate), createPunishment(d))
-	g.PATCH(":name/punishments/:punishmentId", requirePerm(d, permission.PunishmentsUpdate), updatePunishment(d))
-	g.DELETE(":name/punishments/:punishmentId", requirePerm(d, permission.PunishmentsDelete), deletePunishment(d))
+// accountAdminRoutes is the /api/admin/accounts route table. The routes that
+// mutate another account's credentials (devices, sessions, contacts, auth
+// factors) are gated on the dedicated admin.accounts.* keys rather than the
+// self-service account.*/auth.* keys, which the `default` group grants every
+// account.
+func accountAdminRoutes(d Deps) []adminRoute {
+	return []adminRoute{
+		{Method: http.MethodGet, Path: "", Keys: []string{permission.AccountsView}, Handler: listAccounts(d)},
+		{Method: http.MethodGet, Path: "emails/export", Keys: []string{permission.EmailsSend}, Handler: exportEmailContactsCsv(d)},
+		{Method: http.MethodGet, Path: "punishments/created", Keys: []string{permission.PunishmentsView}, Handler: getCreatedPunishments(d)},
+		{Method: http.MethodPost, Path: "notifications", Keys: []string{permission.NotificationsSend}, Handler: sendNotification(d)},
+		{Method: http.MethodPost, Path: "emails", Keys: []string{permission.EmailsSend}, Handler: sendEmails(d)},
 
-	g.GET(":name/devices", requirePerm(d, permission.AccountsView), listAccountDevices(d))
-	g.PATCH(":name/devices/:deviceId/label", requirePerm(d, permission.AccountDevicesManage), updateAccountDeviceLabel(d))
-	g.POST(":name/devices/:deviceId/sessions/revoke", requirePerm(d, permission.AuthSessionsManage), revokeAccountDeviceSessions(d))
-	g.DELETE(":name/devices/:deviceId", requirePerm(d, permission.AccountDevicesManage), deleteAccountDevice(d))
+		{Method: http.MethodGet, Path: ":name", Keys: []string{permission.AccountsView}, Handler: getAccount(d)},
+		{Method: http.MethodDelete, Path: ":name", Keys: []string{permission.AccountsDeletion}, Handler: adminDeleteAccount(d)},
+		{Method: http.MethodPost, Path: ":name/activate", Keys: []string{permission.AccountsManage}, Handler: activateAccount(d)},
+		{Method: http.MethodPost, Path: ":name/sessions/revoke", Keys: []string{permission.AccountsManage}, Handler: revokeAllSessions(d)},
+		{Method: http.MethodPost, Path: ":name/suspend", Keys: []string{permission.PunishmentsCreate}, Handler: suspendAccount(d)},
+		{Method: http.MethodPost, Path: ":name/punishments", Keys: []string{permission.PunishmentsCreate}, Handler: createPunishment(d)},
+		{Method: http.MethodPatch, Path: ":name/punishments/:punishmentId", Keys: []string{permission.PunishmentsUpdate}, Handler: updatePunishment(d)},
+		{Method: http.MethodDelete, Path: ":name/punishments/:punishmentId", Keys: []string{permission.PunishmentsDelete}, Handler: deletePunishment(d)},
 
-	g.GET(":name/sessions", requirePerm(d, permission.AccountsView), listAccountSessions(d))
-	g.GET(":name/sessions/:sessionId/children", requirePerm(d, permission.AccountsView), listAccountSessionChildren(d))
-	g.DELETE(":name/sessions/:sessionId", requirePerm(d, permission.AuthSessionsManage), revokeAccountSession(d))
+		{Method: http.MethodGet, Path: ":name/devices", Keys: []string{permission.AccountsView}, Handler: listAccountDevices(d)},
+		{Method: http.MethodPatch, Path: ":name/devices/:deviceId/label", Keys: []string{permission.AdminAccountsDevicesManage}, Handler: updateAccountDeviceLabel(d)},
+		{Method: http.MethodPost, Path: ":name/devices/:deviceId/sessions/revoke", Keys: []string{permission.AdminAccountsSessionsManage}, Handler: revokeAccountDeviceSessions(d)},
+		{Method: http.MethodDelete, Path: ":name/devices/:deviceId", Keys: []string{permission.AdminAccountsDevicesManage}, Handler: deleteAccountDevice(d)},
 
-	g.GET(":name/contacts", requirePerm(d, permission.AccountsView), listAccountContacts(d))
-	g.POST(":name/contacts", requirePerm(d, permission.AccountContactsManage), createAccountContact(d))
-	g.PATCH(":name/contacts/:contactId", requirePerm(d, permission.AccountContactsManage), updateAccountContact(d))
-	g.POST(":name/contacts/:contactId/verify/request", requirePerm(d, permission.AccountContactsManage), requestAccountContactVerification(d))
-	g.POST(":name/contacts/:contactId/verify", requirePerm(d, permission.AccountContactsManage), verifyAccountContact(d))
-	g.DELETE(":name/contacts/:contactId/verify", requirePerm(d, permission.AccountContactsManage), unverifyAccountContact(d))
-	g.POST(":name/contacts/:contactId/primary", requirePerm(d, permission.AccountContactsManage), setPrimaryAccountContact(d))
-	g.POST(":name/contacts/:contactId/visibility", requirePerm(d, permission.AccountContactsManage), setAccountContactVisibility(d))
-	g.DELETE(":name/contacts/:contactId", requirePerm(d, permission.AccountContactsManage), deleteAccountContact(d))
+		{Method: http.MethodGet, Path: ":name/sessions", Keys: []string{permission.AccountsView}, Handler: listAccountSessions(d)},
+		{Method: http.MethodGet, Path: ":name/sessions/:sessionId/children", Keys: []string{permission.AccountsView}, Handler: listAccountSessionChildren(d)},
+		{Method: http.MethodDelete, Path: ":name/sessions/:sessionId", Keys: []string{permission.AdminAccountsSessionsManage}, Handler: revokeAccountSession(d)},
 
-	g.GET(":name/spells", requirePerm(d, permission.AccountsView), listAccountMagicSpells(d))
-	g.POST(":name/spells", requirePerm(d, permission.AccountsManage), createAccountMagicSpell(d))
-	g.POST(":name/spells/:spellId/resend", requirePerm(d, permission.AccountsManage), resendAccountMagicSpell(d))
-	g.DELETE(":name/spells/:spellId", requirePerm(d, permission.AccountsManage), deleteAccountMagicSpell(d))
+		{Method: http.MethodGet, Path: ":name/contacts", Keys: []string{permission.AccountsView}, Handler: listAccountContacts(d)},
+		{Method: http.MethodPost, Path: ":name/contacts", Keys: []string{permission.AdminAccountsContactsManage}, Handler: createAccountContact(d)},
+		{Method: http.MethodPatch, Path: ":name/contacts/:contactId", Keys: []string{permission.AdminAccountsContactsManage}, Handler: updateAccountContact(d)},
+		{Method: http.MethodPost, Path: ":name/contacts/:contactId/verify/request", Keys: []string{permission.AdminAccountsContactsManage}, Handler: requestAccountContactVerification(d)},
+		{Method: http.MethodPost, Path: ":name/contacts/:contactId/verify", Keys: []string{permission.AdminAccountsContactsManage}, Handler: verifyAccountContact(d)},
+		{Method: http.MethodDelete, Path: ":name/contacts/:contactId/verify", Keys: []string{permission.AdminAccountsContactsManage}, Handler: unverifyAccountContact(d)},
+		{Method: http.MethodPost, Path: ":name/contacts/:contactId/primary", Keys: []string{permission.AdminAccountsContactsManage}, Handler: setPrimaryAccountContact(d)},
+		{Method: http.MethodPost, Path: ":name/contacts/:contactId/visibility", Keys: []string{permission.AdminAccountsContactsManage}, Handler: setAccountContactVisibility(d)},
+		{Method: http.MethodDelete, Path: ":name/contacts/:contactId", Keys: []string{permission.AdminAccountsContactsManage}, Handler: deleteAccountContact(d)},
 
-	g.GET(":name/factors", requirePerm(d, permission.AccountsView), listAccountAuthFactors(d))
-	g.POST(":name/factors", requirePerm(d, permission.AuthFactorsManage), createAccountAuthFactor(d))
-	g.POST(":name/factors/:factorId/enable", requirePerm(d, permission.AuthFactorsManage), enableAccountAuthFactor(d))
-	g.POST(":name/factors/:factorId/disable", requirePerm(d, permission.AuthFactorsManage), disableAccountAuthFactor(d))
-	g.POST(":name/factors/password/reset", requirePerm(d, permission.AuthFactorsManage), resetAccountPasswordFactor(d))
-	g.DELETE(":name/factors/:factorId", requirePerm(d, permission.AuthFactorsManage), deleteAccountAuthFactor(d))
+		{Method: http.MethodGet, Path: ":name/spells", Keys: []string{permission.AccountsView}, Handler: listAccountMagicSpells(d)},
+		{Method: http.MethodPost, Path: ":name/spells", Keys: []string{permission.AccountsManage}, Handler: createAccountMagicSpell(d)},
+		{Method: http.MethodPost, Path: ":name/spells/:spellId/resend", Keys: []string{permission.AccountsManage}, Handler: resendAccountMagicSpell(d)},
+		{Method: http.MethodDelete, Path: ":name/spells/:spellId", Keys: []string{permission.AccountsManage}, Handler: deleteAccountMagicSpell(d)},
 
-	// Action logs (admin search)
-	g.GET(":name/action-logs", requirePerm(d, permission.AccountsActionLogsView), listAccountActionLogs(d))
+		{Method: http.MethodGet, Path: ":name/factors", Keys: []string{permission.AccountsView}, Handler: listAccountAuthFactors(d)},
+		{Method: http.MethodPost, Path: ":name/factors", Keys: []string{permission.AdminAccountsFactorsManage}, Handler: createAccountAuthFactor(d)},
+		{Method: http.MethodPost, Path: ":name/factors/:factorId/enable", Keys: []string{permission.AdminAccountsFactorsManage}, Handler: enableAccountAuthFactor(d)},
+		{Method: http.MethodPost, Path: ":name/factors/:factorId/disable", Keys: []string{permission.AdminAccountsFactorsManage}, Handler: disableAccountAuthFactor(d)},
+		{Method: http.MethodPost, Path: ":name/factors/password/reset", Keys: []string{permission.AdminAccountsFactorsManage}, Handler: resetAccountPasswordFactor(d)},
+		{Method: http.MethodDelete, Path: ":name/factors/:factorId", Keys: []string{permission.AdminAccountsFactorsManage}, Handler: deleteAccountAuthFactor(d)},
 
-	// Profile management
-	g.PATCH(":name/profile", requirePerm(d, permission.AccountsProfileManage), updateAccountProfile(d))
-	g.GET(":name/name-history", requirePerm(d, permission.AccountsView), listAccountNameHistory(d))
+		// Action logs (admin search)
+		{Method: http.MethodGet, Path: ":name/action-logs", Keys: []string{permission.AccountsActionLogsView}, Handler: listAccountActionLogs(d)},
 
-	// Connections
-	g.GET(":name/connections", requirePerm(d, permission.AccountsConnectionsManage), listAccountConnections(d))
+		// Profile management
+		{Method: http.MethodPatch, Path: ":name/profile", Keys: []string{permission.AccountsProfileManage}, Handler: updateAccountProfile(d)},
+		{Method: http.MethodGet, Path: ":name/name-history", Keys: []string{permission.AccountsView}, Handler: listAccountNameHistory(d)},
 
-	// Passkeys
-	g.GET(":name/passkeys", requirePerm(d, permission.AccountsPasskeysView), listAccountPasskeys(d))
-	g.DELETE(":name/passkeys/:passkeyId", requirePerm(d, permission.AccountsPasskeysManage), deleteAccountPasskey(d))
+		// Connections
+		{Method: http.MethodGet, Path: ":name/connections", Keys: []string{permission.AccountsConnectionsManage}, Handler: listAccountConnections(d)},
 
-	// Batch operations
-	g.POST(":name/devices/batch/revoke", requirePerm(d, permission.AccountDevicesManage), batchRevokeDeviceSessions(d))
-	g.POST(":name/contacts/batch/verify", requirePerm(d, permission.AccountContactsManage), batchVerifyContacts(d))
+		// Passkeys
+		{Method: http.MethodGet, Path: ":name/passkeys", Keys: []string{permission.AccountsPasskeysView}, Handler: listAccountPasskeys(d)},
+		{Method: http.MethodDelete, Path: ":name/passkeys/:passkeyId", Keys: []string{permission.AccountsPasskeysManage}, Handler: deleteAccountPasskey(d)},
 
-	// Relationships
-	g.GET(":name/relationships", requirePerm(d, permission.AccountsRelationshipsView), listAccountRelationships(d))
+		// Batch operations
+		{Method: http.MethodPost, Path: ":name/devices/batch/revoke", Keys: []string{permission.AdminAccountsDevicesManage}, Handler: batchRevokeDeviceSessions(d)},
+		{Method: http.MethodPost, Path: ":name/contacts/batch/verify", Keys: []string{permission.AdminAccountsContactsManage}, Handler: batchVerifyContacts(d)},
+
+		// Relationships
+		{Method: http.MethodGet, Path: ":name/relationships", Keys: []string{permission.AccountsRelationshipsView}, Handler: listAccountRelationships(d)},
+	}
 }
 
 // ─────────────────────────── Account list / detail ───────────────────────────

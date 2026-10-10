@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -35,15 +36,26 @@ func get(t *testing.T, e *gin.Engine, path string) (*httptest.ResponseRecorder, 
 func TestPermissionsManifest(t *testing.T) {
 	_, body := get(t, newTestEngine(), "/.well-known/permissions")
 
-	if got := body["count"]; got != float64(len(permissionEntries)) {
-		t.Fatalf("count = %v, want %d", got, len(permissionEntries))
+	// The public manifest hides the admin.* namespace, and count is the number
+	// of returned permissions (not the registry size).
+	wantCount := 0
+	for _, entry := range permissionEntries {
+		if !strings.HasPrefix(entry.Key, adminPermissionPrefix) {
+			wantCount++
+		}
+	}
+	if wantCount == len(permissionEntries) {
+		t.Fatal("test registry has no admin.* keys; the filter would be untested")
+	}
+	if got := body["count"]; got != float64(wantCount) {
+		t.Fatalf("count = %v, want %d", got, wantCount)
 	}
 	perms, ok := body["permissions"].([]any)
 	if !ok {
 		t.Fatalf("permissions is %T, want array", body["permissions"])
 	}
-	if len(perms) != len(permissionEntries) {
-		t.Fatalf("permissions length = %d, want %d", len(perms), len(permissionEntries))
+	if len(perms) != wantCount {
+		t.Fatalf("permissions length = %d, want %d", len(perms), wantCount)
 	}
 	prev := ""
 	for i, raw := range perms {
@@ -53,6 +65,9 @@ func TestPermissionsManifest(t *testing.T) {
 			t.Fatalf("item %d has unexpected keys: %v", i, item)
 		}
 		key := item["key"].(string)
+		if strings.HasPrefix(key, adminPermissionPrefix) {
+			t.Fatalf("admin permission %q leaked into the public manifest", key)
+		}
 		if i > 0 && key < prev {
 			t.Fatalf("permissions not sorted by key at %d: %q before %q", i, prev, key)
 		}

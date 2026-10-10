@@ -1,8 +1,11 @@
 package auth
 
 import (
+	"context"
 	"slices"
 	"testing"
+
+	"src.solsynth.dev/sosys/stargate/internal/config"
 )
 
 // TestScopesOrEmpty pins the login scope contract: a login session carries only
@@ -51,5 +54,63 @@ func TestMergeAuthorizedAppScopesOnlyExpands(t *testing.T) {
 
 	if got := mergeAuthorizedAppScopes([]string{"openid"}, nil); !slices.Equal(got, []string{"openid"}) {
 		t.Fatalf("fewer requested scopes removed stored scope: %v", got)
+	}
+}
+
+// TestValidateCaptchaFailsClosed pins the captcha policy: an unusable verifier
+// is a misconfiguration, never a pass. Only the explicit [captcha]
+// allow_disabled opt-out short-circuits to valid.
+func TestValidateCaptchaFailsClosed(t *testing.T) {
+	cases := []struct {
+		name    string
+		cfg     *config.Config
+		want    bool
+		wantErr bool
+	}{
+		{
+			name:    "nil config",
+			cfg:     nil,
+			want:    false,
+			wantErr: true,
+		},
+		{
+			name:    "unconfigured without opt-out",
+			cfg:     config.Default(), // skip = true, no secret, no opt-out
+			want:    false,
+			wantErr: true,
+		},
+		{
+			name: "explicit opt-out",
+			cfg: func() *config.Config {
+				c := config.Default()
+				c.Captcha.AllowDisabled = true
+				return c
+			}(),
+			want:    true,
+			wantErr: false,
+		},
+		{
+			name: "configured verifier rejects an empty token",
+			cfg: func() *config.Config {
+				c := config.Default()
+				c.Captcha.Skip = false
+				c.Captcha.APISecret = "secret"
+				return c
+			}(),
+			want:    false,
+			wantErr: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &AuthService{cfg: tc.cfg}
+			got, err := svc.ValidateCaptcha(context.Background(), "")
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("error = %v, want error: %v", err, tc.wantErr)
+			}
+			if got != tc.want {
+				t.Fatalf("valid = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

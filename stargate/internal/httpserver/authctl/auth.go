@@ -116,6 +116,9 @@ func Register(api *gin.RouterGroup, d Deps) {
 	{
 		accounts.POST("/validate", h.validateCreateAccount)
 		accounts.POST("", h.createAccount)
+		// POST /api/accounts/recovery/password (Passport AccountController):
+		// starts the password-reset flow against this service's spell store.
+		accounts.POST("/recovery/password", h.requestPasswordRecovery)
 	}
 
 	// AccountCurrentController: GET/PATCH /api/accounts/me are owned by
@@ -493,15 +496,9 @@ func (h *handler) createChallenge(c *gin.Context) {
 		deviceName = *req.DeviceName
 	}
 
-	existing, err := h.d.Store.FindLiveChallenge(ctx, account.Id, ipAddress, userAgent, req.DeviceId)
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		h.logError("find live challenge", err)
-	}
-	if existing != nil {
-		c.JSON(http.StatusOK, existing)
-		return
-	}
-
+	// Rate limits run before the live-challenge reuse branch: an IP that is
+	// fail2banned (or over its new-challenge quota) must not answer 200 by
+	// handing back a challenge it already holds.
 	if !risk.IPAllowed(ctx, h.d.Redis, h.d.Cfg, ipAddress) {
 		c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
 			"Too many failed sign-in attempts. Try again later.", http.StatusTooManyRequests))
@@ -515,6 +512,18 @@ func (h *handler) createChallenge(c *gin.Context) {
 	if !risk.ChallengeAllowed(ctx, h.d.Redis, h.d.Cfg, ipAddress, challengeID) {
 		c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
 			"Too many sign-in attempts from this network. Try again later.", http.StatusTooManyRequests))
+		return
+	}
+
+	existing, err := h.d.Store.FindLiveChallenge(ctx, account.Id, ipAddress, userAgent, req.DeviceId)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		h.logError("find live challenge", err)
+	}
+	if existing != nil {
+		// Reuse mints no new challenge, so return the quota slot this request
+		// just claimed.
+		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
+		c.JSON(http.StatusOK, existing)
 		return
 	}
 
@@ -574,6 +583,24 @@ func (h *handler) getChallenge(c *gin.Context) {
 	c.JSON(http.StatusOK, challenge)
 }
 
+// challengeBoundToCaller reports whether the caller may read the challenge's
+// factor surface. The endpoint is part of the anonymous login flow (the factor
+// picker runs before any session exists), so the challenge itself is the
+// caller's credential: only a request from the address and user agent that
+// created it is served. Both values are mandatory on the challenge — a
+// challenge without them is never matched, so a partially recorded row cannot
+// widen the check. The IP uses the same trusted-proxy derivation as every
+// other rate-limited path (middleware.ClientIP), never the raw header.
+func (h *handler) challengeBoundToCaller(c *gin.Context, challenge *model.AuthChallenge) bool {
+	if challenge.IpAddress == nil || strings.TrimSpace(*challenge.IpAddress) == "" {
+		return false
+	}
+	if middleware.ClientIP(c.Request) != *challenge.IpAddress {
+		return false
+	}
+	return sameUserAgent(challenge.UserAgent, c.Request.UserAgent())
+}
+
 func (h *handler) getChallengeFactors(c *gin.Context) {
 	id, ok := parseUUIDParam(c, "id")
 	if !ok {
@@ -582,6 +609,11 @@ func (h *handler) getChallengeFactors(c *gin.Context) {
 	}
 	challenge, err := h.d.Store.GetAuthChallenge(c.Request.Context(), id)
 	if err != nil {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	// A foreign challenge is indistinguishable from a missing one.
+	if !h.challengeBoundToCaller(c, challenge) {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
 		return
 	}
@@ -701,6 +733,24 @@ func (h *handler) doChallenge(c *gin.Context) {
 	if containsString(challenge.BlacklistFactors, factor.Id) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_ALREADY_USED", "Auth factor already used."))
 		return
+	}
+
+	// Throttle credential submission: every verified guess inside a live
+	// challenge is otherwise unbounded. The IP block reflects the failures
+	// risk.RecordFailure charged below, and the per-challenge cap stops a
+	// caller that keeps a blocked IP's counter below the fail2ban threshold
+	// (or is spread across addresses) from grinding one challenge forever.
+	if cfg := h.d.Cfg; cfg != nil {
+		if !risk.IPAllowed(ctx, h.d.Redis, cfg, derefStr(challenge.IpAddress)) {
+			c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+				"Too many failed sign-in attempts. Try again later.", http.StatusTooManyRequests))
+			return
+		}
+		if maxAttempts := cfg.Security.MaxChallengeAttempts; maxAttempts > 0 && challenge.FailedAttempts >= maxAttempts {
+			c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+				"Too many failed attempts for this sign-in attempt. Start a new one.", http.StatusTooManyRequests))
+			return
+		}
 	}
 
 	okVerify, _ := h.verifyFactorCode(ctx, factor, req.Password)
@@ -848,7 +898,10 @@ func (h *handler) sendFactorCode(ctx context.Context, account *model.Account, fa
 					h.d.Log.Warn("email factor code not sent: no verified email contact",
 						"factor_id", factor.Id, "account_id", account.Id)
 				}
-				return nil
+				// No code was sent, so the caller must not answer success:
+				// the client would otherwise wait for a code that can never
+				// arrive.
+				return errors.New("Account has no verified email contact that can receive a code.")
 			}
 			return err
 		}
@@ -1598,6 +1651,14 @@ func (h *handler) exchangeToken(c *gin.Context) {
 			})
 			return
 		}
+		// The challenge is the credential: an IP that has been fail2banned for
+		// failed attempts must not be able to redeem it (a blocked caller
+		// otherwise keeps exchanging completed challenges into sessions).
+		if cfg := h.d.Cfg; cfg != nil && !risk.IPAllowed(ctx, h.d.Redis, cfg, derefStr(challenge.IpAddress)) {
+			c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+				"Too many failed sign-in attempts. Try again later.", http.StatusTooManyRequests))
+			return
+		}
 		pair, err := h.d.Auth.CreateSessionAndIssueTokens(ctx, challenge)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CREATE_SESSION_FAILED", err.Error()))
@@ -1716,6 +1777,118 @@ func (h *handler) recoverAccount(c *gin.Context) {
 	}
 	h.setAuthCookies(c, pair)
 	c.JSON(http.StatusOK, tokenExchangeBody(pair))
+}
+
+// passwordResetRequest mirrors AccountController.RecoveryPasswordRequest.
+type passwordResetRequest struct {
+	Account      string `json:"account"`
+	CaptchaToken string `json:"captcha_token"`
+}
+
+// passwordResetSpellLifetime is the reset-link validity (24h, mirroring
+// AccountService.RequestPasswordReset).
+const passwordResetSpellLifetime = 24 * time.Hour
+
+// requestPasswordRecovery ports POST /api/accounts/recovery/password
+// (Passport AccountController.RequestResetPassword). It mints an
+// AuthPasswordReset magic spell through the same store spellctl reads, so the
+// client flow — POST here, then GET /spells/{word}, then
+// POST /spells/{word}/apply — works against a single database, and emails the
+// reset link with internal/spell's PasswordReset template.
+//
+// Response parity with the C# controller is deliberate: 400 with
+// PASSPORT_ACCOUNT_NOT_FOUND for an unknown account, 400 with
+// PASSPORT_ACCOUNT_NO_CONTACT_METHOD when no email contact can receive the
+// link, 400 VALIDATION_ERROR for a bad captcha token, 200 on success.
+func (h *handler) requestPasswordRecovery(c *gin.Context) {
+	ctx := c.Request.Context()
+	var req passwordResetRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
+		return
+	}
+
+	// Captcha first, fail-closed: an unconfigured verifier rejects the
+	// request (AuthService.ValidateCaptcha / config.CaptchaRequired) instead
+	// of letting it through unchecked.
+	valid, err := h.d.Auth.ValidateCaptcha(ctx, req.CaptchaToken)
+	if err != nil {
+		h.logError("validate captcha", err)
+	}
+	if !valid {
+		c.JSON(http.StatusBadRequest, validationError(map[string][]string{
+			"captcha_token": {"Invalid captcha token."},
+		}))
+		return
+	}
+
+	account, err := h.d.Store.LookupAccount(ctx, req.Account)
+	if err != nil || account == nil {
+		c.JSON(http.StatusBadRequest, &errs.ApiError{
+			Code:    "PASSPORT_ACCOUNT_NOT_FOUND",
+			Message: "Unable to find the account.",
+			Detail:  &req.Account,
+			Status:  http.StatusBadRequest,
+		})
+		return
+	}
+
+	// The spell is only useful when a link can actually reach the account.
+	// This mirrors the contact lookup NotifyMagicSpell performs (bypassVerify
+	// = true, i.e. any email contact) so the C# 400 survives.
+	if _, err := h.d.Store.GetEmailContactForNotify(ctx, account.Id, false); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			c.JSON(http.StatusBadRequest, &errs.ApiError{
+				Code:    "PASSPORT_ACCOUNT_NO_CONTACT_METHOD",
+				Message: "This account has no email contact available for password reset.",
+				Status:  http.StatusBadRequest,
+			})
+			return
+		}
+		h.logError("load password reset contact", err)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+
+	if h.d.Spells == nil {
+		h.logError("password reset spells are not configured", errors.New("spell service is not configured"))
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+
+	// preventRepeat: a live reset spell is reused rather than duplicated
+	// (MagicSpellService.CreateMagicSpell semantics). The pre-lookup tells the
+	// rollback below whether this request created the spell.
+	prior, err := h.d.Store.FindLiveMagicSpell(ctx, account.Id, model.MagicSpellTypeAuthPasswordReset)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		h.logError("find live password reset spell", err)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+
+	expiresAt := time.Now().UTC().Add(passwordResetSpellLifetime)
+	resetSpell, err := h.d.Spells.CreateMagicSpell(ctx, account.Id, model.MagicSpellTypeAuthPasswordReset,
+		map[string]any{}, spell.CreateOptions{ExpiresAt: &expiresAt, PreventRepeat: true})
+	if err != nil {
+		h.logError("create password reset spell", err)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+
+	// A lost email must not look like success — the user is waiting for a link
+	// that will never arrive. Roll back a spell this request created and let
+	// the caller retry.
+	if err := h.d.Spells.NotifyMagicSpellStrict(ctx, resetSpell, true); err != nil {
+		h.logError("send password reset spell", err)
+		if prior == nil {
+			if delErr := h.d.Store.DeleteMagicSpell(ctx, resetSpell.Id); delErr != nil {
+				h.logError("roll back unsent password reset spell", delErr)
+			}
+		}
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+	c.Status(http.StatusOK)
 }
 
 func (h *handler) logout(c *gin.Context) {

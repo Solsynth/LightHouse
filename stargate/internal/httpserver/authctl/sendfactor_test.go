@@ -103,10 +103,10 @@ func newFactorHandler(t *testing.T, ctx context.Context, pool *pgxpool.Pool, rin
 	}
 	t.Cleanup(func() { _ = rc.Raw.Close() })
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	cfg, err := config.Load("/tmp/nonexistent-stargate.toml")
-	if err != nil {
-		t.Fatalf("load config: %v", err)
-	}
+	// captcha is not exercised by these factor tests; opt out explicitly so
+	// the config is valid (Load rejects an unconfigured verifier).
+	cfg := config.Default()
+	cfg.Captcha.AllowDisabled = true
 	st := store.New(pool)
 	spells := spell.NewService(st, rc, ring, cfg.SiteUrl, cfg, logger)
 	return &handler{d: Deps{
@@ -186,7 +186,7 @@ func TestSendFactorCodeEmailCodeDeliversViaRing(t *testing.T) {
 		}
 	})
 
-	t.Run("missing verified contact stores nothing", func(t *testing.T) {
+	t.Run("missing verified contact stores nothing and fails", func(t *testing.T) {
 		ring := &fakeRing{}
 		h, rc := newFactorHandler(t, ctx, pool, ring)
 		accountID, factorID := seedFactorAccount(t, ctx, pool, model.AuthFactorTypeEmailCode, false)
@@ -194,8 +194,10 @@ func TestSendFactorCodeEmailCodeDeliversViaRing(t *testing.T) {
 		factor, _ := h.d.Store.GetAuthFactorByID(ctx, accountID, uuid.MustParse(factorID))
 		challenge := &model.AuthChallenge{Id: uuid.NewString(), AccountId: accountID}
 
-		if err := h.sendFactorCode(ctx, account, factor, challenge); err != nil {
-			t.Fatalf("missing contact should not fail the request (mirrors C#): %v", err)
+		// No code could be delivered, so the request must fail instead of
+		// answering 200 (the client would wait for a code that never arrives).
+		if err := h.sendFactorCode(ctx, account, factor, challenge); err == nil {
+			t.Fatal("sendFactorCode succeeded without a verified email contact, want error")
 		}
 		if len(ring.emails) != 0 {
 			t.Fatalf("email sent without a contact: %+v", ring.emails)
@@ -338,5 +340,60 @@ func TestRequestFactorCodeRejectsInAppCode(t *testing.T) {
 	}
 	if len(ring.emails) != 0 {
 		t.Fatalf("emails sent for a rejected in-app request: %+v", ring.emails)
+	}
+}
+
+// TestRequestFactorCodeWithoutContactFails pins the HTTP contract of the
+// missing-contact case: POST /auth/challenge/{id}/factors/{id} must answer 400
+// AUTH_FACTOR_SEND_FAILED instead of a 200 for a code that was never sent.
+func TestRequestFactorCodeWithoutContactFails(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(), smokeDSN)
+	if err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	defer pool.Close()
+	ctx := context.Background()
+	if err := pool.Ping(ctx); err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+
+	ring := &fakeRing{}
+	h, _ := newFactorHandler(t, ctx, pool, ring)
+	accountID, factorID := seedFactorAccount(t, ctx, pool, model.AuthFactorTypeEmailCode, false)
+
+	now := time.Now().UTC()
+	challenge := &model.AuthChallenge{
+		Id:               uuid.NewString(),
+		AccountId:        accountID,
+		DeviceId:         "no-contact-device",
+		StepTotal:        1,
+		StepRemain:       1,
+		BlacklistFactors: []string{},
+		Audiences:        []string{},
+		Scopes:           []string{},
+		ExpiredAt:        model.NewTime(now.Add(10 * time.Minute)),
+		CreatedAt:        model.NewTime(now),
+		UpdatedAt:        model.NewTime(now),
+	}
+	if err := h.d.Store.CreateAuthChallenge(ctx, challenge); err != nil {
+		t.Fatalf("create challenge: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/auth/challenge/:id/factors/:factorId", h.requestFactorCode)
+	req := httptest.NewRequest(http.MethodPost,
+		"/auth/challenge/"+challenge.Id+"/factors/"+factorID, nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body %s)", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "AUTH_FACTOR_SEND_FAILED") {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+	if len(ring.emails) != 0 {
+		t.Fatalf("emails sent without a contact: %+v", ring.emails)
 	}
 }

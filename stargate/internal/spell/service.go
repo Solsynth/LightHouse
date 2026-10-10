@@ -84,7 +84,29 @@ const spellNotifyCacheKeyPrefix = "spells:notify:"
 // NotifyMagicSpell mirrors MagicSpellService.NotifyMagicSpell: resolves the
 // recipient, renders the templated email and pushes it through Ring. Sends
 // are deduped for 5 minutes via the shared cache.
+//
+// Delivery failures are logged and swallowed: for the event-driven spell
+// notifications a lost email must not fail the flow that produced the spell.
+// Callers whose outcome does depend on delivery (the password-reset
+// request) use NotifyMagicSpellStrict instead.
 func (s *Service) NotifyMagicSpell(ctx context.Context, spell *model.MagicSpell, bypassVerify bool) error {
+	if err := s.notifyMagicSpell(ctx, spell, bypassVerify); err != nil {
+		s.log.Warn("send magic spell email failed", "spell_id", spell.Id, "error", err)
+	}
+	return nil
+}
+
+// NotifyMagicSpellStrict is NotifyMagicSpell without the swallow: a failed
+// delivery (no usable recipient, rendering, Ring error) is reported to the
+// caller so the flow can roll back and let the user retry.
+func (s *Service) NotifyMagicSpellStrict(ctx context.Context, spell *model.MagicSpell, bypassVerify bool) error {
+	return s.notifyMagicSpell(ctx, spell, bypassVerify)
+}
+
+// notifyMagicSpell performs the delivery and returns its error unchanged. It
+// is deduped for 5 minutes via the shared cache, so resending the same spell
+// inside that window is a no-op success.
+func (s *Service) notifyMagicSpell(ctx context.Context, spell *model.MagicSpell, bypassVerify bool) error {
 	cacheKey := spellNotifyCacheKeyPrefix + spell.Id
 	if s.redis != nil && s.redis.Cache != nil {
 		if found, err := s.redis.Cache.Get(ctx, cacheKey, new(bool)); err == nil && found {
@@ -121,28 +143,34 @@ func (s *Service) NotifyMagicSpell(ctx context.Context, spell *model.MagicSpell,
 	if err != nil {
 		return err
 	}
+	// The templates greet the recipient by name (mirrors the C# model
+	// `new { nick = recipientName, link }`).
+	recipientName := strings.TrimSpace(account.Nick)
+	if recipientName == "" {
+		recipientName = account.Name
+	}
 
 	switch spell.Type {
 	case model.MagicSpellTypeAccountActivation, model.MagicSpellTypeContactVerification:
 		err = s.sendTemplatedEmail(ctx, account, recipient, "ContactVerification", "contractMethodVerificationTitle", map[string]string{
+			"nick": recipientName,
 			"link": s.spellLink(spell),
 		})
 	case model.MagicSpellTypeAuthPasswordReset:
 		err = s.sendTemplatedEmail(ctx, account, recipient, "PasswordReset", "passwordResetTitle", map[string]string{
+			"nick": recipientName,
 			"link": s.spellLink(spell),
 		})
 	case model.MagicSpellTypeAccountRemoval:
 		err = s.sendTemplatedEmail(ctx, account, recipient, "AccountDeletion", "emailAccountDeletionTitle", map[string]string{
+			"nick": recipientName,
 			"link": s.spellLink(spell),
 		})
 	default:
 		err = errors.New("unsupported magic spell type for notification")
 	}
 	if err != nil {
-		// Mirror MagicSpellService.NotifyMagicSpell: delivery failures are
-		// logged and swallowed (the caller's outcome never depends on email).
-		s.log.Warn("send magic spell email failed", "spell_id", spell.Id, "error", err)
-		return nil
+		return err
 	}
 	if s.redis != nil && s.redis.Cache != nil {
 		_ = s.redis.Cache.Set(ctx, cacheKey, true, 5*time.Minute)

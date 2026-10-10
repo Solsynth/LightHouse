@@ -81,3 +81,39 @@ func TestScopesFromClaimsKeepsLegacyArrayCompatibility(t *testing.T) {
 		t.Fatalf("legacy scope count = %d, want 2", len(got))
 	}
 }
+
+// TestDiscoveryDocumentAdvertisesOnlyEnforcedAlgorithms pins the algorithm
+// declarations to what the provider actually accepts: RS256 is the only
+// signing algorithm the JWKS publishes, and PKCE plain is rejected at the
+// authorize endpoint, so neither may be advertised.
+func TestDiscoveryDocumentAdvertisesOnlyEnforcedAlgorithms(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := &service{cfg: config.Default(), issuer: "https://nt.solian.app"}
+
+	e := gin.New()
+	e.GET("/.well-known/openid-configuration", s.handleConfiguration)
+
+	w := httptest.NewRecorder()
+	e.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/.well-known/openid-configuration", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &doc); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	algs, _ := doc["id_token_signing_alg_values_supported"].([]any)
+	if len(algs) != 1 || algs[0] != "RS256" {
+		t.Fatalf("id_token_signing_alg_values_supported = %v, want [RS256]", doc["id_token_signing_alg_values_supported"])
+	}
+	methods, _ := doc["code_challenge_methods_supported"].([]any)
+	if len(methods) != 1 || methods[0] != "S256" {
+		t.Fatalf("code_challenge_methods_supported = %v, want [S256]", doc["code_challenge_methods_supported"])
+	}
+	for _, method := range methods {
+		if method == "plain" {
+			t.Fatal("PKCE plain is advertised but no longer accepted")
+		}
+	}
+}

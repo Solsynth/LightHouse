@@ -104,3 +104,25 @@ zero-filled per type.
 - Session cache keys (`dyson:auth:session:*`), account versions and the
   `auth.session.revoked` JetStream events interoperate with the C# fleet
   and downstream Go services.
+
+## Security posture
+
+- **Trusted proxies.** The client IP used by fail2ban and the per-IP quotas
+  is read from `X-Forwarded-For` counting from the **right**
+  (`[security] trustedProxyHops`, default 1). The edge (Blade) must append to
+  or overwrite `X-Forwarded-For` — never pass a client-supplied header
+  through untouched — otherwise a client can pick the address the rate
+  limiter sees. Set `trustedProxyHops` to the real proxy depth when more than
+  one proxy sits in front of Stargate.
+- **Captcha is fail-closed.** Account creation, the `password`-reset request
+  and `/api/auth/captcha/verify` are captcha-gated. Stargate refuses to start
+  when captcha is unusable unless the deployment opted out explicitly with
+  `[captcha] allow_disabled = true`; without that opt-out,
+  `AuthService.ValidateCaptcha` returns an error and the gated flows reject.
+- **Credential guessing is throttled.** `PATCH /api/auth/challenge/{id}` and
+  `POST /api/auth/token` consult the fail2ban IP block before verifying, and
+  `[security] maxChallengeAttempts` caps the failed attempts one challenge
+  accepts.
+- **Disclosure.** `GET /.well-known/security.txt` (contact from
+  `[securityTxt] contact`) and [`SECURITY.md`](SECURITY.md) describe how to
+  report a vulnerability privately.

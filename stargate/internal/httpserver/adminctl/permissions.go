@@ -72,16 +72,23 @@ type groupMembershipRequest struct {
 const permissionNodeActorTypeGroup = 1
 
 func registerPermissionAdmin(g *gin.RouterGroup, d Deps) {
-	g.GET("groups", requirePerm(d, permission.PermissionsGroupsCheck), listPermissionGroups(d))
-	g.GET("groups/:groupId", requirePerm(d, permission.PermissionsGroupsCheck), getPermissionGroup(d))
-	g.POST("groups", requirePerm(d, permission.PermissionsGroupsManage), createPermissionGroup(d))
-	g.PATCH("groups/:groupId", requirePerm(d, permission.PermissionsGroupsManage), updatePermissionGroup(d))
-	g.DELETE("groups/:groupId", requirePerm(d, permission.PermissionsGroupsManage), deletePermissionGroup(d))
-	g.PUT("groups/:groupId/permissions/:key", requirePerm(d, permission.PermissionsManage, permission.PermissionsGroupsManage), upsertGroupPermission(d))
-	g.DELETE("groups/:groupId/permissions/:key", requirePerm(d, permission.PermissionsManage, permission.PermissionsGroupsManage), deleteGroupPermission(d))
-	g.PUT("groups/:groupId/members/:actor", requirePerm(d, permission.PermissionsGroupsManage), upsertGroupMember(d))
-	g.DELETE("groups/:groupId/members/:actor", requirePerm(d, permission.PermissionsGroupsManage), deleteGroupMember(d))
-	g.GET("actors/:actor", requirePerm(d, permission.PermissionsCheck, permission.PermissionsGroupsCheck), getActorPermissions(d))
+	mountAdminRoutes(g, d, permissionAdminRoutes(d))
+}
+
+// permissionAdminRoutes is the /api/admin/permissions route table.
+func permissionAdminRoutes(d Deps) []adminRoute {
+	return []adminRoute{
+		{Method: http.MethodGet, Path: "groups", Keys: []string{permission.PermissionsGroupsCheck}, Handler: listPermissionGroups(d)},
+		{Method: http.MethodGet, Path: "groups/:groupId", Keys: []string{permission.PermissionsGroupsCheck}, Handler: getPermissionGroup(d)},
+		{Method: http.MethodPost, Path: "groups", Keys: []string{permission.PermissionsGroupsManage}, Handler: createPermissionGroup(d)},
+		{Method: http.MethodPatch, Path: "groups/:groupId", Keys: []string{permission.PermissionsGroupsManage}, Handler: updatePermissionGroup(d)},
+		{Method: http.MethodDelete, Path: "groups/:groupId", Keys: []string{permission.PermissionsGroupsManage}, Handler: deletePermissionGroup(d)},
+		{Method: http.MethodPut, Path: "groups/:groupId/permissions/:key", Keys: []string{permission.PermissionsManage, permission.PermissionsGroupsManage}, Handler: upsertGroupPermission(d)},
+		{Method: http.MethodDelete, Path: "groups/:groupId/permissions/:key", Keys: []string{permission.PermissionsManage, permission.PermissionsGroupsManage}, Handler: deleteGroupPermission(d)},
+		{Method: http.MethodPut, Path: "groups/:groupId/members/:actor", Keys: []string{permission.PermissionsGroupsManage}, Handler: upsertGroupMember(d)},
+		{Method: http.MethodDelete, Path: "groups/:groupId/members/:actor", Keys: []string{permission.PermissionsGroupsManage}, Handler: deleteGroupMember(d)},
+		{Method: http.MethodGet, Path: "actors/:actor", Keys: []string{permission.PermissionsCheck, permission.PermissionsGroupsCheck}, Handler: getActorPermissions(d)},
+	}
 }
 
 func listPermissionGroups(d Deps) gin.HandlerFunc {

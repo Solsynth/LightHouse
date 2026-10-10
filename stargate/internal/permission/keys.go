@@ -388,6 +388,12 @@ const (
 	// ── Admin Dashboard ──
 	AdminIpCheck = "admin.ip.check"
 
+	// ── Account Admin (Stargate /api/admin/accounts) ──
+	AdminAccountsFactorsManage  = "admin.accounts.factors.manage"
+	AdminAccountsSessionsManage = "admin.accounts.sessions.manage"
+	AdminAccountsDevicesManage  = "admin.accounts.devices.manage"
+	AdminAccountsContactsManage = "admin.accounts.contacts.manage"
+
 	// ── Workspaces (WattEngine.Valve platform-admin) ──
 	AdminWorkspacesView        = "admin.workspaces.view"
 	AdminWorkspacesManage      = "admin.workspaces.manage"
@@ -765,6 +771,11 @@ var AllKeys = []string{
 	CacheScrap,
 
 	AdminIpCheck,
+
+	AdminAccountsFactorsManage,
+	AdminAccountsSessionsManage,
+	AdminAccountsDevicesManage,
+	AdminAccountsContactsManage,
 
 	AdminWorkspacesView,
 	AdminWorkspacesManage,

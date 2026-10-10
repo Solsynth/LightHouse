@@ -137,3 +137,24 @@ func TestSpellLink(t *testing.T) {
 		t.Errorf("spellLink = %q", got)
 	}
 }
+
+// TestRenderPasswordResetTemplate pins the password-reset email: the template ships in every
+// supported locale and interpolates the recipient name and the /spells/<word>
+// link the reset flow hands the user.
+func TestRenderPasswordResetTemplate(t *testing.T) {
+	for _, locale := range []string{"en", "zh-hans"} {
+		body, err := renderEmailTemplate("PasswordReset", locale, map[string]string{
+			"nick": "Alice",
+			"link": "http://localhost:3000/spells/abc",
+		})
+		if err != nil {
+			t.Fatalf("%s: render PasswordReset: %v", locale, err)
+		}
+		if !strings.Contains(body, "Alice") {
+			t.Errorf("%s: body missing nick substitution: %s", locale, body)
+		}
+		if !strings.Contains(body, "http://localhost:3000/spells/abc") {
+			t.Errorf("%s: body missing link substitution: %s", locale, body)
+		}
+	}
+}

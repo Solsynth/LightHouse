@@ -10,15 +10,16 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/go/pkg/errs"
-	"src.solsynth.dev/sosys/stargate/internal/store"
+	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/model"
+	"src.solsynth.dev/sosys/stargate/internal/store"
 )
 
 type contextKey int
@@ -61,8 +62,8 @@ func CurrentTokenType(ctx context.Context) auth.TokenType {
 // FlushBufferService/LastActiveFlushHandler (last-active now lands on
 // Stargate's tables).
 type LastSeenToucher struct {
-	st   *store.Store
-	log  *slog.Logger
+	st  *store.Store
+	log *slog.Logger
 
 	mu     sync.Mutex
 	queue  map[string]touchEntry
@@ -251,16 +252,53 @@ func RequireInteractive() gin.HandlerFunc {
 	}
 }
 
-// ClientIP resolves the client IP honoring X-Forwarded-For (mirrors
-// GetClientIpAddress with KnownProxies trusted).
+// trustedProxyHops is how many reverse proxies in front of Stargate append to
+// X-Forwarded-For. Configured at startup from
+// [security] trustedProxyHops (default 1: one edge proxy, e.g. Blade).
+var trustedProxyHops atomic.Int64
+
+func init() { trustedProxyHops.Store(1) }
+
+// SetTrustedProxyHops configures how many reverse proxies in front of
+// Stargate append to X-Forwarded-For. Values below 1 are clamped to 1.
+func SetTrustedProxyHops(hops int) {
+	if hops < 1 {
+		hops = 1
+	}
+	trustedProxyHops.Store(int64(hops))
+}
+
+// ClientIP resolves the client IP honoring X-Forwarded-For.
+//
+// Trust model: only the rightmost entries are trustworthy — they are the ones
+// appended by our own proxies. The leftmost entry is attacker-supplied (a
+// client can send its own X-Forwarded-For header, which every proxy appends
+// to). With N trusted proxy hops the client address is the Nth entry counted
+// from the right; the default of 1 means the last entry, i.e. what the edge
+// proxy observed. If the header carries fewer entries than trusted hops the
+// chain is incomplete, so the leftmost entry is the only one left and is used
+// (the deployment assumption is documented in config.example.toml: the edge
+// must overwrite or append X-Forwarded-For, never pass it through untouched).
+//
+// Without X-Forwarded-For the remote address is the peer, i.e. the last
+// trusted hop.
 func ClientIP(r *http.Request) string {
+	hops := int(trustedProxyHops.Load())
+	if hops < 1 {
+		hops = 1
+	}
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		for _, part := range parts {
-			ip := strings.TrimSpace(part)
-			if ip != "" && !isKnownProxy(ip) {
-				return ip
+		parts := make([]string, 0, 4)
+		for _, part := range strings.Split(xff, ",") {
+			if ip := strings.TrimSpace(part); ip != "" {
+				parts = append(parts, ip)
 			}
+		}
+		if len(parts) >= hops {
+			return parts[len(parts)-hops]
+		}
+		if len(parts) > 0 {
+			return parts[0]
 		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -268,17 +306,6 @@ func ClientIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return host
-}
-
-func isKnownProxy(ip string) bool {
-	parsed := net.ParseIP(ip)
-	if parsed == nil {
-		return false
-	}
-	if parsed.IsLoopback() {
-		return true
-	}
-	return false
 }
 
 // AccountIDOf parses an account UUID from a string.

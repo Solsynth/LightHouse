@@ -168,6 +168,7 @@ var padlockSwagger = buildDoc(
 	[]routeSpec{
 		{path: "/api/accounts", method: "POST", tag: "Accounts", summary: "Register a new account"},
 		{path: "/api/accounts/validate", method: "POST", tag: "Accounts", summary: "Validate account name / email availability"},
+		{path: "/api/accounts/recovery/password", method: "POST", tag: "Accounts", summary: "Request a password-reset email (creates a 24h reset spell)"},
 		{path: "/api/accounts/me", method: "GET", tag: "Accounts", summary: "Get the current account identity"},
 		{path: "/api/accounts/me", method: "PATCH", tag: "Accounts", summary: "Update basic account info (nick, language, region)", forbidden: true},
 		{path: "/api/accounts/me/pin-status", method: "GET", tag: "Accounts", summary: "Get the current account PIN status"},

@@ -64,7 +64,10 @@ const (
 	defaultIssuer = "https://your-issuer-uri.com"
 )
 
-var supportedCodeChallengeMethods = []string{"S256", "plain"}
+// supportedCodeChallengeMethods is the PKCE method allow-list. "plain" is
+// deliberately absent: it offers no protection against authorization-code
+// interception, and it is not advertised in the discovery document either.
+var supportedCodeChallengeMethods = []string{codeChallengeMethodS256}
 
 // oidcClient is the subset of SnCustomApp the provider needs. It is cached
 // in Redis (auth:oidc-client:id:/slug:) with snake_case JSON, mirroring the

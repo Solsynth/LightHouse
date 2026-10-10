@@ -4,12 +4,14 @@ package httpserver
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"src.solsynth.dev/sosys/stargate/internal/config"
+	"src.solsynth.dev/sosys/stargate/internal/middleware"
 )
 
 // Server hosts the HTTP API.
@@ -28,6 +30,13 @@ func New(cfg *config.Config, authMiddleware gin.HandlerFunc) *Server {
 	engine.Use(gin.Recovery())
 	engine.Use(authMiddleware)
 
+	// The client IP is derived from X-Forwarded-For by the configured trusted
+	// proxy depth, so the edge proxy must append to (not pass through) the
+	// header. Default 1 = Blade.
+	if cfg != nil {
+		middleware.SetTrustedProxyHops(cfg.Security.TrustedProxyHopCount())
+	}
+
 	s := &Server{Engine: engine, cfg: cfg}
 
 	engine.GET("/health", func(c *gin.Context) { c.Status(http.StatusOK) })
@@ -37,8 +46,31 @@ func New(cfg *config.Config, authMiddleware gin.HandlerFunc) *Server {
 	// ConfigureAppMiddleware).
 	engine.GET("/.well-known/apple-app-site-association", s.appleAppSiteAssociation)
 	engine.GET("/.well-known/assetlinks.json", s.assetLinks)
+	engine.GET("/.well-known/security.txt", s.securityTxt)
 
 	return s
+}
+
+// securityTxt serves the RFC 9116 vulnerability-disclosure document. The
+// contact comes from [securityTxt] contact with a built-in default.
+func (s *Server) securityTxt(c *gin.Context) {
+	expires := time.Now().UTC().AddDate(1, 0, 0).Format(time.RFC3339)
+	contact := config.DefaultSecurityContact
+	var canonical string
+	if s.cfg != nil {
+		contact = s.cfg.SecurityContact()
+		canonical = strings.TrimSuffix(s.cfg.BaseUrl, "/") + "/.well-known/security.txt"
+	}
+	lines := []string{
+		"Contact: " + contact,
+		"Expires: " + expires,
+		"Preferred-Languages: en, zh",
+	}
+	if canonical != "" {
+		lines = append(lines, "Canonical: "+canonical)
+	}
+	lines = append(lines, "")
+	c.Data(http.StatusOK, "text/plain; charset=utf-8", []byte(strings.Join(lines, "\n")))
 }
 
 // Register adds route registrars to the /api group.

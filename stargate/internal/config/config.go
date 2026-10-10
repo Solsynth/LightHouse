@@ -90,6 +90,12 @@ type Config struct {
 		APIKey    string `toml:"apiKey"`
 		APISecret string `toml:"apiSecret"`
 		Skip      bool   `toml:"skip"`
+		// AllowDisabled is the explicit opt-out from captcha verification.
+		// Stargate has captcha-gated flows (account creation, password reset
+		// request, /auth/captcha/verify), so a deployment without a working
+		// verifier must acknowledge that by setting allow_disabled = true;
+		// otherwise the configuration is rejected at startup (see Validate).
+		AllowDisabled bool `toml:"allow_disabled"`
 	} `toml:"captcha"`
 
 	WebAuthn struct {
@@ -133,6 +139,25 @@ type Config struct {
 	} `toml:"oidc"`
 
 	Security SecurityConfig `toml:"security"`
+
+	// SecurityTxt is the contact block of the RFC 9116
+	// /.well-known/security.txt the HTTP layer serves.
+	SecurityTxt struct {
+		Contact string `toml:"contact"`
+	} `toml:"securityTxt"`
+}
+
+// DefaultSecurityContact is the vulnerability-disclosure contact used when
+// [securityTxt] contact is unset.
+const DefaultSecurityContact = "mailto:security@solsynth.dev"
+
+// SecurityContact returns the configured security.txt contact, falling back to
+// DefaultSecurityContact.
+func (c *Config) SecurityContact() string {
+	if c == nil || strings.TrimSpace(c.SecurityTxt.Contact) == "" {
+		return DefaultSecurityContact
+	}
+	return strings.TrimSpace(c.SecurityTxt.Contact)
 }
 
 // SecurityConfig controls fail2ban, challenge risk escalation, and trusted
@@ -155,6 +180,17 @@ type SecurityConfig struct {
 	// count against the quota. "0" disables the quota.
 	MaxChallengesPerIp int    `toml:"maxChallengesPerIp"`
 	ChallengeWindow    string `toml:"challengeWindow"`
+	// MaxChallengeAttempts caps how many failed credential submissions a
+	// single challenge accepts before further verification is refused with
+	// 429 (the IP-failure fail2ban block normally trips first). "0" disables
+	// the cap.
+	MaxChallengeAttempts int `toml:"maxChallengeAttempts"`
+	// TrustedProxyHops is how many reverse proxies in front of Stargate
+	// append to X-Forwarded-For. The client IP is read that many entries from
+	// the right, so a client-supplied leftmost entry can never choose the
+	// address the rate limiter sees. Defaults to 1 (one trusted edge proxy,
+	// e.g. Blade).
+	TrustedProxyHops int `toml:"trustedProxyHops"`
 	// RecentLoginGrace is how long a completed login from the same client
 	// user agent suppresses the IP-novelty risk terms of the next challenge
 	// (see hint in config.example.toml). "0" disables the suppression.
@@ -352,6 +388,8 @@ func Default() *Config {
 	cfg.Security.ChallengeFailEscalateAfter = 2
 	cfg.Security.MaxChallengesPerIp = 3
 	cfg.Security.ChallengeWindow = "1h"
+	cfg.Security.MaxChallengeAttempts = 5
+	cfg.Security.TrustedProxyHops = 1
 	cfg.Security.RecentLoginGrace = "30m"
 	cfg.Security.TrustedSessionMaxGap = "720h"
 	return cfg
@@ -377,6 +415,9 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
 	applyEnvOverrides(cfg)
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
+	}
 	return cfg, nil
 }
 
@@ -408,6 +449,7 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("STARGATE_SERVICES_RING__GRPC", &cfg.Services.Ring.GRPC)
 	setStr("STARGATE_SERVICES_DEVELOP__GRPC", &cfg.Services.Develop.GRPC)
 	setBool("STARGATE_CAPTCHA_SKIP", &cfg.Captcha.Skip)
+	setBool("STARGATE_CAPTCHA_ALLOWDISABLED", &cfg.Captcha.AllowDisabled)
 	setBool("STARGATE_ACCOUNT_ACTIVATION__TESTS_ENABLED", &cfg.AccountActivation.TestsEnabled)
 	setBool("STARGATE_DISCOVERY_ENABLED", &cfg.Discovery.Enabled)
 	setStr("STARGATE_DISCOVERY_TARGET", &cfg.Discovery.Target)
@@ -422,6 +464,8 @@ func applyEnvOverrides(cfg *Config) {
 	setInt("STARGATE_SECURITY_FAIL2BANDECLINEMAX", &cfg.Security.Fail2banDeclineMax)
 	setInt("STARGATE_SECURITY_CHALLENGEFAILESCALATEAFTER", &cfg.Security.ChallengeFailEscalateAfter)
 	setInt("STARGATE_SECURITY_MAXCHALLENGESPERIP", &cfg.Security.MaxChallengesPerIp)
+	setInt("STARGATE_SECURITY_MAXCHALLENGEATTEMPTS", &cfg.Security.MaxChallengeAttempts)
+	setInt("STARGATE_SECURITY_TRUSTEDPROXYHOPS", &cfg.Security.TrustedProxyHops)
 	setStr("STARGATE_SECURITY_CHALLENGEWINDOW", &cfg.Security.ChallengeWindow)
 	setStr("STARGATE_SECURITY_TRUSTEDSESSIONMAXGAP", &cfg.Security.TrustedSessionMaxGap)
 	setStr("STARGATE_SECURITY_RECENTLOGINGRACE", &cfg.Security.RecentLoginGrace)
@@ -474,11 +518,46 @@ func (c *Config) RefreshGracePeriod() time.Duration {
 }
 
 // CaptchaEnabled reports whether an external captcha verifier is configured.
-// Skip and incomplete credentials both mean the optional feature is disabled.
+// Skip and incomplete credentials both mean the verifier is unusable, i.e.
+// captcha tokens cannot be checked. Callers must not treat that as "verification
+// passed": see CaptchaRequired and AuthService.ValidateCaptcha.
 func (c *Config) CaptchaEnabled() bool {
 	if c == nil || c.Captcha.Skip {
 		return false
 	}
 	return strings.TrimSpace(c.Captcha.Provider) != "" &&
 		strings.TrimSpace(c.Captcha.APISecret) != ""
+}
+
+// CaptchaRequired reports a misconfiguration: captcha-gated flows exist (they
+// always do — account creation, the password-reset request and
+// /auth/captcha/verify) but no verifier is usable and the deployment did not
+// explicitly opt out with [captcha] allow_disabled = true. Callers must fail
+// closed while this is true.
+func (c *Config) CaptchaRequired() bool {
+	if c == nil {
+		return true
+	}
+	return !c.CaptchaEnabled() && !c.Captcha.AllowDisabled
+}
+
+// Validate rejects configurations that must never come up: today that is a
+// captcha-gated deployment without a usable verifier and without the explicit
+// [captcha] allow_disabled opt-out. Refusing to start beats silently serving
+// login, registration and password-reset flows with an unconfigured captcha.
+func (c *Config) Validate() error {
+	if c.CaptchaRequired() {
+		return fmt.Errorf("captcha is not configured: set [captcha] provider/apiSecret (or apiKey where the provider needs one), or opt out explicitly with [captcha] allow_disabled = true")
+	}
+	return nil
+}
+
+// TrustedProxyHopCount is the number of trusted reverse proxies in front of
+// Stargate, at least 1 (a direct deployment still has its own listener as the
+// last hop). It is what middleware.ClientIP indexes X-Forwarded-For by.
+func (s SecurityConfig) TrustedProxyHopCount() int {
+	if s.TrustedProxyHops < 1 {
+		return 1
+	}
+	return s.TrustedProxyHops
 }

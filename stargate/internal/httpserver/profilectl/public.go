@@ -85,7 +85,8 @@ func (d Deps) searchAccounts(c *gin.Context) {
 }
 
 // enrichSearchResult mirrors the C# search loop: ensure profile, badges,
-// empty contacts, perk subscription.
+// empty contacts, perk subscription. It also applies the public projection so
+// another account's platform-admin flag is never emitted.
 func (d Deps) enrichSearchResult(ctx context.Context, account *model.Account) {
 	if account.Profile == nil {
 		if profile, err := d.Store.GetOrCreateAccountProfile(ctx, accountIDOf(account)); err == nil {
@@ -99,6 +100,7 @@ func (d Deps) enrichSearchResult(ctx context.Context, account *model.Account) {
 	}
 	account.Contacts = []model.Contact{}
 	d.hydratePerk(ctx, account)
+	applyPublicProjection(account)
 }
 
 // getAccountPicture ports GetAccountPicture: 302 to the file URL.
@@ -259,6 +261,9 @@ func (d Deps) getFollowPage(isFollowing bool) gin.HandlerFunc {
 		c.Header("X-Total", strconv.Itoa(total))
 		if accounts == nil {
 			accounts = []model.Account{}
+		}
+		for i := range accounts {
+			applyPublicProjection(&accounts[i])
 		}
 		c.JSON(http.StatusOK, accounts)
 	}

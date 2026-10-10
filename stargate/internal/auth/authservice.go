@@ -101,9 +101,20 @@ func VerifyFactorPassword(f *model.AuthFactor, input string) (bool, error) {
 
 // ValidateCaptcha verifies a captcha token with the configured provider,
 // mirroring AuthService.ValidateCaptcha. SkipCaptcha short-circuits.
+//
+// Fail-closed: an unconfigured verifier is a misconfiguration, not a pass. It
+// is only tolerated when the deployment opted out explicitly with
+// [captcha] allow_disabled = true (config.CaptchaRequired); otherwise this
+// returns an error and every captcha-gated flow refuses the request.
 func (s *AuthService) ValidateCaptcha(ctx context.Context, token string) (bool, error) {
-	if s.cfg == nil || !s.cfg.CaptchaEnabled() {
-		return true, nil
+	if s.cfg == nil {
+		return false, errors.New("the server misconfigured for the captcha")
+	}
+	if s.cfg.CaptchaRequired() {
+		return false, errors.New("the server misconfigured for the captcha: captcha is not configured")
+	}
+	if !s.cfg.CaptchaEnabled() {
+		return true, nil // explicitly opted out with [captcha] allow_disabled
 	}
 	if strings.TrimSpace(token) == "" {
 		return false, nil

@@ -53,8 +53,38 @@ func Register(api *gin.RouterGroup, d Deps) {
 		GET("", getActionLogs(d))
 	punishments := api.Group("/accounts")
 	punishments.GET("/me/punishments", middleware.RequireAuth(), getMyPunishments(d))
-	punishments.GET("/:name/punishments", getAccountPunishments(d))
-	punishments.GET("/:name/punishments/overview", getPunishmentOverview(d))
+	punishments.GET("/:name/punishments", middleware.RequireAuth(), getAccountPunishments(d))
+	punishments.GET("/:name/punishments/overview", middleware.RequireAuth(), getPunishmentOverview(d))
+}
+
+// adminRoute is one route mounted under the /api/admin group: its HTTP method
+// and gin path (relative to the group), the permission keys its handler
+// requires (ANDed; empty means the group's own authentication is the only
+// gate) and the handler itself.
+//
+// Every admin group registers its routes from such a table so the mounted
+// surface and the required permission keys cannot drift apart, and so
+// TestAdminRoutesNotDefaultGranted can assert no admin route is gated on a key
+// the `default` group already grants every account (which would make the route
+// reachable by any logged-in account).
+type adminRoute struct {
+	Method  string
+	Path    string
+	Keys    []string
+	Handler gin.HandlerFunc
+}
+
+// mountAdminRoutes registers every route in the table on g, applying
+// requirePerm (which enforces authentication and every listed key) in front of
+// the handler when keys are present.
+func mountAdminRoutes(g *gin.RouterGroup, d Deps, routes []adminRoute) {
+	for _, route := range routes {
+		if len(route.Keys) == 0 {
+			g.Handle(route.Method, route.Path, route.Handler)
+			continue
+		}
+		g.Handle(route.Method, route.Path, requirePerm(d, route.Keys...), route.Handler)
+	}
 }
 
 // requirePerm mirrors Padlock's LocalPermissionMiddleware: no authenticated

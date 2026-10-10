@@ -95,6 +95,7 @@ func TestAnonymousRequiresAuth(t *testing.T) {
 		method, path string
 	}{
 		{"GET", "/api/accounts/me"},
+		{"GET", "/api/accounts/search"},
 		{"GET", "/api/relationships"},
 		{"GET", "/api/relationships/requests"},
 	} {
@@ -307,4 +308,53 @@ func TestErrNotFoundMapping(t *testing.T) {
 	if !errors.Is(store.ErrNotFound, store.ErrNotFound) {
 		t.Fatal("sentinel mismatch")
 	}
+}
+
+// TestApplyPublicProjectionHidesSuperuser pins the public projection: another
+// account's payload keeps the model.Account wire shape (so clients parsing it
+// do not break) but never carries is_superuser=true.
+func TestApplyPublicProjectionHidesSuperuser(t *testing.T) {
+	account := &model.Account{
+		Id:          "11111111-1111-1111-1111-111111111111",
+		Name:        "alice",
+		Nick:        "Alice",
+		Region:      "US",
+		IsSuperuser: true,
+		PerkLevel:   3,
+		CreatedAt:   model.NewTime(time.Now().UTC()),
+	}
+	before := marshalToMap(t, account)
+
+	applyPublicProjection(account)
+	if account.IsSuperuser {
+		t.Fatal("applyPublicProjection must clear IsSuperuser")
+	}
+	after := marshalToMap(t, account)
+
+	if after["is_superuser"] != false {
+		t.Errorf("is_superuser = %v, want false", after["is_superuser"])
+	}
+	delete(before, "is_superuser")
+	delete(after, "is_superuser")
+	if len(before) != len(after) {
+		t.Fatalf("public projection changed the wire shape: %d keys -> %d keys", len(before), len(after))
+	}
+	for key := range before {
+		if _, ok := after[key]; !ok {
+			t.Errorf("public projection dropped wire key %q", key)
+		}
+	}
+}
+
+func marshalToMap(t *testing.T, v any) map[string]any {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	return m
 }

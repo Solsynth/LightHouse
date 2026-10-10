@@ -30,14 +30,19 @@ func (s *service) handleConfiguration(c *gin.Context) {
 		"response_types_supported":              []string{"code", "token", "id_token", "code token", "code id_token", "token id_token", "code token id_token"},
 		"grant_types_supported":                 []string{"authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"},
 		"token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post", "none"},
-		"id_token_signing_alg_values_supported": []string{"HS256", "RS256"},
+		// RS256 only: that is the single algorithm the JWKS publishes and the
+		// only one the provider signs/accepts, so advertising HS256 (or any
+		// other alg) would invite algorithm-confusion attempts.
+		"id_token_signing_alg_values_supported": []string{"RS256"},
 		"subject_types_supported":               []string{"public"},
 		"claims_supported":                      []string{"sub", "name", "email", "email_verified"},
-		"code_challenge_methods_supported":      []string{"S256", "plain"},
-		"response_modes_supported":              []string{"query", "fragment", "form_post"},
-		"request_parameter_supported":           true,
-		"request_uri_parameter_supported":       true,
-		"require_request_uri_registration":      false,
+		// S256 only: plain PKCE offers no protection against code
+		// interception, so it is not advertised.
+		"code_challenge_methods_supported": []string{"S256"},
+		"response_modes_supported":         []string{"query", "fragment", "form_post"},
+		"request_parameter_supported":      true,
+		"request_uri_parameter_supported":  true,
+		"require_request_uri_registration": false,
 	})
 }
 

@@ -37,7 +37,14 @@ type accountGeographyStatsResponse struct {
 }
 
 func registerGeography(g *gin.RouterGroup, d Deps) {
-	g.GET("", requirePerm(d, permission.AccountsView), getUserGeography(d))
+	mountAdminRoutes(g, d, geographyRoutes(d))
+}
+
+// geographyRoutes is the /api/admin/stats/users/geography route table.
+func geographyRoutes(d Deps) []adminRoute {
+	return []adminRoute{
+		{Method: http.MethodGet, Path: "", Keys: []string{permission.AccountsView}, Handler: getUserGeography(d)},
+	}
 }
 
 func getUserGeography(d Deps) gin.HandlerFunc {

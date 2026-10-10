@@ -7,6 +7,7 @@ package wellknownctl
 import (
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -36,12 +37,24 @@ type permissionsResponse struct {
 	Permissions []permissionItem `json:"permissions"`
 }
 
-// listPermissions mirrors WellKnownController.ListPermissions: every public
-// static string literal of PermissionKeys.cs, serialized as {key, name} and
-// ordered by key (the C# reflection query does the same OrderBy).
+// adminPermissionPrefix is the namespace reserved for administrative
+// permissions. The public manifest never lists them: an unauthenticated caller
+// must not learn the admin capability surface (each key is a hint at the
+// endpoint it gates).
+const adminPermissionPrefix = "admin."
+
+// listPermissions mirrors WellKnownController.ListPermissions for the public
+// (unauthenticated) manifest: every public static string literal of
+// PermissionKeys.cs except the admin.* namespace, serialized as {key, name} and
+// ordered by key. count is the number of returned permissions.
 func listPermissions(c *gin.Context) {
-	items := make([]permissionItem, len(permissionEntries))
-	copy(items, permissionEntries)
+	items := make([]permissionItem, 0, len(permissionEntries))
+	for _, entry := range permissionEntries {
+		if strings.HasPrefix(entry.Key, adminPermissionPrefix) {
+			continue
+		}
+		items = append(items, entry)
+	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Key < items[j].Key })
 	c.JSON(http.StatusOK, permissionsResponse{Count: len(items), Permissions: items})
 }

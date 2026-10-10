@@ -78,6 +78,13 @@ provider = "cloudflare"
 apiKey = "0x4AAAAAABCDUdOujj4feOb_"
 apiSecret = ""
 skip = true
+# Captcha is REQUIRED for the captcha-gated flows (account creation, password
+# reset request, /auth/captcha/verify). A deployment whose verifier is
+# unusable must opt out explicitly with allow_disabled = true; otherwise
+# Stargate refuses to start and ValidateCaptcha fails every gated request.
+# The shipped example opts out so it stays runnable; a production deployment
+# should instead configure provider/apiSecret (and apiKey where required).
+allow_disabled = true
 
 [webauthn]
 rpId = "localhost"
@@ -172,6 +179,19 @@ challengeFailEscalateAfter = 2
 maxChallengesPerIp = 3
 # Rolling window for the per-IP new-challenge quota.
 challengeWindow = "1h"
+# Maximum failed credential submissions one challenge accepts before further
+# verification is refused with 429. The per-IP fail2ban block normally trips
+# first; this cap stops a caller that spreads guesses across addresses (or
+# stays under the fail2ban threshold) from grinding a single challenge. "0"
+# disables the cap.
+maxChallengeAttempts = 5
+# How many reverse proxies in front of Stargate append to X-Forwarded-For.
+# The client IP is taken that many entries from the RIGHT, so a
+# client-supplied leftmost entry can never choose the address fail2ban and
+# the per-IP quotas see. Deployment assumption: the edge must append to (or
+# overwrite) X-Forwarded-For, never pass a client-supplied header through
+# untouched. Default 1 = Blade.
+trustedProxyHops = 1
 # After a login completes, a new challenge from the same user agent within
 # this window ignores the IP-novelty risk terms: a rotated IP (mobile NAT,
 # IPv6 privacy addresses, Wi-Fi/cellular switches) is not a device change.
@@ -180,3 +200,8 @@ recentLoginGrace = "30m"
 # Maximum time since last activity for a native-device session to be
 # considered "trusted" (only trusted sessions may approve/decline logins).
 trustedSessionMaxGap = "720h"
+
+# RFC 9116 vulnerability-disclosure block served at /.well-known/security.txt.
+# Falls back to mailto:security@solsynth.dev when unset.
+[securityTxt]
+contact = "mailto:security@solsynth.dev"

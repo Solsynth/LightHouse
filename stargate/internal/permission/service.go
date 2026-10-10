@@ -454,6 +454,14 @@ var defaultPermissionKeys = []string{
 	FilesUpload,
 }
 
+// DefaultPermissionKeys returns a copy of the keys the `default` permission
+// group grants to every account. It exists so route tables (e.g. the admin
+// routes) can assert that a privileged endpoint is not gated on a key every
+// account already holds.
+func DefaultPermissionKeys() []string {
+	return append([]string(nil), defaultPermissionKeys...)
+}
+
 // verifiedPermissionKeys mirrors PermissionSeedService.VerifiedPermissionKeys.
 var verifiedPermissionKeys = []string{
 	PostsView,

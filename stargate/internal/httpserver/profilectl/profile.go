@@ -56,7 +56,7 @@ func Register(api *gin.RouterGroup, d Deps) {
 
 	accounts := api.Group("/accounts")
 	accounts.GET("/id/:id", d.getAccountByID)
-	accounts.GET("/search", d.searchAccounts)
+	accounts.GET("/search", middleware.RequireAuth(), d.searchAccounts)
 	accounts.GET("/:name", d.getAccountByName)
 	accounts.GET("/:name/picture", d.getAccountPicture)
 	accounts.GET("/:name/background", d.getAccountBackground)
@@ -162,8 +162,19 @@ func (d Deps) enrichOwn(ctx context.Context, account *model.Account) error {
 	return nil
 }
 
+// applyPublicProjection strips fields that must never be emitted on another
+// account's payload: the platform-admin flag. Every anonymous public read
+// (/accounts/:name, /accounts/id/:id, /accounts/search and the
+// followers/following lists) serves the model.Account wire shape clients
+// already parse, with is_superuser forced to false; the account's own
+// /accounts/me reads (enrichOwn) keep the true value.
+func applyPublicProjection(account *model.Account) {
+	account.IsSuperuser = false
+}
+
 // enrichPublic mirrors Passport's EnrichPublicAccountAsync: profile, badges,
-// public-only contacts and perk subscription.
+// public-only contacts and perk subscription. It also applies the public
+// projection so another account's platform-admin flag is never emitted.
 func (d Deps) enrichPublic(ctx context.Context, account *model.Account) error {
 	accountID := accountIDOf(account)
 	if account.Profile == nil {
@@ -187,6 +198,7 @@ func (d Deps) enrichPublic(ctx context.Context, account *model.Account) error {
 		account.Contacts = contacts
 	}
 	d.hydratePerk(ctx, account)
+	applyPublicProjection(account)
 	return nil
 }
 

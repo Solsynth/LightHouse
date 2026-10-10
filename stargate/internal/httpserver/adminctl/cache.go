@@ -55,11 +55,19 @@ type clearCacheGroupRequest struct {
 }
 
 func registerCacheAdmin(g *gin.RouterGroup, d Deps) {
-	g.GET("stats", requirePerm(d, permission.PermissionsCacheManage), cacheStats(d))
-	g.GET("groups/:group", requirePerm(d, permission.PermissionsCacheManage), cacheGroup(d))
-	g.POST("keys/clear", requirePerm(d, permission.PermissionsCacheManage), clearCacheKey(d))
-	g.POST("groups/clear", requirePerm(d, permission.PermissionsCacheManage), clearCacheGroup(d))
-	g.POST("clear", requirePerm(d, permission.PermissionsCacheManage), clearAllCache(d))
+	mountAdminRoutes(g, d, cacheAdminRoutes(d))
+}
+
+// cacheAdminRoutes is the /api/admin/cache route table.
+func cacheAdminRoutes(d Deps) []adminRoute {
+	keys := []string{permission.PermissionsCacheManage}
+	return []adminRoute{
+		{Method: http.MethodGet, Path: "stats", Keys: keys, Handler: cacheStats(d)},
+		{Method: http.MethodGet, Path: "groups/:group", Keys: keys, Handler: cacheGroup(d)},
+		{Method: http.MethodPost, Path: "keys/clear", Keys: keys, Handler: clearCacheKey(d)},
+		{Method: http.MethodPost, Path: "groups/clear", Keys: keys, Handler: clearCacheGroup(d)},
+		{Method: http.MethodPost, Path: "clear", Keys: keys, Handler: clearAllCache(d)},
+	}
 }
 
 func cacheStats(d Deps) gin.HandlerFunc {
