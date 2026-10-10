@@ -32,7 +32,7 @@ func AskPermission(permission gen.DyPermissionServiceClient, key string, log *sl
 		}
 		session := CurrentSession(c)
 
-		if session != nil && hasFullScope(session.Scopes) {
+		if hasFullScope(session) {
 			c.Next()
 			return
 		}
@@ -86,9 +86,15 @@ func AskPermission(permission gen.DyPermissionServiceClient, key string, log *sl
 	}
 }
 
-// hasFullScope mirrors PermissionScopeGate.HasFullScope.
-func hasFullScope(scopes []string) bool {
-	for _, scope := range scopes {
+// hasFullScope mirrors PermissionScopeGate.HasFullScope: the full-grant
+// wildcard only bypasses permission checks for OAuth sessions. Login, OIDC and
+// API-key sessions ignore it and always go through the permission-service
+// check below.
+func hasFullScope(session *gen.DyAuthSession) bool {
+	if session == nil || session.Type != gen.DySessionType_DY_OAUTH {
+		return false
+	}
+	for _, scope := range session.Scopes {
 		if scope == "*" {
 			return true
 		}
