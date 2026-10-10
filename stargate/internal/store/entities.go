@@ -203,6 +203,11 @@ type ChallengeEntity struct {
 	StepRemain          int             `gorm:"column:step_remain"`
 	StepTotal           int             `gorm:"column:step_total"`
 	UserAgent           *string         `gorm:"column:user_agent"`
+	// Elevation ("sudo") challenge columns: NULL for ordinary challenges.
+	Purpose         *string    `gorm:"column:purpose"`
+	SessionID       *uuid.UUID `gorm:"column:session_id"`
+	SudoUntil       *time.Time `gorm:"column:sudo_until"`
+	ExtraFactorType *int       `gorm:"column:extra_factor_type"`
 }
 
 func (ChallengeEntity) TableName() string { return "auth_challenges" }

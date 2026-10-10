@@ -95,6 +95,11 @@ func (s AuthSession) MarshalJSON() ([]byte, error) {
 	return json.Marshal((alias)(normalized))
 }
 
+// AuthChallengePurposeSudo marks an elevation (re-authentication) challenge:
+// a challenge that grants "sudo" mode to the session it is bound to instead
+// of minting a login session.
+const AuthChallengePurposeSudo = "sudo"
+
 // AuthChallenge mirrors SnAuthChallenge. The three list fields are strict-cast
 // by the Dart SDK (`as List<dynamic>`), so they must always serialize as []
 // (the C# emits empty lists, never null).
@@ -121,6 +126,19 @@ type AuthChallenge struct {
 	CreatedAt           *Time          `json:"created_at,omitempty"`
 	UpdatedAt           *Time          `json:"updated_at,omitempty"`
 	DeletedAt           *Time          `json:"deleted_at,omitempty"`
+	// Purpose discriminates ordinary login challenges from elevation ("sudo")
+	// challenges; empty means an ordinary login challenge.
+	Purpose string `json:"purpose,omitempty"`
+	// SudoUntil is set on an elevation challenge once it completes: the
+	// instant the granted elevation expires. It is returned so the client can
+	// cache the window.
+	SudoUntil *Time `json:"sudo_until,omitempty"`
+	// SessionId binds an elevation challenge to the session that requested
+	// it. Never on the wire.
+	SessionId *string `json:"-"`
+	// ExtraFactorType, when set, marks the synthetic emailed fallback step of
+	// an elevation challenge (typed as an AuthFactorType). Never on the wire.
+	ExtraFactorType *int `json:"-"`
 }
 
 // MarshalJSON normalizes nil list fields to [] so the Dart SDK's strict

@@ -51,7 +51,7 @@ func Register(api *gin.RouterGroup, d Deps) {
 	me := api.Group("/accounts/me")
 	me.GET("", middleware.RequireAuth(), d.getCurrentIdentity)
 	me.PATCH("", middleware.RequireAuth(), middleware.AskPermission(d.Perm, permission.AccountsManage), d.updateBasicInfo)
-	me.DELETE("", middleware.RequireAuth(), d.requestDeleteAccount)
+	me.DELETE("", middleware.RequireAuth(), middleware.RequireSudo(), d.requestDeleteAccount)
 	me.PATCH("/profile", middleware.RequireAuth(), d.updateProfile)
 
 	accounts := api.Group("/accounts")

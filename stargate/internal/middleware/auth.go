@@ -252,6 +252,81 @@ func RequireInteractive() gin.HandlerFunc {
 	}
 }
 
+// SudoChecker is the elevation contract RequireSudo needs from the auth
+// service. IsSudoElevated reports whether the session holds a live elevation
+// grant and must fail closed (return an error) when the elevation store is
+// unavailable; SudoFactorHint lists the factor type names the client may use;
+// RecordSudoFailure records the denied attempt.
+type SudoChecker interface {
+	IsSudoElevated(ctx context.Context, sessionID string) (bool, error)
+	SudoFactorHint(ctx context.Context, accountID string) (string, error)
+	RecordSudoFailure(ctx context.Context, accountID, sessionID, ipAddress, userAgent string)
+}
+
+var (
+	sudoCheckerMu sync.RWMutex
+	sudoChecker   SudoChecker
+)
+
+// SetSudoChecker installs the elevation checker RequireSudo consults. It is
+// wired once at startup; leaving it unset makes every guarded route fail
+// closed.
+func SetSudoChecker(checker SudoChecker) {
+	sudoCheckerMu.Lock()
+	sudoChecker = checker
+	sudoCheckerMu.Unlock()
+}
+
+func getSudoChecker() SudoChecker {
+	sudoCheckerMu.RLock()
+	defer sudoCheckerMu.RUnlock()
+	return sudoChecker
+}
+
+// RequireSudo gates an auth-critical mutation on a live elevation grant. It
+// MUST run after RequireAuth (it reads the authenticated session):
+//
+//   - a live grant lets the request through;
+//   - an unavailable elevation store fails closed with 503 (never allows);
+//   - otherwise it answers 403 AUTH_SUDO_REQUIRED with the usable factor type
+//     names in `detail`, and records the denied attempt.
+func RequireSudo() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		checker := getSudoChecker()
+		session := CurrentSession(c.Request.Context())
+		user := CurrentUser(c.Request.Context())
+		if checker == nil || session == nil || user == nil {
+			// Unauthenticated requests are handled by RequireAuth; a missing
+			// checker or session here means the elevation contract cannot be
+			// evaluated, so fail closed.
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable,
+				errs.New("SERVICE_UNAVAILABLE", "Elevation could not be verified.", http.StatusServiceUnavailable))
+			return
+		}
+		elevated, err := checker.IsSudoElevated(c.Request.Context(), session.Id)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable,
+				errs.New("SERVICE_UNAVAILABLE", "Elevation could not be verified.", http.StatusServiceUnavailable))
+			return
+		}
+		if elevated {
+			c.Next()
+			return
+		}
+		hint, herr := checker.SudoFactorHint(c.Request.Context(), user.Id)
+		if herr != nil {
+			hint = ""
+		}
+		checker.RecordSudoFailure(c.Request.Context(), user.Id, session.Id, ClientIP(c.Request), c.Request.UserAgent())
+		c.AbortWithStatusJSON(http.StatusForbidden, &errs.ApiError{
+			Code:    "AUTH_SUDO_REQUIRED",
+			Message: "This action requires re-authentication.",
+			Detail:  &hint,
+			Status:  http.StatusForbidden,
+		})
+	}
+}
+
 // trustedProxyHops is how many reverse proxies in front of Stargate append to
 // X-Forwarded-For. Configured at startup from
 // [security] trustedProxyHops (default 1: one edge proxy, e.g. Blade).

@@ -67,6 +67,47 @@ func (s *dyAuthService) ValidateCaptcha(ctx context.Context, req *gen.DyValidate
 	return &gen.DyValidateResponse{Valid: valid}, nil
 }
 
+// ValidateSudo mirrors AuthServiceGrpc.ValidateSudo: report whether the
+// session currently holds a live elevation ("sudo") grant, plus the factor
+// type names the client may use to elevate. The elevation store is
+// authoritative — when it cannot be consulted the RPC fails so callers fail
+// closed instead of mistaking "cannot verify" for "not elevated".
+func (s *dyAuthService) ValidateSudo(ctx context.Context, req *gen.DyValidateSudoRequest) (*gen.DyValidateSudoResponse, error) {
+	sessionID, err := uuid.Parse(strings.TrimSpace(req.GetSessionId()))
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "session_id is required")
+	}
+	session, err := s.d.Store.GetSessionWithAccount(ctx, sessionID)
+	if err != nil {
+		// An unknown session is simply not elevated; any other failure means
+		// the elevation state cannot be resolved and must not be guessed.
+		if errors.Is(err, store.ErrNotFound) {
+			return &gen.DyValidateSudoResponse{Valid: false}, nil
+		}
+		return nil, status.Errorf(codes.Internal, "load session: %v", err)
+	}
+	elevated, err := s.d.Auth.IsSudoElevated(ctx, sessionID.String())
+	if err != nil {
+		if errors.Is(err, auth.ErrSudoUnavailable) {
+			return nil, status.Errorf(codes.Unavailable, "%v", err)
+		}
+		return nil, status.Errorf(codes.Internal, "check elevation: %v", err)
+	}
+	hint, err := s.d.Auth.SudoFactorHint(ctx, session.AccountId)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "resolve sudo factors: %v", err)
+	}
+	return &gen.DyValidateSudoResponse{Valid: elevated, FactorTypes: splitFactorTypes(hint)}, nil
+}
+
+// splitFactorTypes turns the comma-joined factor hint into the proto list.
+func splitFactorTypes(hint string) []string {
+	if hint == "" {
+		return nil
+	}
+	return strings.Split(hint, ",")
+}
+
 // GetOnlineDevices returns the account's devices with a live wsgateway
 // connection, enriched with device identity and non-expired sessions.
 func (s *dyAuthService) GetOnlineDevices(ctx context.Context, req *gen.DyGetOnlineDevicesRequest) (*gen.DyGetOnlineDevicesResponse, error) {

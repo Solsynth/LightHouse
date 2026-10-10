@@ -292,6 +292,8 @@ var errorCodeCategories = []errorCodeCategory{
 		{Code: "OIDC_CONNECTION_SAVE_ERROR", Name: "OidcConnectionSaveError"},
 		{Code: "OIDC_SERVER_ERROR", Name: "OidcServerError"},
 		{Code: "AUTH_SCOPE_REQUIRED", Name: "AuthScopeRequired"},
+		{Code: "AUTH_SUDO_REQUIRED", Name: "AuthSudoRequired"},
+		{Code: "AUTH_NO_AUTH_FACTORS", Name: "AuthNoAuthFactors"},
 		{Code: "PERMISSION_CHECK_ERROR", Name: "PermissionCheckError"},
 		{Code: "PERMISSION_LIST_ERROR", Name: "PermissionListError"},
 		{Code: "PERMISSION_ADD_ERROR", Name: "PermissionAddError"},

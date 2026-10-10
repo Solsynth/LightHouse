@@ -196,6 +196,12 @@ type SecurityConfig struct {
 	// (see hint in config.example.toml). "0" disables the suppression.
 	RecentLoginGrace     string `toml:"recentLoginGrace"`
 	TrustedSessionMaxGap string `toml:"trustedSessionMaxGap"`
+	// SudoModeLifetime is how long an elevation ("sudo") grant lasts once a
+	// session completes an elevation challenge. Defaults to "5m".
+	SudoModeLifetime string `toml:"sudoModeLifetime"`
+	// SudoChallengeLifetime is how long an elevation challenge (and its
+	// emailed fallback code) stays valid. Defaults to "10m".
+	SudoChallengeLifetime string `toml:"sudoChallengeLifetime"`
 }
 
 // Fail2banWindowDuration parses the fail2ban counting window.
@@ -242,6 +248,25 @@ func (s SecurityConfig) TrustedSessionMaxGapDuration() time.Duration {
 		return d
 	}
 	return 720 * time.Hour // 30 days
+}
+
+// SudoModeLifetimeDuration parses how long an elevation grant lasts. A
+// missing/invalid value falls back to 5 minutes.
+func (s SecurityConfig) SudoModeLifetimeDuration() time.Duration {
+	if d, err := time.ParseDuration(s.SudoModeLifetime); err == nil && d > 0 {
+		return d
+	}
+	return 5 * time.Minute
+}
+
+// SudoChallengeLifetimeDuration parses how long an elevation challenge (and
+// its emailed fallback code) stays valid. A missing/invalid value falls back
+// to 10 minutes.
+func (s SecurityConfig) SudoChallengeLifetimeDuration() time.Duration {
+	if d, err := time.ParseDuration(s.SudoChallengeLifetime); err == nil && d > 0 {
+		return d
+	}
+	return 10 * time.Minute
 }
 
 type ServiceTarget struct {
@@ -392,6 +417,8 @@ func Default() *Config {
 	cfg.Security.TrustedProxyHops = 1
 	cfg.Security.RecentLoginGrace = "30m"
 	cfg.Security.TrustedSessionMaxGap = "720h"
+	cfg.Security.SudoModeLifetime = "5m"
+	cfg.Security.SudoChallengeLifetime = "10m"
 	return cfg
 }
 
@@ -469,6 +496,8 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("STARGATE_SECURITY_CHALLENGEWINDOW", &cfg.Security.ChallengeWindow)
 	setStr("STARGATE_SECURITY_TRUSTEDSESSIONMAXGAP", &cfg.Security.TrustedSessionMaxGap)
 	setStr("STARGATE_SECURITY_RECENTLOGINGRACE", &cfg.Security.RecentLoginGrace)
+	setStr("STARGATE_SECURITY_SUDOMODELIFETIME", &cfg.Security.SudoModeLifetime)
+	setStr("STARGATE_SECURITY_SUDOCHALLENGELIFETIME", &cfg.Security.SudoChallengeLifetime)
 }
 
 func setStr(key string, dst *string) {

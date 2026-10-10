@@ -93,6 +93,8 @@ const (
 	ActionLogAuthFactorDelete              ActionLogType = "accounts.auth_factors.delete"
 	ActionLogAuthFactorResetPassword       ActionLogType = "accounts.auth_factors.reset_password"
 	ActionLogAccountRecovery               ActionLogType = "accounts.recovery"
+	ActionLogAccountSudoElevate            ActionLogType = "accounts.sudo.elevate"
+	ActionLogAccountSudoFailure            ActionLogType = "accounts.sudo.failure"
 	ActionLogSessionRevoke                 ActionLogType = "developer.sessions.revoke"
 	ActionLogDeviceRevoke                  ActionLogType = "developer.devices.revoke"
 	ActionLogDeviceRename                  ActionLogType = "developer.devices.rename"

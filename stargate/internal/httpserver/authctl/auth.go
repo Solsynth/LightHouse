@@ -83,8 +83,8 @@ func Register(api *gin.RouterGroup, d Deps) {
 		authGroup.POST("/challenge/:id/passkey/start", h.startPasskeyChallenge)
 		authGroup.POST("/challenge/:id/passkey/complete", h.completePasskeyChallenge)
 		authGroup.GET("/challenge/pending", middleware.RequireAuth(), middleware.RequireInteractive(), h.getPendingChallenges)
-		authGroup.POST("/challenge/:id/approve", middleware.RequireAuth(), middleware.RequireInteractive(), h.approveChallenge)
-		authGroup.POST("/challenge/:id/decline", middleware.RequireAuth(), middleware.RequireInteractive(), h.declineChallenge)
+		authGroup.POST("/challenge/:id/approve", middleware.RequireAuth(), middleware.RequireInteractive(), middleware.RequireSudo(), h.approveChallenge)
+		authGroup.POST("/challenge/:id/decline", middleware.RequireAuth(), middleware.RequireInteractive(), middleware.RequireSudo(), h.declineChallenge)
 		authGroup.POST("/passkey/start", h.startPasskeyLogin)
 		authGroup.POST("/passkey/:id/complete", h.completePasskeyLogin)
 		authGroup.POST("/token", h.exchangeToken)
@@ -94,7 +94,7 @@ func Register(api *gin.RouterGroup, d Deps) {
 		authGroup.POST("/logout", middleware.RequireAuth(), middleware.RequireInteractive(), h.logout)
 		authGroup.POST("/login/session", middleware.RequireAuth(), middleware.RequireInteractive(), h.loginFromSession)
 		authGroup.GET("/me", middleware.RequireAuth(), h.getCurrentAuthIdentity)
-		authGroup.POST("/sudo", middleware.RequireAuth(), middleware.RequireInteractive(), h.enableSudoMode)
+		authGroup.POST("/sudo", middleware.RequireAuth(), middleware.RequireInteractive(), h.createSudoChallenge)
 	}
 
 	qr := api.Group("/auth/qr")
@@ -601,6 +601,30 @@ func (h *handler) challengeBoundToCaller(c *gin.Context, challenge *model.AuthCh
 	return sameUserAgent(challenge.UserAgent, c.Request.UserAgent())
 }
 
+// elevationCallerAllowed reports whether the request carries the session an
+// elevation challenge is bound to. Elevation is granted to that session, so
+// acting on the challenge requires holding it.
+func (h *handler) elevationCallerAllowed(c *gin.Context, challenge *model.AuthChallenge) bool {
+	if challenge.SessionId == nil || *challenge.SessionId == "" {
+		return false
+	}
+	session := middleware.CurrentSession(c.Request.Context())
+	return session != nil && session.Id == *challenge.SessionId
+}
+
+// challengeCallerAllowed reports whether the caller may read the challenge's
+// factor surface: the anonymous IP/user-agent binding, or — for an elevation
+// challenge — the session it is bound to.
+func (h *handler) challengeCallerAllowed(c *gin.Context, challenge *model.AuthChallenge) bool {
+	if h.challengeBoundToCaller(c, challenge) {
+		return true
+	}
+	if challenge.Purpose == model.AuthChallengePurposeSudo {
+		return h.elevationCallerAllowed(c, challenge)
+	}
+	return false
+}
+
 func (h *handler) getChallengeFactors(c *gin.Context) {
 	id, ok := parseUUIDParam(c, "id")
 	if !ok {
@@ -613,7 +637,7 @@ func (h *handler) getChallengeFactors(c *gin.Context) {
 		return
 	}
 	// A foreign challenge is indistinguishable from a missing one.
-	if !h.challengeBoundToCaller(c, challenge) {
+	if !h.challengeCallerAllowed(c, challenge) {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
 		return
 	}
@@ -631,6 +655,18 @@ func (h *handler) getChallengeFactors(c *gin.Context) {
 			model.AuthFactorType(f.Type) != model.AuthFactorTypeQrLogin {
 			result = append(result, f)
 		}
+	}
+	// An elevation challenge with the emailed fallback armed advertises one
+	// synthetic factor whose id is the challenge id: requesting its code
+	// emails a fallback code and verifying it decrements by 2.
+	if challenge.Purpose == model.AuthChallengePurposeSudo && challenge.ExtraFactorType != nil {
+		result = append(result, model.AuthFactor{
+			Id:          challenge.Id,
+			Type:        model.AuthFactorType(*challenge.ExtraFactorType),
+			Trustworthy: 2,
+			EnabledAt:   challenge.CreatedAt,
+			AccountId:   challenge.AccountId,
+		})
 	}
 	c.JSON(http.StatusOK, result)
 }
@@ -657,6 +693,27 @@ func (h *handler) requestFactorCode(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
 		return
+	}
+	// Elevation challenges admit the session they are bound to; their
+	// synthetic emailed fallback (id == challenge id) issues its code here.
+	if challenge.Purpose == model.AuthChallengePurposeSudo {
+		if !h.elevationCallerAllowed(c, challenge) {
+			c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+			return
+		}
+		if factorID == id && challenge.ExtraFactorType != nil {
+			account, err := h.d.Store.GetAccountByID(ctx, uuid.MustParse(challenge.AccountId))
+			if err != nil {
+				c.JSON(http.StatusNotFound, errs.New("AUTH_ACCOUNT_NOT_FOUND", "Account was not found.", http.StatusNotFound))
+				return
+			}
+			if err := h.sendSudoFallbackCode(ctx, account, challenge); err != nil {
+				c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_SEND_FAILED", err.Error()))
+				return
+			}
+			c.Status(http.StatusOK)
+			return
+		}
 	}
 	factor, err := h.d.Store.GetAuthFactorByID(ctx, challenge.AccountId, factorID)
 	if err != nil {
@@ -700,6 +757,20 @@ func (h *handler) doChallenge(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
 		return
+	}
+	// Elevation challenges are acted on by the session they are bound to. The
+	// synthetic emailed fallback (factor id == challenge id) verifies against
+	// its Redis code and drops the demand by 2; anything else falls through to
+	// the ordinary factor path below.
+	if challenge.Purpose == model.AuthChallengePurposeSudo {
+		if !h.elevationCallerAllowed(c, challenge) {
+			c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+			return
+		}
+		if req.FactorId == challenge.Id && challenge.ExtraFactorType != nil {
+			h.doChallengeSudoFallback(c, challenge, req.Password)
+			return
+		}
 	}
 	factorID, err := uuid.Parse(req.FactorId)
 	if err != nil {
@@ -775,7 +846,72 @@ func (h *handler) doChallenge(c *gin.Context) {
 	}
 
 	if challenge.StepRemain == 0 {
-		h.pushLoginNotification(ctx, challenge, true)
+		if challenge.Purpose == model.AuthChallengePurposeSudo {
+			if err := h.completeSudoElevation(ctx, challenge); err != nil {
+				h.logError("grant sudo elevation", err)
+				c.JSON(http.StatusServiceUnavailable, errs.New("SERVICE_UNAVAILABLE", "Elevation could not be verified.", http.StatusServiceUnavailable))
+				return
+			}
+		} else {
+			h.pushLoginNotification(ctx, challenge, true)
+		}
+	}
+	c.JSON(http.StatusOK, challenge)
+}
+
+// doChallengeSudoFallback verifies the synthetic emailed fallback step of an
+// elevation challenge (factor id == challenge id). On success it drops the
+// demand by 2 and, when the challenge completes, grants the elevation.
+func (h *handler) doChallengeSudoFallback(c *gin.Context, challenge *model.AuthChallenge, code string) {
+	ctx := c.Request.Context()
+	if challenge.StepRemain == 0 {
+		c.JSON(http.StatusOK, challenge)
+		return
+	}
+	now := time.Now().UTC()
+	if challenge.ExpiredAt != nil && now.After(challenge.ExpiredAt.Time()) {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_EXPIRED", "Auth challenge has expired."))
+		return
+	}
+	if containsString(challenge.BlacklistFactors, challenge.Id) {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_ALREADY_USED", "Auth factor already used."))
+		return
+	}
+	if cfg := h.d.Cfg; cfg != nil {
+		if !risk.IPAllowed(ctx, h.d.Redis, cfg, derefStr(challenge.IpAddress)) {
+			c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+				"Too many failed sign-in attempts. Try again later.", http.StatusTooManyRequests))
+			return
+		}
+		if maxAttempts := cfg.Security.MaxChallengeAttempts; maxAttempts > 0 && challenge.FailedAttempts >= maxAttempts {
+			c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+				"Too many failed attempts for this sign-in attempt. Start a new one.", http.StatusTooManyRequests))
+			return
+		}
+	}
+	if !h.verifySudoFallbackCode(ctx, challenge, code) {
+		challenge.FailedAttempts++
+		challenge.UpdatedAt = model.NewTime(now)
+		_ = h.d.Store.UpdateAuthChallenge(ctx, challenge)
+		risk.RecordFailure(ctx, h.d.Redis, h.d.Cfg, derefStr(challenge.IpAddress))
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_PASSWORD", "Invalid password."))
+		return
+	}
+	challenge.StepRemain -= 2
+	if challenge.StepRemain < 0 {
+		challenge.StepRemain = 0
+	}
+	challenge.BlacklistFactors = append(challenge.BlacklistFactors, challenge.Id)
+	challenge.UpdatedAt = model.NewTime(now)
+	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
+		h.logError("update challenge", err)
+	}
+	if challenge.StepRemain == 0 {
+		if err := h.completeSudoElevation(ctx, challenge); err != nil {
+			h.logError("grant sudo elevation", err)
+			c.JSON(http.StatusServiceUnavailable, errs.New("SERVICE_UNAVAILABLE", "Elevation could not be verified.", http.StatusServiceUnavailable))
+			return
+		}
 	}
 	c.JSON(http.StatusOK, challenge)
 }
@@ -816,7 +952,12 @@ func (h *handler) maybeEscalateFailure(ctx context.Context, challenge *model.Aut
 // Factor verification (mirrors AccountService.VerifyFactorCode + SendFactorCode)
 // ---------------------------------------------------------------------------
 
-const authFactorCodePrefix = "authfactor:"
+const (
+	authFactorCodePrefix = "authfactor:"
+	// sudoFallbackCodePrefix keys the emailed fallback code of an elevation
+	// challenge: sudoFallbackCodePrefix + challenge id + ":code".
+	sudoFallbackCodePrefix = "authsudo:"
+)
 
 func (h *handler) verifyFactorCode(ctx context.Context, factor *model.AuthFactor, code string) (bool, error) {
 	switch model.AuthFactorType(factor.Type) {
@@ -1115,6 +1256,10 @@ func (h *handler) startPasskeyChallenge(c *gin.Context) {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
 		return
 	}
+	if challenge.Purpose == model.AuthChallengePurposeSudo && !h.elevationCallerAllowed(c, challenge) {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
 	factors, err := h.d.Store.GetAuthFactors(ctx, uuid.MustParse(challenge.AccountId))
 	if err != nil {
 		h.logError("load factors", err)
@@ -1189,6 +1334,10 @@ func (h *handler) completePasskeyChallenge(c *gin.Context) {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
 		return
 	}
+	if challenge.Purpose == model.AuthChallengePurposeSudo && !h.elevationCallerAllowed(c, challenge) {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
 	factor, err := h.d.Store.GetAuthFactorByType(ctx, challenge.AccountId, model.AuthFactorTypePasskey)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_PASSKEY_FACTOR_NOT_ENABLED", "Passkey factor is not enabled."))
@@ -1256,7 +1405,15 @@ func (h *handler) completePasskeyChallenge(c *gin.Context) {
 		h.publishChallengePending(ctx, challenge)
 	}
 	if challenge.StepRemain == 0 {
-		h.pushLoginNotification(ctx, challenge, true)
+		if challenge.Purpose == model.AuthChallengePurposeSudo {
+			if err := h.completeSudoElevation(ctx, challenge); err != nil {
+				h.logError("grant sudo elevation", err)
+				c.JSON(http.StatusServiceUnavailable, errs.New("SERVICE_UNAVAILABLE", "Elevation could not be verified.", http.StatusServiceUnavailable))
+				return
+			}
+		} else {
+			h.pushLoginNotification(ctx, challenge, true)
+		}
 	}
 	c.JSON(http.StatusOK, challenge)
 }
@@ -1450,11 +1607,6 @@ func (h *handler) getPendingChallenges(c *gin.Context) {
 	c.JSON(http.StatusOK, challenges)
 }
 
-// sudoRequest mirrors SudoRequest.
-type sudoRequest struct {
-	PinCode *string `json:"pin_code"`
-}
-
 func (h *handler) approveChallenge(c *gin.Context) {
 	ctx := c.Request.Context()
 	user := middleware.CurrentUser(ctx)
@@ -1472,19 +1624,8 @@ func (h *handler) approveChallenge(c *gin.Context) {
 			"Only trusted sessions can approve or decline login attempts.", http.StatusForbidden))
 		return
 	}
-	var req sudoRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
-		return
-	}
-	valid, err := h.d.Auth.ValidateSudoMode(ctx, session, req.PinCode)
-	if err != nil {
-		h.logError("validate sudo mode", err)
-	}
-	if !valid {
-		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_PIN", "Invalid PIN code."))
-		return
-	}
+	// Elevation is enforced by middleware.RequireSudo on this route; approve
+	// and decline no longer accept a PIN.
 	id, ok := parseUUIDParam(c, "id")
 	if !ok {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
@@ -1548,19 +1689,8 @@ func (h *handler) declineChallenge(c *gin.Context) {
 			"Only trusted sessions can approve or decline login attempts.", http.StatusForbidden))
 		return
 	}
-	var req sudoRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
-		return
-	}
-	valid, err := h.d.Auth.ValidateSudoMode(ctx, session, req.PinCode)
-	if err != nil {
-		h.logError("validate sudo mode", err)
-	}
-	if !valid {
-		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_PIN", "Invalid PIN code."))
-		return
-	}
+	// Elevation is enforced by middleware.RequireSudo on this route; approve
+	// and decline no longer accept a PIN.
 	id, ok := parseUUIDParam(c, "id")
 	if !ok {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
@@ -1636,6 +1766,12 @@ func (h *handler) exchangeToken(c *gin.Context) {
 		challenge, err := h.d.Store.GetAuthChallenge(ctx, challengeID)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Authorization code not found or expired.", http.StatusBadRequest))
+			return
+		}
+		// An elevation challenge grants sudo to the session it is bound to; it
+		// must never be exchanged into a login session.
+		if challenge.Purpose == model.AuthChallengePurposeSudo {
+			c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_CODE", "Invalid or missing authorization code."))
 			return
 		}
 		punishment, err := h.d.Store.GetActivePunishmentOverview(ctx, challenge.AccountId)
@@ -1976,29 +2112,6 @@ func (h *handler) getCurrentAuthIdentity(c *gin.Context) {
 	})
 }
 
-func (h *handler) enableSudoMode(c *gin.Context) {
-	ctx := c.Request.Context()
-	session := middleware.CurrentSession(ctx)
-	if session == nil {
-		c.JSON(http.StatusUnauthorized, errs.New("AUTH_SESSION_REQUIRED", "A valid session is required.", http.StatusUnauthorized))
-		return
-	}
-	var req sudoRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
-		return
-	}
-	valid, err := h.d.Auth.ValidateSudoMode(ctx, session, req.PinCode)
-	if err != nil {
-		h.logError("validate sudo mode", err)
-	}
-	if !valid {
-		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_PIN", "Invalid PIN code."))
-		return
-	}
-	c.Status(http.StatusOK)
-}
-
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
@@ -2153,4 +2266,237 @@ func (h *handler) logError(msg string, err error) {
 	if h.d.Log != nil {
 		h.d.Log.Warn(msg, "error", err)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Elevation ("sudo") challenges
+// ---------------------------------------------------------------------------
+
+// sudoChallengeLifetime is how long an elevation challenge (and its emailed
+// fallback code) stays valid.
+func (h *handler) sudoChallengeLifetime() time.Duration {
+	if h.d.Cfg == nil {
+		return 10 * time.Minute
+	}
+	return h.d.Cfg.Security.SudoChallengeLifetimeDuration()
+}
+
+// sudoFallbackKey is the Redis key holding an elevation challenge's emailed
+// fallback code.
+func sudoFallbackKey(challengeID string) string {
+	return sudoFallbackCodePrefix + challengeID + ":code"
+}
+
+// sendSudoFallbackCode emails a 6-digit fallback code for an elevation
+// challenge and stores it in Redis. A live code is never replaced (a resend is
+// refused, mirroring sendFactorCode); a missing verified contact is an error
+// (no code can arrive).
+func (h *handler) sendSudoFallbackCode(ctx context.Context, account *model.Account, challenge *model.AuthChallenge) error {
+	if h.d.Redis == nil || !h.d.Redis.Available() {
+		return errors.New("email factor code service is unavailable")
+	}
+	key := sudoFallbackKey(challenge.Id)
+	var cached string
+	if found, _ := h.d.Redis.Cache.Get(ctx, key, &cached); found && cached != "" {
+		return errors.New("A factor code has been sent and in active duration.")
+	}
+	contact, err := h.d.Store.GetEmailContactForNotify(ctx, account.Id, true)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return errors.New("Account has no verified email contact that can receive a code.")
+		}
+		return err
+	}
+	if h.d.Spells == nil {
+		return errors.New("email factor code delivery is not configured")
+	}
+	code := fmt.Sprintf("%06d", mathrand.IntN(900000)+100000)
+	if err := h.d.Spells.SendFactorCodeEmail(ctx, account, contact.Content, code); err != nil {
+		return err
+	}
+	return h.d.Redis.Cache.Set(ctx, key, code, h.sudoChallengeLifetime())
+}
+
+// verifySudoFallbackCode checks a submitted fallback code against Redis and
+// consumes it on success.
+func (h *handler) verifySudoFallbackCode(ctx context.Context, challenge *model.AuthChallenge, code string) bool {
+	if h.d.Redis == nil || !h.d.Redis.Available() {
+		return false
+	}
+	key := sudoFallbackKey(challenge.Id)
+	var cached string
+	found, err := h.d.Redis.Cache.Get(ctx, key, &cached)
+	if err != nil || !found || cached == "" || cached != code {
+		return false
+	}
+	_ = h.d.Redis.Cache.Remove(ctx, key)
+	return true
+}
+
+// completeSudoElevation grants the elevation to the challenge's bound session,
+// records the action log and publishes the completion event. No tokens are
+// minted.
+func (h *handler) completeSudoElevation(ctx context.Context, challenge *model.AuthChallenge) error {
+	sessionID := derefStr(challenge.SessionId)
+	if sessionID == "" {
+		return errors.New("elevation challenge is not bound to a session")
+	}
+	until, err := h.d.Auth.GrantSudo(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	challenge.SudoUntil = model.NewTime(until)
+	challenge.UpdatedAt = model.NewTime(time.Now().UTC())
+	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
+		h.logError("update elevation challenge", err)
+	}
+	h.d.Auth.RecordSudoElevated(ctx, challenge)
+	// A completed elevation releases its per-IP new-challenge quota slot,
+	// mirroring a completed login.
+	risk.ReleaseChallenge(ctx, h.d.Redis, derefStr(challenge.IpAddress), challenge.Id)
+	// The bound session's client polls the challenge document (it carries
+	// sudo_until); the event lets the account's other devices observe the
+	// elevation. Mirrors the challenge-completion side effects of the login
+	// flow.
+	h.publishWS(ctx, challenge.AccountId, "auth.challenge.completed", map[string]any{
+		"challenge_id": challenge.Id,
+		"purpose":      challenge.Purpose,
+		"sudo_until":   challenge.SudoUntil,
+	})
+	return nil
+}
+
+// createSudoChallenge ports POST /api/auth/sudo: it mints an elevation
+// challenge for the caller's own account, bound to the current session, IP and
+// user agent. Completing it (doChallenge) sets the session's elevation flag;
+// no tokens or sessions are minted.
+func (h *handler) createSudoChallenge(c *gin.Context) {
+	ctx := c.Request.Context()
+	if !h.requireCache(c) {
+		return
+	}
+	user := middleware.CurrentUser(ctx)
+	session := middleware.CurrentSession(ctx)
+	if user == nil || session == nil {
+		c.JSON(http.StatusUnauthorized, errs.New("AUTH_UNAUTHORIZED", "Authentication is required.", http.StatusUnauthorized))
+		return
+	}
+
+	now := time.Now().UTC()
+	ipAddress := middleware.ClientIP(c.Request)
+	userAgent := c.Request.UserAgent()
+
+	// Rate limits mirror createChallenge: a fail2banned IP is refused, and the
+	// per-IP new-challenge quota is claimed before any further work (released
+	// once the elevation completes).
+	if !risk.IPAllowed(ctx, h.d.Redis, h.d.Cfg, ipAddress) {
+		c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+			"Too many failed sign-in attempts. Try again later.", http.StatusTooManyRequests))
+		return
+	}
+	challengeID := uuid.NewString()
+	if !risk.ChallengeAllowed(ctx, h.d.Redis, h.d.Cfg, ipAddress, challengeID) {
+		c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+			"Too many sign-in attempts from this network. Try again later.", http.StatusTooManyRequests))
+		return
+	}
+
+	steps, err := h.allRequiredStepCount(ctx, user.Id)
+	if err != nil {
+		h.logError("sudo step count", err)
+		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+	demand := steps
+	if demand < 2 {
+		demand = 2
+	}
+
+	factors, err := h.d.Store.GetAuthFactors(ctx, uuid.MustParse(user.Id))
+	if err != nil {
+		h.logError("sudo factors", err)
+		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+	// usableWeight counts every factor that can reduce the demand (including
+	// passkeys, which complete it through the assertion endpoints);
+	// completableWeight only the pickable factors, which is what decides
+	// whether the emailed fallback is offered.
+	usableWeight := 0
+	completableWeight := 0
+	for _, f := range factors {
+		if f.EnabledAt == nil || f.Trustworthy < 1 {
+			continue
+		}
+		ft := model.AuthFactorType(f.Type)
+		if ft == model.AuthFactorTypeRecoveryCode || ft == model.AuthFactorTypePinCode {
+			continue
+		}
+		usableWeight += f.Trustworthy
+		switch ft {
+		case model.AuthFactorTypePasskey, model.AuthFactorTypeInAppCode, model.AuthFactorTypeQrLogin:
+			// Not usable as a pickable factor of an elevation challenge.
+		default:
+			completableWeight += f.Trustworthy
+		}
+	}
+	fallbackArmed := completableWeight < 2
+	if fallbackArmed {
+		if _, cerr := h.d.Store.GetEmailContactForNotify(ctx, user.Id, true); cerr != nil {
+			if errors.Is(cerr, store.ErrNotFound) {
+				fallbackArmed = false
+			} else {
+				h.logError("sudo fallback contact", cerr)
+				risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
+				c.JSON(http.StatusServiceUnavailable, errs.New("SERVICE_UNAVAILABLE", "An internal server error occurred.", http.StatusServiceUnavailable))
+				return
+			}
+		}
+	}
+	// Fail closed: an account that cannot reach the elevation demand — even
+	// with the emailed fallback — must not be able to start an elevation.
+	reachable := usableWeight
+	if fallbackArmed {
+		reachable += 2
+	}
+	if reachable < demand {
+		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
+		c.JSON(http.StatusForbidden, errs.New("AUTH_NO_AUTH_FACTORS",
+			"Account has no authentication factors that can satisfy re-authentication.", http.StatusForbidden))
+		return
+	}
+
+	deviceName := userAgent
+	challenge := &model.AuthChallenge{
+		Id:         challengeID,
+		ExpiredAt:  model.NewTime(now.Add(h.sudoChallengeLifetime())),
+		StepTotal:  demand,
+		StepRemain: demand,
+		Audiences:  []string{},
+		Scopes:     []string{},
+		IpAddress:  &ipAddress,
+		UserAgent:  &userAgent,
+		Location:   h.d.Geo.GetPointFromIp(ipAddress),
+		DeviceId:   session.Id,
+		DeviceName: &deviceName,
+		Platform:   model.ClientPlatformUnidentified,
+		AccountId:  user.Id,
+		Purpose:    model.AuthChallengePurposeSudo,
+		SessionId:  &session.Id,
+		CreatedAt:  model.NewTime(now),
+		UpdatedAt:  model.NewTime(now),
+	}
+	if fallbackArmed {
+		ftype := int(model.AuthFactorTypeEmailCode)
+		challenge.ExtraFactorType = &ftype
+	}
+	if err := h.d.Store.CreateAuthChallenge(ctx, challenge); err != nil {
+		h.logError("create elevation challenge", err)
+		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+	c.JSON(http.StatusOK, challenge)
 }

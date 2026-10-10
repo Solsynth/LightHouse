@@ -148,6 +148,9 @@ func run(log *slog.Logger) error {
 	}
 	geoService := geo.NewService(cfg.GeoIP.DatabasePath)
 	authService := auth.NewAuthService(st, rc, cfg, geoService, jwtService, tokenAuth, nc, logs, log)
+	// Elevation ("sudo") checker for middleware.RequireSudo: gated routes ask
+	// the auth service whether the session holds a live grant.
+	middleware.SetSudoChecker(authService)
 
 	permService := permission.New(database)
 

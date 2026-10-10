@@ -77,15 +77,15 @@ func Register(api *gin.RouterGroup, d Deps) {
 
 	// ── Auth factors ──
 	security.GET("factors", c.getAuthFactors)
-	security.POST("factors", c.createAuthFactor)
+	security.POST("factors", middleware.RequireAuth(), middleware.RequireSudo(), c.createAuthFactor)
 	security.POST("factors/passkey/start", c.startPasskeyRegistration)
-	security.POST("factors/passkey/complete", c.completePasskeyRegistration)
+	security.POST("factors/passkey/complete", middleware.RequireAuth(), middleware.RequireSudo(), c.completePasskeyRegistration)
 	security.GET("factors/passkey", c.getPasskeys)
 	security.PATCH("factors/passkey/:id", c.updatePasskey)
-	security.DELETE("factors/passkey/:id", c.deletePasskey)
-	security.POST("factors/:id/enable", c.enableAuthFactor)
-	security.POST("factors/:id/disable", c.disableAuthFactor)
-	security.DELETE("factors/:id", c.deleteAuthFactor)
+	security.DELETE("factors/passkey/:id", middleware.RequireAuth(), middleware.RequireSudo(), c.deletePasskey)
+	security.POST("factors/:id/enable", middleware.RequireAuth(), middleware.RequireSudo(), c.enableAuthFactor)
+	security.POST("factors/:id/disable", middleware.RequireAuth(), middleware.RequireSudo(), c.disableAuthFactor)
+	security.DELETE("factors/:id", middleware.RequireAuth(), middleware.RequireSudo(), c.deleteAuthFactor)
 
 	// ── Sessions ──
 	security.GET("sessions", c.getSessions)
@@ -101,12 +101,12 @@ func Register(api *gin.RouterGroup, d Deps) {
 
 	// ── Contacts ──
 	security.GET("contacts", c.getContacts)
-	security.POST("contacts", c.createContact)
-	security.POST("contacts/:id/verify", c.verifyContact)
-	security.POST("contacts/:id/primary", c.setPrimaryContact)
+	security.POST("contacts", middleware.RequireAuth(), middleware.RequireSudo(), c.createContact)
+	security.POST("contacts/:id/verify", middleware.RequireAuth(), middleware.RequireSudo(), c.verifyContact)
+	security.POST("contacts/:id/primary", middleware.RequireAuth(), middleware.RequireSudo(), c.setPrimaryContact)
 	security.POST("contacts/:id/public", c.setPublicContact)
 	security.DELETE("contacts/:id/public", c.unsetPublicContact)
-	security.DELETE("contacts/:id", c.deleteContact)
+	security.DELETE("contacts/:id", middleware.RequireAuth(), middleware.RequireSudo(), c.deleteContact)
 
 	// ── Security preferences ──
 	security.GET("security/preferences", c.getSecurityPreferences)
@@ -119,9 +119,9 @@ func Register(api *gin.RouterGroup, d Deps) {
 
 	// ── API keys (ApiKeyController; [Authorize] only, no interactive gate) ──
 	api.GET("api-keys", c.listApiKeys)
-	api.POST("api-keys", c.createApiKey)
-	api.DELETE("api-keys/:id", c.revokeApiKey)
-	api.POST("api-keys/:id/rotate", c.rotateApiKey)
+	api.POST("api-keys", middleware.RequireAuth(), middleware.RequireSudo(), c.createApiKey)
+	api.DELETE("api-keys/:id", middleware.RequireAuth(), middleware.RequireSudo(), c.revokeApiKey)
+	api.POST("api-keys/:id/rotate", middleware.RequireAuth(), middleware.RequireSudo(), c.rotateApiKey)
 
 	// ── Connections (ConnectionController; [Authorize] only) ──
 	api.GET("connections", c.getConnections)

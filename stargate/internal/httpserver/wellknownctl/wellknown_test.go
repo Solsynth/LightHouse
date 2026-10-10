@@ -156,10 +156,10 @@ func TestErrorCodesVerbatim(t *testing.T) {
 			seen[it.Code] = it.Name
 		}
 	}
-	if len(seen) != 383 {
-		t.Fatalf("registry has %d distinct codes, want 383", len(seen))
+	if len(seen) != 385 {
+		t.Fatalf("registry has %d distinct codes, want 385", len(seen))
 	}
-	for _, want := range []string{"UNKNOWN_ERROR", "VALIDATION_ERROR", "SERVER_ERROR", "AUTH_ACCOUNT_NOT_FOUND", "QR_CHALLENGE_NOT_FOUND", "SESSION_INTERACTIVE_REQUIRED", "PAGINATION_TAKE_EXCEEDED"} {
+	for _, want := range []string{"UNKNOWN_ERROR", "VALIDATION_ERROR", "SERVER_ERROR", "AUTH_ACCOUNT_NOT_FOUND", "QR_CHALLENGE_NOT_FOUND", "SESSION_INTERACTIVE_REQUIRED", "PAGINATION_TAKE_EXCEEDED", "AUTH_SUDO_REQUIRED", "AUTH_NO_AUTH_FACTORS"} {
 		if _, ok := seen[want]; !ok {
 			t.Fatalf("missing code %q", want)
 		}

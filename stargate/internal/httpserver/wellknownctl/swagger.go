@@ -191,7 +191,7 @@ var padlockSwagger = buildDoc(
 		{path: "/api/auth/recover", method: "POST", tag: "Auth", summary: "Recover an account with a recovery code"},
 		{path: "/api/auth/logout", method: "POST", tag: "Auth", summary: "Log out and revoke the current session"},
 		{path: "/api/auth/login/session", method: "POST", tag: "Auth", summary: "Create a child session token pair"},
-		{path: "/api/auth/sudo", method: "POST", tag: "Auth", summary: "Enable sudo mode for the current session"},
+		{path: "/api/auth/sudo", method: "POST", tag: "Auth", summary: "Create a session elevation (sudo) challenge"},
 
 		{path: "/api/auth/qr/generate", method: "POST", tag: "QR Login", summary: "Generate a QR login challenge"},
 		{path: "/api/auth/qr/{id}", method: "GET", tag: "QR Login", summary: "Get a QR challenge status", params: []string{"id"}, notFound: true},

@@ -44,6 +44,10 @@ func challengeFromEntity(entity *ChallengeEntity) *model.AuthChallenge {
 		CreatedAt:           timePtr(&entity.CreatedAt),
 		UpdatedAt:           timePtr(&entity.UpdatedAt),
 		DeletedAt:           deletedTime(entity.DeletedAt),
+		Purpose:             derefString(entity.Purpose),
+		SessionId:           uuidPtrStr(entity.SessionID),
+		SudoUntil:           timePtr(entity.SudoUntil),
+		ExtraFactorType:     entity.ExtraFactorType,
 	}
 	_ = decodeJSONValue(entity.Audiences, &challenge.Audiences)
 	_ = decodeJSONValue(entity.Scopes, &challenge.Scopes)
@@ -95,6 +99,14 @@ func accountUUID(accountID string) (*uuid.UUID, error) {
 	return &id, nil
 }
 
+// derefString returns the pointed-to string, or "" for nil.
+func derefString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
 // parseUUIDPtr parses an optional uuid string; nil and "" yield nil so the
 // nullable column receives NULL.
 func parseUUIDPtr(value *string) (*uuid.UUID, error) {
@@ -119,6 +131,10 @@ func (s *Store) CreateAuthChallenge(ctx context.Context, ch *model.AuthChallenge
 		return err
 	}
 	approvedBy, err := parseUUIDPtr(ch.ApprovedBySessionId)
+	if err != nil {
+		return err
+	}
+	boundSession, err := parseUUIDPtr(ch.SessionId)
 	if err != nil {
 		return err
 	}
@@ -163,7 +179,19 @@ func (s *Store) CreateAuthChallenge(ctx context.Context, ch *model.AuthChallenge
 		StepRemain:       ch.StepRemain,
 		StepTotal:        ch.StepTotal,
 		UserAgent:        ch.UserAgent,
+		Purpose:          optionalString(ch.Purpose),
+		SessionID:        boundSession,
+		SudoUntil:        timeValue(ch.SudoUntil),
+		ExtraFactorType:  ch.ExtraFactorType,
 	}).Error
+}
+
+// optionalString maps "" to nil so an omitted purpose stores SQL NULL.
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 // jsonbOrEmpty marshals a slice as JSON, using '[]' for nil so jsonb NOT NULL
@@ -190,6 +218,10 @@ func (s *Store) UpdateAuthChallenge(ctx context.Context, ch *model.AuthChallenge
 	if err != nil {
 		return err
 	}
+	boundSession, err := parseUUIDPtr(ch.SessionId)
+	if err != nil {
+		return err
+	}
 	// updated_at comes from the caller (all call sites set it right before
 	// invoking), mirroring the legacy `updated_at = $11` binding.
 	return s.DB.WithContext(ctx).Unscoped().Model(&ChallengeEntity{}).
@@ -205,6 +237,10 @@ func (s *Store) UpdateAuthChallenge(ctx context.Context, ch *model.AuthChallenge
 			"step_remain":            ch.StepRemain,
 			"step_total":             ch.StepTotal,
 			"updated_at":             timeValue(ch.UpdatedAt),
+			"purpose":                optionalString(ch.Purpose),
+			"session_id":             boundSession,
+			"sudo_until":             timeValue(ch.SudoUntil),
+			"extra_factor_type":      ch.ExtraFactorType,
 		}).Error
 }
 

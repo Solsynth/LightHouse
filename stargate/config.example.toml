@@ -200,6 +200,13 @@ recentLoginGrace = "30m"
 # Maximum time since last activity for a native-device session to be
 # considered "trusted" (only trusted sessions may approve/decline logins).
 trustedSessionMaxGap = "720h"
+# How long an elevation ("sudo") grant lasts after a session completes an
+# elevation challenge (POST /api/auth/sudo). Auth-critical mutations require a
+# live grant. Default "5m".
+sudoModeLifetime = "5m"
+# How long an elevation challenge (and its emailed fallback code) stays valid.
+# Default "10m".
+sudoChallengeLifetime = "10m"
 
 # RFC 9116 vulnerability-disclosure block served at /.well-known/security.txt.
 # Falls back to mailto:security@solsynth.dev when unset.

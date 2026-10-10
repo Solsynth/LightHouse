@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -231,6 +232,9 @@ func (s *AuthService) invalidateSessionCaches(ctx context.Context, sessions []st
 		key := "auth:session:" + session.SessionID
 		_ = s.redis.Cache.Remove(ctx, key)
 		_ = s.redis.Raw.Del(ctx, fmt.Sprintf(SessionTokensGroupFmt, session.SessionID)).Err()
+		// Revocation drops the elevation grant: a revoked session must not
+		// keep sudo for as long as the grant's TTL.
+		s.ClearSudo(ctx, session.SessionID)
 	}
 	return nil
 }
@@ -305,6 +309,11 @@ func (s *AuthService) CreateTokenPair(ctx context.Context, session *model.AuthSe
 // CreateSessionAndIssueTokens completes a finished challenge into a session
 // and token pair (mirrors the C# method including the action log).
 func (s *AuthService) CreateSessionAndIssueTokens(ctx context.Context, challenge *model.AuthChallenge) (*TokenPair, error) {
+	if challenge.Purpose == model.AuthChallengePurposeSudo {
+		// Elevation challenges grant sudo to the bound session; they must
+		// never be exchanged into a login session.
+		return nil, &ErrInvalid{Message: "Elevation challenges do not mint sessions."}
+	}
 	if challenge.StepTotal <= 0 {
 		return nil, &ErrInvalid{Message: "Challenge has no authentication factors configured."}
 	}
@@ -552,40 +561,158 @@ func (s *AuthService) TrackAuthenticatedActivity(ctx context.Context, session *m
 	}
 }
 
-// --- Sudo / PIN ---
+// --- Sudo / elevation ---
 
-// ValidateSudoMode mirrors the sudo cache + PIN check.
-func (s *AuthService) ValidateSudoMode(ctx context.Context, session *model.AuthSession, pinCode *string) (bool, error) {
-	if session == nil {
+// ErrSudoUnavailable reports that the elevation store (Redis) could not be
+// consulted. Callers MUST fail closed: treat it as "not elevated" and answer
+// 503, never as an implicit elevation.
+var ErrSudoUnavailable = errors.New("sudo elevation store is unavailable")
+
+// sudoKey is the Redis key holding a session's elevation grant. The value is
+// an opaque flag; the TTL is the grant's remaining lifetime.
+func sudoKey(sessionID string) string { return "accounts:" + sessionID + ":sudo" }
+
+// IsSudoElevated reports whether the session currently holds an elevation
+// grant. It fails closed: an unavailable cache is returned as an error so the
+// caller can answer 503 instead of leaking the request through.
+func (s *AuthService) IsSudoElevated(ctx context.Context, sessionID string) (bool, error) {
+	if sessionID == "" {
 		return false, nil
 	}
-	sudoKey := "accounts:" + session.Id + ":sudo"
-	if s.redis != nil && s.redis.Available() {
-		if found, _ := s.redis.Cache.HasFlag(ctx, sudoKey); found {
-			return true, nil
-		}
+	if s.redis == nil || !s.redis.Available() {
+		return false, ErrSudoUnavailable
 	}
-	hasPin, err := s.hasEnabledFactor(ctx, session.AccountId, model.AuthFactorTypePinCode)
+	found, err := s.redis.Cache.HasFlag(ctx, sudoKey(sessionID))
 	if err != nil {
 		return false, err
 	}
-	if !hasPin {
-		return true, nil
+	return found, nil
+}
+
+// GrantSudo elevates the session for the configured sudo-mode lifetime and
+// returns the instant the grant expires.
+func (s *AuthService) GrantSudo(ctx context.Context, sessionID string) (time.Time, error) {
+	if s.redis == nil || !s.redis.Available() {
+		return time.Time{}, ErrSudoUnavailable
 	}
-	if pinCode == nil || *pinCode == "" {
-		return false, nil
+	lifetime := 5 * time.Minute
+	if s.cfg != nil {
+		lifetime = s.cfg.Security.SudoModeLifetimeDuration()
 	}
-	valid, err := s.ValidatePinCode(ctx, session.AccountId, *pinCode)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return true, nil
+	until := time.Now().UTC().Add(lifetime)
+	if err := s.redis.Cache.SetFlag(ctx, sudoKey(sessionID), lifetime); err != nil {
+		return time.Time{}, err
+	}
+	return until, nil
+}
+
+// ClearSudo drops the elevation grants of the given sessions. Best-effort:
+// revocation must not fail because the cache is unavailable, and a missing
+// grant is not an error.
+func (s *AuthService) ClearSudo(ctx context.Context, sessionIDs ...string) {
+	if s.redis == nil || !s.redis.Available() {
+		return
+	}
+	for _, id := range sessionIDs {
+		if id == "" {
+			continue
 		}
-		return false, err
+		_ = s.redis.Cache.Remove(ctx, sudoKey(id))
 	}
-	if valid && s.redis != nil && s.redis.Available() {
-		_ = s.redis.Cache.SetFlag(ctx, sudoKey, 5*time.Minute)
+}
+
+// sudoFactorTypeName maps a factor type to the lowercase name advertised in
+// the AUTH_SUDO_REQUIRED detail and used to type the synthetic emailed
+// fallback step.
+func sudoFactorTypeName(t model.AuthFactorType) string {
+	switch t {
+	case model.AuthFactorTypePassword:
+		return "password"
+	case model.AuthFactorTypeEmailCode:
+		return "email_code"
+	case model.AuthFactorTypeInAppCode:
+		return "in_app_code"
+	case model.AuthFactorTypeTimedCode:
+		return "timed_code"
+	case model.AuthFactorTypePinCode:
+		return "pin_code"
+	case model.AuthFactorTypeRecoveryCode:
+		return "recovery_code"
+	case model.AuthFactorTypeNfcToken:
+		return "nfc_token"
+	case model.AuthFactorTypePasskey:
+		return "passkey"
+	case model.AuthFactorTypeQrLogin:
+		return "qr_login"
+	default:
+		return strconv.Itoa(int(t))
 	}
-	return valid, nil
+}
+
+// SudoFactorHint returns the comma-joined lowercase factor type names the
+// account may use to elevate. Real factors are the enabled, trustworthy
+// pickable factors; "email_code" is appended when the account has no real
+// factor combination reaching the elevation demand (2) and a verified email
+// contact exists (the emailed fallback).
+func (s *AuthService) SudoFactorHint(ctx context.Context, accountID string) (string, error) {
+	factors, err := s.store.GetAuthFactors(ctx, uuid.MustParse(accountID))
+	if err != nil {
+		return "", err
+	}
+	names := make([]string, 0, len(factors))
+	seen := make(map[model.AuthFactorType]bool, len(factors))
+	completable := 0
+	for _, f := range factors {
+		if f.EnabledAt == nil || f.Trustworthy < 1 {
+			continue
+		}
+		ft := model.AuthFactorType(f.Type)
+		if ft == model.AuthFactorTypeRecoveryCode || ft == model.AuthFactorTypePinCode {
+			continue
+		}
+		if !seen[ft] {
+			seen[ft] = true
+			names = append(names, sudoFactorTypeName(ft))
+		}
+		switch ft {
+		case model.AuthFactorTypePasskey, model.AuthFactorTypeInAppCode, model.AuthFactorTypeQrLogin:
+			// Not usable as a pickable factor of an elevation challenge.
+		default:
+			completable += f.Trustworthy
+		}
+	}
+	if completable < 2 {
+		if _, err := s.store.GetEmailContactForNotify(ctx, accountID, true); err == nil {
+			names = append(names, "email_code")
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return "", err
+		}
+	}
+	return strings.Join(names, ","), nil
+}
+
+// RecordSudoElevated writes the accounts.sudo.elevate action log.
+func (s *AuthService) RecordSudoElevated(ctx context.Context, challenge *model.AuthChallenge) {
+	if s.logs == nil || challenge == nil {
+		return
+	}
+	_ = s.logs.Create(ctx, challenge.AccountId, model.ActionLogAccountSudoElevate, map[string]any{
+		"challenge_id": challenge.Id,
+		"sudo_until":   challenge.SudoUntil,
+	}, deref(challenge.UserAgent), deref(challenge.IpAddress), nil, challenge.SessionId)
+}
+
+// RecordSudoFailure writes the accounts.sudo.failure action log for a gated
+// request that arrived without a live elevation grant.
+func (s *AuthService) RecordSudoFailure(ctx context.Context, accountID, sessionID, ipAddress, userAgent string) {
+	if s.logs == nil || accountID == "" {
+		return
+	}
+	var sid *string
+	if sessionID != "" {
+		sid = &sessionID
+	}
+	_ = s.logs.Create(ctx, accountID, model.ActionLogAccountSudoFailure, map[string]any{}, userAgent, ipAddress, nil, sid)
 }
 
 // ValidatePinCode verifies the account's PIN factor.
@@ -595,10 +722,6 @@ func (s *AuthService) ValidatePinCode(ctx context.Context, accountID string, pin
 		return false, err
 	}
 	return VerifyFactorPassword(factor, pinCode)
-}
-
-func (s *AuthService) hasEnabledFactor(ctx context.Context, accountID string, ftype model.AuthFactorType) (bool, error) {
-	return s.store.HasEnabledFactor(ctx, accountID, ftype)
 }
 
 // --- Recovery ---
