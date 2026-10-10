@@ -335,7 +335,7 @@ func (s *AuthService) CreateSessionAndIssueTokens(ctx context.Context, challenge
 		IpAddress:       challenge.IpAddress,
 		UserAgent:       challenge.UserAgent,
 		Location:        challenge.Location,
-		Scopes:          scopesWithFullScope(challenge.Scopes),
+		Scopes:          scopesOrEmpty(challenge.Scopes),
 		Audiences:       challenge.Audiences,
 		ChallengeId:     &challenge.Id,
 		ClientId:        &device.Id,
@@ -379,21 +379,16 @@ func (s *AuthService) CreateSessionAndIssueTokens(ctx context.Context, challenge
 	return pair, nil
 }
 
-// fullScope is the wildcard scope that grants everything, mirroring
-// PermissionScopeGate.HasFullScope in DysonNetwork.Shared.
-const fullScope = "*"
-
-// scopesWithFullScope appends the full-grant wildcard scope when missing.
-// Normal login sessions always carry it so they bypass permission checks
-// (HasFullScope), matching the C# semantics.
-func scopesWithFullScope(scopes []string) []string {
-	out := append([]string{}, scopes...)
-	for _, scope := range out {
-		if scope == fullScope {
-			return out
-		}
+// scopesOrEmpty materializes a scope list as an empty JSON array: the
+// auth_sessions.scopes column is jsonb NOT NULL and a nil slice would encode as
+// JSON null. Login sessions carry only the scopes the client asked for — the
+// full-grant wildcard "*" is reserved for OAuth sessions, where
+// PermissionScopeGate.HasFullScope honours it.
+func scopesOrEmpty(scopes []string) []string {
+	if scopes == nil {
+		return []string{}
 	}
-	return append(out, fullScope)
+	return scopes
 }
 
 // RefreshGraceAccepted reports whether a presented refresh-token epoch is the
@@ -652,9 +647,9 @@ func (s *AuthService) RecoverAccountWithRecoveryCode(ctx context.Context, accoun
 		UserAgent:     &userAgent,
 		Location:      location,
 		ClientId:      &device.Id,
-		// A recovered account is a fresh login: full-scope access, no app
-		// audiences. Non-empty jsonb is required by the schema.
-		Scopes:    scopesWithFullScope(nil),
+		// A recovered account is a fresh login: no app audiences and no
+		// full-grant wildcard. Non-empty jsonb is required by the schema.
+		Scopes:    []string{},
 		Audiences: []string{},
 	}
 	entity := sessionEntityFrom(session)

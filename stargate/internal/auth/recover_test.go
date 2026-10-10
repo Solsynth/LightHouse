@@ -5,7 +5,7 @@ package auth
 // (SQLSTATE 23502) when using recovery code": RecoverAccountWithRecoveryCode
 // inserted the fresh session without the audiences/scopes jsonb columns,
 // which are NOT NULL in the schema. Recovery must create a normal login
-// session: empty audiences, full scope.
+// session: empty audiences and no full-grant wildcard scope.
 //
 // Mirrors the authorized_apps_test.go convention: skip when Postgres or the
 // dev signing keys are unavailable.
@@ -138,8 +138,8 @@ func TestRecoverAccountWithRecoveryCodeCreatesFullLoginSession(t *testing.T) {
 	if len(audiences) != 0 {
 		t.Fatalf("recovered session audiences = %v, want empty", audiences)
 	}
-	if !slices.Equal(scopes, []string{"*"}) {
-		t.Fatalf("recovered session scopes = %v, want [*]", scopes)
+	if !slices.Equal(scopes, []string{}) {
+		t.Fatalf("recovered session scopes = %v, want empty (no full-grant wildcard)", scopes)
 	}
 
 	// The old session was revoked by the recovery.
@@ -151,12 +151,12 @@ func TestRecoverAccountWithRecoveryCodeCreatesFullLoginSession(t *testing.T) {
 		t.Fatal("old session was not revoked by recovery")
 	}
 
-	// The access token behaves like a normal login: full-scope claim.
+	// The access token behaves like a normal login: no full-grant scope claim.
 	valid, claims := jwtSvc.ValidateJwt(pair.AccessToken)
 	if !valid {
 		t.Fatal("recovery access token does not validate")
 	}
-	if scope, _ := claims["scope"].(string); scope != "*" {
-		t.Fatalf("recovery access token scope claim = %q, want %q", scope, "*")
+	if scope, ok := claims["scope"].(string); ok && scope != "" {
+		t.Fatalf("recovery access token scope claim = %q, want none", scope)
 	}
 }

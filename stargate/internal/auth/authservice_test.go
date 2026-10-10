@@ -5,30 +5,29 @@ import (
 	"testing"
 )
 
-// TestScopesWithFullScope pins the normal-login scope contract: the session
-// scopes always contain the full-grant wildcard "*" (PermissionScopeGate
-// HasFullScope), never duplicated, and the input slice is not mutated.
-func TestScopesWithFullScope(t *testing.T) {
+// TestScopesOrEmpty pins the login scope contract: a login session carries only
+// what the client asked for — never a full-grant wildcard, which
+// PermissionScopeGate.HasFullScope honours for OAuth sessions only — and a nil
+// list is materialized as an empty array because auth_sessions.scopes is jsonb
+// NOT NULL.
+func TestScopesOrEmpty(t *testing.T) {
 	tests := []struct {
 		name   string
 		scopes []string
 		want   []string
 	}{
-		{name: "nil", scopes: nil, want: []string{"*"}},
-		{name: "empty", scopes: []string{}, want: []string{"*"}},
-		{name: "appends to requested scopes", scopes: []string{"openid", "profile"}, want: []string{"openid", "profile", "*"}},
-		{name: "keeps existing wildcard", scopes: []string{"*"}, want: []string{"*"}},
-		{name: "keeps existing wildcard in place", scopes: []string{"openid", "*", "email"}, want: []string{"openid", "*", "email"}},
+		{name: "nil becomes empty", scopes: nil, want: []string{}},
+		{name: "empty stays empty", scopes: []string{}, want: []string{}},
+		{name: "requested scopes pass through", scopes: []string{"openid", "profile"}, want: []string{"openid", "profile"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			original := append([]string{}, tt.scopes...)
-			got := scopesWithFullScope(tt.scopes)
+			got := scopesOrEmpty(tt.scopes)
 			if !slices.Equal(got, tt.want) {
-				t.Fatalf("scopesWithFullScope(%v) = %v, want %v", tt.scopes, got, tt.want)
+				t.Fatalf("scopesOrEmpty(%v) = %v, want %v", tt.scopes, got, tt.want)
 			}
-			if !slices.Equal(tt.scopes, original) {
-				t.Fatalf("input slice mutated: got %v, want %v", tt.scopes, original)
+			if got == nil {
+				t.Fatal("scopesOrEmpty returned a nil slice: jsonb would store null")
 			}
 		})
 	}
