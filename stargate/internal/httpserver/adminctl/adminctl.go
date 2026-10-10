@@ -3,7 +3,8 @@
 // AccountGeographyStatsAdminController, AccountActionLogController and
 // AccountPunishmentController. Every admin route is permission-gated with
 // the exact C# [AskPermission] keys; the two user-facing controllers
-// (action log + punishments) keep their own auth requirements.
+// (action log + punishments) keep their own auth requirements, except the
+// public punishment overview banner/sheet.
 package adminctl
 
 import (
@@ -15,9 +16,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"src.solsynth.dev/sosys/go/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/internal/actionlog"
 	"src.solsynth.dev/sosys/stargate/internal/config"
-	"src.solsynth.dev/sosys/go/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/internal/grpcclient"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
@@ -48,13 +49,15 @@ func Register(api *gin.RouterGroup, d Deps) {
 	registerGeography(admin.Group("/stats/users/geography"), d)
 
 	// User-facing routes from the ported controllers (Padlock served these
-	// under /api as well; Stargate keeps the same paths).
+	// under /api as well; Stargate keeps the same paths). The overview is the
+	// public summary banner/sheet clients render for signed-out visitors; the
+	// detailed punishment records and the caller's own list stay authenticated.
 	api.Group("/actions", middleware.RequireAuth(), middleware.RequireInteractive()).
 		GET("", getActionLogs(d))
 	punishments := api.Group("/accounts")
 	punishments.GET("/me/punishments", middleware.RequireAuth(), getMyPunishments(d))
 	punishments.GET("/:name/punishments", middleware.RequireAuth(), getAccountPunishments(d))
-	punishments.GET("/:name/punishments/overview", middleware.RequireAuth(), getPunishmentOverview(d))
+	punishments.GET("/:name/punishments/overview", getPunishmentOverview(d))
 }
 
 // adminRoute is one route mounted under the /api/admin group: its HTTP method

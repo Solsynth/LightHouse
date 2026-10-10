@@ -1,8 +1,11 @@
 package profilectl
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +13,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/protobuf/types/known/structpb"
 	gen "src.solsynth.dev/sosys/go/proto"
 
@@ -85,6 +90,9 @@ func TestRegisterRouteTable(t *testing.T) {
 }
 
 // Anonymous requests to auth-required routes must 401 with the C# message.
+// /api/accounts/search is deliberately absent: it is a public product surface
+// (FloatLand's public search page, Sokai's signed-out account picker) and is
+// pinned by TestAnonymousSearchServesAccountsWithoutSuperuser below.
 func TestAnonymousRequiresAuth(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
@@ -95,7 +103,6 @@ func TestAnonymousRequiresAuth(t *testing.T) {
 		method, path string
 	}{
 		{"GET", "/api/accounts/me"},
-		{"GET", "/api/accounts/search"},
 		{"GET", "/api/relationships"},
 		{"GET", "/api/relationships/requests"},
 	} {
@@ -108,6 +115,73 @@ func TestAnonymousRequiresAuth(t *testing.T) {
 		if !strings.Contains(rec.Body.String(), "UNAUTHORIZED") {
 			t.Errorf("%s %s: missing UNAUTHORIZED body: %s", tc.method, tc.path, rec.Body.String())
 		}
+	}
+}
+
+// searchDSN mirrors config.example.toml and the other DB-backed smoke tests.
+const searchDSN = "host=localhost port=5432 user=postgres password=postgres dbname=dyson_stargate sslmode=disable"
+
+// TestAnonymousSearchServesAccountsWithoutSuperuser pins the restored public
+// read: an unauthenticated GET /api/accounts/search serves the matching
+// accounts (FloatLand's public search page and Sokai's signed-out account
+// picker need them) and still applies the public projection, so a platform
+// admin is reported with is_superuser false.
+func TestAnonymousSearchServesAccountsWithoutSuperuser(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(), searchDSN)
+	if err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	defer pool.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := pool.Ping(ctx); err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+
+	accountID := uuid.New()
+	name := "anon_search_" + uuid.NewString()[:8]
+	now := time.Now().UTC()
+	if _, err := pool.Exec(ctx, `INSERT INTO accounts
+		(id, name, nick, language, region, is_superuser, created_at, updated_at)
+		VALUES ($1, $2, $2, 'en', 'US', true, $3, $3)`, accountID, name, now); err != nil {
+		t.Fatalf("seed account: %v", err)
+	}
+	defer func() {
+		bg := context.Background()
+		_, _ = pool.Exec(bg, `DELETE FROM account_profiles WHERE account_id = $1`, accountID)
+		_, _ = pool.Exec(bg, `DELETE FROM accounts WHERE id = $1`, accountID)
+	}()
+
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	api := engine.Group("/api")
+	Register(api, Deps{
+		Store: store.New(pool),
+		Log:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/accounts/search?query="+name, nil)
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("anonymous search: got %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+
+	var results []map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &results); err != nil {
+		t.Fatalf("decode search response: %v", err)
+	}
+	found := false
+	for _, result := range results {
+		if result["is_superuser"] != false {
+			t.Errorf("anonymous search result %v leaks is_superuser = %v", result["name"], result["is_superuser"])
+		}
+		if result["id"] == accountID.String() {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("seeded account %q missing from anonymous search results: %s", name, rec.Body.String())
 	}
 }
 

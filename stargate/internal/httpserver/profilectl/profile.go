@@ -56,7 +56,7 @@ func Register(api *gin.RouterGroup, d Deps) {
 
 	accounts := api.Group("/accounts")
 	accounts.GET("/id/:id", d.getAccountByID)
-	accounts.GET("/search", middleware.RequireAuth(), d.searchAccounts)
+	accounts.GET("/search", d.searchAccounts)
 	accounts.GET("/:name", d.getAccountByName)
 	accounts.GET("/:name/picture", d.getAccountPicture)
 	accounts.GET("/:name/background", d.getAccountBackground)
