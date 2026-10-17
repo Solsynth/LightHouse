@@ -128,6 +128,10 @@ Admin routes set `meta.fullBleed`. The shell then drops its 16 px gutter and
 card border so the admin surface reaches the viewport edges, while the header,
 page padding, and footer keep their normal spacing.
 
+Public profiles set `meta.edgeToEdge`: the shell keeps the card but drops the
+page content padding, so the profile banner runs to the card's inner edges.
+The profile view reapplies 20 px padding to the avatar and panels.
+
 `/auth/sudo` renders the same factor flow as the elevation modal, so another
 client can open it in a browser or popup, elevate the session, and return.
 It accepts only same-origin `next` paths and posts `solarpass:sudo` to the
@@ -138,8 +142,9 @@ from the `sm` breakpoint, and panel padding is 16 px. The 4 px spacing unit is
 used throughout; prefer gaps over nested borders.
 
 Public profiles (`/@name`) stay on the 880 px card and hide the nav tabs; the
-profile background is a banner at the top of the card, above the avatar. The
-site keeps the card shell everywhere except admin pages.
+profile background is a banner that runs to the card's inner edges above the
+avatar, while the name and panels keep the normal 20 px inset. The site keeps
+the card shell everywhere except admin pages.
 
 When the signed-in account has a profile background, it is painted as a fixed
 backdrop behind the shell: cover-scaled, blurred 64 px, at 30% opacity under a
@@ -185,10 +190,10 @@ It uses `aria-current="page"`. Do not use underlined tabs.
 
 `GET /@name` (SPA route `public-profile`) renders the public projection:
 background banner, avatar, display name and handle, bio, public contacts,
-links, follower/following totals, and pronouns/location/time zone/join date.
-The nav tabs are hidden; the page keeps the 880 px card so the banner and
-panels read as one profile card. A missing account gets the not-found header
-rather than a blank page.
+links, and pronouns/location/time zone/join date.
+The nav tabs are hidden; the page keeps the 880 px card, with the background
+banner running to the card's inner edges and the avatar and panels inset by
+20 px. A missing account gets the not-found header rather than a blank page.
 
 ### Page header
 

@@ -157,7 +157,7 @@ const router = createRouter({
       path: '/@:name',
       name: 'public-profile',
       component: () => import('@/views/PublicProfileView.vue'),
-      meta: { public: true, profile: true, titleKey: 'app.titles.profile' },
+      meta: { public: true, profile: true, edgeToEdge: true, titleKey: 'app.titles.profile' },
     },
     {
       path: '/:pathMatch(.*)*',

@@ -37,7 +37,13 @@ interface NavItem {
 }
 
 const nav: NavItem[] = [
-  { to: '/account', labelKey: 'app.nav.profile', icon: User16, scope: 'account', match: '/account' },
+  {
+    to: '/account',
+    labelKey: 'app.nav.profile',
+    icon: User16,
+    scope: 'account',
+    match: '/account',
+  },
   {
     to: '/security/sessions',
     labelKey: 'app.nav.settings',
@@ -52,7 +58,13 @@ const nav: NavItem[] = [
     scope: 'security',
     match: '/developers',
   },
-  { to: '/activity', labelKey: 'app.nav.activity', icon: Activity16, scope: 'account', match: '/activity' },
+  {
+    to: '/activity',
+    labelKey: 'app.nav.activity',
+    icon: Activity16,
+    scope: 'account',
+    match: '/activity',
+  },
   { to: '/admin', labelKey: 'app.nav.admin', icon: Tools16, scope: 'admin', match: '/admin' },
 ]
 
@@ -83,10 +95,7 @@ const cardWidth = computed(() => {
 })
 
 const showNav = computed(
-  () =>
-    session.signedIn &&
-    !route.path.startsWith('/auth/') &&
-    route.name !== 'public-profile',
+  () => session.signedIn && !route.path.startsWith('/auth/') && route.name !== 'public-profile',
 )
 
 const latest = computed(() => notice.items[notice.items.length - 1])
@@ -103,15 +112,14 @@ const backgroundUrl = computed(
     background.value?.url ||
     `/api/accounts/${encodeURIComponent(session.account?.name ?? '')}/background`,
 )
-const publicPath = computed(
-  () => `/@${encodeURIComponent(session.account?.name ?? '')}`,
-)
+const publicPath = computed(() => `/@${encodeURIComponent(session.account?.name ?? '')}`)
 const avatarFailed = ref(false)
 const backgroundFailed = ref(false)
 
 const menuOpen = ref(false)
 const menuRoot = ref<HTMLElement | null>(null)
 const fullBleed = computed(() => Boolean(route.meta.fullBleed))
+const edgeToEdge = computed(() => Boolean(route.meta.edgeToEdge))
 
 function closeMenuOutside(event: MouseEvent) {
   if (!menuRoot.value?.contains(event.target as Node)) menuOpen.value = false
@@ -249,130 +257,122 @@ function changeLocale(event: Event) {
         class="w-full"
         :class="fullBleed ? 'flex flex-1 flex-col' : 'transition-[max-width] ' + cardWidth"
       >
-      <main
-        id="main"
-        :class="
-          fullBleed
-            ? 'flex flex-1 flex-col bg-base-100/40'
-            : 'border border-line bg-base-200/40'
-        "
-      >
-        <div
-          class="flex items-center justify-between gap-4 border-b border-line py-3"
-          :class="fullBleed ? 'px-5 sm:px-7' : 'px-5'"
+        <main
+          id="main"
+          :class="
+            fullBleed ? 'flex flex-1 flex-col bg-base-100/40' : 'border border-line bg-base-200/40'
+          "
         >
-          <RouterLink to="/" class="flex items-center gap-2.5" :aria-label="t('app.home')">
-            <span class="brand-mark h-[22px] w-[22px] shrink-0" aria-hidden="true" />
-            <span class="text-[13px] font-semibold tracking-[0.14em] text-base-content">
-              SOLARPASS
-            </span>
-            <span class="hidden text-2xs tracking-[0.04em] text-faint sm:inline">
-              {{ t('app.network') }}
-            </span>
-          </RouterLink>
-
-          <div v-if="session.signedIn" class="flex items-center gap-3">
-            <span
-              v-if="session.elevated"
-              class="hidden items-center gap-1.5 text-2xs text-accent sm:flex"
-              :title="t('app.elevatedHint')"
-            >
-              <span class="dot bg-accent" />
-              {{ t('app.elevated') }}
-            </span>
-            <div
-              ref="menuRoot"
-              class="dropdown dropdown-end"
-              @keydown.esc="menuOpen = false"
-            >
-              <button
-                type="button"
-                class="block shrink-0"
-                :title="session.account?.name"
-                :aria-label="session.account?.name"
-                aria-haspopup="menu"
-                :aria-expanded="menuOpen"
-                @click="menuOpen = !menuOpen"
-              >
-                <img
-                  v-if="picture && !avatarFailed"
-                  :src="pictureUrl"
-                  alt=""
-                  class="h-6 w-6 rounded-[2px] object-cover"
-                  @error="avatarFailed = true"
-                />
-                <span
-                  v-else
-                  class="flex h-6 w-6 items-center justify-center rounded-[2px] text-faint"
-                >
-                  <UserAvatar16 aria-hidden="true" />
-                </span>
-              </button>
-              <ul
-                v-if="menuOpen"
-                class="menu dropdown-content z-50 mt-2 w-44 border border-line bg-base-200 p-1 shadow-none"
-              >
-                <li>
-                  <RouterLink :to="publicPath" @click="menuOpen = false">
-                    {{ t('app.publicProfile') }}
-                  </RouterLink>
-                </li>
-                <li>
-                  <button type="button" @click="signOutFromMenu">
-                    {{ t('app.signOut') }}
-                  </button>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        <nav
-          v-if="showNav"
-          class="flex items-center gap-4 overflow-x-auto border-b border-line py-2"
-          :class="fullBleed ? 'px-5 sm:px-7' : 'px-5'"
-          :aria-label="t('app.console')"
-        >
-          <RouterLink
-            v-for="item in visibleNav"
-            :key="item.to"
-            :to="item.to"
-            class="flex items-center gap-1.5 whitespace-nowrap text-2xs tracking-[0.04em] transition-colors"
-            :class="
-              activeSection === item.match
-                ? 'text-base-content'
-                : 'text-faint hover:text-dim'
-            "
+          <div
+            class="flex items-center justify-between gap-4 border-b border-line py-3"
+            :class="fullBleed ? 'px-5 sm:px-7' : 'px-5'"
           >
-            <component :is="item.icon" class="shrink-0" aria-hidden="true" />
-            {{ t(item.labelKey) }}
-          </RouterLink>
-        </nav>
+            <RouterLink to="/" class="flex items-center gap-2.5" :aria-label="t('app.home')">
+              <span class="brand-mark h-[22px] w-[22px] shrink-0" aria-hidden="true" />
+              <span class="text-[13px] font-semibold tracking-[0.14em] text-base-content">
+                SOLARPASS
+              </span>
+              <span class="hidden text-2xs tracking-[0.04em] text-faint sm:inline">
+                {{ t('app.network') }}
+              </span>
+            </RouterLink>
 
-        <div ref="region" class="page-region">
-          <div ref="regionInner">
-            <div class="px-5 py-6 sm:px-7 sm:py-8">
-              <RouterView v-slot="{ Component }">
-                <component :is="Component" />
-              </RouterView>
-            </div>
-
-            <Transition name="notice">
-              <div
-                v-if="latest"
-                class="flex items-baseline gap-2 px-5 py-2 text-2xs"
-                role="status"
-                aria-live="polite"
+            <div v-if="session.signedIn" class="flex items-center gap-3">
+              <span
+                v-if="session.elevated"
+                class="hidden items-center gap-1.5 text-2xs text-accent sm:flex"
+                :title="t('app.elevatedHint')"
               >
-                <span :class="latest.tone === 'error' ? 'text-error' : 'text-success'">
-                  {{ latest.tone === 'error' ? 'ERROR' : 'OK' }}
-                </span>
-                <span class="truncate text-dim">{{ latest.message }}</span>
+                <span class="dot bg-accent" />
+                {{ t('app.elevated') }}
+              </span>
+              <div ref="menuRoot" class="dropdown dropdown-end" @keydown.esc="menuOpen = false">
+                <button
+                  type="button"
+                  class="block shrink-0"
+                  :title="session.account?.name"
+                  :aria-label="session.account?.name"
+                  aria-haspopup="menu"
+                  :aria-expanded="menuOpen"
+                  @click="menuOpen = !menuOpen"
+                >
+                  <img
+                    v-if="picture && !avatarFailed"
+                    :src="pictureUrl"
+                    alt=""
+                    class="h-6 w-6 rounded-[2px] object-cover"
+                    @error="avatarFailed = true"
+                  />
+                  <span
+                    v-else
+                    class="flex h-6 w-6 items-center justify-center rounded-[2px] text-faint"
+                  >
+                    <UserAvatar16 aria-hidden="true" />
+                  </span>
+                </button>
+                <ul
+                  v-if="menuOpen"
+                  class="menu dropdown-content z-50 mt-2 w-44 border border-line bg-base-200 p-1 shadow-none"
+                >
+                  <li>
+                    <RouterLink :to="publicPath" @click="menuOpen = false">
+                      {{ t('app.publicProfile') }}
+                    </RouterLink>
+                  </li>
+                  <li>
+                    <button type="button" @click="signOutFromMenu">
+                      {{ t('app.signOut') }}
+                    </button>
+                  </li>
+                </ul>
               </div>
-            </Transition>
+            </div>
           </div>
-        </div>
-      </main>
+
+          <nav
+            v-if="showNav"
+            class="flex items-center gap-4 overflow-x-auto border-b border-line py-2"
+            :class="fullBleed ? 'px-5 sm:px-7' : 'px-5'"
+            :aria-label="t('app.console')"
+          >
+            <RouterLink
+              v-for="item in visibleNav"
+              :key="item.to"
+              :to="item.to"
+              class="flex items-center gap-1.5 whitespace-nowrap text-2xs tracking-[0.04em] transition-colors"
+              :class="
+                activeSection === item.match ? 'text-base-content' : 'text-faint hover:text-dim'
+              "
+            >
+              <component :is="item.icon" class="shrink-0" aria-hidden="true" />
+              {{ t(item.labelKey) }}
+            </RouterLink>
+          </nav>
+
+          <div ref="region" class="page-region">
+            <div ref="regionInner">
+              <div :class="edgeToEdge ? '' : 'px-5 py-6 sm:px-7 sm:py-8'">
+                <RouterView v-slot="{ Component }">
+                  <component :is="Component" />
+                </RouterView>
+              </div>
+
+              <Transition name="notice">
+                <div
+                  v-if="latest"
+                  class="flex items-baseline gap-2 px-5 py-2 text-2xs"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <span :class="latest.tone === 'error' ? 'text-error' : 'text-success'">
+                    {{ latest.tone === 'error' ? 'ERROR' : 'OK' }}
+                  </span>
+                  <span class="truncate text-dim">{{ latest.message }}</span>
+                </div>
+              </Transition>
+            </div>
+          </div>
+        </main>
       </div>
     </div>
 

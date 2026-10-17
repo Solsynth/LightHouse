@@ -48,13 +48,6 @@ export const accountApi = {
   byName: (name: string) => request<Account>(`/accounts/${encodeURIComponent(name)}`),
 }
 
-export const socialApi = {
-  followers: (name: string, query: { take?: number; offset?: number } = {}) =>
-    requestPage<Account>(`/accounts/${encodeURIComponent(name)}/followers`, query),
-  following: (name: string, query: { take?: number; offset?: number } = {}) =>
-    requestPage<Account>(`/accounts/${encodeURIComponent(name)}/following`, query),
-}
-
 // ── Auth ──
 
 export const authApi = {
@@ -95,11 +88,8 @@ export const signInApi = {
       method: 'POST',
       body: { grant_type: 'authorization_code', code },
     }),
-  passkeyDiscoverableStart: (body: {
-    device_id: string
-    device_name: string
-    platform: number
-  }) => request<PasskeyLoginStart>('/auth/passkey/start', { method: 'POST', body }),
+  passkeyDiscoverableStart: (body: { device_id: string; device_name: string; platform: number }) =>
+    request<PasskeyLoginStart>('/auth/passkey/start', { method: 'POST', body }),
   passkeyDiscoverableComplete: (
     challengeId: string,
     body: {
@@ -157,8 +147,7 @@ export const securityApi = {
     request<AuthFactor>('/factors', { method: 'POST', body: { type, secret } }),
   enableFactor: (id: string, code?: string) =>
     request<AuthFactor>(`/factors/${id}/enable`, { method: 'POST', body: code ?? undefined }),
-  disableFactor: (id: string) =>
-    request<AuthFactor>(`/factors/${id}/disable`, { method: 'POST' }),
+  disableFactor: (id: string) => request<AuthFactor>(`/factors/${id}/disable`, { method: 'POST' }),
   deleteFactor: (id: string) => request<void>(`/factors/${id}`, { method: 'DELETE' }),
   passkeys: () => request<Passkey[]>('/factors/passkey'),
   startPasskeyRegistration: (body: { device_id: string; device_name?: string }) =>
@@ -176,7 +165,8 @@ export const securityApi = {
   createContact: (type: number, content: string) =>
     request<Contact>('/contacts', { method: 'POST', body: { type, content } }),
   verifyContact: (id: string) => request<Contact>(`/contacts/${id}/verify`, { method: 'POST' }),
-  setPrimaryContact: (id: string) => request<Contact>(`/contacts/${id}/primary`, { method: 'POST' }),
+  setPrimaryContact: (id: string) =>
+    request<Contact>(`/contacts/${id}/primary`, { method: 'POST' }),
   setContactPublic: (id: string, isPublic: boolean) =>
     request<Contact>(`/contacts/${id}/public`, { method: isPublic ? 'POST' : 'DELETE' }),
   deleteContact: (id: string) => request<void>(`/contacts/${id}`, { method: 'DELETE' }),

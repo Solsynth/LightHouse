@@ -97,8 +97,7 @@ export default {
       'No API keys. Keys authenticate scripts and bots; they cannot use interactive endpoints.',
     rotate: 'Rotate',
     revokeKeyTitle: 'Revoke This Key?',
-    revokeKeyBody:
-      '{label} stops working immediately. Any client using it fails its next request.',
+    revokeKeyBody: '{label} stops working immediately. Any client using it fails its next request.',
     revokeKeyAction: 'Revoke Key',
     removeAppTitle: 'Remove This App?',
     removeAppBody: '{app} loses its tokens and must ask for access again.',
@@ -257,7 +256,7 @@ export default {
     type: 'Type',
     value: 'Value',
     valuePlaceholder: 'value',
-    emailPlaceholder: 'name{\'@\'}example.com',
+    emailPlaceholder: "name{'@'}example.com",
     addAction: 'Add Contact',
     elevatedHint:
       'Adding a contact requires an elevated session. Verification is sent as a one-time link.',
@@ -329,8 +328,6 @@ export default {
     about: 'About',
     noBio: 'No bio yet.',
     details: 'Details',
-    followers: 'Followers',
-    following: 'Following',
     pronouns: 'Pronouns',
     location: 'Location',
     timeZone: 'Time Zone',

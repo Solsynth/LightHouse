@@ -6,7 +6,7 @@ import { useRoute } from 'vue-router'
 
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
-import { accountApi, socialApi } from '@/lib/api'
+import { accountApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
 import type { Account } from '@/lib/api/types'
 import { contactTypeLabel } from '@/lib/enums'
@@ -17,8 +17,6 @@ const route = useRoute()
 
 const name = computed(() => String(route.params.name ?? ''))
 const account = ref<Account | null>(null)
-const followers = ref(0)
-const following = ref(0)
 const loading = ref(true)
 const notFound = ref(false)
 const avatarFailed = ref(false)
@@ -50,6 +48,11 @@ const publicContacts = computed(() =>
   (account.value?.contacts ?? []).filter((contact) => contact.is_public),
 )
 const joined = computed(() => profile.value?.created_at ?? account.value?.created_at)
+const hasDetails = computed(() =>
+  Boolean(
+    profile.value?.pronouns || profile.value?.location || profile.value?.time_zone || joined.value,
+  ),
+)
 
 let loadId = 0
 
@@ -71,22 +74,6 @@ async function load() {
     const loaded = await accountApi.byName(name.value)
     if (id !== loadId) return
     account.value = loaded
-
-    // Totals are decoration around the profile; a follow-page failure must not
-    // take the profile down with it.
-    try {
-      const [followersPage, followingPage] = await Promise.all([
-        socialApi.followers(loaded.name, { take: 1 }),
-        socialApi.following(loaded.name, { take: 1 }),
-      ])
-      if (id !== loadId) return
-      followers.value = followersPage.total
-      following.value = followingPage.total
-    } catch {
-      if (id !== loadId) return
-      followers.value = 0
-      following.value = 0
-    }
   } catch (error) {
     if (id !== loadId) return
     account.value = null
@@ -104,18 +91,20 @@ watch([locale, () => account.value?.name], updateTitle)
 
 <template>
   <div>
-    <div v-if="loading" class="py-16 text-center text-xs text-faint">
+    <div v-if="loading" class="px-5 py-16 text-center text-xs text-faint">
       {{ t('publicProfile.loading') }}
     </div>
 
     <template v-else-if="!account">
-      <PageHeader
-        :title="t('publicProfile.notFoundTitle')"
-        :description="t(notFound ? 'publicProfile.notFoundBody' : 'publicProfile.errorLoad')"
-      />
-      <RouterLink to="/" class="link-quiet text-xs">
-        {{ t('publicProfile.goHome') }}
-      </RouterLink>
+      <div class="px-5 py-10">
+        <PageHeader
+          :title="t('publicProfile.notFoundTitle')"
+          :description="t(notFound ? 'publicProfile.notFoundBody' : 'publicProfile.errorLoad')"
+        />
+        <RouterLink to="/" class="link-quiet text-xs">
+          {{ t('publicProfile.goHome') }}
+        </RouterLink>
+      </div>
     </template>
 
     <template v-else>
@@ -130,97 +119,94 @@ watch([locale, () => account.value?.name], updateTitle)
           />
         </div>
 
-        <div class="flex flex-wrap items-end gap-4 px-5 pb-5">
-          <div class="-mt-8 h-[72px] w-[72px] shrink-0 overflow-hidden rounded-[2px] bg-base-300">
-            <img
-              v-if="hasPicture && !avatarFailed"
-              :src="pictureUrl"
-              alt=""
-              class="h-full w-full object-cover"
-              @error="avatarFailed = true"
-            />
-            <span v-else class="flex h-full w-full items-center justify-center text-faint">
-              <UserAvatar32 aria-hidden="true" />
-            </span>
+        <div class="px-5 pb-6">
+          <div class="flex flex-wrap items-end gap-4">
+            <div class="-mt-8 h-[72px] w-[72px] shrink-0 overflow-hidden rounded-[2px] bg-base-300">
+              <img
+                v-if="hasPicture && !avatarFailed"
+                :src="pictureUrl"
+                alt=""
+                class="h-full w-full object-cover"
+                @error="avatarFailed = true"
+              />
+              <span v-else class="flex h-full w-full items-center justify-center text-faint">
+                <UserAvatar32 aria-hidden="true" />
+              </span>
+            </div>
+            <div class="min-w-0 pb-1">
+              <h1 class="title text-xl text-base-content">{{ displayName }}</h1>
+              <p class="mt-1 text-2xs text-faint">@{{ account.name }}</p>
+            </div>
           </div>
-          <div class="min-w-0 pb-1">
-            <h1 class="title text-xl text-base-content">{{ displayName }}</h1>
-            <p class="mt-1 text-2xs text-faint">@{{ account.name }}</p>
+
+          <div
+            class="mt-6 grid gap-6"
+            :class="hasDetails ? 'lg:grid-cols-[minmax(0,1fr)_320px]' : ''"
+          >
+            <div class="space-y-6">
+              <ConsolePanel :title="t('publicProfile.about')">
+                <p class="voice max-w-2xl whitespace-pre-line">
+                  {{ profile?.bio || t('publicProfile.noBio') }}
+                </p>
+              </ConsolePanel>
+
+              <ConsolePanel v-if="profile?.links?.length" :title="t('publicProfile.links')">
+                <ul class="space-y-3 text-xs">
+                  <li
+                    v-for="link in profile.links"
+                    :key="link.url"
+                    class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
+                  >
+                    <span class="text-faint">{{ link.name }}</span>
+                    <a
+                      :href="link.url"
+                      class="link-quiet max-w-full truncate"
+                      target="_blank"
+                      rel="noopener noreferrer nofollow"
+                    >
+                      {{ link.url }}
+                    </a>
+                  </li>
+                </ul>
+              </ConsolePanel>
+
+              <ConsolePanel v-if="publicContacts.length" :title="t('publicProfile.contacts')">
+                <ul class="space-y-3 text-xs">
+                  <li
+                    v-for="contact in publicContacts"
+                    :key="contact.id"
+                    class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
+                  >
+                    <span class="text-faint">{{ contactTypeLabel(contact.type) }}</span>
+                    <span class="break-all text-dim">{{ contact.content }}</span>
+                  </li>
+                </ul>
+              </ConsolePanel>
+            </div>
+
+            <ConsolePanel v-if="hasDetails" :title="t('publicProfile.details')">
+              <dl class="space-y-3 text-xs">
+                <div v-if="profile?.pronouns" class="flex items-baseline justify-between gap-4">
+                  <dt class="text-faint">{{ t('publicProfile.pronouns') }}</dt>
+                  <dd class="text-dim">{{ profile.pronouns }}</dd>
+                </div>
+                <div v-if="profile?.location" class="flex items-baseline justify-between gap-4">
+                  <dt class="text-faint">{{ t('publicProfile.location') }}</dt>
+                  <dd class="text-dim">{{ profile.location }}</dd>
+                </div>
+                <div v-if="profile?.time_zone" class="flex items-baseline justify-between gap-4">
+                  <dt class="text-faint">{{ t('publicProfile.timeZone') }}</dt>
+                  <dd class="text-dim">{{ profile.time_zone }}</dd>
+                </div>
+                <div v-if="joined" class="flex items-baseline justify-between gap-4">
+                  <dt class="text-faint">{{ t('publicProfile.joined') }}</dt>
+                  <dd class="tabular-nums text-dim">{{ utcStamp(joined).slice(0, 10) }}</dd>
+                </div>
+              </dl>
+            </ConsolePanel>
           </div>
         </div>
       </section>
-
-      <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div class="space-y-6">
-          <ConsolePanel :title="t('publicProfile.about')">
-            <p class="voice max-w-2xl whitespace-pre-line">
-              {{ profile?.bio || t('publicProfile.noBio') }}
-            </p>
-          </ConsolePanel>
-
-          <ConsolePanel v-if="profile?.links?.length" :title="t('publicProfile.links')">
-            <ul class="space-y-3 text-xs">
-              <li
-                v-for="link in profile.links"
-                :key="link.url"
-                class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
-              >
-                <span class="text-faint">{{ link.name }}</span>
-                <a
-                  :href="link.url"
-                  class="link-quiet max-w-full truncate"
-                  target="_blank"
-                  rel="noopener noreferrer nofollow"
-                >
-                  {{ link.url }}
-                </a>
-              </li>
-            </ul>
-          </ConsolePanel>
-
-          <ConsolePanel v-if="publicContacts.length" :title="t('publicProfile.contacts')">
-            <ul class="space-y-3 text-xs">
-              <li
-                v-for="contact in publicContacts"
-                :key="contact.id"
-                class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
-              >
-                <span class="text-faint">{{ contactTypeLabel(contact.type) }}</span>
-                <span class="break-all text-dim">{{ contact.content }}</span>
-              </li>
-            </ul>
-          </ConsolePanel>
-        </div>
-
-        <ConsolePanel :title="t('publicProfile.details')">
-          <dl class="space-y-3 text-xs">
-            <div class="flex items-baseline justify-between gap-4">
-              <dt class="text-faint">{{ t('publicProfile.followers') }}</dt>
-              <dd class="tabular-nums text-dim">{{ followers }}</dd>
-            </div>
-            <div class="flex items-baseline justify-between gap-4">
-              <dt class="text-faint">{{ t('publicProfile.following') }}</dt>
-              <dd class="tabular-nums text-dim">{{ following }}</dd>
-            </div>
-            <div v-if="profile?.pronouns" class="flex items-baseline justify-between gap-4">
-              <dt class="text-faint">{{ t('publicProfile.pronouns') }}</dt>
-              <dd class="text-dim">{{ profile.pronouns }}</dd>
-            </div>
-            <div v-if="profile?.location" class="flex items-baseline justify-between gap-4">
-              <dt class="text-faint">{{ t('publicProfile.location') }}</dt>
-              <dd class="text-dim">{{ profile.location }}</dd>
-            </div>
-            <div v-if="profile?.time_zone" class="flex items-baseline justify-between gap-4">
-              <dt class="text-faint">{{ t('publicProfile.timeZone') }}</dt>
-              <dd class="text-dim">{{ profile.time_zone }}</dd>
-            </div>
-            <div v-if="joined" class="flex items-baseline justify-between gap-4">
-              <dt class="text-faint">{{ t('publicProfile.joined') }}</dt>
-              <dd class="tabular-nums text-dim">{{ utcStamp(joined).slice(0, 10) }}</dd>
-            </div>
-          </dl>
-        </ConsolePanel>
-      </div>
     </template>
   </div>
 </template>

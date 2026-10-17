@@ -182,8 +182,7 @@ export default {
   },
   factors: {
     title: '登录验证方式',
-    description:
-      '每种验证方式计为一步。登录环境不熟悉时，风险引擎会要求更多步骤。',
+    description: '每种验证方式计为一步。登录环境不熟悉时，风险引擎会要求更多步骤。',
     configured: '已配置的验证方式',
     totalNote: '共 {n} 个',
     reading: '正在读取验证方式…',
@@ -194,8 +193,7 @@ export default {
     disable: '禁用',
     enable: '启用',
     addFactor: '添加验证方式',
-    recoveryFirst:
-      '请先添加恢复码。在启用恢复码之前，服务器会拒绝所有其他验证方式。',
+    recoveryFirst: '请先添加恢复码。在启用恢复码之前，服务器会拒绝所有其他验证方式。',
     factor: '验证方式',
     secret: '密钥',
     adding: '添加中…',
@@ -248,7 +246,7 @@ export default {
     type: '类型',
     value: '值',
     valuePlaceholder: '值',
-    emailPlaceholder: 'name{\'@\'}example.com',
+    emailPlaceholder: "name{'@'}example.com",
     addAction: '添加联系方式',
     elevatedHint: '添加联系方式需要提权会话。验证会以一次性链接发送。',
     deleteTitle: '删除此联系方式？',
@@ -269,8 +267,7 @@ export default {
   },
   preferences: {
     title: '安全模式',
-    description:
-      '登录需要多少证明。默认模式会评估每次尝试的风险；另外两种模式会覆盖它。',
+    description: '登录需要多少证明。默认模式会评估每次尝试的风险；另外两种模式会覆盖它。',
     mode: '模式',
     modeDefault: '默认',
     modeLockdown: '锁定',
@@ -291,8 +288,7 @@ export default {
   elevation: {
     required: '需要提权',
     title: '重新验证以继续',
-    description:
-      '此操作会更改账号安全设置。请满足以下验证方式；授权仅在本次会话内有效。',
+    description: '此操作会更改账号安全设置。请满足以下验证方式；授权仅在本次会话内有效。',
     steps: '已完成 {done}/{total} 步',
     timeLeft: '时限：{time}',
     starting: '正在启动质询…',
@@ -318,8 +314,6 @@ export default {
     about: '关于',
     noBio: '还没有简介。',
     details: '详情',
-    followers: '关注者',
-    following: '正在关注',
     pronouns: '代词',
     location: '所在地',
     timeZone: '时区',
