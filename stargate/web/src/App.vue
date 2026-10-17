@@ -257,7 +257,10 @@ function changeLocale(event: Event) {
             : 'border border-line bg-base-200/40'
         "
       >
-        <div class="flex items-center justify-between gap-4 border-b border-line px-5 py-3">
+        <div
+          class="flex items-center justify-between gap-4 border-b border-line py-3"
+          :class="fullBleed ? 'px-5 sm:px-7' : 'px-5'"
+        >
           <RouterLink to="/" class="flex items-center gap-2.5" :aria-label="t('app.home')">
             <span class="brand-mark h-[22px] w-[22px] shrink-0" aria-hidden="true" />
             <span class="text-[13px] font-semibold tracking-[0.14em] text-base-content">
@@ -326,7 +329,8 @@ function changeLocale(event: Event) {
 
         <nav
           v-if="showNav"
-          class="flex items-center gap-4 overflow-x-auto border-b border-line px-5 py-2"
+          class="flex items-center gap-4 overflow-x-auto border-b border-line py-2"
+          :class="fullBleed ? 'px-5 sm:px-7' : 'px-5'"
           :aria-label="t('app.console')"
         >
           <RouterLink
@@ -347,7 +351,7 @@ function changeLocale(event: Event) {
 
         <div ref="region" class="page-region">
           <div ref="regionInner">
-            <div :class="fullBleed ? '' : 'px-5 py-6 sm:px-7 sm:py-8'">
+            <div class="px-5 py-6 sm:px-7 sm:py-8">
               <RouterView v-slot="{ Component }">
                 <component :is="Component" />
               </RouterView>
@@ -374,7 +378,7 @@ function changeLocale(event: Event) {
 
     <footer
       class="relative z-10 flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 text-2xs text-faint"
-      :class="fullBleed ? 'mt-0 border-t border-line px-5 py-3' : ['mt-6', cardWidth]"
+      :class="fullBleed ? 'mt-0 border-t border-line px-5 py-3 sm:px-7' : ['mt-6', cardWidth]"
     >
       <span>{{ t('app.copyright', { year }) }}</span>
       <div class="flex items-center gap-3">
