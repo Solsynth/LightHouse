@@ -621,19 +621,3 @@ CREATE UNIQUE INDEX ix_account_profiles_account_id ON account_profiles (account_
 DROP INDEX IF EXISTS ix_account_profiles_last_seen_at;
 CREATE INDEX ix_account_profiles_last_seen_at ON account_profiles (last_seen_at);
 
--- ---------------------------------------------------------------------------
--- account_relationships (from Passport)
--- ---------------------------------------------------------------------------
-DROP TABLE IF EXISTS account_relationships CASCADE;
-CREATE TABLE account_relationships (
-    account_id uuid NOT NULL,
-    related_id uuid NOT NULL,
-    alias varchar(128) NULL,
-    created_at timestamp with time zone NOT NULL,
-    degrade_to_status smallint NULL,
-    deleted_at timestamp with time zone NULL,
-    expired_at timestamp with time zone NULL,
-    status smallint NOT NULL,
-    updated_at timestamp with time zone NOT NULL,
-    CONSTRAINT pk_account_relationships PRIMARY KEY (account_id, related_id)
-);

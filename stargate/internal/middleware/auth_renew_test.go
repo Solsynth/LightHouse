@@ -29,27 +29,16 @@ func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// testAuthConfig mirrors config.Config.Auth (an anonymous struct) with a
-// throwaway keypair so tokens pass signature validation without a store.
+// testAuthConfig mirrors config.Config.Auth with a throwaway keypair so
+// tokens pass signature validation without a store.
 func testAuthConfig(privPath, pubPath string) *config.Config {
-	return &config.Config{Auth: struct {
-		Issuer               string   `toml:"issuer"`
-		ValidIssuers         []string `toml:"validIssuers"`
-		Audiences            []string `toml:"audiences"`
-		PublicKeyPath        string   `toml:"publicKeyPath"`
-		PrivateKeyPath       string   `toml:"privateKeyPath"`
-		AccessTokenLifetime  string   `toml:"accessTokenLifetime"`
-		RefreshTokenLifetime string   `toml:"refreshTokenLifetime"`
-		RefreshGracePeriod   string   `toml:"refreshGracePeriod"`
-		CookieDomain         string   `toml:"cookieDomain"`
-		CookieSecure         bool     `toml:"cookieSecure"`
-	}{
-		Issuer:         "test-issuer",
-		ValidIssuers:   []string{"https://oidc.example"},
-		Audiences:      []string{"test-aud"},
-		PublicKeyPath:  pubPath,
-		PrivateKeyPath: privPath,
-	}}
+	cfg := config.Default()
+	cfg.Auth.Issuer = "test-issuer"
+	cfg.Auth.ValidIssuers = []string{"https://oidc.example"}
+	cfg.Auth.Audiences = []string{"test-aud"}
+	cfg.Auth.PublicKeyPath = pubPath
+	cfg.Auth.PrivateKeyPath = privPath
+	return cfg
 }
 
 // newSignedJWTService builds a JWTService over a throwaway RSA keypair.

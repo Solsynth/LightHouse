@@ -22,8 +22,10 @@ import (
 // recordingBus satisfies auth.EventBus without a live NATS broker.
 type recordingBus struct{}
 
-func (recordingBus) PublishSessionRevoked(context.Context, []auth.SessionRevokedEvent) error { return nil }
-func (recordingBus) PublishWS(context.Context, string, string, any) error                     { return nil }
+func (recordingBus) PublishSessionRevoked(context.Context, []auth.SessionRevokedEvent) error {
+	return nil
+}
+func (recordingBus) PublishWS(context.Context, string, string, any) error { return nil }
 
 const mlsGrpcDSN = "host=localhost port=5432 user=postgres password=postgres dbname=dyson_stargate sslmode=disable"
 

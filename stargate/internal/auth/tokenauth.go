@@ -71,13 +71,14 @@ const (
 // TokenAuthService: JWT validation, refresh-token rejection, Redis session
 // cache with epoch checks, DB fallback, OIDC-issuer fallback.
 type TokenAuthService struct {
-	store *store.Store
-	redis *redis.Client
-	jwt   *JWTService
-	perk  PerkProvider
-	apps  CustomAppProvider
-	oidc  *OIDCValidator
-	log   *slog.Logger
+	store      *store.Store
+	redis      *redis.Client
+	jwt        *JWTService
+	perk       PerkProvider
+	apps       CustomAppProvider
+	oidc       *OIDCValidator
+	singleUser *SingleUser
+	log        *slog.Logger
 }
 
 // PerkProvider hydrates the perk subscription for an account (wallet service).
@@ -99,6 +100,12 @@ type OIDCValidator struct {
 // NewTokenAuthService wires the service.
 func NewTokenAuthService(st *store.Store, rc *redis.Client, j *JWTService, perk PerkProvider, apps CustomAppProvider, log *slog.Logger) *TokenAuthService {
 	return &TokenAuthService{store: st, redis: rc, jwt: j, perk: perk, apps: apps, oidc: &OIDCValidator{jwt: j}, log: log}
+}
+
+// SetSingleUser enables the stateless single-user token path. Tokens whose
+// subject is the configured identity bypass the session cache and database.
+func (t *TokenAuthService) SetSingleUser(singleUser *SingleUser) {
+	t.singleUser = singleUser
 }
 
 // TokenInfo carries an extracted token.
@@ -182,6 +189,17 @@ func (t *TokenAuthService) AuthenticateToken(ctx context.Context, token, ipAddre
 	// expiry below is the only authority.
 	if accessTokenExpired(claims, tokenUse) {
 		return false, nil, MsgTokenExpired, tokenUse
+	}
+
+	// Stateless single-user path: no session cache or account lookup.
+	if t.singleUser != nil {
+		if subject, _ := claims["sub"].(string); t.singleUser.Matches(subject) {
+			session := t.singleUser.SessionFromToken(sessionID.String(), map[string]any(claims))
+			if session == nil {
+				return false, nil, "Authentication error.", tokenUse
+			}
+			return true, session, "", tokenUse
+		}
 	}
 
 	// Cache is an acceleration layer; authentication remains DB-backed when

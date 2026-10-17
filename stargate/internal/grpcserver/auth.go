@@ -36,7 +36,9 @@ func (s *dyAuthService) Authenticate(ctx context.Context, req *gen.DyAuthenticat
 		}
 		return &gen.DyAuthenticateResponse{Valid: false, Message: &msg}, nil
 	}
-	s.d.Auth.TrackAuthenticatedActivity(ctx, session, ip)
+	if s.d.SingleUser == nil {
+		s.d.Auth.TrackAuthenticatedActivity(ctx, session, ip)
+	}
 	return &gen.DyAuthenticateResponse{Valid: true, Session: auth.SessionToProto(session)}, nil
 }
 

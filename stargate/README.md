@@ -12,6 +12,15 @@ board updates indirectly via the profile read-model.
 
 - `cmd/stargate` — the service (HTTP on `:8080`, gRPC on `:9090`)
 - `cmd/stargate-migrate` — one-shot data copy from the legacy C# databases
+- `cmd/stargate-module-import` — per-module legacy data import when a module's
+  table layout changed
+- `cmd/stargate-hash-password` — bcrypt hash for `[auth.singleUser]`
+- `internal/module` — compile-time module registry, dependency resolution,
+  ports and schema hooks
+- `internal/modules/*` — feature modules and ecosystem integrations
+- `internal/app` — process bootstrap and module lifecycle
+- `internal/core` — shared service graph handed to modules
+- `internal/ports` — interfaces between feature modules and integrations
 - `internal/auth` — JWT (RS256), token validation, session/challenge logic
 - `internal/httpserver/*ctl` — controller packages per domain
 - `internal/grpcserver` — the gRPC surface the C# fleet calls
@@ -29,6 +38,71 @@ board updates indirectly via the profile read-model.
   (`auth.session.revoked`, `websocket_push`)
 - `internal/webui` — serves the built SPA (`web/dist`) with history fallback
 - `web/` — the Vue 3 + Vite single-page frontend
+
+## Modules
+
+Stargate is a compile-time module system (Caddy style). Every surface is a
+module in `internal/modules`; `cmd/stargate` selects the standard set.
+Runtime config enables or disables modules without rebuilding:
+
+```toml
+[modules]
+enabled = []            # empty = every compiled-in module with a default of on
+disabled = ["app.solian.e2ee", "app.solian.id.relationships"]
+```
+
+Module IDs use reverse-DNS namespaces. Only `app.solian.id.auth` is required.
+Identity features live under `app.solian.id.*`; optional ecosystem adapters use
+`app.solian.drive`, `app.solian.wallet`, `app.solian.pass`, `app.solian.ring`,
+`app.solian.blade` and `app.solian.develop`.
+
+Disabling a module unmounts its HTTP/gRPC/consumer surface and, on a fresh
+database, prevents its GORM models from being migrated. Existing tables are
+never dropped. Re-enabling a module reuses the existing data.
+
+Modules own their schema:
+
+- `Factory.Models` is passed to `AutoMigrate` only while the module is enabled.
+- `Factory.SQL` is the raw-SQL hook for indexes/constraints AutoMigrate cannot
+  express.
+- Core SQL migrations only contain the required auth/permission schema.
+- A module never adds columns to a core table; it owns a side table.
+
+`GET /api/modules` returns the resolved set and capabilities. The full design
+is in [`docs/module-system-plan.md`](docs/module-system-plan.md).
+
+### Single-user auth
+
+For a minimal deployment with only `app.solian.id.auth`:
+
+```toml
+[auth]
+provider = "single-user"
+
+[auth.singleUser]
+username = "admin"
+passwordHash = "$2b$12$..." # go run ./cmd/stargate-hash-password
+superuser = true
+allowRefresh = true
+```
+
+This identity is stateless: no account row, sessions or server-side
+revocation. Use `provider = "database"` for normal multi-account deployments.
+
+### Module data import
+
+When extracting a Passport table and changing its layout, use the module
+importer:
+
+```sh
+go run ./cmd/stargate-module-import \
+  --module app.solian.id.relationships \
+  --source-dsn "postgres://.../dyson_passport" \
+  --target-dsn "postgres://.../dyson_stargate"
+```
+
+Importers are idempotent, never truncate the target, and record progress in
+`module_import_state`.
 
 ## Web frontend
 

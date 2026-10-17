@@ -78,6 +78,10 @@ type Config struct {
 		RefreshGracePeriod   string   `toml:"refreshGracePeriod"`
 		CookieDomain         string   `toml:"cookieDomain"`
 		CookieSecure         bool     `toml:"cookieSecure"`
+		// Provider selects the credential source: "database" (default) or
+		// "single-user" (stateless config identity, no account row).
+		Provider   string             `toml:"provider"`
+		SingleUser SingleUserProvider `toml:"singleUser"`
 	} `toml:"auth"`
 
 	OidcProvider struct {
@@ -151,6 +155,20 @@ type Config struct {
 	SecurityTxt struct {
 		Contact string `toml:"contact"`
 	} `toml:"securityTxt"`
+
+	// Modules selects the compiled-in modules. An empty Enabled list means
+	// "every module whose DefaultEnabled is true". Disabled wins over
+	// Enabled; required modules reject a disable.
+	Modules struct {
+		Enabled  []string                  `toml:"enabled"`
+		Disabled []string                  `toml:"disabled"`
+		Settings map[string]map[string]any `toml:"settings"`
+	} `toml:"modules"`
+
+	// Ports selects a provider by module ID when more than one enabled
+	// module provides the same port. Example:
+	//   nfcTokens = "app.solian.id.nfc"
+	Ports map[string]string `toml:"ports"`
 }
 
 // DefaultSecurityContact is the vulnerability-disclosure contact used when
@@ -389,6 +407,7 @@ func Default() *Config {
 	cfg.HTTP.Port = "8080"
 	cfg.GRPC.Port = "9090"
 	cfg.Auth.Issuer = "solar-network"
+	cfg.Auth.Provider = "database"
 	cfg.Auth.ValidIssuers = []string{"solar-network", "https://nt.solian.app"}
 	cfg.Auth.Audiences = []string{"http://localhost:5071", "https://localhost:7099"}
 	cfg.Auth.AccessTokenLifetime = "5m"
@@ -466,6 +485,13 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("STARGATE_REDIS_PASSWORD", &cfg.Redis.Password)
 	setStr("STARGATE_NATS_TARGET", &cfg.NATS.Target)
 	setStr("STARGATE_AUTH_ISSUER", &cfg.Auth.Issuer)
+	setStr("STARGATE_AUTH_PROVIDER", &cfg.Auth.Provider)
+	setStr("STARGATE_AUTH_SINGLEUSER_ID", &cfg.Auth.SingleUser.ID)
+	setStr("STARGATE_AUTH_SINGLEUSER_USERNAME", &cfg.Auth.SingleUser.Username)
+	setStr("STARGATE_AUTH_SINGLEUSER_PASSWORDHASH", &cfg.Auth.SingleUser.PasswordHash)
+	setStr("STARGATE_AUTH_SINGLEUSER_DISPLAYNAME", &cfg.Auth.SingleUser.DisplayName)
+	setBool("STARGATE_AUTH_SINGLEUSER_SUPERUSER", &cfg.Auth.SingleUser.Superuser)
+	setBool("STARGATE_AUTH_SINGLEUSER_ALLOWREFRESH", &cfg.Auth.SingleUser.AllowRefresh)
 	setStr("STARGATE_AUTH_PUBLIC_KEY", &cfg.Auth.PublicKeyPath)
 	setStr("STARGATE_AUTH_PRIVATE_KEY", &cfg.Auth.PrivateKeyPath)
 	setStr("STARGATE_AUTH_ACCESS_TOKEN_LIFETIME", &cfg.Auth.AccessTokenLifetime)
@@ -505,6 +531,25 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("STARGATE_SECURITY_RECENTLOGINGRACE", &cfg.Security.RecentLoginGrace)
 	setStr("STARGATE_SECURITY_SUDOMODELIFETIME", &cfg.Security.SudoModeLifetime)
 	setStr("STARGATE_SECURITY_SUDOCHALLENGELIFETIME", &cfg.Security.SudoChallengeLifetime)
+	setList("STARGATE_MODULES_ENABLED", &cfg.Modules.Enabled)
+	setList("STARGATE_MODULES_DISABLED", &cfg.Modules.Disabled)
+}
+
+// setList parses a comma-separated environment override into a string slice.
+func setList(key string, dst *[]string) {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return
+	}
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	*dst = out
 }
 
 func setStr(key string, dst *string) {
@@ -577,6 +622,22 @@ func (c *Config) CaptchaRequired() bool {
 	return !c.CaptchaEnabled() && !c.Captcha.AllowDisabled
 }
 
+// SingleUserProvider configures the stateless single-user auth provider.
+// PasswordHash must be a bcrypt hash (`stargate-hash-password` generates one).
+type SingleUserProvider struct {
+	ID           string `toml:"id"`
+	Username     string `toml:"username"`
+	PasswordHash string `toml:"passwordHash"`
+	DisplayName  string `toml:"displayName"`
+	Superuser    bool   `toml:"superuser"`
+	AllowRefresh bool   `toml:"allowRefresh"`
+}
+
+// SingleUserEnabled reports whether the config-backed provider is selected.
+func (c *Config) SingleUserEnabled() bool {
+	return c != nil && strings.EqualFold(strings.TrimSpace(c.Auth.Provider), "single-user")
+}
+
 // Validate rejects configurations that must never come up: today that is a
 // captcha-gated deployment without a usable verifier and without the explicit
 // [captcha] allow_disabled opt-out. Refusing to start beats silently serving
@@ -584,6 +645,14 @@ func (c *Config) CaptchaRequired() bool {
 func (c *Config) Validate() error {
 	if c.CaptchaRequired() {
 		return fmt.Errorf("captcha is not configured: set [captcha] provider/apiSecret (or apiKey where the provider needs one), or opt out explicitly with [captcha] allow_disabled = true")
+	}
+	if c.SingleUserEnabled() {
+		if strings.TrimSpace(c.Auth.SingleUser.Username) == "" {
+			return fmt.Errorf("[auth] provider = single-user requires auth.singleUser.username")
+		}
+		if strings.TrimSpace(c.Auth.SingleUser.PasswordHash) == "" {
+			return fmt.Errorf("[auth] provider = single-user requires auth.singleUser.passwordHash (generate it with stargate-hash-password)")
+		}
 	}
 	return nil
 }

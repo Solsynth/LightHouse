@@ -93,6 +93,34 @@ func (c *Clients) Available(service string) bool {
 	}
 }
 
+// FilterServices clears clients whose integration module is disabled. Keys
+// are the short service names ("drive", "wallet", ...). Connections already
+// dialed are kept until Close; callers should treat nil as unavailable.
+func (c *Clients) FilterServices(enabled map[string]bool) {
+	if c == nil {
+		return
+	}
+	if !enabled["wallet"] {
+		c.Wallet = nil
+	}
+	if !enabled["develop"] {
+		c.Develop = nil
+	}
+	if !enabled["drive"] {
+		c.Drive = nil
+	}
+	if !enabled["pass"] {
+		c.Pass = nil
+		c.Nfc = nil
+	}
+	if !enabled["blade"] {
+		c.Blade = nil
+	}
+	if !enabled["ring"] {
+		c.Ring = nil
+	}
+}
+
 // NewClients creates lazy clients only for configured targets. Empty targets
 // leave the corresponding client nil, which disables that integration.
 func NewClients(cfg *config.Config) (*Clients, error) {

@@ -11,6 +11,23 @@ port = "8080"
 [web]
 distPath = "web/dist"
 
+# Compiled-in modules. An empty enabled list means every module whose default
+# is on. Disabling a module unmounts its routes/gRPC services and, on a fresh
+# database, prevents its tables from being created. Existing tables are never
+# dropped.
+[modules]
+enabled = []
+disabled = []
+# Per-module settings for third-party modules:
+# [modules.settings."com.example.audit"]
+# level = "debug"
+
+# Select a provider when more than one enabled module provides the same port.
+# [ports]
+# files = "app.solian.drive"
+# email = "app.solian.ring"
+# nfcTokens = "app.solian.id.nfc"
+
 [grpc]
 port = "9090"
 # TLS is on by default (the C# fleet and Blade dial https://_grpc.stargate).
@@ -39,6 +56,19 @@ websocketPushSubject = "websocket.push"
 
 [auth]
 issuer = "solar-network"
+# Credential source: "database" (default) or "single-user". Single-user is a
+# stateless identity from config: no account row, no sessions, no revocation.
+# It is intended for minimal deployments that run only app.solian.id.auth.
+# provider = "single-user"
+#
+# [auth.singleUser]
+# id = "00000000-0000-0000-0000-000000000001"
+# username = "admin"
+# passwordHash = "$2b$12$..."   # generate with: go run ./cmd/stargate-hash-password
+# displayName = "Administrator"
+# superuser = true
+# allowRefresh = true
+
 # Issuers accepted for both ordinary and OIDC access/refresh tokens. Keep old
 # values here when changing issuer so already-issued tokens remain usable.
 validIssuers = ["solar-network", "https://nt.solian.app"]

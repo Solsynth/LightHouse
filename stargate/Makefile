@@ -1,7 +1,7 @@
 BINARY := stargate
 CONFIG ?= config.toml
 
-.PHONY: build run start dev web web-dev web-test web-check test lint tidy
+.PHONY: build run start dev web web-dev web-test web-check test lint tidy migrate hash-password module-import
 
 build:
 	go build -o bin/$(BINARY) ./cmd/stargate
@@ -34,6 +34,12 @@ dev:
 
 migrate:
 	go run ./cmd/stargate-migrate
+
+hash-password:
+	go run ./cmd/stargate-hash-password
+
+module-import:
+	go run ./cmd/stargate-module-import $(ARGS)
 
 test:
 	go test ./...

@@ -19,6 +19,7 @@ import (
 type Server struct {
 	Engine *gin.Engine
 	cfg    *config.Config
+	api    *gin.RouterGroup
 	// WebError reports why the SPA was not mounted (missing dist directory or
 	// no index.html). The server stays API-only in that case.
 	WebError error
@@ -67,7 +68,15 @@ func New(cfg *config.Config, authMiddleware gin.HandlerFunc) *Server {
 	engine.GET("/.well-known/assetlinks.json", s.assetLinks)
 	engine.GET("/.well-known/security.txt", s.securityTxt)
 
+	s.api = engine.Group("/api")
+
 	return s
+}
+
+// API returns the shared /api router group. Modules register their routes
+// here; the group exists once so middleware order is stable.
+func (s *Server) API() *gin.RouterGroup {
+	return s.api
 }
 
 // securityTxt serves the RFC 9116 vulnerability-disclosure document. The
@@ -94,9 +103,8 @@ func (s *Server) securityTxt(c *gin.Context) {
 
 // Register adds route registrars to the /api group.
 func (s *Server) Register(registrars ...RouteRegistrar) {
-	api := s.Engine.Group("/api")
 	for _, r := range registrars {
-		r(api)
+		r(s.api)
 	}
 }
 

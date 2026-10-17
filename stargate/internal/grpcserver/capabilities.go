@@ -15,6 +15,9 @@ import (
 
 type dyCapabilitiesService struct {
 	gen.UnimplementedDyCapabilitiesServiceServer
+	// capabilities is the enabled set from the module registry. Nil keeps the
+	// full registry for tests and pre-module callers.
+	capabilities []string
 }
 
 // capability is one registered feature (the ApiFeature attribute).
@@ -101,8 +104,16 @@ func capabilityEnumByName(name string) gen.DyCapability {
 func (s *dyCapabilitiesService) GetCapabilities(ctx context.Context, req *emptypb.Empty) (*gen.DyCapabilitiesResponse, error) {
 	response := &gen.DyCapabilitiesResponse{MinimumRevision: 0}
 
+	allowed := map[string]bool{}
+	for _, name := range s.capabilities {
+		allowed[name] = true
+	}
+
 	index := make(map[string]int)
 	for _, f := range capabilityRegistry {
+		if len(allowed) > 0 && !allowed[f.name] {
+			continue
+		}
 		i, ok := index[f.name]
 		if !ok {
 			response.Capabilities = append(response.Capabilities, &gen.DyCapabilityState{

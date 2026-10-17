@@ -284,9 +284,9 @@ func (s *dyMlsService) GetGroupState(ctx context.Context, req *gen.GetMlsGroupSt
 		lastCommitAt = time.Time(*state.LastCommitAt).UnixMilli()
 	}
 	return &gen.GetMlsGroupStateResponse{
-		GroupId:           state.MlsGroupId,
-		Epoch:             state.Epoch,
-		StateVersion:      state.StateVersion,
+		GroupId:            state.MlsGroupId,
+		Epoch:              state.Epoch,
+		StateVersion:       state.StateVersion,
 		LastCommitAtUnixMs: lastCommitAt,
 	}, nil
 }

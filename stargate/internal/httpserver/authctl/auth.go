@@ -35,6 +35,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/localization"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
+	"src.solsynth.dev/sosys/stargate/internal/ports"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
 	"src.solsynth.dev/sosys/stargate/internal/risk"
 	"src.solsynth.dev/sosys/stargate/internal/spell"
@@ -54,6 +55,10 @@ type Deps struct {
 	Events  auth.EventBus
 	Spells  *spell.Service
 	Log     *slog.Logger
+	// SingleUser enables the minimal stateless auth surface.
+	SingleUser *auth.SingleUser
+	// Ports optionally provides NFC validation and notification adapters.
+	Ports *ports.Set
 }
 
 type handler struct {
@@ -72,6 +77,11 @@ func (h *handler) requireCache(c *gin.Context) bool {
 // Register wires every Phase 4 auth/account route onto the /api group.
 func Register(api *gin.RouterGroup, d Deps) {
 	h := &handler{d: d}
+
+	if d.SingleUser != nil {
+		registerSingleUser(api, h)
+		return
+	}
 
 	authGroup := api.Group("/auth")
 	{
@@ -128,6 +138,79 @@ func Register(api *gin.RouterGroup, d Deps) {
 	// WebAuthnDiscoveryController (the /.well-known/webauthn route is
 	// registered engine-level via RegisterWellKnown).
 	api.GET("/auth/webauthn/config", h.webauthnConfig)
+}
+
+// registerSingleUser mounts the minimal stateless auth surface.
+func registerSingleUser(api *gin.RouterGroup, h *handler) {
+	g := api.Group("/auth")
+	g.POST("/token", h.singleUserToken)
+	g.POST("/refresh", h.singleUserRefresh)
+	g.POST("/logout", h.singleUserLogout)
+	g.GET("/me", middleware.RequireAuth(), h.getCurrentAuthIdentity)
+	g.GET("/webauthn/config", h.webauthnConfig)
+}
+
+type singleUserCredentials struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+func (h *handler) singleUserToken(c *gin.Context) {
+	var req singleUserCredentials
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
+		return
+	}
+	if _, err := h.d.SingleUser.Authenticate(c.Request.Context(), req.Username, req.Password); err != nil {
+		c.JSON(http.StatusUnauthorized, errs.New("AUTH_INVALID_CREDENTIALS", "Invalid username or password.", http.StatusUnauthorized))
+		return
+	}
+	pair, _, err := h.d.SingleUser.IssueTokens(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, errs.New("AUTH_TOKEN_FAILED", "Failed to issue tokens.", http.StatusInternalServerError))
+		return
+	}
+	h.setSingleUserCookies(c, pair)
+	c.JSON(http.StatusOK, tokenExchangeBody(pair))
+}
+
+func (h *handler) singleUserRefresh(c *gin.Context) {
+	refresh := ""
+	var req tokenExchangeRequest
+	if err := c.ShouldBindJSON(&req); err == nil && req.RefreshToken != nil {
+		refresh = strings.TrimSpace(*req.RefreshToken)
+	}
+	if refresh == "" {
+		if cookie, err := c.Cookie("RefreshToken"); err == nil {
+			refresh = strings.TrimSpace(cookie)
+		}
+	}
+	if refresh == "" {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_REFRESH_TOKEN_REQUIRED", "Missing refresh token."))
+		return
+	}
+	pair, _, err := h.d.SingleUser.RefreshSessionAndIssueTokens(c.Request.Context(), refresh)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_REFRESH_FAILED", err.Error()))
+		return
+	}
+	h.setSingleUserCookies(c, pair)
+	c.JSON(http.StatusOK, tokenExchangeBody(pair))
+}
+
+func (h *handler) singleUserLogout(c *gin.Context) {
+	h.clearAuthCookies(c)
+	c.Status(http.StatusOK)
+}
+
+func (h *handler) setSingleUserCookies(c *gin.Context, pair *auth.TokenPair) {
+	domain := h.d.Cfg.Auth.CookieDomain
+	secure := h.d.Cfg.Auth.CookieSecure
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("AuthToken", pair.AccessToken, int(pair.AccessTokenExpiresAt.Sub(time.Now()).Seconds()), "/", domain, secure, true)
+	if pair.RefreshToken != "" {
+		c.SetCookie("RefreshToken", pair.RefreshToken, int(pair.RefreshTokenExpiresAt.Sub(time.Now()).Seconds()), "/", domain, secure, true)
+	}
 }
 
 // completableAuthFactors returns the enabled factors that can satisfy a step
@@ -996,9 +1079,6 @@ func (h *handler) verifyFactorCode(ctx context.Context, factor *model.AuthFactor
 // another account must not satisfy this challenge, so the owner is matched
 // against the factor's account.
 func (h *handler) verifyNfcToken(ctx context.Context, accountID, code string) bool {
-	if h.d.Clients == nil || h.d.Clients.Nfc == nil {
-		return false
-	}
 	if len(code) < 32 {
 		return false
 	}
@@ -1006,11 +1086,27 @@ func (h *handler) verifyNfcToken(ctx context.Context, accountID, code string) bo
 	if separator <= 0 || separator >= len(code)-1 {
 		return false
 	}
+	tagUID, uidHex := code[:separator], code[separator+1:]
+
+	if h.d.Ports != nil && h.d.Ports.NfcTokens != nil && h.d.Ports.NfcTokens.Available() {
+		tokenCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		defer cancel()
+		owner, _, err := h.d.Ports.NfcTokens.Validate(tokenCtx, tagUID, uidHex)
+		if err != nil {
+			h.logError("validate nfc token", err)
+			return false
+		}
+		return strings.EqualFold(owner, accountID)
+	}
+
+	if h.d.Clients == nil || h.d.Clients.Nfc == nil {
+		return false
+	}
 	rpcCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	response, err := h.d.Clients.Nfc.ValidateNfcToken(rpcCtx, &gen.DyValidateNfcTokenRequest{
-		TagUid: code[:separator],
-		UidHex: code[separator+1:],
+		TagUid: tagUID,
+		UidHex: uidHex,
 	})
 	if err != nil {
 		h.logError("validate nfc token", err)

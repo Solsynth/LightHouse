@@ -14,7 +14,7 @@ import (
 )
 
 var migrationApplicationTables = []string{
-	"accounts", "permission_groups", "auth_clients", "auth_sessions", "api_keys", "account_auth_factors", "account_contacts", "account_connections", "account_passkeys", "punishments", "authorized_apps", "action_logs", "auth_challenges", "e2ee_devices", "e2ee_key_bundles", "e2ee_one_time_pre_keys", "e2ee_sessions", "e2ee_envelopes", "mls_key_packages", "mls_group_states", "mls_device_memberships", "permission_group_members", "permission_nodes", "account_profiles", "account_relationships", "magic_spells", "affiliation_spells", "affiliation_results",
+	"accounts", "permission_groups", "auth_clients", "auth_sessions", "api_keys", "account_auth_factors", "account_contacts", "account_connections", "account_passkeys", "punishments", "authorized_apps", "action_logs", "auth_challenges", "e2ee_devices", "e2ee_key_bundles", "e2ee_one_time_pre_keys", "e2ee_sessions", "e2ee_envelopes", "mls_key_packages", "mls_group_states", "mls_device_memberships", "permission_group_members", "permission_nodes", "account_profiles", "magic_spells", "affiliation_spells", "affiliation_results",
 }
 
 func TestMigrationSafetyGate(t *testing.T) {

@@ -130,16 +130,32 @@ func main() {
 	defer padlock.Close()
 
 	// Truncate target tables first (CASCADE), preserving the migration table.
+	// Module-owned tables may be absent when the module is disabled; only
+	// truncate what actually exists.
 	if !incremental {
-		if _, err := target.Exec(ctx, `TRUNCATE TABLE
-			mls_device_memberships, mls_group_states, mls_key_packages,
-			e2ee_envelopes, e2ee_sessions, e2ee_one_time_pre_keys, e2ee_key_bundles, e2ee_devices,
-			permission_group_members, permission_nodes, permission_groups,
-			action_logs, auth_challenges, auth_sessions, auth_clients, api_keys,
-			account_contacts, account_connections, authorized_apps, punishments,
-			account_passkeys, account_auth_factors, account_relationships,
-			account_profiles, accounts CASCADE`); err != nil {
-			log.Fatalf("truncate target: %v", err)
+		truncateCandidates := []string{
+			"mls_device_memberships", "mls_group_states", "mls_key_packages",
+			"e2ee_envelopes", "e2ee_sessions", "e2ee_one_time_pre_keys", "e2ee_key_bundles", "e2ee_devices",
+			"permission_group_members", "permission_nodes", "permission_groups",
+			"action_logs", "auth_challenges", "auth_sessions", "auth_clients", "api_keys",
+			"account_contacts", "account_connections", "authorized_apps", "punishments",
+			"account_passkeys", "account_auth_factors", "account_relationships",
+			"account_profiles", "accounts",
+		}
+		existing := make([]string, 0, len(truncateCandidates))
+		for _, table := range truncateCandidates {
+			ok, err := targetTableExists(ctx, target, table)
+			if err != nil {
+				log.Fatalf("check target table %s: %v", table, err)
+			}
+			if ok {
+				existing = append(existing, table)
+			}
+		}
+		if len(existing) > 0 {
+			if _, err := target.Exec(ctx, "TRUNCATE TABLE "+strings.Join(existing, ", ")+" CASCADE"); err != nil {
+				log.Fatalf("truncate target: %v", err)
+			}
 		}
 	}
 
@@ -322,6 +338,13 @@ func outgoingFKs(ctx context.Context, db querier, table string) ([]fkRef, error)
 // re-run only inserts missing rows. A missing source table is skipped
 // (returns 0) so shared-DB deployments where some tables were never migrated
 // do not abort.
+// targetTableExists reports whether a table exists in the target schema.
+func targetTableExists(ctx context.Context, db querier, table string) (bool, error) {
+	var exists bool
+	err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = $1)`, table).Scan(&exists)
+	return exists, err
+}
+
 func copyTable(ctx context.Context, src *pgxpool.Pool, dst *pgx.Conn, table string, incremental bool) (int64, error) {
 	var exists bool
 	if err := src.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = $1)`, table).Scan(&exists); err != nil {
@@ -329,6 +352,14 @@ func copyTable(ctx context.Context, src *pgxpool.Pool, dst *pgx.Conn, table stri
 	}
 	if !exists {
 		log.Printf("skip %s: not present in source", table)
+		return 0, nil
+	}
+	targetExists, err := targetTableExists(ctx, dst, table)
+	if err != nil {
+		return 0, err
+	}
+	if !targetExists {
+		log.Printf("skip %s: not present in target (module disabled?)", table)
 		return 0, nil
 	}
 

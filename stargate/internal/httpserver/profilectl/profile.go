@@ -30,6 +30,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
+	"src.solsynth.dev/sosys/stargate/internal/ports"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
@@ -42,11 +43,13 @@ type Deps struct {
 	Perm    *permission.Service
 	Logs    *actionlog.Service
 	Clients *grpcclient.Clients
+	Ports   *ports.Set
 	Log     *slog.Logger
 }
 
-// Register mounts the moved Passport profile + social-graph routes on the
-// /api group.
+// Register mounts the profile + public account routes. The social graph
+// (relationships, followers/following) is mounted by the relationships
+// module through RegisterRelationships.
 func Register(api *gin.RouterGroup, d Deps) {
 	me := api.Group("/accounts/me")
 	me.GET("", middleware.RequireAuth(), d.getCurrentIdentity)
@@ -61,9 +64,15 @@ func Register(api *gin.RouterGroup, d Deps) {
 	accounts.GET("/:name/picture", d.getAccountPicture)
 	accounts.GET("/:name/background", d.getAccountBackground)
 	accounts.GET("/:name/connections", d.getPublicConnections)
+}
+
+// RegisterRelationships mounts the social-graph routes: /relationships/** and
+// the followers/following lists. It lives here because both surfaces share the
+// account/profile lookup helpers.
+func RegisterRelationships(api *gin.RouterGroup, d Deps) {
+	accounts := api.Group("/accounts")
 	accounts.GET("/:name/followers", d.getFollowPage(false))
 	accounts.GET("/:name/following", d.getFollowPage(true))
-
 	registerRelationships(api, d)
 }
 
@@ -222,6 +231,9 @@ func (d Deps) hydratePerk(ctx context.Context, account *model.Account) {
 }
 
 func (d Deps) perkOf(ctx context.Context, accountID string) (*model.SnSubscriptionReferenceObject, error) {
+	if d.Ports != nil && d.Ports.Perks != nil && d.Ports.Perks.Available() {
+		return d.Ports.Perks.Subscription(ctx, accountID)
+	}
 	if d.Clients == nil || d.Clients.Wallet == nil {
 		return nil, nil
 	}
@@ -229,9 +241,16 @@ func (d Deps) perkOf(ctx context.Context, accountID string) (*model.SnSubscripti
 	return provider.GetPerkSubscription(ctx, accountID)
 }
 
-// listBadges hydrates badges via Passport's DyProfileService.ListBadges,
-// serializing each badge with the C# SnAccountBadge snake_case wire shape.
+// listBadges hydrates badges via the badges port (Passport's
+// DyProfileService.ListBadges), serializing each badge with the C# SnAccountBadge
+// snake_case wire shape.
 func (d Deps) listBadges(ctx context.Context, accountID string) ([]any, error) {
+	if d.Ports != nil && d.Ports.Badges != nil && d.Ports.Badges.Available() {
+		return d.Ports.Badges.List(ctx, accountID)
+	}
+	if d.Clients == nil || d.Clients.Pass == nil {
+		return nil, errors.New("pass service not configured")
+	}
 	resp, err := d.Clients.Pass.ListBadges(ctx, &gen.DyListBadgesRequest{AccountId: accountID})
 	if err != nil || resp == nil {
 		return nil, err
@@ -264,6 +283,12 @@ func badgeToJSON(b *gen.DyAccountBadge) map[string]any {
 // verificationOf hydrates the profile verification mark via Passport's
 // DyProfileService.GetProfile (the mark stays owned by Passport).
 func (d Deps) verificationOf(ctx context.Context, accountID string) (*model.SnVerificationMark, error) {
+	if d.Ports != nil && d.Ports.Verification != nil && d.Ports.Verification.Available() {
+		return d.Ports.Verification.Get(ctx, accountID)
+	}
+	if d.Clients == nil || d.Clients.Pass == nil {
+		return nil, errors.New("pass service not configured")
+	}
 	resp, err := d.Clients.Pass.GetProfile(ctx, &gen.DyGetProfileRequest{AccountId: accountID})
 	if err != nil || resp == nil {
 		return nil, err
@@ -291,6 +316,11 @@ func verificationFromProto(v *gen.DyVerificationMark) *model.SnVerificationMark 
 // resolveFile fetches a file reference via Drive's DyFileService.GetFile.
 // A nil drive client degrades to an error (callers decide how to surface it).
 func (d Deps) resolveFile(ctx context.Context, fileID string) (*model.SnCloudFileReferenceObject, error) {
+	if d.Ports != nil && d.Ports.Files != nil && d.Ports.Files.Available() {
+		ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		defer cancel()
+		return d.Ports.Files.Resolve(ctx, fileID)
+	}
 	if d.Clients == nil || d.Clients.Drive == nil {
 		return nil, errors.New("drive client not configured")
 	}

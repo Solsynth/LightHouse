@@ -13,7 +13,9 @@ import (
 )
 
 // navigator.credentials.get: the 32-byte digest
-//   SHA-256(authenticatorData || SHA-256(clientDataJSON))
+//
+//	SHA-256(authenticatorData || SHA-256(clientDataJSON))
+//
 // over the FULL authenticator data (WebAuthn §7.2 Step 16 — the same
 // construction go-webauthn verifies). It returns the assertion fields in the
 // base64url form the client submits to the complete endpoints.

@@ -170,3 +170,48 @@ func TestTrustedProxyHopCount(t *testing.T) {
 		}
 	}
 }
+
+func TestModuleListsParse(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	body := `
+[captcha]
+allow_disabled = true
+
+[modules]
+enabled = ["app.solian.id.auth", "app.solian.id.accounts"]
+disabled = ["app.solian.e2ee"]
+
+[ports]
+files = "app.solian.drive"
+`
+	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Modules.Enabled) != 2 || cfg.Modules.Enabled[0] != "app.solian.id.auth" {
+		t.Fatalf("enabled = %v", cfg.Modules.Enabled)
+	}
+	if len(cfg.Modules.Disabled) != 1 || cfg.Modules.Disabled[0] != "app.solian.e2ee" {
+		t.Fatalf("disabled = %v", cfg.Modules.Disabled)
+	}
+	if cfg.Ports["files"] != "app.solian.drive" {
+		t.Fatalf("ports = %v", cfg.Ports)
+	}
+}
+
+func TestSingleUserValidation(t *testing.T) {
+	cfg := Default()
+	cfg.Captcha.AllowDisabled = true
+	cfg.Auth.Provider = "single-user"
+	cfg.Auth.SingleUser.Username = "admin"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("single-user without passwordHash accepted")
+	}
+	cfg.Auth.SingleUser.PasswordHash = "$2a$10$abcdefghijklmnopqrstuv"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid single-user config rejected: %v", err)
+	}
+}

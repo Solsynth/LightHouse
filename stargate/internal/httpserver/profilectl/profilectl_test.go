@@ -35,6 +35,7 @@ func TestRegisterRouteTable(t *testing.T) {
 	engine := gin.New()
 	api := engine.Group("/api")
 	Register(api, Deps{Log: nil})
+	RegisterRelationships(api, Deps{Log: nil})
 
 	type route struct {
 		method string
@@ -98,6 +99,7 @@ func TestAnonymousRequiresAuth(t *testing.T) {
 	engine := gin.New()
 	api := engine.Group("/api")
 	Register(api, Deps{Log: nil})
+	RegisterRelationships(api, Deps{Log: nil})
 
 	for _, tc := range []struct {
 		method, path string
