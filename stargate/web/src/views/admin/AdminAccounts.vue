@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { ChevronLeft16, ChevronRight16 } from '@carbon/icons-vue'
 import { RouterLink } from 'vue-router'
 
 import { adminApi } from '@/lib/api'
@@ -163,19 +164,23 @@ onMounted(load)
           <div class="flex items-center gap-3">
             <button
               type="button"
-              class="text-dim disabled:text-faint"
+              class="btn btn-ghost btn-xs px-1 text-dim disabled:text-faint"
+              :aria-label="t('common.previousPage')"
+              :title="t('common.previousPage')"
               :disabled="page === 0 || loading"
               @click="go(page - 1)"
             >
-              {{ t('admin.accounts.prev') }}
+              <ChevronLeft16 aria-hidden="true" />
             </button>
             <button
               type="button"
-              class="text-dim disabled:text-faint"
+              class="btn btn-ghost btn-xs px-1 text-dim disabled:text-faint"
+              :aria-label="t('common.nextPage')"
+              :title="t('common.nextPage')"
               :disabled="(page + 1) * pageSize >= total || loading"
               @click="go(page + 1)"
             >
-              {{ t('admin.accounts.next') }}
+              <ChevronRight16 aria-hidden="true" />
             </button>
           </div>
         </div>

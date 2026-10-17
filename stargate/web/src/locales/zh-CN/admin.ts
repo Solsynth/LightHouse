@@ -55,8 +55,6 @@ export default {
       passwordShort: '（密码）',
       devices: '{n} 台设备',
       page: '第 {page} / {pages} 页',
-      prev: '上一页',
-      next: '下一页',
     },
     accountDetail: {
       loadingDescription: '正在加载账号记录。',
@@ -128,6 +126,7 @@ export default {
       errorLoad: '无法列出权限组。',
       panelTitle: '权限组',
       panelNote: '共 {n} 个',
+      page: '第 {page} / {pages} 页',
       loading: '正在读取权限组…',
       empty: '没有匹配的权限组。默认权限组会在首次启动时创建。',
       colKey: '键',

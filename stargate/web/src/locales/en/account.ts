@@ -58,8 +58,6 @@ export default {
     client: 'client',
     copyHint: 'Click a row to copy its timestamp and id.',
     range: '{from}–{to} of {total}',
-    prev: 'Prev',
-    next: 'Next',
     noticeCopied: 'Row copied.',
     errorLoad: 'The activity log could not be read.',
   },
@@ -127,7 +125,8 @@ export default {
     description:
       'Every device or app currently signed in as this account. Revoking a session signs it out right away.',
     activeSessions: 'Active Sessions',
-    note: '{total} total · {others} other than this browser',
+    note: '{total} total',
+    page: 'Page {page} of {pages}',
     reading: 'Reading session table…',
     empty: 'No sessions are recorded for this account.',
     client: 'client',

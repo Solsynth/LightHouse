@@ -16,19 +16,20 @@ const tabs = computed(() => [
 
 <template>
   <nav
-    class="mb-6 flex flex-wrap gap-x-5 gap-y-2 border-b border-line pb-3"
+    class="mb-6 flex w-fit max-w-full overflow-x-auto border border-line bg-base-200/30"
     :aria-label="t('securityNav.aria')"
   >
     <RouterLink
       v-for="tab in tabs"
       :key="tab.to"
       :to="tab.to"
-      class="text-2xs tracking-[0.02em] transition-colors"
+      class="whitespace-nowrap border-r border-line px-3 py-1.5 text-2xs tracking-[0.02em] transition-colors last:border-r-0"
       :class="
         route.path === tab.to
-          ? 'text-base-content underline decoration-primary decoration-1 underline-offset-[7px]'
-          : 'text-faint hover:text-dim'
+          ? 'bg-base-300 text-base-content'
+          : 'text-faint hover:bg-base-300/50 hover:text-dim'
       "
+      :aria-current="route.path === tab.to ? 'page' : undefined"
     >
       {{ tab.label }}
     </RouterLink>

@@ -6,6 +6,8 @@ declare module '@carbon/icons-vue' {
   export const Activity16: DefineComponent
   export const Api16: DefineComponent
   export const Checkmark16: DefineComponent
+  export const ChevronLeft16: DefineComponent
+  export const ChevronRight16: DefineComponent
   export const Close16: DefineComponent
   export const Copy16: DefineComponent
   export const Devices16: DefineComponent

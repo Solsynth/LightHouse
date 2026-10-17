@@ -58,8 +58,6 @@ export default {
       passwordShort: '(pw)',
       devices: '{n} dev',
       page: 'Page {page} of {pages}',
-      prev: 'Prev',
-      next: 'Next',
     },
     accountDetail: {
       loadingDescription: 'Loading account record.',
@@ -137,6 +135,7 @@ export default {
       errorLoad: 'Permission Groups could not be listed.',
       panelTitle: 'Groups',
       panelNote: '{n} total',
+      page: 'Page {page} of {pages}',
       loading: 'Reading groups…',
       empty: 'No groups match. The default group is seeded on first boot.',
       colKey: 'key',

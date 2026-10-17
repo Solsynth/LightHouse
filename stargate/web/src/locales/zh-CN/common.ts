@@ -54,6 +54,8 @@ export default {
     no: '否',
     learnMore: '了解更多',
     somethingWrong: '出了点问题。',
+    previousPage: '上一页',
+    nextPage: '下一页',
   },
   time: {
     pending: '等待中',

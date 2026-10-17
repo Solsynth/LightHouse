@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Close16 } from '@carbon/icons-vue'
+import { ChevronLeft16, ChevronRight16, Close16 } from '@carbon/icons-vue'
 
 import { useNoticeStore } from '@/stores/notice'
 import { sessionApi } from '@/lib/api'
@@ -23,22 +23,27 @@ const loading = ref(true)
 const error = ref('')
 const pendingRevoke = ref<AuthSession | null>(null)
 const busy = ref(false)
-
-const active = computed(() => sessions.value.filter((item) => !item.is_current))
+const page = ref(0)
+const pageSize = 25
 
 async function load() {
   loading.value = true
   error.value = ''
   try {
-    const page = await sessionApi.list({ take: 100 })
-    sessions.value = page.items
-    total.value = page.total
+    const result = await sessionApi.list({ take: pageSize, offset: page.value * pageSize })
+    sessions.value = result.items
+    total.value = result.total
   } catch (caught) {
     error.value =
       caught instanceof StargateError ? caught.message : t('sessions.errorLoad')
   } finally {
     loading.value = false
   }
+}
+
+function go(next: number) {
+  page.value = Math.max(0, Math.min(next, Math.max(0, Math.ceil(total.value / pageSize) - 1)))
+  void load()
 }
 
 async function revoke() {
@@ -79,7 +84,7 @@ onMounted(load)
 
     <ConsolePanel
       :title="t('sessions.activeSessions')"
-      :note="t('sessions.note', { total, others: active.length })"
+      :note="t('sessions.note', { total })"
     >
       <div v-if="loading" class="py-6 text-xs text-faint">{{ t('sessions.reading') }}</div>
 
@@ -147,9 +152,39 @@ onMounted(load)
       </div>
 
       <template #footer>
-        <p class="voice text-[12px] text-faint">
-          {{ t('sessions.footer') }}
-        </p>
+        <div class="flex flex-wrap items-center justify-between gap-3 text-2xs text-faint">
+          <span>{{ t('sessions.footer') }}</span>
+          <div class="flex items-center gap-3">
+            <span class="tabular-nums">
+              {{
+                t('sessions.page', {
+                  page: page + 1,
+                  pages: Math.max(1, Math.ceil(total / pageSize)),
+                })
+              }}
+            </span>
+            <button
+              type="button"
+              class="btn btn-ghost btn-xs px-1 text-dim disabled:text-faint"
+              :aria-label="t('common.previousPage')"
+              :title="t('common.previousPage')"
+              :disabled="page === 0 || loading"
+              @click="go(page - 1)"
+            >
+              <ChevronLeft16 aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              class="btn btn-ghost btn-xs px-1 text-dim disabled:text-faint"
+              :aria-label="t('common.nextPage')"
+              :title="t('common.nextPage')"
+              :disabled="page >= Math.ceil(total / pageSize) - 1 || loading"
+              @click="go(page + 1)"
+            >
+              <ChevronRight16 aria-hidden="true" />
+            </button>
+          </div>
+        </div>
       </template>
     </ConsolePanel>
 

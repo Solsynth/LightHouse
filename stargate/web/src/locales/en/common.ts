@@ -54,6 +54,8 @@ export default {
     no: 'No',
     learnMore: 'Learn more',
     somethingWrong: 'Something went wrong.',
+    previousPage: 'Previous page',
+    nextPage: 'Next page',
   },
   time: {
     pending: 'pending',

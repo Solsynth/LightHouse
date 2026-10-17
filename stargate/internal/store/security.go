@@ -19,15 +19,18 @@ import (
 
 // --- Sessions ---
 
-// ListSessions lists the account's sessions with pagination. When
+// ListSessions lists the account's live sessions with pagination. When
 // includeChildren is false only root sessions (no parent) are returned,
 // mirroring GetSessions: by default includeChildren=false shows roots only.
+// Revoking a session stamps expired_at, so expired rows are excluded — the
+// account's session table is a list of what can still act, not a history.
 func (s *Store) ListSessions(ctx context.Context, accountID string, typ *model.SessionType, clientID *uuid.UUID, includeChildren bool, take, offset int) ([]model.AuthSession, int, error) {
 	// The legacy query carried no deleted_at filter, so the scoped statement
-	// stays Unscoped.
+	// stays Unscoped; expiry is the meaningful filter here.
 	base := func() *gorm.DB {
 		query := s.DB.WithContext(ctx).Unscoped().Model(&AuthSessionEntity{}).
-			Where("account_id = ?", accountID)
+			Where("account_id = ?", accountID).
+			Where("(expired_at IS NULL OR expired_at > ?)", time.Now().UTC())
 		if !includeChildren {
 			query = query.Where("parent_session_id IS NULL")
 		}
