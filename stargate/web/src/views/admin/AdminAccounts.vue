@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 
 import { adminApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
 import type { AdminAccountSummary } from '@/lib/api/types'
-import { punishmentTypeLabels } from '@/lib/enums'
+import { punishmentTypeLabel } from '@/lib/enums'
 import { relative, shortId } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
+
+const { t } = useI18n()
 
 const rows = ref<AdminAccountSummary[]>([])
 const total = ref(0)
@@ -35,7 +38,7 @@ async function load() {
     total.value = result.total
   } catch (caught) {
     error.value =
-      caught instanceof StargateError ? caught.message : 'Accounts could not be listed.'
+      caught instanceof StargateError ? caught.message : t('admin.accounts.errorLoad')
   } finally {
     loading.value = false
   }
@@ -56,52 +59,54 @@ onMounted(load)
 
 <template>
   <div>
-    <PageHeader
-      title="Accounts"
-      description="Search the account table, open a record, or filter to restricted accounts."
-    />
+    <PageHeader :title="t('admin.accounts.title')" :description="t('admin.accounts.description')" />
 
     <form class="mb-5 flex flex-wrap items-end gap-3" @submit.prevent="search">
       <div class="min-w-[220px] flex-1">
-        <label for="account-query" class="field-label">Query</label>
+        <label for="account-query" class="field-label">{{ t('admin.accounts.query') }}</label>
         <input
           id="account-query"
           v-model="query"
           class="input input-sm"
-          placeholder="name or nickname"
+          :placeholder="t('admin.accounts.queryPlaceholder')"
           autocapitalize="off"
         />
       </div>
       <label class="flex cursor-pointer items-center gap-2 pb-2 text-2xs text-dim">
         <input v-model="onlyPunished" class="checkbox checkbox-xs" type="checkbox" @change="search" />
-        restricted only
+        {{ t('admin.accounts.restrictedOnly') }}
       </label>
       <label class="flex cursor-pointer items-center gap-2 pb-2 text-2xs text-dim">
         <input v-model="onlyActivated" class="checkbox checkbox-xs" type="checkbox" @change="search" />
-        activated only
+        {{ t('admin.accounts.activatedOnly') }}
       </label>
-      <button type="submit" class="btn btn-primary btn-sm" :disabled="loading">Search</button>
+      <button type="submit" class="btn btn-primary btn-sm" :disabled="loading">
+        {{ t('common.search') }}
+      </button>
     </form>
 
     <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
 
-    <ConsolePanel title="Account Table" :note="`${total} matching`">
-      <div v-if="loading" class="py-6 text-xs text-faint">Querying accounts…</div>
+    <ConsolePanel
+      :title="t('admin.accounts.panelTitle')"
+      :note="t('admin.accounts.matching', { n: total })"
+    >
+      <div v-if="loading" class="py-6 text-xs text-faint">{{ t('admin.accounts.loading') }}</div>
 
       <p v-else-if="!rows.length" class="voice py-6 text-[12px]">
-        No accounts match. Clear the filters or try a different query.
+        {{ t('admin.accounts.empty') }}
       </p>
 
       <div v-else class="overflow-x-auto">
         <table class="ledger">
           <thead>
             <tr>
-              <th scope="col">account</th>
-              <th scope="col">email</th>
-              <th scope="col">factors</th>
-              <th scope="col">sessions</th>
-              <th scope="col">state</th>
-              <th scope="col">created</th>
+              <th scope="col">{{ t('admin.accounts.colAccount') }}</th>
+              <th scope="col">{{ t('admin.accounts.colEmail') }}</th>
+              <th scope="col">{{ t('admin.accounts.colFactors') }}</th>
+              <th scope="col">{{ t('admin.accounts.colSessions') }}</th>
+              <th scope="col">{{ t('admin.accounts.colState') }}</th>
+              <th scope="col">{{ t('common.created') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -120,18 +125,24 @@ onMounted(load)
               <td class="text-xs text-dim">{{ row.primary_email ?? '—' }}</td>
               <td class="text-xs tabular-nums text-dim">
                 {{ row.auth_factor_count }}
-                <span v-if="row.has_password" class="text-2xs text-faint">(pw)</span>
+                <span v-if="row.has_password" class="text-2xs text-faint">
+                  {{ t('admin.accounts.passwordShort') }}
+                </span>
               </td>
               <td class="text-xs tabular-nums text-dim">
                 {{ row.active_session_count }}
-                <span class="text-2xs text-faint">/ {{ row.active_device_count }} dev</span>
+                <span class="text-2xs text-faint">
+                  / {{ t('admin.accounts.devices', { n: row.active_device_count }) }}
+                </span>
               </td>
               <td>
                 <span v-if="row.active_punishment" class="chip text-error">
-                  {{ punishmentTypeLabels[row.active_punishment.type] ?? 'restricted' }}
+                  {{ punishmentTypeLabel(row.active_punishment.type) }}
                 </span>
-                <span v-else-if="row.account.activated_at" class="chip text-success">active</span>
-                <span v-else class="chip text-warning">pending</span>
+                <span v-else-if="row.account.activated_at" class="chip text-success">
+                  {{ t('common.active') }}
+                </span>
+                <span v-else class="chip text-warning">{{ t('common.pending') }}</span>
               </td>
               <td class="text-xs text-dim">{{ relative(row.account.created_at) }}</td>
             </tr>
@@ -141,7 +152,14 @@ onMounted(load)
 
       <template #footer>
         <div class="flex items-center justify-between text-2xs text-faint">
-          <span>Page {{ page + 1 }} of {{ Math.max(1, Math.ceil(total / pageSize)) }}</span>
+          <span>
+            {{
+              t('admin.accounts.page', {
+                page: page + 1,
+                pages: Math.max(1, Math.ceil(total / pageSize)),
+              })
+            }}
+          </span>
           <div class="flex items-center gap-3">
             <button
               type="button"
@@ -149,7 +167,7 @@ onMounted(load)
               :disabled="page === 0 || loading"
               @click="go(page - 1)"
             >
-              Prev
+              {{ t('admin.accounts.prev') }}
             </button>
             <button
               type="button"
@@ -157,7 +175,7 @@ onMounted(load)
               :disabled="(page + 1) * pageSize >= total || loading"
               @click="go(page + 1)"
             >
-              Next
+              {{ t('admin.accounts.next') }}
             </button>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import type { ApiError } from './types'
+import { translate } from '@/lib/i18n'
 
 /** A typed failure from the Stargate API. */
 export class StargateError extends Error {
@@ -108,7 +109,7 @@ function buildUrl(path: string, query?: Query): string {
 async function parseError(response: Response): Promise<StargateError> {
   const fallback: ApiError = {
     code: `HTTP_${response.status}`,
-    message: response.statusText || 'The request failed.',
+    message: response.statusText || translate('errors.requestFailed'),
     status: response.status,
   }
   try {

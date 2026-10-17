@@ -1,17 +1,19 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
+
+const { t } = useI18n()
 </script>
 
 <template>
   <div>
-    <h1 class="title mt-2 text-2xl text-base-content">No Such Route</h1>
+    <h1 class="title mt-2 text-2xl text-base-content">{{ t('notFound.title') }}</h1>
     <p class="voice mt-3">
-      This address does not match a console page. The API may still serve it — check the path, or
-      start from your account.
+      {{ t('notFound.body') }}
     </p>
     <div class="mt-6 flex gap-3">
-      <RouterLink to="/account" class="btn btn-primary btn-sm">Go to Account</RouterLink>
-      <RouterLink to="/activity" class="btn btn-ghost btn-sm">Activity</RouterLink>
+      <RouterLink to="/account" class="btn btn-primary btn-sm">{{ t('notFound.goToAccount') }}</RouterLink>
+      <RouterLink to="/activity" class="btn btn-ghost btn-sm">{{ t('notFound.activity') }}</RouterLink>
     </div>
   </div>
 </template>

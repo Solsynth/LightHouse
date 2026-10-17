@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import type { AuthFactor } from '@/lib/api/types'
-import { factorTypeDescriptions, factorTypeLabels } from '@/lib/enums'
+import { factorTypeDescription, factorTypeLabel } from '@/lib/enums'
 
 const props = defineProps<{
   factor: AuthFactor
@@ -16,6 +17,7 @@ const emit = defineEmits<{
   submit: [secret: string]
 }>()
 
+const { t } = useI18n()
 const secret = ref('')
 
 function submit() {
@@ -30,10 +32,10 @@ function submit() {
     <div class="flex items-baseline justify-between gap-3">
       <div>
         <label :for="`f-${props.factor.id}`" class="text-xs text-base-content">
-          {{ factorTypeLabels[props.factor.type] ?? 'factor' }}
+          {{ factorTypeLabel(props.factor.type) }}
         </label>
         <p class="mt-0.5 text-2xs text-faint">
-          {{ factorTypeDescriptions[props.factor.type] }}
+          {{ factorTypeDescription(props.factor.type) }}
         </p>
       </div>
       <button
@@ -43,7 +45,7 @@ function submit() {
         :disabled="props.busy"
         @click="emit('sendCode')"
       >
-        {{ props.codeSent ? 'resend' : 'send code' }}
+        {{ props.codeSent ? t('factorRow.resend') : t('factorRow.sendCode') }}
       </button>
     </div>
 
@@ -55,7 +57,7 @@ function submit() {
         :type="props.needsCode ? 'text' : 'password'"
         :inputmode="props.needsCode ? 'numeric' : undefined"
         :autocomplete="props.needsCode ? 'one-time-code' : 'current-password'"
-        :placeholder="props.needsCode ? '6-digit code' : 'credential'"
+        :placeholder="props.needsCode ? t('factorRow.codePlaceholder') : t('factorRow.credentialPlaceholder')"
         :disabled="props.busy"
         @keydown.enter="submit"
       />
@@ -65,7 +67,7 @@ function submit() {
         :disabled="props.busy || !secret"
         @click="submit"
       >
-        Verify
+        {{ t('common.verify') }}
       </button>
     </div>
   </div>

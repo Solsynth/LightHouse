@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { Close16 } from '@carbon/icons-vue'
 
 import { useNoticeStore } from '@/stores/notice'
 import { sessionApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
 import type { AuthSession } from '@/lib/api/types'
 import { describeAgent, place, relative, remaining, shortId, utcStamp } from '@/lib/format'
-import { sessionTypeLabels } from '@/lib/enums'
+import { sessionTypeLabel } from '@/lib/enums'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import SecurityNav from '@/components/SecurityNav.vue'
 
+const { t } = useI18n()
 const notice = useNoticeStore()
 
 const sessions = ref<AuthSession[]>([])
@@ -32,7 +35,7 @@ async function load() {
     total.value = page.total
   } catch (caught) {
     error.value =
-      caught instanceof StargateError ? caught.message : 'Sessions could not be loaded.'
+      caught instanceof StargateError ? caught.message : t('sessions.errorLoad')
   } finally {
     loading.value = false
   }
@@ -44,11 +47,11 @@ async function revoke() {
   busy.value = true
   try {
     await sessionApi.revoke(target.id)
-    notice.ok(`Revoked session ${shortId(target.id)}.`)
+    notice.ok(t('sessions.noticeRevoked', { id: shortId(target.id) }))
     pendingRevoke.value = null
     await load()
   } catch (caught) {
-    notice.fail(caught instanceof Error ? caught.message : 'The session could not be revoked.')
+    notice.fail(caught instanceof Error ? caught.message : t('sessions.errorRevoke'))
   } finally {
     busy.value = false
   }
@@ -60,12 +63,12 @@ onMounted(load)
 <template>
   <div>
     <PageHeader
-      title="Sessions"
-      description="Every credential currently able to act as this account. Revoking a session invalidates its tokens immediately."
+      :title="t('sessions.title')"
+      :description="t('sessions.description')"
     >
       <template #actions>
         <button type="button" class="btn btn-ghost btn-sm" :disabled="loading" @click="load">
-          Refresh
+          {{ t('common.refresh') }}
         </button>
       </template>
     </PageHeader>
@@ -75,25 +78,25 @@ onMounted(load)
     <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
 
     <ConsolePanel
-      title="Active Sessions"
-      :note="`${total} total · ${active.length} other than this browser`"
+      :title="t('sessions.activeSessions')"
+      :note="t('sessions.note', { total, others: active.length })"
     >
-      <div v-if="loading" class="py-6 text-xs text-faint">Reading session table…</div>
+      <div v-if="loading" class="py-6 text-xs text-faint">{{ t('sessions.reading') }}</div>
 
       <p v-else-if="!sessions.length" class="voice py-6">
-        No sessions are recorded for this account.
+        {{ t('sessions.empty') }}
       </p>
 
       <div v-else class="overflow-x-auto">
         <table class="ledger">
           <thead>
             <tr>
-              <th scope="col">client</th>
-              <th scope="col">origin</th>
-              <th scope="col">type</th>
-              <th scope="col">granted</th>
-              <th scope="col">expires</th>
-              <th scope="col"><span class="sr-only">Actions</span></th>
+              <th scope="col">{{ t('sessions.client') }}</th>
+              <th scope="col">{{ t('sessions.origin') }}</th>
+              <th scope="col">{{ t('sessions.type') }}</th>
+              <th scope="col">{{ t('sessions.granted') }}</th>
+              <th scope="col">{{ t('common.expires') }}</th>
+              <th scope="col"><span class="sr-only">{{ t('common.actions') }}</span></th>
             </tr>
           </thead>
           <tbody>
@@ -103,11 +106,11 @@ onMounted(load)
                   <span
                     class="dot"
                     :class="item.is_online ? 'bg-success' : 'bg-line'"
-                    :title="item.is_online ? 'Connected now' : 'Offline'"
+                    :title="item.is_online ? t('sessions.connectedNow') : t('common.offline')"
                   />
                   <span class="text-xs text-base-content">{{ describeAgent(item.user_agent) }}</span>
-                  <span v-if="item.is_current" class="chip text-primary">this browser</span>
-                  <span v-if="item.trusted" class="chip text-accent">trusted</span>
+                  <span v-if="item.is_current" class="chip text-primary">{{ t('sessions.thisBrowser') }}</span>
+                  <span v-if="item.trusted" class="chip text-accent">{{ t('sessions.trusted') }}</span>
                 </div>
                 <p class="mt-1 text-2xs text-faint" :title="item.id">{{ shortId(item.id) }}</p>
               </td>
@@ -116,7 +119,7 @@ onMounted(load)
                 <p class="text-2xs text-faint">{{ place(item.location) }}</p>
               </td>
               <td class="text-xs text-dim">
-                {{ sessionTypeLabels[item.type] ?? 'session' }}
+                {{ sessionTypeLabel(item.type) || t('sessions.fallbackType') }}
                 <p v-if="item.scopes.length" class="text-2xs text-faint">
                   {{ item.scopes.slice(0, 3).join(' ') }}
                 </p>
@@ -129,10 +132,12 @@ onMounted(load)
                 <button
                   v-if="!item.is_current"
                   type="button"
-                  class="text-2xs text-dim hover:text-error"
+                  class="btn btn-ghost btn-xs px-1 text-dim hover:text-error"
+                  :title="t('sessions.revoke')"
+                  :aria-label="t('sessions.revoke')"
                   @click="pendingRevoke = item"
                 >
-                  Revoke
+                  <Close16 aria-hidden="true" />
                 </button>
                 <span v-else class="text-2xs text-faint">—</span>
               </td>
@@ -143,17 +148,16 @@ onMounted(load)
 
       <template #footer>
         <p class="voice text-[12px] text-faint">
-          This browser's session is the one issuing these requests. Revoking it signs you out
-          everywhere this cookie was accepted.
+          {{ t('sessions.footer') }}
         </p>
       </template>
     </ConsolePanel>
 
     <ConfirmAction
       v-if="pendingRevoke"
-      title="Revoke This Session?"
-      :body="`The client ${describeAgent(pendingRevoke.user_agent)} loses its tokens immediately. It must sign in again.`"
-      action="Revoke Session"
+      :title="t('sessions.revokeTitle')"
+      :body="t('sessions.revokeBody', { client: describeAgent(pendingRevoke.user_agent) })"
+      :action="t('sessions.revokeAction')"
       tone="error"
       :busy="busy"
       @cancel="pendingRevoke = null"

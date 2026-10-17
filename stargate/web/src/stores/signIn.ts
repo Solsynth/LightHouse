@@ -4,6 +4,7 @@ import { computed, ref } from 'vue'
 import { request } from '@/lib/api/client'
 import type { AuthChallenge, AuthFactor, TokenPair } from '@/lib/api/types'
 import { deviceIdentity } from '@/lib/device'
+import { translate } from '@/lib/i18n'
 
 /** Web platform value the server expects (model.ClientPlatformWeb). */
 const PLATFORM_WEB = 1
@@ -76,7 +77,7 @@ export const useSignInStore = defineStore('signIn', () => {
       password.value = ''
       if (!complete.value) await loadFactors()
     } catch (caught) {
-      error.value = caught instanceof Error ? caught.message : 'That credential was not accepted.'
+      error.value = caught instanceof Error ? caught.message : translate('errors.credentialRejected')
       throw caught
     } finally {
       busy.value = false

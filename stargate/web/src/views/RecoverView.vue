@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
 import { useNoticeStore } from '@/stores/notice'
@@ -7,6 +8,7 @@ import { authApi, signInApi } from '@/lib/api'
 import CaptchaWidget from '@/components/CaptchaWidget.vue'
 import type { CaptchaConfig } from '@/lib/api/types'
 
+const { t } = useI18n()
 const route = useRoute()
 const notice = useNoticeStore()
 
@@ -28,9 +30,9 @@ async function requestReset() {
       captcha_token: captchaToken.value,
     })
     sent.value = true
-    notice.ok('If the account has a verified contact, a reset link is on its way.')
+    notice.ok(t('recover.noticeRequested'))
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : 'The reset request failed.'
+    error.value = caught instanceof Error ? caught.message : t('recover.errorRequestFailed')
   } finally {
     busy.value = false
   }
@@ -43,9 +45,9 @@ async function applySpell() {
   resetting.value = true
   try {
     await signInApi.applySpell(word)
-    notice.ok('Link applied. You can sign in with your new password.')
+    notice.ok(t('recover.noticeApplied'))
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : 'The link could not be applied.'
+    error.value = caught instanceof Error ? caught.message : t('recover.errorApplyFailed')
   } finally {
     resetting.value = false
   }
@@ -64,19 +66,18 @@ onMounted(async () => {
 <template>
   <div>
     <div class="mb-8">
-      <h1 class="title mt-2 text-2xl text-base-content">Reset a Password</h1>
+      <h1 class="title mt-2 text-2xl text-base-content">{{ t('recover.title') }}</h1>
       <p class="voice mt-2">
-        We email a reset link to the account's verified contact. If the account has none, no link
-        is sent.
+        {{ t('recover.intro') }}
       </p>
     </div>
 
     <div v-if="resetting" class="border border-line bg-base-200/40 p-5 text-xs text-dim">
-      Applying reset link…
+      {{ t('recover.applying') }}
     </div>
 
     <form v-else class="border border-line bg-base-200/40 p-5" @submit.prevent="requestReset">
-      <label for="recover-account" class="field-label">Account or email</label>
+      <label for="recover-account" class="field-label">{{ t('signIn.accountLabel') }}</label>
       <input
         id="recover-account"
         v-model="account"
@@ -84,11 +85,11 @@ onMounted(async () => {
         autocomplete="username"
         autocapitalize="off"
         spellcheck="false"
-        placeholder="name or name@example.com"
+        :placeholder="t('signIn.accountPlaceholder')"
       />
 
       <div v-if="captcha" class="mt-4">
-        <p class="field-label">Verification</p>
+        <p class="field-label">{{ t('recover.verification') }}</p>
         <CaptchaWidget
           :provider="captcha.provider"
           :api-key="captcha.apiKey"
@@ -98,7 +99,7 @@ onMounted(async () => {
 
       <p v-if="error" class="mt-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
       <p v-if="sent" class="mt-4 border-l border-success pl-3 text-xs text-success">
-        Request accepted. Check the inbox for the reset link.
+        {{ t('recover.accepted') }}
       </p>
 
       <button
@@ -106,12 +107,12 @@ onMounted(async () => {
         class="btn btn-primary mt-5 w-full"
         :disabled="busy || !account.trim()"
       >
-        {{ busy ? 'Requesting…' : 'Send Reset Link' }}
+        {{ busy ? t('recover.requesting') : t('recover.submit') }}
       </button>
     </form>
 
     <p class="voice mt-6 text-[12px]">
-      <RouterLink to="/sign-in" class="link-quiet">Back to Sign In</RouterLink>
+      <RouterLink to="/sign-in" class="link-quiet">{{ t('recover.backToSignIn') }}</RouterLink>
     </p>
   </div>
 </template>

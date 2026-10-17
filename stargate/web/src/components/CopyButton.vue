@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Checkmark16, Copy16 } from '@carbon/icons-vue'
 
 const props = defineProps<{
@@ -7,6 +8,7 @@ const props = defineProps<{
   label?: string
 }>()
 
+const { t } = useI18n()
 const copied = ref(false)
 
 async function copy() {
@@ -26,11 +28,11 @@ async function copy() {
   <button
     type="button"
     class="chip hover:border-faint hover:text-base-content"
-    :title="`Copy ${label ?? 'value'}`"
+    :title="t('copy.title', { label: label ?? t('copy.value') })"
     @click="copy"
   >
     <Checkmark16 v-if="copied" aria-hidden="true" />
     <Copy16 v-else aria-hidden="true" />
-    {{ copied ? 'Copied' : 'Copy' }}
+    {{ copied ? t('common.copied') : t('common.copy') }}
   </button>
 </template>

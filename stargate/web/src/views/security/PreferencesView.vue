@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { useSessionStore } from '@/stores/session'
 import { useNoticeStore } from '@/stores/notice'
@@ -10,6 +11,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import SecurityNav from '@/components/SecurityNav.vue'
 
+const { t } = useI18n()
 const session = useSessionStore()
 const notice = useNoticeStore()
 
@@ -19,6 +21,12 @@ const saving = ref(false)
 const error = ref('')
 
 const modes = ['default', 'lockdown', 'lockoff']
+
+const modeNames = computed<Record<string, string>>(() => ({
+  default: t('preferences.modeDefault'),
+  lockdown: t('preferences.modeLockdown'),
+  lockoff: t('preferences.modeLockoff'),
+}))
 
 const saved = ref('default')
 const dirty = computed(() => mode.value !== saved.value)
@@ -32,7 +40,7 @@ async function load() {
     saved.value = preferences.mode
   } catch (caught) {
     error.value =
-      caught instanceof StargateError ? caught.message : 'Preferences could not be loaded.'
+      caught instanceof StargateError ? caught.message : t('preferences.errorLoad')
   } finally {
     loading.value = false
   }
@@ -44,10 +52,10 @@ async function save() {
   try {
     const preferences = await securityApi.updatePreferences(mode.value)
     saved.value = preferences.mode
-    notice.ok(`Security Mode set to ${preferences.mode}.`)
+    notice.ok(t('preferences.noticeMode', { mode: modeNames.value[preferences.mode] ?? preferences.mode }))
   } catch (caught) {
     error.value =
-      caught instanceof StargateError ? caught.message : 'The mode could not be changed.'
+      caught instanceof StargateError ? caught.message : t('preferences.errorSave')
   } finally {
     saving.value = false
   }
@@ -59,8 +67,8 @@ onMounted(load)
 <template>
   <div>
     <PageHeader
-      title="Security Mode"
-      description="How much proof a sign-in needs. The default reads the risk of each attempt; the other two override it."
+      :title="t('preferences.title')"
+      :description="t('preferences.description')"
     />
 
     <SecurityNav />
@@ -68,11 +76,11 @@ onMounted(load)
     <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <ConsolePanel title="Mode">
-        <div v-if="loading" class="py-6 text-xs text-faint">Reading preference…</div>
+      <ConsolePanel :title="t('preferences.mode')">
+        <div v-if="loading" class="py-6 text-xs text-faint">{{ t('preferences.reading') }}</div>
 
         <fieldset v-else class="space-y-2">
-          <legend class="sr-only">Security Mode</legend>
+          <legend class="sr-only">{{ t('preferences.legend') }}</legend>
           <label
             v-for="option in modes"
             :key="option"
@@ -87,9 +95,9 @@ onMounted(load)
               :value="option"
             />
             <span class="min-w-0">
-              <span class="block text-xs text-base-content">{{ option }}</span>
+              <span class="block text-xs text-base-content">{{ modeNames[option] ?? option }}</span>
               <span class="voice mt-1 block text-[12px] text-faint">
-                {{ securityModeCopy[option] }}
+                {{ securityModeCopy(option) }}
               </span>
             </span>
           </label>
@@ -102,31 +110,31 @@ onMounted(load)
             :disabled="saving || !dirty"
             @click="save"
           >
-            {{ saving ? 'Saving…' : 'Save mode' }}
+            {{ saving ? t('common.saving') : t('preferences.saveMode') }}
           </button>
-          <span v-if="dirty" class="text-2xs text-warning">unsaved change</span>
+          <span v-if="dirty" class="text-2xs text-warning">{{ t('preferences.unsaved') }}</span>
         </div>
       </ConsolePanel>
 
-      <ConsolePanel title="Current Session">
+      <ConsolePanel :title="t('preferences.currentSession')">
         <dl class="space-y-3 text-xs">
           <div class="flex items-baseline justify-between">
-            <dt class="text-faint">signed in as</dt>
+            <dt class="text-faint">{{ t('preferences.signedInAs') }}</dt>
             <dd class="text-dim">{{ session.identity?.name }}</dd>
           </div>
           <div class="flex items-baseline justify-between">
-            <dt class="text-faint">elevated</dt>
+            <dt class="text-faint">{{ t('preferences.elevated') }}</dt>
             <dd :class="session.elevated ? 'text-accent' : 'text-dim'">
-              {{ session.elevated ? 'yes' : 'no' }}
+              {{ session.elevated ? t('common.yes') : t('common.no') }}
             </dd>
           </div>
           <div class="flex items-baseline justify-between">
-            <dt class="text-faint">token type</dt>
+            <dt class="text-faint">{{ t('preferences.tokenType') }}</dt>
             <dd class="text-dim">{{ session.identity?.token_type }}</dd>
           </div>
         </dl>
         <p class="voice mt-4 text-[12px] text-faint">
-          Lockdown is strict: a lost factor locks the account out until an administrator clears it.
+          {{ t('preferences.lockdownHint') }}
         </p>
       </ConsolePanel>
     </div>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 
 import { useNoticeStore } from '@/stores/notice'
@@ -11,6 +12,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 
+const { t } = useI18n()
 const notice = useNoticeStore()
 
 const groups = ref<PermissionGroup[]>([])
@@ -31,7 +33,7 @@ async function load() {
     total.value = result.total
   } catch (caught) {
     error.value =
-      caught instanceof StargateError ? caught.message : 'Permission Groups could not be listed.'
+      caught instanceof StargateError ? caught.message : t('admin.permissions.errorLoad')
   } finally {
     loading.value = false
   }
@@ -43,11 +45,12 @@ async function create() {
   error.value = ''
   try {
     await adminApi.createGroup(newKey.value.trim())
-    notice.ok(`Created group ${newKey.value.trim()}.`)
+    notice.ok(t('admin.permissions.created', { key: newKey.value.trim() }))
     newKey.value = ''
     await load()
   } catch (caught) {
-    error.value = caught instanceof StargateError ? caught.message : 'The group could not be created.'
+    error.value =
+      caught instanceof StargateError ? caught.message : t('admin.permissions.errorCreate')
   } finally {
     busy.value = false
   }
@@ -59,11 +62,11 @@ async function remove() {
   busy.value = true
   try {
     await adminApi.deleteGroup(target.id)
-    notice.ok(`Deleted group ${target.key}.`)
+    notice.ok(t('admin.permissions.deleted', { key: target.key }))
     pendingDelete.value = null
     await load()
   } catch (caught) {
-    notice.fail(caught instanceof Error ? caught.message : 'The group could not be deleted.')
+    notice.fail(caught instanceof Error ? caught.message : t('admin.permissions.errorDelete'))
   } finally {
     busy.value = false
   }
@@ -75,44 +78,51 @@ onMounted(load)
 <template>
   <div>
     <PageHeader
-      title="Permission Groups"
-      description="Groups hold permission keys and membership. Every route in the service checks the effective grant for the acting account."
+      :title="t('admin.permissions.title')"
+      :description="t('admin.permissions.description')"
     />
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div>
         <form class="mb-5 flex flex-wrap items-end gap-3" @submit.prevent="load">
           <div class="min-w-[200px] flex-1">
-            <label for="group-query" class="field-label">Filter</label>
+            <label for="group-query" class="field-label">{{ t('admin.permissions.filter') }}</label>
             <input
               id="group-query"
               v-model="query"
               class="input input-sm"
-              placeholder="group key"
+              :placeholder="t('admin.permissions.filterPlaceholder')"
               autocapitalize="off"
             />
           </div>
-          <button type="submit" class="btn btn-ghost btn-sm" :disabled="loading">Filter</button>
+          <button type="submit" class="btn btn-ghost btn-sm" :disabled="loading">
+            {{ t('admin.permissions.filter') }}
+          </button>
         </form>
 
         <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
 
-        <ConsolePanel title="Groups" :note="`${total} total`">
-          <div v-if="loading" class="py-6 text-xs text-faint">Reading groups…</div>
+        <ConsolePanel
+          :title="t('admin.permissions.panelTitle')"
+          :note="t('admin.permissions.panelNote', { n: total })"
+        >
+          <div v-if="loading" class="py-6 text-xs text-faint">
+            {{ t('admin.permissions.loading') }}
+          </div>
 
           <p v-else-if="!groups.length" class="voice py-6 text-[12px]">
-            No groups match. The default group is seeded on first boot.
+            {{ t('admin.permissions.empty') }}
           </p>
 
           <div v-else class="overflow-x-auto">
             <table class="ledger">
               <thead>
                 <tr>
-                  <th scope="col">key</th>
-                  <th scope="col">permissions</th>
-                  <th scope="col">members</th>
-                  <th scope="col">updated</th>
-                  <th scope="col"><span class="sr-only">Actions</span></th>
+                  <th scope="col">{{ t('admin.permissions.colKey') }}</th>
+                  <th scope="col">{{ t('admin.permissions.colPermissions') }}</th>
+                  <th scope="col">{{ t('admin.permissions.colMembers') }}</th>
+                  <th scope="col">{{ t('common.updated') }}</th>
+                  <th scope="col"><span class="sr-only">{{ t('common.actions') }}</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -135,7 +145,7 @@ onMounted(load)
                       :disabled="busy"
                       @click="pendingDelete = group"
                     >
-                      Delete
+                      {{ t('common.delete') }}
                     </button>
                   </td>
                 </tr>
@@ -145,8 +155,8 @@ onMounted(load)
         </ConsolePanel>
       </div>
 
-      <ConsolePanel title="New Group">
-        <label for="new-group-key" class="field-label">Key</label>
+      <ConsolePanel :title="t('admin.permissions.newGroup')">
+        <label for="new-group-key" class="field-label">{{ t('admin.permissions.key') }}</label>
         <input
           id="new-group-key"
           v-model="newKey"
@@ -161,19 +171,19 @@ onMounted(load)
           :disabled="busy || !newKey.trim()"
           @click="create"
         >
-          Create Group
+          {{ t('admin.permissions.createGroup') }}
         </button>
         <p class="voice mt-3 text-[12px] text-faint">
-          Seeded groups: default, verified, moderator, developer. New Groups start empty.
+          {{ t('admin.permissions.seededHint') }}
         </p>
       </ConsolePanel>
     </div>
 
     <ConfirmAction
       v-if="pendingDelete"
-      title="Delete This Group?"
-      :body="`Every permission and membership in ${pendingDelete.key} is removed. Accounts holding it lose those grants on their next check.`"
-      action="Delete Group"
+      :title="t('admin.permissions.confirmDeleteTitle')"
+      :body="t('admin.permissions.confirmDeleteBody', { key: pendingDelete.key })"
+      :action="t('admin.permissions.confirmDeleteAction')"
       tone="error"
       :busy="busy"
       @cancel="pendingDelete = null"

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import { useNoticeStore } from '@/stores/notice'
@@ -8,6 +9,7 @@ import { StargateError } from '@/lib/api/client'
 import CaptchaWidget from '@/components/CaptchaWidget.vue'
 import type { CaptchaConfig } from '@/lib/api/types'
 
+const { t } = useI18n()
 const router = useRouter()
 const notice = useNoticeStore()
 
@@ -29,7 +31,7 @@ const nameProblem = computed(() => {
   const value = form.value.name
   if (!value) return ''
   if (!/^[A-Za-z0-9_-]{2,256}$/.test(value)) {
-    return 'Use 2–256 letters, numbers, underscores, or hyphens.'
+    return t('createAccount.usernameProblem')
   }
   return ''
 })
@@ -37,16 +39,16 @@ const nameProblem = computed(() => {
 const emailProblem = computed(() => {
   const value = form.value.email
   if (!value) return ''
-  if (value.includes('+')) return 'Email addresses cannot contain a plus sign.'
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return 'That does not look like an email address.'
+  if (value.includes('+')) return t('createAccount.emailPlusProblem')
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return t('createAccount.emailInvalidProblem')
   return ''
 })
 
 const passwordProblem = computed(() => {
   const value = form.value.password
   if (!value) return ''
-  if (value.length < 4) return 'At least 4 characters.'
-  if (value.length > 128) return 'At most 128 characters.'
+  if (value.length < 4) return t('createAccount.passwordTooShort')
+  if (value.length > 128) return t('createAccount.passwordTooLong')
   return ''
 })
 
@@ -69,14 +71,15 @@ async function submit() {
   try {
     await signInApi.register({ ...form.value, captcha_token: captchaToken.value })
     created.value = true
-    notice.ok('Account created. Sign in to continue.')
+    notice.ok(t('createAccount.noticeCreated'))
     await router.push({ name: 'sign-in', query: { next: '/account' } })
   } catch (caught) {
     if (caught instanceof StargateError) {
       fieldErrors.value = caught.fields ?? {}
       error.value = caught.message
     } else {
-      error.value = caught instanceof Error ? caught.message : 'The account could not be created.'
+      error.value =
+        caught instanceof Error ? caught.message : t('createAccount.errorCreateFailed')
     }
   } finally {
     busy.value = false
@@ -95,16 +98,16 @@ onMounted(async () => {
 <template>
   <div>
     <div class="mb-8">
-      <h1 class="title mt-2 text-2xl text-base-content">Create an Account</h1>
+      <h1 class="title mt-2 text-2xl text-base-content">{{ t('createAccount.title') }}</h1>
       <p class="voice mt-2">
-        One identity for every Solar Network service. Verify your email afterward to activate it.
+        {{ t('createAccount.intro') }}
       </p>
     </div>
 
     <form class="border border-line bg-base-200/40 p-5" @submit.prevent="submit">
       <div class="grid gap-4">
         <div>
-          <label for="name" class="field-label">Username</label>
+          <label for="name" class="field-label">{{ t('createAccount.username') }}</label>
           <input
             id="name"
             v-model="form.name"
@@ -120,14 +123,14 @@ onMounted(async () => {
           </p>
         </div>
         <div>
-          <label for="nick" class="field-label">Display name</label>
+          <label for="nick" class="field-label">{{ t('createAccount.displayName') }}</label>
           <input id="nick" v-model="form.nick" class="input" autocomplete="nickname" />
           <p v-if="fieldErrors.nick" class="mt-1 text-2xs text-error">{{ fieldErrors.nick[0] }}</p>
         </div>
       </div>
 
       <div class="mt-4">
-        <label for="email" class="field-label">Email</label>
+        <label for="email" class="field-label">{{ t('createAccount.email') }}</label>
         <input
           id="email"
           v-model="form.email"
@@ -144,7 +147,7 @@ onMounted(async () => {
       </div>
 
       <div class="mt-4">
-        <label for="password" class="field-label">Password</label>
+        <label for="password" class="field-label">{{ t('createAccount.password') }}</label>
         <input
           id="password"
           v-model="form.password"
@@ -159,7 +162,7 @@ onMounted(async () => {
       </div>
 
       <div v-if="captcha" class="mt-4">
-        <p class="field-label">Verification</p>
+        <p class="field-label">{{ t('createAccount.verification') }}</p>
         <CaptchaWidget
           :provider="captcha.provider"
           :api-key="captcha.apiKey"
@@ -170,13 +173,13 @@ onMounted(async () => {
       <p v-if="error" class="mt-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
 
       <button type="submit" class="btn btn-primary mt-5 w-full" :disabled="busy || !valid">
-        {{ busy ? 'Creating…' : 'Create Account' }}
+        {{ busy ? t('createAccount.creating') : t('createAccount.submit') }}
       </button>
     </form>
 
     <p class="voice mt-6 text-[12px]">
-      Already registered?
-      <RouterLink to="/sign-in" class="link-quiet">Sign In</RouterLink>.
+      {{ t('createAccount.alreadyRegistered') }}
+      <RouterLink to="/sign-in" class="link-quiet">{{ t('signIn.title') }}</RouterLink>.
     </p>
   </div>
 </template>

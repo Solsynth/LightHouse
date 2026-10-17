@@ -1,3 +1,5 @@
+import { currentLocale, translate } from '@/lib/i18n'
+
 const minute = 60_000
 const hour = 60 * minute
 const day = 24 * hour
@@ -15,7 +17,7 @@ export function age(value?: string): string {
   if (!value) return '—'
   const ms = Date.now() - new Date(value).getTime()
   if (Number.isNaN(ms)) return '—'
-  if (ms < 0) return 'pending'
+  if (ms < 0) return translate('time.pending')
   if (ms < minute) return `${Math.max(1, Math.floor(ms / 1000))}s`
   if (ms < hour) return `${Math.floor(ms / minute)}m`
   if (ms < day) return `${Math.floor(ms / hour)}h`
@@ -24,10 +26,10 @@ export function age(value?: string): string {
 
 /** Remaining lifetime: 4h 12m, 18d, expired. */
 export function remaining(value?: string): string {
-  if (!value) return 'no expiry'
+  if (!value) return translate('time.noExpiry')
   const ms = new Date(value).getTime() - Date.now()
   if (Number.isNaN(ms)) return '—'
-  if (ms <= 0) return 'expired'
+  if (ms <= 0) return translate('time.expired')
   if (ms < hour) return `${Math.max(1, Math.floor(ms / minute))}m`
   if (ms < day) {
     const hours = Math.floor(ms / hour)
@@ -41,10 +43,10 @@ export function relative(value?: string): string {
   if (!value) return '—'
   const ms = Date.now() - new Date(value).getTime()
   if (Number.isNaN(ms)) return '—'
-  if (ms < minute) return 'just now'
-  if (ms < hour) return `${Math.floor(ms / minute)}m ago`
-  if (ms < day) return `${Math.floor(ms / hour)}h ago`
-  if (ms < 30 * day) return `${Math.floor(ms / day)}d ago`
+  if (ms < minute) return translate('time.justNow')
+  if (ms < hour) return translate('time.minutesAgo', { n: Math.floor(ms / minute) })
+  if (ms < day) return translate('time.hoursAgo', { n: Math.floor(ms / hour) })
+  if (ms < 30 * day) return translate('time.daysAgo', { n: Math.floor(ms / day) })
   return utcStamp(value).slice(0, 10)
 }
 
@@ -62,7 +64,10 @@ export function bytes(value?: number): string {
 
 export function compactNumber(value?: number): string {
   if (value === undefined || value === null) return '—'
-  return new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
+  return new Intl.NumberFormat(currentLocale(), {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value)
 }
 
 /** Short id for dense ledgers; full value stays available via title. */
@@ -73,7 +78,7 @@ export function shortId(value?: string): string {
 
 /** Parses a user-agent string into something a person can scan. */
 export function describeAgent(value?: string): string {
-  if (!value) return 'unknown client'
+  if (!value) return translate('time.unknownClient')
   const browser = /Firefox\/(\d+)/.exec(value)
   if (browser) return `Firefox ${browser[1]}`
   const edge = /Edg\/(\d+)/.exec(value)

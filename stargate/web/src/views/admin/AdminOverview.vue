@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 
 import { adminApi } from '@/lib/api'
@@ -8,6 +9,8 @@ import type { CacheStats, GeographyBucket } from '@/lib/api/types'
 import { bytes, compactNumber } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
+
+const { t } = useI18n()
 
 const stats = ref<CacheStats | null>(null)
 const buckets = ref<GeographyBucket[]>([])
@@ -42,7 +45,7 @@ async function load() {
     suspended.value = punished.total
     buckets.value = geography
   } catch (caught) {
-    error.value = caught instanceof StargateError ? caught.message : 'The overview could not be loaded.'
+    error.value = caught instanceof StargateError ? caught.message : t('admin.overview.errorLoad')
   } finally {
     try {
       stats.value = await adminApi.cacheStats()
@@ -59,12 +62,12 @@ onMounted(load)
 <template>
   <div>
     <PageHeader
-      title="Operations"
-      description="Live counters for accounts, cache, and sign-in geography. Every figure is read from the service this console is talking to."
+      :title="t('admin.overview.title')"
+      :description="t('admin.overview.description')"
     >
       <template #actions>
         <button type="button" class="btn btn-ghost btn-sm" :disabled="loading" @click="load">
-          Refresh
+          {{ t('common.refresh') }}
         </button>
       </template>
     </PageHeader>
@@ -73,45 +76,65 @@ onMounted(load)
 
     <div class="grid gap-px border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
       <div class="bg-base-100 px-4 py-5">
-        <p class="text-2xs uppercase tracking-[0.14em] text-faint">accounts</p>
+        <p class="text-2xs uppercase tracking-[0.14em] text-faint">
+          {{ t('admin.overview.statAccounts') }}
+        </p>
         <p class="mt-2 text-2xl font-light tabular-nums text-base-content">
           {{ loading ? '—' : compactNumber(accounts) }}
         </p>
-        <p class="mt-1 text-2xs text-faint">rows in the accounts table</p>
+        <p class="mt-1 text-2xs text-faint">{{ t('admin.overview.statAccountsNote') }}</p>
       </div>
       <div class="bg-base-100 px-4 py-5">
-        <p class="text-2xs uppercase tracking-[0.14em] text-faint">under punishment</p>
+        <p class="text-2xs uppercase tracking-[0.14em] text-faint">
+          {{ t('admin.overview.statRestricted') }}
+        </p>
         <p class="mt-2 text-2xl font-light tabular-nums text-base-content">
           {{ loading ? '—' : compactNumber(suspended) }}
         </p>
-        <p class="mt-1 text-2xs text-faint">accounts with an active restriction</p>
+        <p class="mt-1 text-2xs text-faint">{{ t('admin.overview.statRestrictedNote') }}</p>
       </div>
       <div class="bg-base-100 px-4 py-5">
-        <p class="text-2xs uppercase tracking-[0.14em] text-faint">cache hit ratio</p>
+        <p class="text-2xs uppercase tracking-[0.14em] text-faint">
+          {{ t('admin.overview.statHitRatio') }}
+        </p>
         <p class="mt-2 text-2xl font-light tabular-nums text-base-content">
-          {{ cacheAvailable ? `${(stats!.hit_ratio * 100).toFixed(1)}%` : 'offline' }}
+          {{ cacheAvailable ? `${(stats!.hit_ratio * 100).toFixed(1)}%` : t('admin.overview.statOffline') }}
         </p>
         <p class="mt-1 text-2xs text-faint">
-          {{ cacheAvailable ? `${compactNumber(stats!.keyspace_hits)} hits` : 'redis not configured' }}
+          {{
+            cacheAvailable
+              ? t('admin.overview.statHits', { n: compactNumber(stats!.keyspace_hits) })
+              : t('admin.overview.noRedis')
+          }}
         </p>
       </div>
       <div class="bg-base-100 px-4 py-5">
-        <p class="text-2xs uppercase tracking-[0.14em] text-faint">cache memory</p>
+        <p class="text-2xs uppercase tracking-[0.14em] text-faint">
+          {{ t('admin.overview.statMemory') }}
+        </p>
         <p class="mt-2 text-2xl font-light tabular-nums text-base-content">
           {{ cacheAvailable ? bytes(stats!.used_memory_bytes) : '—' }}
         </p>
         <p class="mt-1 text-2xs text-faint">
-          {{ cacheAvailable ? `${stats!.connected_clients} clients` : 'no cache service' }}
+          {{
+            cacheAvailable
+              ? t('admin.overview.statClients', { n: stats!.connected_clients })
+              : t('admin.overview.noCacheService')
+          }}
         </p>
       </div>
     </div>
 
     <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-      <ConsolePanel title="Sign-In Geography" note="last 30 days, by country">
-        <p v-if="loading" class="py-6 text-xs text-faint">Reading session locations…</p>
+      <ConsolePanel
+        :title="t('admin.overview.geographyTitle')"
+        :note="t('admin.overview.geographyNote')"
+      >
+        <p v-if="loading" class="py-6 text-xs text-faint">
+          {{ t('admin.overview.geographyLoading') }}
+        </p>
         <p v-else-if="!topCountries.length" class="voice py-6 text-[12px]">
-          No located sessions in this window. Locations appear once the geo database resolves a
-          sign-in address.
+          {{ t('admin.overview.geographyEmpty') }}
         </p>
 
         <ul v-else class="space-y-3">
@@ -128,48 +151,56 @@ onMounted(load)
 
         <template #footer>
           <div class="flex flex-wrap items-center justify-between gap-2 text-2xs text-faint">
-            <span>{{ buckets.length }} countries reporting</span>
-            <RouterLink to="/admin/geography" class="link-quiet">Open full map table</RouterLink>
+            <span>{{ t('admin.overview.countriesReporting', { n: buckets.length }) }}</span>
+            <RouterLink to="/admin/geography" class="link-quiet">
+              {{ t('admin.overview.openMap') }}
+            </RouterLink>
           </div>
         </template>
       </ConsolePanel>
 
       <div class="space-y-6">
-        <ConsolePanel title="Shortcuts">
+        <ConsolePanel :title="t('admin.overview.shortcuts')">
           <ul class="space-y-2 text-xs">
             <li>
-              <RouterLink to="/admin/accounts" class="link-quiet">Accounts</RouterLink>
-              <span class="ml-2 text-faint">search, suspend, activate</span>
+              <RouterLink to="/admin/accounts" class="link-quiet">
+                {{ t('admin.overview.shortcutAccounts') }}
+              </RouterLink>
+              <span class="ml-2 text-faint">{{ t('admin.overview.shortcutAccountsHint') }}</span>
             </li>
             <li>
-              <RouterLink to="/admin/permissions" class="link-quiet">Permission Groups</RouterLink>
-              <span class="ml-2 text-faint">grants and membership</span>
+              <RouterLink to="/admin/permissions" class="link-quiet">
+                {{ t('admin.overview.shortcutGroups') }}
+              </RouterLink>
+              <span class="ml-2 text-faint">{{ t('admin.overview.shortcutGroupsHint') }}</span>
             </li>
             <li>
-              <RouterLink to="/admin/cache" class="link-quiet">Cache</RouterLink>
-              <span class="ml-2 text-faint">stats, groups, invalidation</span>
+              <RouterLink to="/admin/cache" class="link-quiet">
+                {{ t('admin.overview.shortcutCache') }}
+              </RouterLink>
+              <span class="ml-2 text-faint">{{ t('admin.overview.shortcutCacheHint') }}</span>
             </li>
           </ul>
         </ConsolePanel>
 
-        <ConsolePanel title="Service">
+        <ConsolePanel :title="t('admin.overview.service')">
           <dl class="space-y-2 text-xs">
             <div class="flex justify-between">
-              <dt class="text-faint">cache</dt>
+              <dt class="text-faint">{{ t('admin.overview.shortcutCache') }}</dt>
               <dd :class="cacheAvailable ? 'text-success' : 'text-warning'">
-                {{ cacheAvailable ? 'connected' : 'unavailable' }}
+                {{ cacheAvailable ? t('admin.overview.connected') : t('admin.overview.unavailable') }}
               </dd>
             </div>
             <div v-if="cacheAvailable" class="flex justify-between">
-              <dt class="text-faint">commands</dt>
+              <dt class="text-faint">{{ t('admin.overview.commands') }}</dt>
               <dd class="tabular-nums text-dim">{{ compactNumber(stats!.total_commands_processed) }}</dd>
             </div>
             <div v-if="cacheAvailable" class="flex justify-between">
-              <dt class="text-faint">evicted</dt>
+              <dt class="text-faint">{{ t('admin.overview.evicted') }}</dt>
               <dd class="tabular-nums text-dim">{{ compactNumber(stats!.evicted_keys) }}</dd>
             </div>
             <div v-if="cacheAvailable" class="flex justify-between">
-              <dt class="text-faint">expired</dt>
+              <dt class="text-faint">{{ t('admin.overview.expired') }}</dt>
               <dd class="tabular-nums text-dim">{{ compactNumber(stats!.expired_keys) }}</dd>
             </div>
           </dl>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { useSessionStore } from '@/stores/session'
 import { useNoticeStore } from '@/stores/notice'
@@ -10,6 +11,7 @@ import { age, utcStamp } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 
+const { t } = useI18n()
 const session = useSessionStore()
 const notice = useNoticeStore()
 
@@ -78,10 +80,10 @@ async function save() {
     })
     await session.refreshAccount()
     editing.value = false
-    notice.ok('Profile saved.')
+    notice.ok(t('account.noticeSaved'))
   } catch (caught) {
     error.value =
-      caught instanceof StargateError ? caught.message : 'The profile could not be saved.'
+      caught instanceof StargateError ? caught.message : t('account.errorSave')
   } finally {
     saving.value = false
   }
@@ -99,92 +101,92 @@ onMounted(loadForm)
 <template>
   <div>
     <PageHeader
-      title="Your Account"
-      description="The identity every Solar Network service reads. Changes publish to the profile read-model immediately."
+      :title="t('account.title')"
+      :description="t('account.description')"
     >
       <template #actions>
         <button v-if="!editing" type="button" class="btn btn-primary btn-sm" @click="editing = true">
-          Edit Profile
+          {{ t('account.editProfile') }}
         </button>
       </template>
     </PageHeader>
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div class="space-y-6">
-        <ConsolePanel title="Identity" :note="`updated ${age(profile?.updated_at)}`">
+        <ConsolePanel :title="t('account.identity')" :note="t('account.updated', { time: age(profile?.updated_at) })">
           <dl class="divide-y divide-line-soft">
             <div class="grid grid-cols-[132px_minmax(0,1fr)] gap-4 py-2.5 first:pt-0">
-              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">name</dt>
+              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">{{ t('account.name') }}</dt>
               <dd class="text-xs text-base-content">{{ session.account?.name }}</dd>
             </div>
             <div class="grid grid-cols-[132px_minmax(0,1fr)] gap-4 py-2.5">
-              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">display name</dt>
+              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">{{ t('account.displayName') }}</dt>
               <dd class="text-xs text-base-content">{{ displayName }}</dd>
             </div>
             <div class="grid grid-cols-[132px_minmax(0,1fr)] gap-4 py-2.5">
-              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">account id</dt>
+              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">{{ t('account.accountId') }}</dt>
               <dd class="break-all text-xs text-dim">{{ session.account?.id }}</dd>
             </div>
             <div class="grid grid-cols-[132px_minmax(0,1fr)] gap-4 py-2.5">
-              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">status</dt>
+              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">{{ t('account.status') }}</dt>
               <dd class="flex flex-wrap items-center gap-2 text-xs">
                 <span class="chip">
                   <span
                     class="dot"
                     :class="session.account?.activated_at ? 'bg-success' : 'bg-warning'"
                   />
-                  {{ session.account?.activated_at ? 'activated' : 'pending activation' }}
+                  {{ session.account?.activated_at ? t('account.activated') : t('account.pendingActivation') }}
                 </span>
                 <span v-if="session.account?.is_superuser" class="chip text-accent">
-                  platform admin
+                  {{ t('account.platformAdmin') }}
                 </span>
               </dd>
             </div>
             <div class="grid grid-cols-[132px_minmax(0,1fr)] gap-4 py-2.5">
-              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">locale</dt>
+              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">{{ t('account.locale') }}</dt>
               <dd class="text-xs text-dim">
                 {{ session.account?.language }} · {{ session.account?.region }}
               </dd>
             </div>
             <div class="grid grid-cols-[132px_minmax(0,1fr)] gap-4 py-2.5">
-              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">member since</dt>
+              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">{{ t('account.memberSince') }}</dt>
               <dd class="text-xs text-dim">{{ utcStamp(session.account?.created_at) }}</dd>
             </div>
           </dl>
         </ConsolePanel>
 
-        <ConsolePanel title="Profile">
+        <ConsolePanel :title="t('account.profile')">
           <form v-if="editing" class="space-y-4" @submit.prevent="save">
             <div class="grid gap-4">
               <div>
-                <label for="first_name" class="field-label">First name</label>
+                <label for="first_name" class="field-label">{{ t('account.firstName') }}</label>
                 <input id="first_name" v-model="form.first_name" class="input input-sm" />
               </div>
               <div>
-                <label for="middle_name" class="field-label">Middle</label>
+                <label for="middle_name" class="field-label">{{ t('account.middleName') }}</label>
                 <input id="middle_name" v-model="form.middle_name" class="input input-sm" />
               </div>
               <div>
-                <label for="last_name" class="field-label">Last name</label>
+                <label for="last_name" class="field-label">{{ t('account.lastName') }}</label>
                 <input id="last_name" v-model="form.last_name" class="input input-sm" />
               </div>
             </div>
             <div class="grid gap-4">
               <div>
-                <label for="pronouns" class="field-label">Pronouns</label>
+                <label for="pronouns" class="field-label">{{ t('account.pronouns') }}</label>
                 <input id="pronouns" v-model="form.pronouns" class="input input-sm" />
               </div>
               <div>
-                <label for="location" class="field-label">Location</label>
+                <label for="location" class="field-label">{{ t('account.location') }}</label>
                 <input id="location" v-model="form.location" class="input input-sm" />
               </div>
               <div>
-                <label for="time_zone" class="field-label">Time zone</label>
+                <label for="time_zone" class="field-label">{{ t('account.timeZone') }}</label>
                 <input id="time_zone" v-model="form.time_zone" class="input input-sm" placeholder="UTC" />
               </div>
             </div>
             <div>
-              <label for="bio" class="field-label">Bio</label>
+              <label for="bio" class="field-label">{{ t('account.bio') }}</label>
               <textarea id="bio" v-model="form.bio" class="textarea textarea-sm" rows="4" />
             </div>
 
@@ -192,33 +194,33 @@ onMounted(loadForm)
 
             <div class="flex items-center gap-2 border-t border-line-soft pt-4">
               <button type="submit" class="btn btn-primary btn-sm" :disabled="saving">
-                {{ saving ? 'Saving…' : 'Save profile' }}
+                {{ saving ? t('common.saving') : t('account.saveProfile') }}
               </button>
               <button type="button" class="btn btn-ghost btn-sm" :disabled="saving" @click="cancel">
-                Cancel
+                {{ t('common.cancel') }}
               </button>
             </div>
           </form>
 
           <div v-else>
             <p class="max-w-2xl whitespace-pre-line text-xs leading-relaxed text-dim">
-              {{ profile?.bio || 'No bio yet. This is what other accounts read on your profile.' }}
+              {{ profile?.bio || t('account.noBio') }}
             </p>
             <dl class="mt-5 grid gap-x-6 gap-y-3 sm:grid-cols-2">
               <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
-                <dt class="text-faint">pronouns</dt>
+                <dt class="text-faint">{{ t('account.pronouns') }}</dt>
                 <dd class="text-dim">{{ profile?.pronouns || '—' }}</dd>
               </div>
               <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
-                <dt class="text-faint">location</dt>
+                <dt class="text-faint">{{ t('account.location') }}</dt>
                 <dd class="text-dim">{{ profile?.location || '—' }}</dd>
               </div>
               <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
-                <dt class="text-faint">time zone</dt>
+                <dt class="text-faint">{{ t('account.timeZone') }}</dt>
                 <dd class="text-dim">{{ profile?.time_zone || '—' }}</dd>
               </div>
               <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
-                <dt class="text-faint">birthday</dt>
+                <dt class="text-faint">{{ t('account.birthday') }}</dt>
                 <dd class="text-dim">{{ profile?.birthday ? utcStamp(profile.birthday).slice(0, 10) : '—' }}</dd>
               </div>
             </dl>
@@ -227,44 +229,44 @@ onMounted(loadForm)
       </div>
 
       <div class="space-y-6">
-        <ConsolePanel title="Profile Completeness">
+        <ConsolePanel :title="t('account.completenessTitle')">
           <div class="flex items-baseline gap-2">
             <span class="text-3xl font-light tabular-nums text-base-content">{{ completion }}</span>
-            <span class="text-2xs text-faint">percent</span>
+            <span class="text-2xs text-faint">{{ t('account.percent') }}</span>
           </div>
           <div class="mt-3 h-px w-full bg-line">
             <div class="h-px bg-primary" :style="{ width: `${completion}%` }" />
           </div>
           <p class="mt-3 voice text-[12px] text-faint">
-            Complete profiles appear in account search and public listings.
+            {{ t('account.completenessHint') }}
           </p>
         </ConsolePanel>
 
-        <ConsolePanel title="Standing">
+        <ConsolePanel :title="t('account.standing')">
           <dl class="space-y-3">
             <div class="flex items-baseline justify-between text-xs">
-              <dt class="text-faint">level</dt>
+              <dt class="text-faint">{{ t('account.level') }}</dt>
               <dd class="tabular-nums text-dim">{{ profile?.level ?? 0 }}</dd>
             </div>
             <div class="flex items-baseline justify-between text-xs">
-              <dt class="text-faint">experience</dt>
+              <dt class="text-faint">{{ t('account.experience') }}</dt>
               <dd class="tabular-nums text-dim">{{ profile?.experience ?? 0 }}</dd>
             </div>
             <div class="flex items-baseline justify-between text-xs">
-              <dt class="text-faint">social credits</dt>
+              <dt class="text-faint">{{ t('account.socialCredits') }}</dt>
               <dd class="tabular-nums text-dim">{{ profile?.social_credits ?? 0 }}</dd>
             </div>
             <div class="flex items-baseline justify-between text-xs">
-              <dt class="text-faint">perk level</dt>
+              <dt class="text-faint">{{ t('account.perkLevel') }}</dt>
               <dd class="tabular-nums text-dim">{{ session.account?.perk_level ?? 0 }}</dd>
             </div>
           </dl>
         </ConsolePanel>
 
-        <ConsolePanel title="Last Seen">
-          <p class="text-xs text-dim">{{ age(profile?.last_seen_at) }} ago</p>
+        <ConsolePanel :title="t('account.lastSeen')">
+          <p class="text-xs text-dim">{{ t('account.lastSeenAgo', { time: age(profile?.last_seen_at) }) }}</p>
           <p class="mt-1 text-2xs text-faint">
-            Written by the service on authenticated requests, batched every five seconds.
+            {{ t('account.lastSeenHint') }}
           </p>
           <p v-if="profile?.last_seen_at" class="mt-3 text-2xs text-faint">
             {{ utcStamp(profile.last_seen_at) }}

@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { useNoticeStore } from '@/stores/notice'
 import { securityApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
 import type { Contact } from '@/lib/api/types'
-import { contactTypeLabels } from '@/lib/enums'
+import { contactTypeLabel } from '@/lib/enums'
 import { relative, utcStamp } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import SecurityNav from '@/components/SecurityNav.vue'
 
+const { t } = useI18n()
 const notice = useNoticeStore()
 
 const contacts = ref<Contact[]>([])
@@ -29,7 +31,7 @@ async function load() {
   try {
     contacts.value = await securityApi.contacts()
   } catch (caught) {
-    error.value = caught instanceof StargateError ? caught.message : 'Contacts could not be loaded.'
+    error.value = caught instanceof StargateError ? caught.message : t('contacts.errorLoad')
   } finally {
     loading.value = false
   }
@@ -42,10 +44,10 @@ async function add() {
   try {
     await securityApi.createContact(type.value, content.value.trim())
     content.value = ''
-    notice.ok('Contact added. Verify it to use it for codes and recovery.')
+    notice.ok(t('contacts.noticeAdded'))
     await load()
   } catch (caught) {
-    error.value = caught instanceof StargateError ? caught.message : 'The contact could not be added.'
+    error.value = caught instanceof StargateError ? caught.message : t('contacts.errorAdd')
   } finally {
     busy.value = false
   }
@@ -55,10 +57,10 @@ async function verify(contact: Contact) {
   busy.value = true
   try {
     await securityApi.verifyContact(contact.id)
-    notice.ok('Verification email sent.')
+    notice.ok(t('contacts.noticeVerificationSent'))
     await load()
   } catch (caught) {
-    notice.fail(caught instanceof Error ? caught.message : 'Verification could not be requested.')
+    notice.fail(caught instanceof Error ? caught.message : t('contacts.errorVerify'))
   } finally {
     busy.value = false
   }
@@ -68,10 +70,10 @@ async function makePrimary(contact: Contact) {
   busy.value = true
   try {
     await securityApi.setPrimaryContact(contact.id)
-    notice.ok('Primary contact updated.')
+    notice.ok(t('contacts.noticePrimary'))
     await load()
   } catch (caught) {
-    notice.fail(caught instanceof Error ? caught.message : 'The primary contact could not be set.')
+    notice.fail(caught instanceof Error ? caught.message : t('contacts.errorPrimary'))
   } finally {
     busy.value = false
   }
@@ -81,10 +83,12 @@ async function togglePublic(contact: Contact) {
   busy.value = true
   try {
     await securityApi.setContactPublic(contact.id, !contact.is_public)
-    notice.ok(contact.is_public ? 'Contact hidden from your profile.' : 'Contact shown on your profile.')
+    notice.ok(
+      contact.is_public ? t('contacts.noticeHidden') : t('contacts.noticeShown'),
+    )
     await load()
   } catch (caught) {
-    notice.fail(caught instanceof Error ? caught.message : 'Visibility could not be changed.')
+    notice.fail(caught instanceof Error ? caught.message : t('contacts.errorVisibility'))
   } finally {
     busy.value = false
   }
@@ -96,11 +100,11 @@ async function remove() {
   busy.value = true
   try {
     await securityApi.deleteContact(target.id)
-    notice.ok('Contact deleted.')
+    notice.ok(t('contacts.noticeDeleted'))
     pendingDelete.value = null
     await load()
   } catch (caught) {
-    notice.fail(caught instanceof Error ? caught.message : 'The contact could not be deleted.')
+    notice.fail(caught instanceof Error ? caught.message : t('contacts.errorDelete'))
   } finally {
     busy.value = false
   }
@@ -112,8 +116,8 @@ onMounted(load)
 <template>
   <div>
     <PageHeader
-      title="Contacts"
-      description="Verified contacts receive sign-in codes and password-reset links. Public contacts appear on your profile."
+      :title="t('contacts.title')"
+      :description="t('contacts.description')"
     />
 
     <SecurityNav />
@@ -121,11 +125,11 @@ onMounted(load)
     <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <ConsolePanel title="Contacts" :note="`${contacts.length} total`">
-        <div v-if="loading" class="py-6 text-xs text-faint">Reading contact table…</div>
+      <ConsolePanel :title="t('contacts.contacts')" :note="t('contacts.totalNote', { n: contacts.length })">
+        <div v-if="loading" class="py-6 text-xs text-faint">{{ t('contacts.reading') }}</div>
 
         <p v-else-if="!contacts.length" class="voice py-6">
-          No contacts yet. Add an email address so this account can receive codes.
+          {{ t('contacts.empty') }}
         </p>
 
         <ul v-else class="divide-y divide-line-soft">
@@ -137,20 +141,20 @@ onMounted(load)
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
                 <span class="break-all text-xs text-base-content">{{ contact.content }}</span>
-                <span class="chip">{{ contactTypeLabels[contact.type] }}</span>
-                <span v-if="contact.is_primary" class="chip text-primary">primary</span>
-                <span v-if="contact.is_public" class="chip text-accent">public</span>
+                <span class="chip">{{ contactTypeLabel(contact.type) }}</span>
+                <span v-if="contact.is_primary" class="chip text-primary">{{ t('contacts.primary') }}</span>
+                <span v-if="contact.is_public" class="chip text-accent">{{ t('contacts.public') }}</span>
                 <span
                   class="chip"
                   :class="contact.verified_at ? 'text-success' : 'text-warning'"
                 >
-                  {{ contact.verified_at ? 'verified' : 'unverified' }}
+                  {{ contact.verified_at ? t('contacts.verified') : t('contacts.unverified') }}
                 </span>
               </div>
               <p class="mt-1 text-2xs text-faint">
-                added {{ relative(contact.created_at) }}
+                {{ t('contacts.added', { time: relative(contact.created_at) }) }}
                 <template v-if="contact.verified_at">
-                  · verified {{ utcStamp(contact.verified_at).slice(0, 10) }}
+                  · {{ t('contacts.verifiedAt', { date: utcStamp(contact.verified_at).slice(0, 10) }) }}
                 </template>
               </p>
             </div>
@@ -162,7 +166,7 @@ onMounted(load)
                 :disabled="busy"
                 @click="verify(contact)"
               >
-                Verify
+                {{ t('contacts.verify') }}
               </button>
               <button
                 v-if="!contact.is_primary"
@@ -171,7 +175,7 @@ onMounted(load)
                 :disabled="busy"
                 @click="makePrimary(contact)"
               >
-                Make Primary
+                {{ t('contacts.makePrimary') }}
               </button>
               <button
                 type="button"
@@ -179,7 +183,7 @@ onMounted(load)
                 :disabled="busy"
                 @click="togglePublic(contact)"
               >
-                {{ contact.is_public ? 'Hide' : 'Show Publicly' }}
+                {{ contact.is_public ? t('contacts.hide') : t('contacts.showPublicly') }}
               </button>
               <button
                 type="button"
@@ -187,27 +191,27 @@ onMounted(load)
                 :disabled="busy"
                 @click="pendingDelete = contact"
               >
-                Delete
+                {{ t('common.delete') }}
               </button>
             </div>
           </li>
         </ul>
       </ConsolePanel>
 
-      <ConsolePanel title="Add a Contact">
-        <label for="contact-type" class="field-label">Type</label>
+      <ConsolePanel :title="t('contacts.addContact')">
+        <label for="contact-type" class="field-label">{{ t('contacts.type') }}</label>
         <select id="contact-type" v-model="type" class="select select-sm">
-          <option :value="0">email</option>
-          <option :value="1">phone</option>
-          <option :value="2">address</option>
+          <option :value="0">{{ contactTypeLabel(0) }}</option>
+          <option :value="1">{{ contactTypeLabel(1) }}</option>
+          <option :value="2">{{ contactTypeLabel(2) }}</option>
         </select>
 
-        <label for="contact-content" class="field-label mt-4">Value</label>
+        <label for="contact-content" class="field-label mt-4">{{ t('contacts.value') }}</label>
         <input
           id="contact-content"
           v-model="content"
           class="input input-sm"
-          :placeholder="type === 0 ? 'name@example.com' : 'value'"
+          :placeholder="type === 0 ? t('contacts.emailPlaceholder') : t('contacts.valuePlaceholder')"
           autocapitalize="off"
           spellcheck="false"
         />
@@ -218,20 +222,20 @@ onMounted(load)
           :disabled="busy || !content.trim()"
           @click="add"
         >
-          Add Contact
+          {{ t('contacts.addAction') }}
         </button>
 
         <p class="mt-3 voice text-[12px] text-faint">
-          Adding a contact requires an elevated session. Verification is sent as a one-time link.
+          {{ t('contacts.elevatedHint') }}
         </p>
       </ConsolePanel>
     </div>
 
     <ConfirmAction
       v-if="pendingDelete"
-      title="Delete This Contact?"
-      :body="`${pendingDelete.content} will stop receiving codes. This cannot be undone.`"
-      action="Delete Contact"
+      :title="t('contacts.deleteTitle')"
+      :body="t('contacts.deleteBody', { contact: pendingDelete.content })"
+      :action="t('contacts.deleteAction')"
       tone="error"
       :busy="busy"
       @cancel="pendingDelete = null"

@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { WarningAlt16 } from '@carbon/icons-vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 defineProps<{
   title: string
@@ -24,7 +27,7 @@ const emit = defineEmits<{ confirm: []; cancel: [] }>()
       </div>
       <footer class="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
         <button type="button" class="btn btn-ghost btn-xs" :disabled="busy" @click="emit('cancel')">
-          Cancel
+          {{ t('common.cancel') }}
         </button>
         <button
           type="button"
@@ -33,10 +36,15 @@ const emit = defineEmits<{ confirm: []; cancel: [] }>()
           :disabled="busy"
           @click="emit('confirm')"
         >
-          {{ busy ? 'Working…' : action }}
+          {{ busy ? t('confirm.working') : action }}
         </button>
       </footer>
     </div>
-    <button type="button" class="modal-backdrop bg-black/60" aria-label="Cancel" @click="emit('cancel')" />
+    <button
+      type="button"
+      class="modal-backdrop bg-black/60"
+      :aria-label="t('common.cancel')"
+      @click="emit('cancel')"
+    />
   </dialog>
 </template>

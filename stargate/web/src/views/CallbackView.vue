@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
+const { t } = useI18n()
 const route = useRoute()
 const failed = ref(false)
 
@@ -27,19 +29,19 @@ onMounted(() => {
 
 <template>
   <div>
-    <h1 class="title mt-2 text-2xl text-base-content">Continuing Sign-In</h1>
+    <h1 class="title mt-2 text-2xl text-base-content">{{ t('callback.title') }}</h1>
     <p v-if="!failed" class="voice mt-2">
-      Handing this request to the identity service. If nothing happens, continue manually.
+      {{ t('callback.handingOff') }}
     </p>
     <p v-else class="voice mt-2">
-      This callback is missing a provider. Return to sign-in and choose a provider again.
+      {{ t('callback.missingProvider') }}
     </p>
 
     <a v-if="!failed" :href="target" class="link-quiet mt-6 inline-block text-xs">
-      Continue to the Identity Service
+      {{ t('callback.continueManual') }}
     </a>
     <RouterLink v-else to="/sign-in" class="link-quiet mt-6 inline-block text-xs">
-      Back to Sign-In
+      {{ t('callback.backToSignIn') }}
     </RouterLink>
   </div>
 </template>

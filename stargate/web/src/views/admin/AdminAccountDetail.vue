@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useNoticeStore } from '@/stores/notice'
 import { adminApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
 import type { AdminAccountDetail } from '@/lib/api/types'
-import { factorTypeLabels, punishmentTypeLabels } from '@/lib/enums'
+import { factorTypeLabel, punishmentTypeLabel } from '@/lib/enums'
 import { age, relative, remaining, shortId, utcStamp } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const notice = useNoticeStore()
@@ -36,24 +38,24 @@ const restriction = computed(() => detail.value?.active_punishment ?? null)
 const confirmCopy = computed(() => {
   if (pendingAction.value === 'revoke') {
     return {
-      title: 'Revoke every session?',
-      body: 'All sessions for this account are invalidated immediately. The account must sign in again.',
-      action: 'Revoke Sessions',
+      title: t('admin.accountDetail.confirmRevokeTitle'),
+      body: t('admin.accountDetail.confirmRevokeBody'),
+      action: t('admin.accountDetail.confirmRevokeAction'),
       tone: 'error' as const,
     }
   }
   if (pendingAction.value === 'activate') {
     return {
-      title: 'Activate this account?',
-      body: 'Sets the activation timestamp and grants the verified permission group.',
-      action: 'Activate Account',
+      title: t('admin.accountDetail.confirmActivateTitle'),
+      body: t('admin.accountDetail.confirmActivateBody'),
+      action: t('admin.accountDetail.confirmActivateAction'),
       tone: 'neutral' as const,
     }
   }
   return {
-    title: 'Delete this account?',
-    body: 'The account is soft-deleted: its name stays reserved and its sessions stop working. This cannot be undone from the console.',
-    action: 'Delete Account',
+    title: t('admin.accountDetail.confirmDeleteTitle'),
+    body: t('admin.accountDetail.confirmDeleteBody'),
+    action: t('admin.accountDetail.confirmDeleteAction'),
     tone: 'error' as const,
   }
 })
@@ -65,7 +67,7 @@ async function load() {
     detail.value = await adminApi.account(name.value)
   } catch (caught) {
     error.value =
-      caught instanceof StargateError ? caught.message : 'The account record could not be read.'
+      caught instanceof StargateError ? caught.message : t('admin.accountDetail.errorLoad')
   } finally {
     loading.value = false
   }
@@ -76,20 +78,20 @@ async function confirmAction() {
   try {
     if (pendingAction.value === 'revoke') {
       await adminApi.revokeSessions(name.value)
-      notice.ok('All sessions revoked.')
+      notice.ok(t('admin.accountDetail.noticeRevoked'))
     } else if (pendingAction.value === 'activate') {
       await adminApi.activate(name.value)
-      notice.ok('Account activated.')
+      notice.ok(t('admin.accountDetail.noticeActivated'))
     } else if (pendingAction.value === 'delete') {
       await adminApi.deleteAccount(name.value)
-      notice.ok('Account soft-deleted.')
+      notice.ok(t('admin.accountDetail.noticeDeleted'))
       await router.push('/admin/accounts')
       return
     }
     pendingAction.value = null
     await load()
   } catch (caught) {
-    notice.fail(caught instanceof Error ? caught.message : 'The action failed.')
+    notice.fail(caught instanceof Error ? caught.message : t('admin.accountDetail.actionFailed'))
   } finally {
     busy.value = false
   }
@@ -105,13 +107,13 @@ async function suspend() {
       expired_at: suspendUntil.value ? new Date(suspendUntil.value).toISOString() : undefined,
       revoke_sessions: true,
     })
-    notice.ok('Restriction applied and sessions revoked.')
+    notice.ok(t('admin.accountDetail.noticeRestricted'))
     suspendOpen.value = false
     suspendReason.value = ''
     suspendUntil.value = ''
     await load()
   } catch (caught) {
-    notice.fail(caught instanceof Error ? caught.message : 'The restriction could not be applied.')
+    notice.fail(caught instanceof Error ? caught.message : t('admin.accountDetail.errorRestricted'))
   } finally {
     busy.value = false
   }
@@ -125,17 +127,21 @@ onMounted(load)
   <div>
     <PageHeader
       :title="account?.nick || name"
-      :description="account ? `@${account.name} · ${account.id}` : 'Loading account record.'"
+      :description="
+        account ? `@${account.name} · ${account.id}` : t('admin.accountDetail.loadingDescription')
+      "
     >
       <template #actions>
-        <button type="button" class="btn btn-ghost btn-sm" @click="router.back()">Back</button>
+        <button type="button" class="btn btn-ghost btn-sm" @click="router.back()">
+          {{ t('common.back') }}
+        </button>
         <button
           type="button"
           class="btn btn-ghost btn-sm"
           :disabled="loading"
           @click="pendingAction = 'activate'"
         >
-          Activate
+          {{ t('admin.accountDetail.activate') }}
         </button>
         <button
           type="button"
@@ -143,7 +149,7 @@ onMounted(load)
           :disabled="loading"
           @click="pendingAction = 'revoke'"
         >
-          Revoke sessions
+          {{ t('admin.accountDetail.revokeSessions') }}
         </button>
         <button
           type="button"
@@ -151,22 +157,24 @@ onMounted(load)
           :disabled="loading"
           @click="suspendOpen = true"
         >
-          Restrict
+          {{ t('admin.accountDetail.restrict') }}
         </button>
       </template>
     </PageHeader>
 
     <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
 
-    <div v-if="loading" class="py-10 text-xs text-faint">Reading account record…</div>
+    <div v-if="loading" class="py-10 text-xs text-faint">
+      {{ t('admin.accountDetail.reading') }}
+    </div>
 
     <div v-else-if="detail" class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div class="space-y-6">
-        <ConsolePanel v-if="restriction" title="Active Restriction">
+        <ConsolePanel v-if="restriction" :title="t('admin.accountDetail.activeRestriction')">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p class="text-xs text-error">
-                {{ punishmentTypeLabels[restriction.type] ?? 'restricted' }}
+                {{ punishmentTypeLabel(restriction.type) }}
               </p>
               <p class="voice mt-1 text-[12px] text-dim">{{ restriction.reason }}</p>
             </div>
@@ -176,44 +184,53 @@ onMounted(load)
             </div>
           </div>
           <p v-if="restriction.blocked_permissions?.length" class="mt-3 text-2xs text-faint">
-            blocked: {{ restriction.blocked_permissions.join(' · ') }}
+            {{
+              t('admin.accountDetail.blocked', {
+                list: restriction.blocked_permissions.join(' · '),
+              })
+            }}
           </p>
         </ConsolePanel>
 
-        <ConsolePanel title="Account">
+        <ConsolePanel :title="t('admin.accountDetail.panelAccount')">
           <dl class="grid gap-x-6 gap-y-3 sm:grid-cols-2">
             <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
-              <dt class="text-faint">name</dt>
+              <dt class="text-faint">{{ t('common.name') }}</dt>
               <dd class="text-dim">{{ account?.name }}</dd>
             </div>
             <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
-              <dt class="text-faint">nick</dt>
+              <dt class="text-faint">{{ t('admin.accountDetail.nick') }}</dt>
               <dd class="text-dim">{{ account?.nick }}</dd>
             </div>
             <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
-              <dt class="text-faint">locale</dt>
+              <dt class="text-faint">{{ t('admin.accountDetail.locale') }}</dt>
               <dd class="text-dim">{{ account?.language }} · {{ account?.region }}</dd>
             </div>
             <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
-              <dt class="text-faint">activated</dt>
-              <dd class="text-dim">{{ account?.activated_at ? 'yes' : 'no' }}</dd>
-            </div>
-            <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
-              <dt class="text-faint">superuser</dt>
-              <dd :class="account?.is_superuser ? 'text-accent' : 'text-dim'">
-                {{ account?.is_superuser ? 'yes' : 'no' }}
+              <dt class="text-faint">{{ t('admin.accountDetail.activated') }}</dt>
+              <dd class="text-dim">
+                {{ account?.activated_at ? t('common.yes') : t('common.no') }}
               </dd>
             </div>
             <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
-              <dt class="text-faint">created</dt>
+              <dt class="text-faint">{{ t('admin.accountDetail.superuser') }}</dt>
+              <dd :class="account?.is_superuser ? 'text-accent' : 'text-dim'">
+                {{ account?.is_superuser ? t('common.yes') : t('common.no') }}
+              </dd>
+            </div>
+            <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
+              <dt class="text-faint">{{ t('common.created') }}</dt>
               <dd class="text-dim">{{ utcStamp(account?.created_at).slice(0, 10) }}</dd>
             </div>
           </dl>
         </ConsolePanel>
 
-        <ConsolePanel title="Contacts" :note="`${detail.contacts.length}`">
+        <ConsolePanel
+          :title="t('admin.accountDetail.panelContacts')"
+          :note="`${detail.contacts.length}`"
+        >
           <p v-if="!detail.contacts.length" class="voice py-3 text-[12px]">
-            No contacts on this account.
+            {{ t('admin.accountDetail.noContacts') }}
           </p>
           <ul v-else class="divide-y divide-line-soft">
             <li
@@ -223,10 +240,18 @@ onMounted(load)
             >
               <div class="flex flex-wrap items-center gap-2">
                 <span class="break-all text-xs text-base-content">{{ contact.content }}</span>
-                <span v-if="contact.is_primary" class="chip text-primary">primary</span>
-                <span v-if="contact.is_public" class="chip">public</span>
+                <span v-if="contact.is_primary" class="chip text-primary">
+                  {{ t('admin.accountDetail.primary') }}
+                </span>
+                <span v-if="contact.is_public" class="chip">
+                  {{ t('admin.accountDetail.public') }}
+                </span>
                 <span class="chip" :class="contact.verified_at ? 'text-success' : 'text-warning'">
-                  {{ contact.verified_at ? 'verified' : 'unverified' }}
+                  {{
+                    contact.verified_at
+                      ? t('admin.accountDetail.verified')
+                      : t('admin.accountDetail.unverified')
+                  }}
                 </span>
               </div>
               <span class="text-2xs text-faint">{{ relative(contact.created_at) }}</span>
@@ -234,9 +259,16 @@ onMounted(load)
           </ul>
         </ConsolePanel>
 
-        <ConsolePanel title="Sign-In Factors" :note="`${detail.auth_factors.length} · ${detail.passkey_count} passkeys`">
+        <ConsolePanel
+          :title="t('admin.accountDetail.panelFactors')"
+          :note="
+            `${detail.auth_factors.length} · ${t('admin.accountDetail.passkeys', {
+              n: detail.passkey_count,
+            })}`
+          "
+        >
           <p v-if="!detail.auth_factors.length" class="voice py-3 text-[12px]">
-            This account has no factors and cannot start a challenge.
+            {{ t('admin.accountDetail.noFactors') }}
           </p>
           <ul v-else class="divide-y divide-line-soft">
             <li
@@ -246,13 +278,17 @@ onMounted(load)
             >
               <div class="flex flex-wrap items-center gap-2">
                 <span class="text-xs text-base-content">
-                  {{ factorTypeLabels[factor.type] ?? 'factor' }}
+                  {{ factorTypeLabel(factor.type) }}
                 </span>
                 <span class="chip" :class="factor.enabled_at ? 'text-success' : 'text-warning'">
-                  {{ factor.enabled_at ? 'enabled' : 'disabled' }}
+                  {{ factor.enabled_at ? t('common.enabled') : t('common.disabled') }}
                 </span>
-                <span class="chip">weight {{ factor.trustworthy }}</span>
-                <span v-if="factor.has_secret" class="chip">secret set</span>
+                <span class="chip">
+                  {{ t('admin.accountDetail.weight', { n: factor.trustworthy }) }}
+                </span>
+                <span v-if="factor.has_secret" class="chip">
+                  {{ t('admin.accountDetail.secretSet') }}
+                </span>
               </div>
               <span class="text-2xs text-faint">{{ relative(factor.created_at) }}</span>
             </li>
@@ -261,47 +297,49 @@ onMounted(load)
       </div>
 
       <div class="space-y-6">
-        <ConsolePanel title="Footprint">
+        <ConsolePanel :title="t('admin.accountDetail.panelFootprint')">
           <dl class="space-y-3 text-xs">
             <div class="flex justify-between">
-              <dt class="text-faint">sessions</dt>
+              <dt class="text-faint">{{ t('admin.accountDetail.sessions') }}</dt>
               <dd class="tabular-nums text-dim">{{ detail.active_session_count }}</dd>
             </div>
             <div class="flex justify-between">
-              <dt class="text-faint">devices</dt>
+              <dt class="text-faint">{{ t('admin.accountDetail.devices') }}</dt>
               <dd class="tabular-nums text-dim">{{ detail.active_device_count }}</dd>
             </div>
             <div class="flex justify-between">
-              <dt class="text-faint">connections</dt>
+              <dt class="text-faint">{{ t('admin.accountDetail.connections') }}</dt>
               <dd class="tabular-nums text-dim">{{ detail.connection_count }}</dd>
             </div>
             <div class="flex justify-between">
-              <dt class="text-faint">punishments</dt>
+              <dt class="text-faint">{{ t('admin.accountDetail.punishments') }}</dt>
               <dd class="tabular-nums text-dim">{{ detail.active_punishments.length }}</dd>
             </div>
           </dl>
         </ConsolePanel>
 
-        <ConsolePanel title="Record">
-          <p class="text-2xs text-faint">account id</p>
+        <ConsolePanel :title="t('admin.accountDetail.panelRecord')">
+          <p class="text-2xs text-faint">{{ t('admin.accountDetail.accountId') }}</p>
           <p class="mt-1 break-all text-xs text-dim">{{ account?.id }}</p>
-          <p class="mt-3 text-2xs text-faint">last updated</p>
-          <p class="mt-1 text-xs text-dim">{{ age(account?.updated_at) }} ago</p>
-          <p class="mt-3 text-2xs text-faint">short reference</p>
+          <p class="mt-3 text-2xs text-faint">{{ t('admin.accountDetail.lastUpdated') }}</p>
+          <p class="mt-1 text-xs text-dim">
+            {{ t('admin.accountDetail.ago', { age: age(account?.updated_at) }) }}
+          </p>
+          <p class="mt-3 text-2xs text-faint">{{ t('admin.accountDetail.shortReference') }}</p>
           <p class="mt-1 text-xs text-dim">{{ shortId(account?.id) }}</p>
         </ConsolePanel>
 
-        <ConsolePanel title="Danger">
+        <ConsolePanel :title="t('admin.accountDetail.panelDanger')">
           <button
             type="button"
             class="btn btn-error btn-sm w-full"
             :disabled="busy"
             @click="pendingAction = 'delete'"
           >
-            Delete account
+            {{ t('admin.accountDetail.deleteAccount') }}
           </button>
           <p class="voice mt-3 text-[12px] text-faint">
-            Soft-deletes the row. The name stays reserved and the account can no longer sign in.
+            {{ t('admin.accountDetail.deleteHint') }}
           </p>
         </ConsolePanel>
       </div>
@@ -321,39 +359,43 @@ onMounted(load)
     <dialog v-if="suspendOpen" class="modal modal-open" aria-modal="true" aria-labelledby="suspend-title">
       <div class="modal-box max-w-md rounded-[2px] border border-line bg-base-100 p-0 shadow-none">
         <div class="border-b border-line px-5 py-4">
-          <h2 id="suspend-title" class="text-sm text-base-content">Restrict This Account</h2>
+          <h2 id="suspend-title" class="text-sm text-base-content">
+            {{ t('admin.accountDetail.suspendTitle') }}
+          </h2>
           <p class="voice mt-1 text-[12px]">
-            Applied immediately. Sessions are revoked unless you turn that off in the API client.
+            {{ t('admin.accountDetail.suspendIntro') }}
           </p>
         </div>
         <div class="px-5 py-4">
-          <label for="suspend-type" class="field-label">Type</label>
+          <label for="suspend-type" class="field-label">{{ t('common.type') }}</label>
           <select id="suspend-type" v-model="suspendType" class="select select-sm">
-            <option :value="1">block sign-in</option>
-            <option :value="2">disable account</option>
+            <option :value="1">{{ t('admin.accountDetail.blockSignIn') }}</option>
+            <option :value="2">{{ t('admin.accountDetail.disableAccount') }}</option>
           </select>
 
-          <label for="suspend-reason" class="field-label mt-4">Reason</label>
+          <label for="suspend-reason" class="field-label mt-4">
+            {{ t('admin.accountDetail.reason') }}
+          </label>
           <textarea
             id="suspend-reason"
             v-model="suspendReason"
             class="textarea textarea-sm"
             rows="3"
-            placeholder="Shown to the account owner."
+            :placeholder="t('admin.accountDetail.reasonPlaceholder')"
           />
 
-          <label for="suspend-until" class="field-label mt-4">Expires</label>
+          <label for="suspend-until" class="field-label mt-4">{{ t('common.expires') }}</label>
           <input
             id="suspend-until"
             v-model="suspendUntil"
             class="input input-sm"
             type="datetime-local"
           />
-          <p class="mt-1 text-2xs text-faint">Leave empty for an indefinite restriction.</p>
+          <p class="mt-1 text-2xs text-faint">{{ t('admin.accountDetail.expiresHint') }}</p>
         </div>
         <div class="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
           <button type="button" class="btn btn-ghost btn-xs" @click="suspendOpen = false">
-            Cancel
+            {{ t('common.cancel') }}
           </button>
           <button
             type="button"
@@ -361,14 +403,14 @@ onMounted(load)
             :disabled="busy || !suspendReason.trim()"
             @click="suspend"
           >
-            Apply restriction
+            {{ t('admin.accountDetail.applyRestriction') }}
           </button>
         </div>
       </div>
       <button
         type="button"
         class="modal-backdrop bg-black/60"
-        aria-label="Cancel"
+        :aria-label="t('common.cancel')"
         @click="suspendOpen = false"
       />
     </dialog>

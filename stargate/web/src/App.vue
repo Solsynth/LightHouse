@@ -1,32 +1,57 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Component } from 'vue'
-import { Activity16, Api16, Devices16, Tools16, User16 } from '@carbon/icons-vue'
+import {
+  Activity16,
+  Api16,
+  Devices16,
+  Moon16,
+  Sun16,
+  Tools16,
+  User16,
+} from '@carbon/icons-vue'
+import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 
 import { useSessionStore } from '@/stores/session'
 import { useNoticeStore } from '@/stores/notice'
+import { useUiStore } from '@/stores/ui'
+import { applyRouteTitle } from '@/router'
 import ElevationSheet from '@/components/ElevationSheet.vue'
 
 const session = useSessionStore()
 const notice = useNoticeStore()
+const ui = useUiStore()
+const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
 interface NavItem {
   to: string
-  label: string
+  labelKey: string
   icon: Component
   scope: 'account' | 'security' | 'admin'
   match: string
 }
 
 const nav: NavItem[] = [
-  { to: '/account', label: 'Profile', icon: User16, scope: 'account', match: '/account' },
-  { to: '/security/sessions', label: 'Sessions', icon: Devices16, scope: 'security', match: '/security' },
-  { to: '/developers', label: 'Developers', icon: Api16, scope: 'security', match: '/developers' },
-  { to: '/activity', label: 'Activity', icon: Activity16, scope: 'account', match: '/activity' },
-  { to: '/admin', label: 'Admin', icon: Tools16, scope: 'admin', match: '/admin' },
+  { to: '/account', labelKey: 'app.nav.profile', icon: User16, scope: 'account', match: '/account' },
+  {
+    to: '/security/sessions',
+    labelKey: 'app.nav.sessions',
+    icon: Devices16,
+    scope: 'security',
+    match: '/security',
+  },
+  {
+    to: '/developers',
+    labelKey: 'app.nav.developers',
+    icon: Api16,
+    scope: 'security',
+    match: '/developers',
+  },
+  { to: '/activity', labelKey: 'app.nav.activity', icon: Activity16, scope: 'account', match: '/activity' },
+  { to: '/admin', labelKey: 'app.nav.admin', icon: Tools16, scope: 'admin', match: '/admin' },
 ]
 
 const showAdmin = computed(() => session.account?.is_superuser === true)
@@ -43,11 +68,15 @@ const activeSection = computed(() => {
 })
 
 // Public flow pages are single-purpose (sign-in, recovery, captcha, provider
-// callbacks), so they stay a narrow card even when a session exists. The
-// signed-in console needs room.
-const cardWidth = computed(() =>
-  session.signedIn && !route.meta.public ? 'max-w-[880px]' : 'max-w-[460px]',
-)
+// callbacks), so they stay a narrow card even when a session exists. Data
+// surfaces get more room than forms: ledgers and admin pages would waste
+// horizontal space at the account card's width.
+const cardWidth = computed(() => {
+  if (route.meta.narrow || route.meta.public || !session.signedIn) return 'max-w-[460px]'
+  if (route.meta.full) return 'max-w-none'
+  if (route.meta.wide) return 'max-w-[1120px]'
+  return 'max-w-[880px]'
+})
 
 const showNav = computed(
   () => session.signedIn && !route.path.startsWith('/auth/'),
@@ -110,9 +139,13 @@ onBeforeUnmount(() => {
 
 async function signOut() {
   await session.signOut()
-  notice.ok('Session ended. Cookies cleared.')
+  notice.ok(t('app.sessionEnded'))
   await router.push('/sign-in')
 }
+
+// Route changes set the title; a language switch must rewrite it for the
+// page that is already open.
+watch(locale, () => applyRouteTitle(route.meta))
 </script>
 
 <template>
@@ -121,45 +154,85 @@ async function signOut() {
       href="#main"
       class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:bg-base-300 focus:px-3 focus:py-2 focus:text-xs"
     >
-      Skip to content
+      {{ t('app.skipToContent') }}
     </a>
 
     <div class="w-full transition-[max-width]" :class="cardWidth">
       <main id="main" class="border border-line bg-base-200/40">
         <div class="flex items-center justify-between gap-4 border-b border-line px-5 py-3">
-          <RouterLink to="/" class="flex items-center gap-2.5" aria-label="Solarpass home">
-            <img
-              src="/icon-outline.svg"
-              alt=""
-              class="h-[22px] w-[22px] shrink-0"
-              aria-hidden="true"
-            />
+          <RouterLink to="/" class="flex items-center gap-2.5" :aria-label="t('app.home')">
+            <span class="brand-mark h-[22px] w-[22px] shrink-0" aria-hidden="true" />
             <span class="text-[13px] font-semibold tracking-[0.24em] text-base-content">
               SOLARPASS
             </span>
             <span class="hidden text-2xs tracking-[0.12em] text-faint sm:inline">
-              Solar Network
+              {{ t('app.network') }}
             </span>
           </RouterLink>
 
-          <div v-if="session.signedIn" class="flex items-center gap-3">
-            <span
-              v-if="session.elevated"
-              class="hidden items-center gap-1.5 text-2xs text-accent sm:flex"
-              title="This session can perform elevated actions"
+          <div class="flex items-center gap-4">
+            <div
+              class="flex items-center gap-1 text-2xs"
+              role="group"
+              :aria-label="t('app.language')"
             >
-              <span class="dot bg-accent" />
-              elevated
-            </span>
-            <span class="text-2xs text-dim">{{ session.identity?.name }}</span>
-            <button class="btn btn-ghost btn-xs" type="button" @click="signOut">Sign Out</button>
+              <button
+                type="button"
+                class="transition-colors"
+                :class="ui.locale === 'en' ? 'text-base-content' : 'text-faint hover:text-dim'"
+                :aria-pressed="ui.locale === 'en'"
+                :title="t('app.languageEnglish')"
+                @click="ui.setLocale('en')"
+              >
+                EN
+              </button>
+              <span class="text-line" aria-hidden="true">/</span>
+              <button
+                type="button"
+                class="transition-colors"
+                :class="ui.locale === 'zh-CN' ? 'text-base-content' : 'text-faint hover:text-dim'"
+                :aria-pressed="ui.locale === 'zh-CN'"
+                :title="t('app.languageChinese')"
+                @click="ui.setLocale('zh-CN')"
+              >
+                中文
+              </button>
+            </div>
+
+            <button
+              type="button"
+              class="btn btn-ghost btn-xs px-1.5"
+              :title="ui.isDark ? t('app.switchToLight') : t('app.switchToDark')"
+              :aria-label="ui.isDark ? t('app.switchToLight') : t('app.switchToDark')"
+              @click="ui.toggleTheme()"
+            >
+              <component :is="ui.isDark ? Sun16 : Moon16" aria-hidden="true" />
+            </button>
+
+            <div
+              v-if="session.signedIn"
+              class="flex items-center gap-3 border-l border-line pl-4"
+            >
+              <span
+                v-if="session.elevated"
+                class="hidden items-center gap-1.5 text-2xs text-accent sm:flex"
+                :title="t('app.elevatedHint')"
+              >
+                <span class="dot bg-accent" />
+                {{ t('app.elevated') }}
+              </span>
+              <span class="text-2xs text-dim">{{ session.identity?.name }}</span>
+              <button class="btn btn-ghost btn-xs" type="button" @click="signOut">
+                {{ t('app.signOut') }}
+              </button>
+            </div>
           </div>
         </div>
 
         <nav
           v-if="showNav"
           class="flex items-center gap-4 overflow-x-auto border-b border-line px-5 py-2"
-          aria-label="Console"
+          :aria-label="t('app.console')"
         >
           <RouterLink
             v-for="item in visibleNav"
@@ -173,7 +246,7 @@ async function signOut() {
             "
           >
             <component :is="item.icon" class="shrink-0" aria-hidden="true" />
-            {{ item.label }}
+            {{ t(item.labelKey) }}
           </RouterLink>
         </nav>
 

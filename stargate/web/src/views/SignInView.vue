@@ -1,20 +1,22 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { FingerprintRecognition16 } from '@carbon/icons-vue'
 
 import { useSignInStore } from '@/stores/signIn'
 import { useSessionStore } from '@/stores/session'
 import { useNoticeStore } from '@/stores/notice'
-import { signInApi } from '@/lib/api'
+import { signInApi, authApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
 import type { AuthFactor } from '@/lib/api/types'
-import { codeRequestFactorTypes, factorTypeLabels } from '@/lib/enums'
+import { codeRequestFactorTypes, factorTypeDescription, factorTypeLabel } from '@/lib/enums'
 import { remaining } from '@/lib/format'
 import { getAssertion, passkeyFailure, passkeysSupported } from '@/lib/webauthn'
 import { deviceIdentity } from '@/lib/device'
 import FactorRow from '@/components/FactorRow.vue'
 
+const { t } = useI18n()
 const signIn = useSignInStore()
 const session = useSessionStore()
 const notice = useNoticeStore()
@@ -26,30 +28,69 @@ const error = ref('')
 const busy = ref(false)
 const started = ref(false)
 const passkeyFactor = ref<AuthFactor | null>(null)
-const codeSentFor = ref<string | null>(null)
+const codeSentIds = ref<string[]>([])
+const selectedFactorId = ref<string | null>(null)
+const providers = ref<string[]>([])
 
 let pollTimer: number | undefined
+
+const providerLabels: Record<string, string> = {
+  github: 'GitHub',
+  google: 'Google',
+  microsoft: 'Microsoft',
+  discord: 'Discord',
+  apple: 'Apple',
+  steam: 'Steam',
+  twitter: 'X',
+  afdian: 'Afdian',
+  lastfm: 'Last.fm',
+}
+
+const providerLabel = (provider: string) => providerLabels[provider] ?? provider
+
+/** Full-page navigation: the server sets the state and redirects onward. */
+function providerUrl(provider: string): string {
+  const query = new URLSearchParams({ flow: 'login', returnUrl: nextPath() })
+  return `/api/auth/login/${provider}?${query.toString()}`
+}
+
+async function loadProviders() {
+  try {
+    providers.value = await authApi.providers()
+  } catch {
+    // An older server has no provider listing; hide the section.
+    providers.value = []
+  }
+}
 
 const needsCode = (factor: AuthFactor) => codeRequestFactorTypes[factor.type] === true
 const canUsePasskey = computed(() => passkeySupported && passkeyFactor.value !== null)
 const passkeySupported = passkeysSupported()
 
+/** Passkeys have their own assertion endpoint, so the list only offers
+ *  factors that submit a secret through the challenge. */
+const choiceFactors = computed(() => signIn.factors.filter((factor) => factor.type !== 7))
+
+const selectedFactor = computed(
+  () => choiceFactors.value.find((factor) => factor.id === selectedFactorId.value) ?? null,
+)
+
 function messageOf(caught: unknown): string {
   if (caught instanceof StargateError) {
     switch (caught.code) {
       case 'AUTH_ACCOUNT_NOT_FOUND':
-        return 'No account matches that name or email.'
+        return t('signIn.errorAccountNotFound')
       case 'NO_AUTH_FACTORS':
-        return 'That account has no sign-in method configured.'
+        return t('signIn.errorNoFactors')
       case 'ACCOUNT_LOCKED':
-        return caught.detail ?? 'That account is locked.'
+        return caught.detail ?? t('signIn.errorLocked')
       case 'AUTH_SESSION_NOT_TRUSTED':
-        return 'Only a trusted session can approve a sign-in.'
+        return t('signIn.errorUntrusted')
       default:
         return caught.message
     }
   }
-  return caught instanceof Error ? caught.message : 'The request failed.'
+  return caught instanceof Error ? caught.message : t('signIn.errorRequestFailed')
 }
 
 async function identify() {
@@ -61,6 +102,7 @@ async function identify() {
     started.value = true
     passkeyFactor.value = signIn.factors.find((factor) => factor.type === 7) ?? null
     if (signIn.complete) await finish()
+    else await autoSelect()
   } catch (caught) {
     error.value = messageOf(caught)
   } finally {
@@ -89,7 +131,7 @@ async function passkeyDiscoverable() {
     await signInApi.passkeyDiscoverableComplete(start.auth_challenge_id, assertion)
     await signInApi.exchange(start.auth_challenge_id)
     await session.load()
-    notice.ok('Signed in with a passkey.')
+    notice.ok(t('signIn.noticePasskey'))
     await router.replace(nextPath())
   } catch (caught) {
     error.value = caught instanceof StargateError ? messageOf(caught) : passkeyFailure(caught)
@@ -121,22 +163,46 @@ async function passkeyBound() {
   }
 }
 
-async function sendCode(factor: AuthFactor) {
+/** Picks the factor the person will satisfy, and issues a code when the
+ *  factor needs one. Selecting is explicit so a code is never sent for a
+ *  method the person did not choose. */
+async function chooseFactor(factor: AuthFactor) {
+  selectedFactorId.value = factor.id
+  if (needsCode(factor) && !codeSentIds.value.includes(factor.id)) await sendCode(factor)
+}
+
+/** With one usable factor there is nothing to choose; go straight to it. */
+async function autoSelect() {
+  if (selectedFactor.value) return
+  const only = choiceFactors.value[0]
+  if (choiceFactors.value.length === 1 && only) await chooseFactor(only)
+}
+
+async function sendCode(factor: AuthFactor | null) {
+  if (!factor) return
   error.value = ''
   try {
     await signIn.requestCode(factor.id)
-    codeSentFor.value = factor.id
-    notice.ok(`Code sent for ${factorTypeLabels[factor.type]}.`)
+    codeSentIds.value = [...codeSentIds.value, factor.id]
+    notice.ok(t('signIn.noticeCodeSent', { factor: factorTypeLabel(factor.type) }))
   } catch (caught) {
     error.value = messageOf(caught)
   }
 }
 
-async function submit(factor: AuthFactor, secret: string) {
+async function submit(factor: AuthFactor | null, secret: string) {
+  if (!factor) return
   try {
     await signIn.submitFactor(factor.id, secret)
-    codeSentFor.value = null
-    if (signIn.complete) await finish()
+    codeSentIds.value = codeSentIds.value.filter((id) => id !== factor.id)
+    if (signIn.complete) {
+      await finish()
+      return
+    }
+    // The used factor is gone. With several methods left, return to the
+    // chooser instead of guessing which one the next step should use.
+    selectedFactorId.value = null
+    await autoSelect()
   } catch (caught) {
     error.value = messageOf(caught)
   }
@@ -152,7 +218,7 @@ async function finish() {
     await signIn.exchange()
     await session.load()
     signIn.reset()
-    notice.ok('Signed in.')
+    notice.ok(t('signIn.noticeSignedIn'))
     await router.replace(nextPath())
   } catch (caught) {
     error.value = messageOf(caught)
@@ -181,11 +247,16 @@ function restart() {
   signIn.reset()
   started.value = false
   passkeyFactor.value = null
+  selectedFactorId.value = null
+  codeSentIds.value = []
   error.value = ''
   startPolling()
 }
 
-onMounted(startPolling)
+onMounted(() => {
+  startPolling()
+  void loadProviders()
+})
 onBeforeUnmount(() => {
   if (pollTimer !== undefined) window.clearInterval(pollTimer)
 })
@@ -195,20 +266,16 @@ onBeforeUnmount(() => {
   <div>
     <div class="mb-8">
       <h1 class="title mt-2 text-2xl text-base-content">
-        {{ started ? 'Continue Sign-In' : 'Sign In' }}
+        {{ started ? t('signIn.continueTitle') : t('signIn.title') }}
       </h1>
       <p class="voice mt-2">
-        {{
-          started
-            ? 'Satisfy the factors this sign-in asks for. Sessions are issued as HttpOnly cookies.'
-            : 'Use your Solar Network account. Sessions are issued as HttpOnly cookies.'
-        }}
+        {{ started ? t('signIn.continueIntro') : t('signIn.intro') }}
       </p>
     </div>
 
     <Transition name="step" mode="out-in">
     <form v-if="!started" key="identify" class="border border-line bg-base-200/40 p-5" @submit.prevent="identify">
-      <label for="account" class="field-label">Account or email</label>
+      <label for="account" class="field-label">{{ t('signIn.accountLabel') }}</label>
       <input
         id="account"
         v-model="account"
@@ -216,11 +283,11 @@ onBeforeUnmount(() => {
         autocomplete="username"
         autocapitalize="off"
         spellcheck="false"
-        placeholder="name or name@example.com"
+        :placeholder="t('signIn.accountPlaceholder')"
         :disabled="busy"
       />
       <button type="submit" class="btn btn-primary mt-4 w-full" :disabled="busy || !account.trim()">
-        {{ busy ? 'Checking…' : 'Continue' }}
+        {{ busy ? t('signIn.checking') : t('common.continue') }}
       </button>
 
       <div v-if="passkeySupported" class="mt-4 border-t border-line-soft pt-4">
@@ -231,11 +298,22 @@ onBeforeUnmount(() => {
           @click="passkeyDiscoverable"
         >
           <FingerprintRecognition16 aria-hidden="true" />
-          Sign In with a Passkey
+          {{ t('signIn.passkeySignIn') }}
         </button>
-        <p class="mt-2 text-2xs text-faint">
-          Skips the account field — the browser offers the passkeys saved for this site.
-        </p>
+      </div>
+
+      <div v-if="providers.length" class="mt-4 border-t border-line-soft pt-4">
+        <p class="field-label">{{ t('signIn.orContinueWith') }}</p>
+        <div class="space-y-2">
+          <a
+            v-for="provider in providers"
+            :key="provider"
+            :href="providerUrl(provider)"
+            class="btn btn-outline w-full"
+          >
+            {{ t('signIn.continueWith', { provider: providerLabel(provider) }) }}
+          </a>
+        </div>
       </div>
     </form>
 
@@ -244,15 +322,19 @@ onBeforeUnmount(() => {
         <div class="min-w-0">
           <p class="truncate text-xs text-base-content">{{ signIn.account }}</p>
           <p class="text-2xs text-faint">
-            {{ signIn.challenge?.step_remain }} of {{ signIn.challenge?.step_total }} steps
-            remaining
+            {{
+              t('signIn.stepsRemaining', {
+                remain: signIn.challenge?.step_remain,
+                total: signIn.challenge?.step_total,
+              })
+            }}
             <template v-if="signIn.challenge?.expired_at">
-              · {{ remaining(signIn.challenge.expired_at) }} left
+              · {{ t('signIn.timeLeft', { time: remaining(signIn.challenge.expired_at) }) }}
             </template>
           </p>
         </div>
         <button type="button" class="text-2xs text-dim hover:text-base-content" @click="restart">
-          Change Account
+          {{ t('signIn.changeAccount') }}
         </button>
       </header>
 
@@ -265,25 +347,59 @@ onBeforeUnmount(() => {
           @click="passkeyBound"
         >
           <FingerprintRecognition16 aria-hidden="true" />
-          Verify with a Passkey
+          {{ t('signIn.passkeyVerify') }}
         </button>
 
         <p v-if="!signIn.factors.length" class="py-3 text-xs text-dim">
-          Waiting for approval from another device…
+          {{ t('signIn.waitingOther') }}
         </p>
 
-        <TransitionGroup name="row" tag="div" class="relative">
-          <FactorRow
-            v-for="factor in signIn.factors.filter((item) => item.type !== 7)"
-            :key="factor.id"
-            :factor="factor"
-            :busy="busy"
-            :code-sent="codeSentFor === factor.id"
-            :needs-code="needsCode(factor)"
-            @send-code="sendCode(factor)"
-            @submit="(secret) => submit(factor, secret)"
-          />
-        </TransitionGroup>
+        <div v-else-if="choiceFactors.length" class="relative">
+          <Transition name="step" mode="out-in">
+            <div v-if="!selectedFactor" key="choose">
+              <p class="field-label">{{ t('signIn.chooseMethod') }}</p>
+              <div class="space-y-1.5">
+                <button
+                  v-for="factor in choiceFactors"
+                  :key="factor.id"
+                  type="button"
+                  class="flex w-full flex-col border border-line-soft px-3 py-2.5 text-left transition-colors hover:border-line hover:bg-base-300/60"
+                  :disabled="busy"
+                  @click="chooseFactor(factor)"
+                >
+                  <span class="text-xs text-base-content">
+                    {{ factorTypeLabel(factor.type) }}
+                  </span>
+                  <span class="mt-0.5 text-2xs text-faint">
+                    {{ factorTypeDescription(factor.type) }}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div v-else-if="selectedFactor" key="chosen">
+              <div class="mb-3 flex items-center justify-between gap-3 border-b border-line-soft pb-2">
+                <span class="field-label mb-0">{{ factorTypeLabel(selectedFactor.type) }}</span>
+                <button
+                  v-if="choiceFactors.length > 1"
+                  type="button"
+                  class="text-2xs text-dim hover:text-base-content"
+                  @click="selectedFactorId = null"
+                >
+                  {{ t('signIn.useAnother') }}
+                </button>
+              </div>
+              <FactorRow
+                :factor="selectedFactor"
+                :busy="busy"
+                :code-sent="codeSentIds.includes(selectedFactor.id)"
+                :needs-code="needsCode(selectedFactor)"
+                @send-code="sendCode(selectedFactor)"
+                @submit="(secret) => submit(selectedFactor, secret)"
+              />
+            </div>
+          </Transition>
+        </div>
       </div>
 
       <p v-if="error || signIn.error" class="border-t border-line px-5 py-3 text-xs text-error">
@@ -294,14 +410,18 @@ onBeforeUnmount(() => {
 
     <div v-if="started" class="mt-4 flex items-center gap-2 text-2xs text-faint">
       <span class="dot animate-pulse bg-info" aria-hidden="true" />
-      <span>Watching for approval from a trusted device.</span>
+      <span>{{ t('signIn.watching') }}</span>
     </div>
 
-    <p class="mt-8 voice text-[12px] text-faint">
-      No account yet?
-      <RouterLink to="/create-account" class="link-quiet">Create one</RouterLink>.
-      Lost your password?
-      <RouterLink to="/recover" class="link-quiet">Reset it by email</RouterLink>.
-    </p>
+    <div class="mt-8 space-y-1 voice text-[12px] text-faint">
+      <p>
+        {{ t('signIn.noAccount') }}
+        <RouterLink to="/create-account" class="link-quiet">{{ t('signIn.createOne') }}</RouterLink>
+      </p>
+      <p>
+        {{ t('signIn.lostPassword') }}
+        <RouterLink to="/recover" class="link-quiet">{{ t('signIn.resetByEmail') }}</RouterLink>
+      </p>
+    </div>
   </div>
 </template>

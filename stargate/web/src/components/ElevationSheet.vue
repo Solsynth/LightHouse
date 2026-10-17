@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { useSessionStore } from '@/stores/session'
 import { useElevationStore } from '@/stores/elevation'
 import { useNoticeStore } from '@/stores/notice'
 import { request } from '@/lib/api/client'
 import type { AuthChallenge, AuthFactor } from '@/lib/api/types'
-import { codeRequestFactorTypes, factorTypeLabels, pickableFactorTypes } from '@/lib/enums'
+import { codeRequestFactorTypes, factorTypeLabel, pickableFactorTypes } from '@/lib/enums'
 import { remaining } from '@/lib/format'
 
+const { t } = useI18n()
 const session = useSessionStore()
 const elevation = useElevationStore()
 const notice = useNoticeStore()
@@ -28,7 +30,7 @@ async function begin() {
     challenge.value = elevation.state?.challenge ?? (await elevation.begin())
     await loadFactors()
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : 'Elevation could not be started.'
+    error.value = caught instanceof Error ? caught.message : t('elevation.errorStart')
   } finally {
     busy.value = false
   }
@@ -54,9 +56,9 @@ async function sendCode(factor: AuthFactor) {
       method: 'POST',
     })
     codeSentFor.value = factor.id
-    notice.ok(`Code sent for ${factorTypeLabels[factor.type] ?? 'factor'}.`)
+    notice.ok(t('elevation.noticeCodeSent', { factor: factorTypeLabel(factor.type) }))
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : 'The code could not be sent.'
+    error.value = caught instanceof Error ? caught.message : t('elevation.errorCode')
   }
 }
 
@@ -76,13 +78,13 @@ async function submit(factor: AuthFactor) {
     codeSentFor.value = null
     if (updated.step_remain === 0) {
       session.noteElevation(updated)
-      notice.ok('Elevation granted for this session.')
+      notice.ok(t('elevation.noticeGranted'))
       reset()
     } else {
       await loadFactors()
     }
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : 'That credential was not accepted.'
+    error.value = caught instanceof Error ? caught.message : t('errors.credentialRejected')
   } finally {
     busy.value = false
   }
@@ -128,28 +130,28 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   >
     <div class="modal-box max-w-md rounded-[2px] border border-line bg-base-100 p-0 shadow-none">
       <header class="border-b border-line px-5 py-4">
-        <p class="eyebrow">elevation required</p>
-        <h2 id="elevation-title" class="mt-1 text-sm text-base-content">Re-Verify to Continue</h2>
+        <p class="eyebrow">{{ t('elevation.required') }}</p>
+        <h2 id="elevation-title" class="mt-1 text-sm text-base-content">{{ t('elevation.title') }}</h2>
         <p class="voice mt-2">
-          This action changes account security. Satisfy the factors below; the grant lasts for
-          this session only.
+          {{ t('elevation.description') }}
         </p>
       </header>
 
       <div class="px-5 py-4">
         <div v-if="challenge" class="mb-4 flex items-center justify-between text-2xs text-faint">
           <span>
-            {{ challenge.step_total - challenge.step_remain }}/{{ challenge.step_total }} steps
-            complete
+            {{ t('elevation.steps', {
+              done: challenge.step_total - challenge.step_remain,
+              total: challenge.step_total,
+            }) }}
           </span>
-          <span>{{ remaining(challenge.expired_at) }} left</span>
+          <span>{{ t('elevation.timeLeft', { time: remaining(challenge.expired_at) }) }}</span>
         </div>
 
-        <p v-if="busy && !factors.length" class="py-6 text-xs text-faint">Starting challenge…</p>
+        <p v-if="busy && !factors.length" class="py-6 text-xs text-faint">{{ t('elevation.starting') }}</p>
 
         <p v-else-if="!factors.length" class="voice py-6">
-          Nothing on this account can satisfy this step. Add a Factor in Security, or retry from
-          the device that holds your passkey.
+          {{ t('elevation.empty') }}
         </p>
 
         <ul v-else class="space-y-4">
@@ -160,7 +162,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           >
             <div class="flex items-baseline justify-between gap-3">
               <label :for="`factor-${factor.id}`" class="text-xs text-base-content">
-                {{ factorTypeLabels[factor.type] ?? 'factor' }}
+                {{ factorTypeLabel(factor.type) }}
               </label>
               <button
                 v-if="codeRequestFactorTypes[factor.type] === true"
@@ -168,7 +170,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
                 class="text-2xs text-dim underline decoration-line underline-offset-4 hover:text-base-content"
                 @click="sendCode(factor)"
               >
-                {{ codeSentFor === factor.id ? 'resend code' : 'send code' }}
+                {{ codeSentFor === factor.id ? t('elevation.resendCode') : t('elevation.sendCode') }}
               </button>
             </div>
             <div class="mt-2 flex gap-2">
@@ -178,7 +180,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
                 class="input input-sm flex-1"
                 type="password"
                 autocomplete="current-password"
-                :placeholder="codeRequestFactorTypes[factor.type] === true ? '6-digit code' : 'credential'"
+                :placeholder="
+                  codeRequestFactorTypes[factor.type] === true
+                    ? t('elevation.codePlaceholder')
+                    : t('elevation.credentialPlaceholder')
+                "
                 @keydown.enter="submit(factor)"
               />
               <button
@@ -187,7 +193,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
                 :disabled="!secrets[factor.id] || busy"
                 @click="submit(factor)"
               >
-                Verify
+                {{ t('common.verify') }}
               </button>
             </div>
           </li>
@@ -197,14 +203,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       </div>
 
       <footer class="flex items-center justify-between border-t border-line px-5 py-3">
-        <span class="text-2xs text-faint">Elevation is bound to this browser session.</span>
-        <button type="button" class="btn btn-ghost btn-xs" @click="dismiss">Cancel</button>
+        <span class="text-2xs text-faint">{{ t('elevation.footer') }}</span>
+        <button type="button" class="btn btn-ghost btn-xs" @click="dismiss">{{ t('common.cancel') }}</button>
       </footer>
     </div>
     <button
       type="button"
       class="modal-backdrop bg-black/60"
-      aria-label="Cancel elevation"
+      :aria-label="t('elevation.cancelElevation')"
       @click="dismiss"
     />
   </dialog>

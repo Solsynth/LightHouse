@@ -1,18 +1,24 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { RouterLink, useRoute } from 'vue-router'
 
+const { t } = useI18n()
 const route = useRoute()
 
-const tabs = [
-  { to: '/security/sessions', label: 'Sessions' },
-  { to: '/security/factors', label: 'Sign-In Factors' },
-  { to: '/security/contacts', label: 'Contacts' },
-  { to: '/security/preferences', label: 'Security Mode' },
-]
+const tabs = computed(() => [
+  { to: '/security/sessions', label: t('securityNav.sessions') },
+  { to: '/security/factors', label: t('securityNav.factors') },
+  { to: '/security/contacts', label: t('securityNav.contacts') },
+  { to: '/security/preferences', label: t('securityNav.preferences') },
+])
 </script>
 
 <template>
-  <nav class="mb-6 flex flex-wrap gap-x-5 gap-y-2 border-b border-line pb-3" aria-label="Security">
+  <nav
+    class="mb-6 flex flex-wrap gap-x-5 gap-y-2 border-b border-line pb-3"
+    :aria-label="t('securityNav.aria')"
+  >
     <RouterLink
       v-for="tab in tabs"
       :key="tab.to"

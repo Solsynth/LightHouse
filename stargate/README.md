@@ -46,6 +46,12 @@ so the console uses same-origin URLs in both modes). `make web-check` runs the
 type checker, linter, unit tests, and a production build. `web/Makefile` has
 the same targets scoped to the frontend.
 
+The console ships English and Simplified Chinese, and a light and dark theme.
+Both follow the browser/OS on first visit, then remember the reader's choice in
+`localStorage`; the header carries the language pair and theme toggle on every
+page. The sign-in screen lists a social provider only when its credentials are
+complete in `[oidc]`, so no button leads to an unavailable provider.
+
 Routes resolve as follows:
 
 - existing files under `web/dist` are served directly (`/assets/*` is

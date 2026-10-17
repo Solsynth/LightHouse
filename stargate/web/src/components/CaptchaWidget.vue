@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { authApi } from '@/lib/api'
 
@@ -16,6 +17,7 @@ interface Props {
 
 const props = defineProps<Props>()
 const emit = defineEmits<{ verified: [token: string] }>()
+const { t } = useI18n()
 
 const container = ref<HTMLDivElement | null>(null)
 const loading = ref(true)
@@ -46,7 +48,7 @@ function loadScript(src: string, id: string): Promise<void> {
     if (existing.dataset.loaded === 'true') return Promise.resolve()
     return new Promise((resolve, reject) => {
       existing.addEventListener('load', () => resolve(), { once: true })
-      existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), {
+      existing.addEventListener('error', () => reject(new Error(t('captchaWidget.loadFailed', { src }))), {
         once: true,
       })
     })
@@ -62,7 +64,7 @@ function loadScript(src: string, id: string): Promise<void> {
       script.dataset.loaded = 'true'
       resolve()
     }
-    script.onerror = () => reject(new Error(`Failed to load ${src}`))
+    script.onerror = () => reject(new Error(t('captchaWidget.loadFailed', { src })))
     document.head.appendChild(script)
   })
 }
@@ -90,24 +92,24 @@ async function render() {
         'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit',
         'captcha-turnstile',
       )
-      if (!w.turnstile) throw new Error('Turnstile failed to initialize.')
+      if (!w.turnstile) throw new Error(t('captchaWidget.initFailed', { provider: 'Turnstile' }))
       widgetId = w.turnstile.render(container.value, {
         sitekey: siteKey,
         callback: (token: string) => emit('verified', token),
         'error-callback': () => {
           loading.value = false
-          error.value = 'Verification is unavailable right now. Reload the page to retry.'
+          error.value = t('captchaWidget.unavailable')
         },
       })
     } else if (providerName === 'hcaptcha') {
       await loadScript('https://js.hcaptcha.com/1/api.js?render=explicit', 'captcha-hcaptcha')
-      if (!w.hcaptcha) throw new Error('hCaptcha failed to initialize.')
+      if (!w.hcaptcha) throw new Error(t('captchaWidget.initFailed', { provider: 'hCaptcha' }))
       widgetId = w.hcaptcha.render(container.value, {
         sitekey: siteKey,
         callback: (token: string) => emit('verified', token),
         'error-callback': () => {
           loading.value = false
-          error.value = 'Verification is unavailable right now. Reload the page to retry.'
+          error.value = t('captchaWidget.unavailable')
         },
       })
     } else if (providerName === 'recaptcha') {
@@ -115,20 +117,20 @@ async function render() {
         'https://www.google.com/recaptcha/api.js?render=explicit',
         'captcha-recaptcha',
       )
-      if (!w.grecaptcha) throw new Error('reCAPTCHA failed to initialize.')
+      if (!w.grecaptcha) throw new Error(t('captchaWidget.initFailed', { provider: 'reCAPTCHA' }))
       widgetId = w.grecaptcha.render(container.value, {
         sitekey: siteKey,
         callback: (token: string) => emit('verified', token),
         'error-callback': () => {
           loading.value = false
-          error.value = 'Verification is unavailable right now. Reload the page to retry.'
+          error.value = t('captchaWidget.unavailable')
         },
       })
     } else {
-      throw new Error('This deployment has no captcha provider configured.')
+      throw new Error(t('captchaWidget.noProvider'))
     }
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : 'The challenge could not be loaded.'
+    error.value = caught instanceof Error ? caught.message : t('captchaWidget.challengeFailed')
   } finally {
     loading.value = false
   }
@@ -144,7 +146,7 @@ onMounted(async () => {
       siteKey = siteKey || config.apiKey
     } catch {
       loading.value = false
-      error.value = 'The challenge could not be loaded.'
+      error.value = t('captchaWidget.challengeFailed')
       return
     }
   }
@@ -156,7 +158,7 @@ onUnmounted(cleanup)
 
 <template>
   <div class="flex min-h-[68px] w-full flex-col items-center justify-center gap-2">
-    <p v-if="loading" class="text-2xs text-faint">Loading verification…</p>
+    <p v-if="loading" class="text-2xs text-faint">{{ t('captchaWidget.loading') }}</p>
     <p v-else-if="error" class="text-center text-2xs text-error">{{ error }}</p>
     <div ref="container" class="flex w-full justify-center" />
   </div>

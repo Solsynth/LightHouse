@@ -4,6 +4,8 @@
  * here rather than in the views.
  */
 
+import { translate } from '@/lib/i18n'
+
 function toB64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
   let binary = ''
@@ -51,7 +53,7 @@ export async function getAssertion(options: {
   }
 
   const credential = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null
-  if (!credential) throw new Error('No passkey was selected.')
+  if (!credential) throw new Error(translate('errors.passkeyNone'))
 
   const response = credential.response as AuthenticatorAssertionResponse
   const parts: AssertionParts = {
@@ -72,10 +74,10 @@ export function passkeysSupported(): boolean {
 /** Human-readable failure for the errors the platform raises. */
 export function passkeyFailure(error: unknown): string {
   if (error instanceof DOMException) {
-    if (error.name === 'NotAllowedError') return 'The passkey prompt was dismissed or timed out.'
-    if (error.name === 'SecurityError') return 'This origin is not allowed to use passkeys.'
-    if (error.name === 'InvalidStateError') return 'That passkey is already registered here.'
+    if (error.name === 'NotAllowedError') return translate('errors.passkeyDismissed')
+    if (error.name === 'SecurityError') return translate('errors.passkeyOrigin')
+    if (error.name === 'InvalidStateError') return translate('errors.passkeyRegistered')
     return error.message
   }
-  return error instanceof Error ? error.message : 'The passkey ceremony failed.'
+  return error instanceof Error ? error.message : translate('errors.passkeyFailed')
 }

@@ -55,6 +55,7 @@ type Deps struct {
 // ConnectionController OAuth endpoints). The GET/DELETE /api/connections CRUD
 // lives in SecurityCtl.
 func Register(api *gin.RouterGroup, d Deps) {
+	api.GET("/auth/providers", d.providerList)
 	api.GET("/auth/login/:provider", d.oidcLogin)
 	api.POST("/auth/login/apple/mobile", d.appleMobileLogin)
 	api.GET("/auth/callback/:provider", d.handleCallback)
@@ -798,6 +799,35 @@ func (d Deps) actionLogConnectionLink(ctx context.Context, accountID, provider s
 		return
 	}
 	_ = d.Logs.Create(ctx, accountID, model.ActionLogAccountConnectionLink, map[string]any{"provider": provider}, derefStr(userAgent), derefStr(ipAddress), nil, nil)
+}
+
+// providerList returns the social providers this deployment can actually
+// start a flow for, so clients do not offer buttons that end in an error.
+func (d Deps) providerList(c *gin.Context) {
+	c.JSON(http.StatusOK, availableProviders(d))
+}
+
+// availableProviders keeps the configured providers in the order most
+// deployments want them shown.
+func availableProviders(d Deps) []string {
+	providers := []string{
+		"github",
+		"google",
+		"microsoft",
+		"discord",
+		"apple",
+		"steam",
+		"twitter",
+		"afdian",
+		"lastfm",
+	}
+	available := make([]string, 0, len(providers))
+	for _, name := range providers {
+		if providerAvailable(name, d) {
+			available = append(available, name)
+		}
+	}
+	return available
 }
 
 func providerAvailable(name string, d Deps) bool {

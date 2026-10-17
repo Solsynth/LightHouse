@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useNoticeStore } from '@/stores/notice'
 import { adminApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
 import type { PermissionGroupDetail } from '@/lib/api/types'
-import { actorTypeLabels } from '@/lib/enums'
+import { actorTypeLabel } from '@/lib/enums'
 import { relative, remaining } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const notice = useNoticeStore()
@@ -37,7 +39,8 @@ async function load() {
   try {
     detail.value = await adminApi.group(id.value)
   } catch (caught) {
-    error.value = caught instanceof StargateError ? caught.message : 'The group could not be read.'
+    error.value =
+      caught instanceof StargateError ? caught.message : t('admin.permissionGroup.errorLoad')
   } finally {
     loading.value = false
   }
@@ -49,11 +52,12 @@ async function grant() {
   error.value = ''
   try {
     await adminApi.grantPermission(id.value, permissionKey.value.trim())
-    notice.ok(`Granted ${permissionKey.value.trim()}.`)
+    notice.ok(t('admin.permissionGroup.noticeGranted', { key: permissionKey.value.trim() }))
     permissionKey.value = ''
     await load()
   } catch (caught) {
-    error.value = caught instanceof StargateError ? caught.message : 'The grant failed.'
+    error.value =
+      caught instanceof StargateError ? caught.message : t('admin.permissionGroup.errorGrant')
   } finally {
     busy.value = false
   }
@@ -65,11 +69,11 @@ async function revoke() {
   busy.value = true
   try {
     await adminApi.revokePermission(id.value, key)
-    notice.ok(`Revoked ${key}.`)
+    notice.ok(t('admin.permissionGroup.noticeRevoked', { key }))
     pendingNode.value = null
     await load()
   } catch (caught) {
-    notice.fail(caught instanceof Error ? caught.message : 'The revoke failed.')
+    notice.fail(caught instanceof Error ? caught.message : t('admin.permissionGroup.errorRevoke'))
   } finally {
     busy.value = false
   }
@@ -81,11 +85,12 @@ async function addMember() {
   error.value = ''
   try {
     await adminApi.addMember(id.value, memberActor.value.trim())
-    notice.ok('Member added.')
+    notice.ok(t('admin.permissionGroup.noticeMemberAdded'))
     memberActor.value = ''
     await load()
   } catch (caught) {
-    error.value = caught instanceof StargateError ? caught.message : 'The member could not be added.'
+    error.value =
+      caught instanceof StargateError ? caught.message : t('admin.permissionGroup.errorMemberAdd')
   } finally {
     busy.value = false
   }
@@ -97,11 +102,13 @@ async function removeMember() {
   busy.value = true
   try {
     await adminApi.removeMember(id.value, actor)
-    notice.ok('Member removed.')
+    notice.ok(t('admin.permissionGroup.noticeMemberRemoved'))
     pendingMember.value = null
     await load()
   } catch (caught) {
-    notice.fail(caught instanceof Error ? caught.message : 'The member could not be removed.')
+    notice.fail(
+      caught instanceof Error ? caught.message : t('admin.permissionGroup.errorMemberRemove'),
+    )
   } finally {
     busy.value = false
   }
@@ -114,22 +121,32 @@ onMounted(load)
 <template>
   <div>
     <PageHeader
-      :title="detail?.group.key ?? 'Permission Group'"
-      :description="`${detail?.node_total ?? 0} permissions · ${detail?.member_total ?? 0} members`"
+      :title="detail?.group.key ?? t('admin.permissionGroup.title')"
+      :description="
+        t('admin.permissionGroup.summary', {
+          nodes: detail?.node_total ?? 0,
+          members: detail?.member_total ?? 0,
+        })
+      "
     >
       <template #actions>
         <button type="button" class="btn btn-ghost btn-sm" @click="router.push('/admin/permissions')">
-          All Groups
+          {{ t('admin.permissionGroup.allGroups') }}
         </button>
       </template>
     </PageHeader>
 
     <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
 
-    <div v-if="loading" class="py-10 text-xs text-faint">Reading group…</div>
+    <div v-if="loading" class="py-10 text-xs text-faint">
+      {{ t('admin.permissionGroup.reading') }}
+    </div>
 
     <div v-else-if="detail" class="grid gap-6 lg:grid-cols-2">
-      <ConsolePanel title="Granted Permissions" :note="`${detail.node_total}`">
+      <ConsolePanel
+        :title="t('admin.permissionGroup.granted')"
+        :note="`${detail.node_total}`"
+      >
         <div class="mb-4 flex gap-2">
           <input
             v-model="permissionKey"
@@ -145,12 +162,12 @@ onMounted(load)
             :disabled="busy || !permissionKey.trim()"
             @click="grant"
           >
-            Grant
+            {{ t('admin.permissionGroup.grant') }}
           </button>
         </div>
 
         <p v-if="!sortedNodes.length" class="voice py-4 text-[12px]">
-          This group grants nothing yet. Add a permission key above.
+          {{ t('admin.permissionGroup.emptyGrants') }}
         </p>
 
         <ul v-else class="max-h-[420px] divide-y divide-line-soft overflow-y-auto">
@@ -162,7 +179,7 @@ onMounted(load)
             <div class="min-w-0">
               <p class="break-all text-xs text-base-content">{{ node.key }}</p>
               <p class="mt-0.5 text-2xs text-faint">
-                {{ actorTypeLabels[node.type] ?? 'actor' }} · {{ node.actor }}
+                {{ actorTypeLabel(node.type) }} · {{ node.actor }}
                 <template v-if="node.expired_at"> · {{ remaining(node.expired_at) }}</template>
               </p>
             </div>
@@ -172,18 +189,21 @@ onMounted(load)
               :disabled="busy"
               @click="pendingNode = node.key"
             >
-              Revoke
+              {{ t('admin.permissionGroup.revoke') }}
             </button>
           </li>
         </ul>
       </ConsolePanel>
 
-      <ConsolePanel title="Members" :note="`${detail.member_total}`">
+      <ConsolePanel
+        :title="t('admin.permissionGroup.members')"
+        :note="`${detail.member_total}`"
+      >
         <div class="mb-4 flex gap-2">
           <input
             v-model="memberActor"
             class="input input-sm flex-1"
-            placeholder="account id"
+            :placeholder="t('admin.permissionGroup.memberPlaceholder')"
             autocapitalize="off"
             spellcheck="false"
             @keydown.enter="addMember"
@@ -194,12 +214,12 @@ onMounted(load)
             :disabled="busy || !memberActor.trim()"
             @click="addMember"
           >
-            Add
+            {{ t('common.add') }}
           </button>
         </div>
 
         <p v-if="!detail.members.length" class="voice py-4 text-[12px]">
-          No members. The seeded groups enroll accounts automatically.
+          {{ t('admin.permissionGroup.emptyMembers') }}
         </p>
 
         <ul v-else class="max-h-[420px] divide-y divide-line-soft overflow-y-auto">
@@ -211,7 +231,7 @@ onMounted(load)
             <div class="min-w-0">
               <p class="break-all text-xs text-base-content">{{ member.actor }}</p>
               <p class="mt-0.5 text-2xs text-faint">
-                added {{ relative(member.created_at) }}
+                {{ t('admin.permissionGroup.added', { time: relative(member.created_at) }) }}
                 <template v-if="member.expired_at"> · {{ remaining(member.expired_at) }}</template>
               </p>
             </div>
@@ -221,7 +241,7 @@ onMounted(load)
               :disabled="busy"
               @click="pendingMember = member.actor"
             >
-              Remove
+              {{ t('common.remove') }}
             </button>
           </li>
         </ul>
@@ -230,9 +250,14 @@ onMounted(load)
 
     <ConfirmAction
       v-if="pendingNode"
-      title="Revoke This Permission?"
-      :body="`${pendingNode} is removed from ${detail?.group.key}. Accounts in this group lose the grant on their next check.`"
-      action="Revoke"
+      :title="t('admin.permissionGroup.confirmRevokeTitle')"
+      :body="
+        t('admin.permissionGroup.confirmRevokeBody', {
+          node: pendingNode,
+          group: detail?.group.key,
+        })
+      "
+      :action="t('admin.permissionGroup.confirmRevokeAction')"
       tone="error"
       :busy="busy"
       @cancel="pendingNode = null"
@@ -241,9 +266,9 @@ onMounted(load)
 
     <ConfirmAction
       v-if="pendingMember"
-      title="Remove This Member?"
-      :body="`The account leaves ${detail?.group.key} and loses every permission it granted.`"
-      action="Remove Member"
+      :title="t('admin.permissionGroup.confirmRemoveTitle')"
+      :body="t('admin.permissionGroup.confirmRemoveBody', { group: detail?.group.key })"
+      :action="t('admin.permissionGroup.confirmRemoveAction')"
       tone="error"
       :busy="busy"
       @cancel="pendingMember = null"

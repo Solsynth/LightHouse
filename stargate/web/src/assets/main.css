@@ -17,6 +17,11 @@
   --color-base-300: #171c2b;
   --color-base-content: #ccd2e2;
 
+  --console-line: #232a3c;
+  --console-line-soft: #1a2030;
+  --console-faint: #7d86a0;
+  --console-dim: #9aa3b8;
+
   --color-primary: #7577ba;
   --color-primary-content: #0a0d16;
   --color-secondary: #8f97b5;
@@ -45,14 +50,63 @@
   --noise: 0;
 }
 
+/* Daylight console: cool paper, ink-blue text, the same periwinkle signal.
+   The palette is re-derived for a light field rather than inverted, so the
+   brass accent and semantic colors keep their contrast against paper. */
+@plugin 'daisyui/theme' {
+  name: 'stargate-light';
+  default: false;
+  color-scheme: light;
+
+  --color-base-100: #f3f5fa;
+  --color-base-200: #eaeef6;
+  --color-base-300: #dee3ee;
+  --color-base-content: #1c2334;
+
+  --console-line: #ccd3e1;
+  --console-line-soft: #dee3ed;
+  --console-faint: #646e86;
+  --console-dim: #4d5770;
+
+  --color-primary: #54589f;
+  --color-primary-content: #f7f8fd;
+  --color-secondary: #5a6378;
+  --color-secondary-content: #f7f8fd;
+  --color-accent: #8a6a3b;
+  --color-accent-content: #fdfbf6;
+  --color-neutral: #dbe0ea;
+  --color-neutral-content: #2a3145;
+
+  --color-info: #3f678c;
+  --color-info-content: #f7fafd;
+  --color-success: #3d6d4f;
+  --color-success-content: #f6fbf7;
+  --color-warning: #8a6a3b;
+  --color-warning-content: #fdfbf6;
+  --color-error: #a4554a;
+  --color-error-content: #fdf8f7;
+
+  --radius-selector: 0.125rem;
+  --radius-field: 0.125rem;
+  --radius-box: 0.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
 @theme {
   --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --color-line: #232a3c;
-  --color-line-soft: #1a2030;
-  --color-faint: #7d86a0;
-  --color-dim: #9aa3b8;
+  /* Console chrome colors resolve through the active daisyUI theme, so a
+     theme swap repaints borders and secondary text without duplicating
+     utilities. */
+  --color-line: var(--console-line);
+  --color-line-soft: var(--console-line-soft);
+  --color-faint: var(--console-faint);
+  --color-dim: var(--console-dim);
   --text-2xs: 0.6875rem;
 }
 
@@ -60,6 +114,10 @@
   html {
     color-scheme: dark;
     background: var(--color-base-100);
+  }
+
+  html[data-theme='stargate-light'] {
+    color-scheme: light;
   }
 
   body {
@@ -188,6 +246,14 @@
      rather than as body copy. */
   .title {
     @apply font-sans font-medium tracking-[-0.015em];
+  }
+
+  /* The brand mark is masked rather than drawn, so it takes the theme's text
+     color: a white glyph would vanish on the light field. */
+  .brand-mark {
+    background-color: currentColor;
+    -webkit-mask: url('/icon-outline.svg') center / contain no-repeat;
+    mask: url('/icon-outline.svg') center / contain no-repeat;
   }
 
   .input::placeholder,

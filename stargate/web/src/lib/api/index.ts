@@ -49,6 +49,7 @@ export const accountApi = {
 
 export const authApi = {
   captchaConfig: () => request<CaptchaConfig>('/auth/captcha'),
+  providers: () => request<string[]>('/auth/providers'),
   authorizeInfo: (query: Record<string, string>) =>
     request<AuthorizeClientInfo>('/auth/open/authorize', { query }),
   authorizeDecision: (form: URLSearchParams) =>

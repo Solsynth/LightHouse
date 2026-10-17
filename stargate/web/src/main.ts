@@ -10,10 +10,18 @@ import './assets/main.css'
 
 import App from './App.vue'
 import router from './router'
+import { i18n } from './lib/i18n'
+import { applyLocale, applyTheme, readLocale, readTheme } from './lib/prefs'
+
+// Apply saved (or system) preferences before the first paint so the shell
+// never flashes the other theme or language.
+applyTheme(readTheme())
+applyLocale(readLocale())
 
 const app = createApp(App)
 
 app.use(createPinia())
+app.use(i18n)
 app.use(router)
 
 app.mount('#app')

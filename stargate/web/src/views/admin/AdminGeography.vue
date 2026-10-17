@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { adminApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
@@ -7,6 +8,8 @@ import type { GeographyBucket } from '@/lib/api/types'
 import { utcStamp } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
+
+const { t } = useI18n()
 
 const buckets = ref<GeographyBucket[]>([])
 const precision = ref<'country' | 'city'>('country')
@@ -25,7 +28,7 @@ async function load() {
     buckets.value = await adminApi.geography(precision.value)
   } catch (caught) {
     error.value =
-      caught instanceof StargateError ? caught.message : 'Geography could not be read.'
+      caught instanceof StargateError ? caught.message : t('admin.geography.errorLoad')
   } finally {
     loading.value = false
   }
@@ -42,8 +45,8 @@ onMounted(load)
 <template>
   <div>
     <PageHeader
-      title="Sign-In Geography"
-      description="The latest session location per account over the last 30 days, aggregated from the geo database."
+      :title="t('admin.geography.title')"
+      :description="t('admin.geography.description')"
     >
       <template #actions>
         <div class="flex gap-1 border border-line p-0.5">
@@ -53,7 +56,7 @@ onMounted(load)
             :class="precision === 'country' ? 'bg-base-300 text-base-content' : 'text-faint'"
             @click="setPrecision('country')"
           >
-            Country
+            {{ t('admin.geography.country') }}
           </button>
           <button
             type="button"
@@ -61,7 +64,7 @@ onMounted(load)
             :class="precision === 'city' ? 'bg-base-300 text-base-content' : 'text-faint'"
             @click="setPrecision('city')"
           >
-            City
+            {{ t('admin.geography.city') }}
           </button>
         </div>
       </template>
@@ -70,24 +73,25 @@ onMounted(load)
     <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
 
     <ConsolePanel
-      :title="precision === 'country' ? 'By Country' : 'By City'"
-      :note="`${buckets.length} buckets · ${totalUsers} located accounts`"
+      :title="precision === 'country' ? t('admin.geography.byCountry') : t('admin.geography.byCity')"
+      :note="t('admin.geography.panelNote', { buckets: buckets.length, total: totalUsers })"
     >
-      <div v-if="loading" class="py-6 text-xs text-faint">Aggregating session locations…</div>
+      <div v-if="loading" class="py-6 text-xs text-faint">
+        {{ t('admin.geography.loading') }}
+      </div>
 
       <p v-else-if="!buckets.length" class="voice py-6 text-[12px]">
-        No located sessions in this window. Locations resolve from the GeoLite database on
-        sign-in.
+        {{ t('admin.geography.empty') }}
       </p>
 
       <div v-else class="overflow-x-auto">
         <table class="ledger">
           <thead>
             <tr>
-              <th scope="col">place</th>
-              <th scope="col">accounts</th>
-              <th scope="col" class="w-[40%]">share</th>
-              <th scope="col">centroid</th>
+              <th scope="col">{{ t('admin.geography.colPlace') }}</th>
+              <th scope="col">{{ t('admin.geography.colAccounts') }}</th>
+              <th scope="col" class="w-[40%]">{{ t('admin.geography.colShare') }}</th>
+              <th scope="col">{{ t('admin.geography.colCentroid') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -120,8 +124,7 @@ onMounted(load)
 
       <template #footer>
         <p class="text-2xs text-faint">
-          Read at {{ utcStamp(new Date().toISOString()) }}. Accounts without a located session are
-          not counted.
+          {{ t('admin.geography.footer', { stamp: utcStamp(new Date().toISOString()) }) }}
         </p>
       </template>
     </ConsolePanel>

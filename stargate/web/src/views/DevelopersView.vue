@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { useNoticeStore } from '@/stores/notice'
 import { appApi } from '@/lib/api'
@@ -11,6 +12,7 @@ import ConsolePanel from '@/components/ConsolePanel.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import CopyButton from '@/components/CopyButton.vue'
 
+const { t } = useI18n()
 const notice = useNoticeStore()
 
 const apps = ref<AuthorizedApp[]>([])
@@ -45,7 +47,7 @@ async function load() {
     connections.value = connectionList ?? []
   } catch (caught) {
     error.value =
-      caught instanceof StargateError ? caught.message : 'Developer resources could not be loaded.'
+      caught instanceof StargateError ? caught.message : t('developers.errorLoad')
   } finally {
     loading.value = false
   }
@@ -58,10 +60,10 @@ async function createKey() {
   try {
     issued.value = await appApi.createKey(keyLabel.value.trim())
     keyLabel.value = ''
-    notice.ok('API key issued. Copy it now; it is shown once.')
+    notice.ok(t('developers.noticeKeyIssued'))
     await load()
   } catch (caught) {
-    error.value = caught instanceof StargateError ? caught.message : 'The key could not be created.'
+    error.value = caught instanceof StargateError ? caught.message : t('developers.errorCreate')
   } finally {
     busy.value = false
   }
@@ -72,10 +74,10 @@ async function rotate(key: ApiKey) {
   try {
     const rotated = await appApi.rotateKey(key.id)
     issued.value = { ...key, token: rotated.token }
-    notice.ok('Key rotated. The previous token is invalid.')
+    notice.ok(t('developers.noticeRotated'))
     await load()
   } catch (caught) {
-    notice.fail(caught instanceof Error ? caught.message : 'The key could not be rotated.')
+    notice.fail(caught instanceof Error ? caught.message : t('developers.errorRotate'))
   } finally {
     busy.value = false
   }
@@ -87,11 +89,11 @@ async function revokeKey() {
   busy.value = true
   try {
     await appApi.revokeKey(target.id)
-    notice.ok(`Revoked key ${target.label}.`)
+    notice.ok(t('developers.noticeKeyRevoked', { label: target.label }))
     pendingRevoke.value = null
     await load()
   } catch (caught) {
-    notice.fail(caught instanceof Error ? caught.message : 'The key could not be revoked.')
+    notice.fail(caught instanceof Error ? caught.message : t('developers.errorRevoke'))
   } finally {
     busy.value = false
   }
@@ -103,11 +105,15 @@ async function deauthorize() {
   busy.value = true
   try {
     await appApi.deauthorize(target.id, target.type)
-    notice.ok(`Removed ${target.app_name ?? target.app_slug ?? 'app'}.`)
+    notice.ok(
+      t('developers.noticeAppRemoved', {
+        app: target.app_name ?? target.app_slug ?? t('developers.defaultAppName'),
+      }),
+    )
     pendingDeauth.value = null
     await load()
   } catch (caught) {
-    notice.fail(caught instanceof Error ? caught.message : 'The app could not be removed.')
+    notice.fail(caught instanceof Error ? caught.message : t('developers.errorDeauthorize'))
   } finally {
     busy.value = false
   }
@@ -117,10 +123,14 @@ async function toggleVisibility(connection: Connection) {
   busy.value = true
   try {
     await appApi.setConnectionVisibility(connection.id, !connection.is_public)
-    notice.ok(connection.is_public ? 'Connection hidden.' : 'Connection shown on your profile.')
+    notice.ok(
+      connection.is_public
+        ? t('developers.noticeConnectionHidden')
+        : t('developers.noticeConnectionShown'),
+    )
     await load()
   } catch (caught) {
-    notice.fail(caught instanceof Error ? caught.message : 'Visibility could not be changed.')
+    notice.fail(caught instanceof Error ? caught.message : t('developers.errorVisibility'))
   } finally {
     busy.value = false
   }
@@ -130,10 +140,10 @@ async function removeConnection(connection: Connection) {
   busy.value = true
   try {
     await appApi.removeConnection(connection.id)
-    notice.ok('Connection removed.')
+    notice.ok(t('developers.noticeConnectionRemoved'))
     await load()
   } catch (caught) {
-    notice.fail(caught instanceof Error ? caught.message : 'The connection could not be removed.')
+    notice.fail(caught instanceof Error ? caught.message : t('developers.errorRemoveConnection'))
   } finally {
     busy.value = false
   }
@@ -145,29 +155,28 @@ onMounted(load)
 <template>
   <div>
     <PageHeader
-      title="Developers"
-      description="Apps you authorized, keys that act as this account, and linked identities."
+      :title="t('developers.title')"
+      :description="t('developers.description')"
     />
 
     <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
 
     <div class="space-y-6">
-      <ConsolePanel title="Authorized Apps" :note="`${apps.length} apps`">
-        <p v-if="loading" class="py-4 text-xs text-faint">Reading authorizations…</p>
+      <ConsolePanel :title="t('developers.authorizedApps')" :note="t('developers.appsNote', { n: apps.length })">
+        <p v-if="loading" class="py-4 text-xs text-faint">{{ t('developers.readingAuthorizations') }}</p>
         <p v-else-if="!apps.length" class="voice py-4 text-[12px]">
-          No app holds access to this account. Apps appear here after you approve an OAuth
-          request.
+          {{ t('developers.noApps') }}
         </p>
 
         <div v-else class="overflow-x-auto">
           <table class="ledger">
             <thead>
               <tr>
-                <th scope="col">app</th>
-                <th scope="col">scopes</th>
-                <th scope="col">authorized</th>
-                <th scope="col">last used</th>
-                <th scope="col"><span class="sr-only">Actions</span></th>
+                <th scope="col">{{ t('developers.app') }}</th>
+                <th scope="col">{{ t('developers.scopes') }}</th>
+                <th scope="col">{{ t('developers.authorized') }}</th>
+                <th scope="col">{{ t('common.lastUsed') }}</th>
+                <th scope="col"><span class="sr-only">{{ t('common.actions') }}</span></th>
               </tr>
             </thead>
             <tbody>
@@ -190,7 +199,7 @@ onMounted(load)
                     :disabled="busy"
                     @click="pendingDeauth = app"
                   >
-                    Revoke
+                    {{ t('developers.revoke') }}
                   </button>
                 </td>
               </tr>
@@ -200,20 +209,20 @@ onMounted(load)
 
         <template v-if="scopes.length" #footer>
           <p class="text-2xs text-faint">
-            Granted scope vocabulary: <span class="text-dim">{{ scopes.join(' · ') }}</span>
+            {{ t('developers.grantedScopes') }} <span class="text-dim">{{ scopes.join(' · ') }}</span>
           </p>
         </template>
       </ConsolePanel>
 
-      <ConsolePanel title="API Keys" :note="`${keys.length} keys`">
+      <ConsolePanel :title="t('developers.apiKeys')" :note="t('developers.keysNote', { n: keys.length })">
         <div class="mb-4 flex flex-wrap items-end gap-2">
           <div class="min-w-[200px] flex-1">
-            <label for="key-label" class="field-label">Label</label>
+            <label for="key-label" class="field-label">{{ t('developers.label') }}</label>
             <input
               id="key-label"
               v-model="keyLabel"
               class="input input-sm"
-              placeholder="deploy script"
+              :placeholder="t('developers.labelPlaceholder')"
               @keydown.enter="createKey"
             />
           </div>
@@ -223,36 +232,35 @@ onMounted(load)
             :disabled="busy || !keyLabel.trim()"
             @click="createKey"
           >
-            Issue Key
+            {{ t('developers.issueKey') }}
           </button>
         </div>
 
         <div v-if="issued" class="mb-4 border border-warning/50 bg-warning/5 p-3">
           <div class="flex items-center justify-between gap-2">
-            <p class="text-2xs uppercase tracking-[0.12em] text-warning">token issued</p>
-            <CopyButton :value="issued.token" label="token" />
+            <p class="text-2xs uppercase tracking-[0.12em] text-warning">{{ t('developers.tokenIssued') }}</p>
+            <CopyButton :value="issued.token" :label="t('developers.token')" />
           </div>
           <p class="mt-2 break-all font-mono text-xs text-base-content">{{ issued.token }}</p>
           <p class="voice mt-2 text-[12px] text-faint">
-            This is the only time the token is shown. Store it in the secret manager the client
-            uses.
+            {{ t('developers.tokenHint') }}
           </p>
         </div>
 
-        <p v-if="loading" class="py-4 text-xs text-faint">Reading keys…</p>
+        <p v-if="loading" class="py-4 text-xs text-faint">{{ t('developers.readingKeys') }}</p>
         <p v-else-if="!keys.length" class="voice py-4 text-[12px]">
-          No API keys. Keys authenticate scripts and bots; they cannot use interactive endpoints.
+          {{ t('developers.noKeys') }}
         </p>
 
         <div v-else class="overflow-x-auto">
           <table class="ledger">
             <thead>
               <tr>
-                <th scope="col">label</th>
-                <th scope="col">id</th>
-                <th scope="col">created</th>
-                <th scope="col">expires</th>
-                <th scope="col"><span class="sr-only">Actions</span></th>
+                <th scope="col">{{ t('developers.label') }}</th>
+                <th scope="col">{{ t('common.id') }}</th>
+                <th scope="col">{{ t('common.created') }}</th>
+                <th scope="col">{{ t('common.expires') }}</th>
+                <th scope="col"><span class="sr-only">{{ t('common.actions') }}</span></th>
               </tr>
             </thead>
             <tbody>
@@ -269,7 +277,7 @@ onMounted(load)
                       :disabled="busy"
                       @click="rotate(key)"
                     >
-                      Rotate
+                      {{ t('developers.rotate') }}
                     </button>
                     <button
                       type="button"
@@ -277,7 +285,7 @@ onMounted(load)
                       :disabled="busy"
                       @click="pendingRevoke = key"
                     >
-                      Revoke
+                      {{ t('developers.revoke') }}
                     </button>
                   </span>
                 </td>
@@ -287,10 +295,13 @@ onMounted(load)
         </div>
       </ConsolePanel>
 
-      <ConsolePanel title="Linked Identities" :note="`${connections.length} connections`">
-        <p v-if="loading" class="py-4 text-xs text-faint">Reading connections…</p>
+      <ConsolePanel
+        :title="t('developers.linkedIdentities')"
+        :note="t('developers.connectionsNote', { n: connections.length })"
+      >
+        <p v-if="loading" class="py-4 text-xs text-faint">{{ t('developers.readingConnections') }}</p>
         <p v-else-if="!connections.length" class="voice py-4 text-[12px]">
-          No linked identities. OIDC and social sign-ins appear here once connected.
+          {{ t('developers.noConnections') }}
         </p>
 
         <ul v-else class="divide-y divide-line-soft">
@@ -303,12 +314,14 @@ onMounted(load)
               <div class="flex flex-wrap items-center gap-2">
                 <span class="text-xs text-base-content">{{ connection.provider }}</span>
                 <span class="chip">{{ connection.provided_identifier }}</span>
-                <span v-if="connection.is_public" class="chip text-accent">public</span>
+                <span v-if="connection.is_public" class="chip text-accent">{{ t('developers.public') }}</span>
                 <span v-if="connection.registered_at" class="chip text-primary">
-                  created account
+                  {{ t('developers.createdAccount') }}
                 </span>
               </div>
-              <p class="mt-1 text-2xs text-faint">last used {{ relative(connection.last_used_at) }}</p>
+              <p class="mt-1 text-2xs text-faint">
+                {{ t('developers.lastUsedAt', { time: relative(connection.last_used_at) }) }}
+              </p>
             </div>
             <div class="flex items-center gap-3">
               <button
@@ -317,7 +330,7 @@ onMounted(load)
                 :disabled="busy"
                 @click="toggleVisibility(connection)"
               >
-                {{ connection.is_public ? 'Hide' : 'Show Publicly' }}
+                {{ connection.is_public ? t('developers.hide') : t('developers.showPublicly') }}
               </button>
               <button
                 v-if="!connection.registered_at"
@@ -326,7 +339,7 @@ onMounted(load)
                 :disabled="busy"
                 @click="removeConnection(connection)"
               >
-                Unlink
+                {{ t('developers.unlink') }}
               </button>
             </div>
           </li>
@@ -336,9 +349,9 @@ onMounted(load)
 
     <ConfirmAction
       v-if="pendingRevoke"
-      title="Revoke This Key?"
-      :body="`${pendingRevoke.label} stops working immediately. Any client using it fails its next request.`"
-      action="Revoke Key"
+      :title="t('developers.revokeKeyTitle')"
+      :body="t('developers.revokeKeyBody', { label: pendingRevoke.label })"
+      :action="t('developers.revokeKeyAction')"
       tone="error"
       :busy="busy"
       @cancel="pendingRevoke = null"
@@ -347,9 +360,11 @@ onMounted(load)
 
     <ConfirmAction
       v-if="pendingDeauth"
-      title="Remove This App?"
-      :body="`${pendingDeauth.app_name ?? pendingDeauth.app_slug ?? 'The app'} loses its tokens and must ask for access again.`"
-      action="Remove App"
+      :title="t('developers.removeAppTitle')"
+      :body="t('developers.removeAppBody', {
+        app: pendingDeauth.app_name ?? pendingDeauth.app_slug ?? t('developers.defaultAppName'),
+      })"
+      :action="t('developers.removeAppAction')"
       tone="error"
       :busy="busy"
       @cancel="pendingDeauth = null"

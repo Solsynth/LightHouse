@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { useNoticeStore } from '@/stores/notice'
 import { securityApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
 import type { AuthFactor } from '@/lib/api/types'
-import { factorTypeDescriptions, factorTypeLabels } from '@/lib/enums'
+import { factorTypeDescription, factorTypeLabel } from '@/lib/enums'
 import { relative, remaining } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import SecurityNav from '@/components/SecurityNav.vue'
 
+const { t } = useI18n()
 const notice = useNoticeStore()
 
 const factors = ref<AuthFactor[]>([])
@@ -20,14 +22,14 @@ const error = ref('')
 const busy = ref(false)
 const pendingDelete = ref<AuthFactor | null>(null)
 
-const addable = [
-  { type: 5, label: 'recovery code', note: 'Required before any other factor can be added.' },
-  { type: 3, label: 'authenticator app', note: 'Rotating six-digit codes (TOTP).' },
-  { type: 0, label: 'password', note: 'A second password for this account.' },
-  { type: 1, label: 'email code', note: 'A code sent to a verified contact.' },
-  { type: 7, label: 'passkey', note: 'Register a credential from this device next.' },
-  { type: 4, label: 'PIN', note: 'A short numeric secret.' },
-]
+const addable = computed(() => [
+  { type: 5, label: factorTypeLabel(5), note: t('factors.recoveryNote') },
+  { type: 3, label: factorTypeLabel(3), note: t('factors.authenticatorNote') },
+  { type: 0, label: factorTypeLabel(0), note: t('factors.passwordNote') },
+  { type: 1, label: factorTypeLabel(1), note: t('factors.emailCodeNote') },
+  { type: 7, label: factorTypeLabel(7), note: t('factors.passkeyNote') },
+  { type: 4, label: factorTypeLabel(4), note: t('factors.pinNote') },
+])
 
 const chosenType = ref(3)
 const secret = ref('')
@@ -41,7 +43,7 @@ async function load() {
   try {
     factors.value = await securityApi.factors()
   } catch (caught) {
-    error.value = caught instanceof StargateError ? caught.message : 'Factors could not be loaded.'
+    error.value = caught instanceof StargateError ? caught.message : t('factors.errorLoad')
   } finally {
     loading.value = false
   }
@@ -54,10 +56,10 @@ async function create() {
     const factor = await securityApi.createFactor(chosenType.value, secret.value || undefined)
     created.value = factor
     secret.value = ''
-    notice.ok(`Added ${factorTypeLabels[factor.type] ?? 'factor'}.`)
+    notice.ok(t('factors.noticeAdded', { factor: factorTypeLabel(factor.type) }))
     await load()
   } catch (caught) {
-    error.value = caught instanceof StargateError ? caught.message : 'The factor could not be added.'
+    error.value = caught instanceof StargateError ? caught.message : t('factors.errorAdd')
   } finally {
     busy.value = false
   }
@@ -69,15 +71,15 @@ async function toggle(factor: AuthFactor) {
   try {
     if (factor.enabled_at) {
       await securityApi.disableFactor(factor.id)
-      notice.ok(`${factorTypeLabels[factor.type] ?? 'Factor'} disabled.`)
+      notice.ok(t('factors.noticeDisabled', { factor: factorTypeLabel(factor.type) }))
     } else {
       await securityApi.enableFactor(factor.id)
-      notice.ok(`${factorTypeLabels[factor.type] ?? 'Factor'} enabled.`)
+      notice.ok(t('factors.noticeEnabled', { factor: factorTypeLabel(factor.type) }))
     }
     await load()
   } catch (caught) {
     error.value =
-      caught instanceof StargateError ? caught.message : 'The factor could not be updated.'
+      caught instanceof StargateError ? caught.message : t('factors.errorUpdate')
   } finally {
     busy.value = false
   }
@@ -89,11 +91,11 @@ async function remove() {
   busy.value = true
   try {
     await securityApi.deleteFactor(target.id)
-    notice.ok(`Deleted ${factorTypeLabels[target.type] ?? 'factor'}.`)
+    notice.ok(t('factors.noticeDeleted', { factor: factorTypeLabel(target.type) }))
     pendingDelete.value = null
     await load()
   } catch (caught) {
-    notice.fail(caught instanceof Error ? caught.message : 'The factor could not be deleted.')
+    notice.fail(caught instanceof Error ? caught.message : t('factors.errorDelete'))
   } finally {
     busy.value = false
   }
@@ -112,8 +114,8 @@ onMounted(load)
 <template>
   <div>
     <PageHeader
-      title="Sign-In Factors"
-      description="Each factor counts as a step. The risk engine asks for more steps when a sign-in looks unfamiliar."
+      :title="t('factors.title')"
+      :description="t('factors.description')"
     />
 
     <SecurityNav />
@@ -121,11 +123,11 @@ onMounted(load)
     <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <ConsolePanel title="Configured Factors" :note="`${factors.length} total`">
-        <div v-if="loading" class="py-6 text-xs text-faint">Reading factor table…</div>
+      <ConsolePanel :title="t('factors.configured')" :note="t('factors.totalNote', { n: factors.length })">
+        <div v-if="loading" class="py-6 text-xs text-faint">{{ t('factors.reading') }}</div>
 
         <p v-else-if="!factors.length" class="voice py-6">
-          No factors yet. Start with a recovery code, then add an authenticator or passkey.
+          {{ t('factors.empty') }}
         </p>
 
         <ul v-else class="divide-y divide-line-soft">
@@ -137,23 +139,23 @@ onMounted(load)
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
                 <span class="text-xs text-base-content">
-                  {{ factorTypeLabels[factor.type] ?? 'factor' }}
+                  {{ factorTypeLabel(factor.type) }}
                 </span>
                 <span
                   class="chip"
                   :class="factor.enabled_at ? 'text-success' : 'text-warning'"
                 >
-                  {{ factor.enabled_at ? 'enabled' : 'disabled' }}
+                  {{ factor.enabled_at ? t('common.enabled') : t('common.disabled') }}
                 </span>
-                <span class="chip">weight {{ factor.trustworthy }}</span>
+                <span class="chip">{{ t('factors.weight', { n: factor.trustworthy }) }}</span>
               </div>
               <p class="mt-1 max-w-md voice text-[12px] text-faint">
-                {{ factorTypeDescriptions[factor.type] }}
+                {{ factorTypeDescription(factor.type) }}
               </p>
               <p class="mt-1 text-2xs text-faint">
-                added {{ relative(factor.created_at) }}
+                {{ t('factors.added', { time: relative(factor.created_at) }) }}
                 <template v-if="factor.enabled_at">
-                  · enabled {{ relative(factor.enabled_at) }}
+                  · {{ t('factors.enabledAt', { time: relative(factor.enabled_at) }) }}
                 </template>
                 <template v-if="factor.expired_at">
                   · {{ remaining(factor.expired_at) }}
@@ -167,7 +169,7 @@ onMounted(load)
                 :disabled="busy"
                 @click="toggle(factor)"
               >
-                {{ factor.enabled_at ? 'disable' : 'enable' }}
+                {{ factor.enabled_at ? t('factors.disable') : t('factors.enable') }}
               </button>
               <button
                 type="button"
@@ -175,7 +177,7 @@ onMounted(load)
                 :disabled="busy"
                 @click="pendingDelete = factor"
               >
-                Delete
+                {{ t('common.delete') }}
               </button>
             </div>
           </li>
@@ -183,12 +185,12 @@ onMounted(load)
       </ConsolePanel>
 
       <div class="space-y-6">
-        <ConsolePanel title="Add a Factor">
+        <ConsolePanel :title="t('factors.addFactor')">
           <p v-if="!hasRecovery" class="mb-4 border-l border-warning pl-3 text-2xs leading-relaxed text-warning">
-            Add a recovery code first. The server refuses every other factor until one is enabled.
+            {{ t('factors.recoveryFirst') }}
           </p>
 
-          <label for="factor-type" class="field-label">Factor</label>
+          <label for="factor-type" class="field-label">{{ t('factors.factor') }}</label>
           <select id="factor-type" v-model="chosenType" class="select select-sm">
             <option v-for="option in addable" :key="option.type" :value="option.type">
               {{ option.label }}
@@ -199,7 +201,7 @@ onMounted(load)
           </p>
 
           <template v-if="chosenType === 0 || chosenType === 4">
-            <label for="factor-secret" class="field-label mt-4">Secret</label>
+            <label for="factor-secret" class="field-label mt-4">{{ t('factors.secret') }}</label>
             <input
               id="factor-secret"
               v-model="secret"
@@ -215,7 +217,7 @@ onMounted(load)
             :disabled="busy"
             @click="create"
           >
-            {{ busy ? 'Adding…' : 'Add Factor' }}
+            {{ busy ? t('factors.adding') : t('factors.addAction') }}
           </button>
 
           <div
@@ -223,11 +225,11 @@ onMounted(load)
             class="mt-4 border border-warning/50 bg-warning/5 p-3"
           >
             <p class="text-2xs uppercase tracking-[0.12em] text-warning">
-              {{ created.type === 5 ? 'recovery code' : 'authenticator secret' }}
+              {{ created.type === 5 ? t('factors.recoveryCode') : t('factors.authenticatorSecret') }}
             </p>
             <p class="mt-2 break-all font-mono text-xs text-base-content">{{ createdSecret() }}</p>
             <p class="mt-2 voice text-[12px] text-faint">
-              Shown once. Store it offline before leaving this page.
+              {{ t('factors.shownOnce') }}
             </p>
             <p v-if="created.created_response?.uri" class="mt-2 break-all text-2xs text-faint">
               {{ created.created_response.uri }}
@@ -235,14 +237,12 @@ onMounted(load)
           </div>
         </ConsolePanel>
 
-        <ConsolePanel title="How Steps Work">
+        <ConsolePanel :title="t('factors.howSteps')">
           <p class="voice text-[12px]">
-            A challenge asks for a number of steps. Each satisfied factor subtracts its weight.
-            In lockdown mode every enabled factor is required; in lockoff a single factor is
-            enough.
+            {{ t('factors.howStepsBody') }}
           </p>
           <RouterLink to="/security/preferences" class="mt-3 inline-block text-2xs link-quiet">
-            Change security mode
+            {{ t('factors.changeMode') }}
           </RouterLink>
         </ConsolePanel>
       </div>
@@ -250,9 +250,9 @@ onMounted(load)
 
     <ConfirmAction
       v-if="pendingDelete"
-      title="Delete This Factor?"
-      :body="`${factorTypeLabels[pendingDelete.type] ?? 'This factor'} will be removed. Sessions that relied on it keep their tokens until they expire.`"
-      action="Delete Factor"
+      :title="t('factors.deleteTitle')"
+      :body="t('factors.deleteBody', { factor: factorTypeLabel(pendingDelete.type) })"
+      :action="t('factors.deleteAction')"
       tone="error"
       :busy="busy"
       @cancel="pendingDelete = null"

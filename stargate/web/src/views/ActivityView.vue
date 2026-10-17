@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { useNoticeStore } from '@/stores/notice'
 import { activityApi } from '@/lib/api'
@@ -9,6 +10,7 @@ import { describeAgent, place, shortId, utcStamp } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 
+const { t } = useI18n()
 const notice = useNoticeStore()
 
 const logs = ref<ActionLog[]>([])
@@ -41,7 +43,7 @@ async function load() {
     total.value = result.total
   } catch (caught) {
     error.value =
-      caught instanceof StargateError ? caught.message : 'The activity log could not be read.'
+      caught instanceof StargateError ? caught.message : t('activity.errorLoad')
   } finally {
     loading.value = false
   }
@@ -70,7 +72,7 @@ function metaSummary(meta?: Record<string, unknown>): string {
 
 function copyRow(log: ActionLog) {
   const line = `${utcStamp(log.created_at)} ${log.action} ${shortId(log.id)} ${log.ip_address ?? ''}`
-  void navigator.clipboard.writeText(line).then(() => notice.ok('Row copied.'))
+  void navigator.clipboard.writeText(line).then(() => notice.ok(t('activity.noticeCopied')))
 }
 
 onMounted(load)
@@ -79,12 +81,12 @@ onMounted(load)
 <template>
   <div>
     <PageHeader
-      title="Activity"
-      description="Every security-relevant action this account took, newest first. Entries record the client, address, and session that performed them."
+      :title="t('activity.title')"
+      :description="t('activity.description')"
     >
       <template #actions>
         <button type="button" class="btn btn-ghost btn-sm" :disabled="loading" @click="load">
-          Refresh
+          {{ t('common.refresh') }}
         </button>
       </template>
     </PageHeader>
@@ -92,7 +94,7 @@ onMounted(load)
     <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
 
     <div v-if="actions.length" class="mb-4 flex flex-wrap items-center gap-2">
-      <span class="text-2xs uppercase tracking-[0.12em] text-faint">filter</span>
+      <span class="text-2xs uppercase tracking-[0.12em] text-faint">{{ t('activity.filter') }}</span>
       <button
         v-for="action in actions"
         :key="action"
@@ -109,27 +111,26 @@ onMounted(load)
         class="text-2xs text-dim underline decoration-line underline-offset-4"
         @click="setFilter(filter)"
       >
-        Clear
+        {{ t('activity.clear') }}
       </button>
     </div>
 
-    <ConsolePanel title="Log" :note="`${total} entries`">
-      <div v-if="loading" class="py-6 text-xs text-faint">Reading action log…</div>
+    <ConsolePanel :title="t('activity.log')" :note="t('activity.entries', { n: total })">
+      <div v-if="loading" class="py-6 text-xs text-faint">{{ t('activity.reading') }}</div>
 
       <p v-else-if="!logs.length" class="voice py-6 text-[12px]">
-        Nothing recorded yet. Sign-ins, factor changes, and session revocations appear here as
-        they happen.
+        {{ t('activity.empty') }}
       </p>
 
       <div v-else class="overflow-x-auto">
         <table class="ledger">
           <thead>
             <tr>
-              <th scope="col">time</th>
-              <th scope="col">action</th>
-              <th scope="col">detail</th>
-              <th scope="col">origin</th>
-              <th scope="col">client</th>
+              <th scope="col">{{ t('activity.time') }}</th>
+              <th scope="col">{{ t('activity.action') }}</th>
+              <th scope="col">{{ t('activity.detail') }}</th>
+              <th scope="col">{{ t('activity.origin') }}</th>
+              <th scope="col">{{ t('activity.client') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -158,16 +159,18 @@ onMounted(load)
 
       <template #footer>
         <div class="flex items-center justify-between text-2xs text-faint">
-          <span>Click a row to copy its timestamp and id.</span>
+          <span>{{ t('activity.copyHint') }}</span>
           <div class="flex items-center gap-3">
-            <span class="tabular-nums">{{ offset + 1 }}–{{ Math.min(offset + pageSize, total) }} of {{ total }}</span>
+            <span class="tabular-nums">
+              {{ t('activity.range', { from: offset + 1, to: Math.min(offset + pageSize, total), total }) }}
+            </span>
             <button
               type="button"
               class="text-dim disabled:text-faint"
               :disabled="page === 0 || loading"
               @click="go(page - 1)"
             >
-              Prev
+              {{ t('activity.prev') }}
             </button>
             <button
               type="button"
@@ -175,7 +178,7 @@ onMounted(load)
               :disabled="page >= lastPage || loading"
               @click="go(page + 1)"
             >
-              Next
+              {{ t('activity.next') }}
             </button>
           </div>
         </div>
