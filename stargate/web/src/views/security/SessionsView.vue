@@ -11,6 +11,7 @@ import { describeAgent, place, relative, remaining, shortId, utcStamp } from '@/
 import { sessionTypeLabel } from '@/lib/enums'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import IconButton from '@/components/IconButton.vue'
 import SecurityNav from '@/components/SecurityNav.vue'
@@ -87,7 +88,7 @@ onMounted(load)
       :title="t('sessions.activeSessions')"
       :note="t('sessions.note', { total })"
     >
-      <div v-if="loading" class="py-6 text-xs text-faint">{{ t('sessions.reading') }}</div>
+      <LoadingSkeleton v-if="loading" :rows="4" :columns="[3, 2, 2, 2, 1]" header />
 
       <p v-else-if="!sessions.length" class="voice py-6">
         {{ t('sessions.empty') }}
@@ -154,7 +155,7 @@ onMounted(load)
         <div class="flex flex-wrap items-center justify-between gap-3 text-2xs text-faint">
           <span>{{ t('sessions.footer') }}</span>
           <div class="flex items-center gap-3">
-            <span class="tabular-nums">
+            <span v-if="!loading" class="tabular-nums">
               {{
                 t('sessions.page', {
                   page: page + 1,

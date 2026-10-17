@@ -8,15 +8,20 @@ import ConsolePanel from '@/components/ConsolePanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { accountApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
-import type { Account } from '@/lib/api/types'
+import type { Account, RelationshipSummary } from '@/lib/api/types'
 import { contactTypeLabel } from '@/lib/enums'
 import { utcStamp } from '@/lib/format'
+import { MODULES } from '@/lib/modules'
+import { useModulesStore } from '@/stores/modules'
 
 const { t, locale } = useI18n()
 const route = useRoute()
+const modules = useModulesStore()
+const showRelationships = computed(() => modules.hasAll([MODULES.relationships]))
 
 const name = computed(() => String(route.params.name ?? ''))
 const account = ref<Account | null>(null)
+const summary = ref<RelationshipSummary | null>(null)
 const loading = ref(true)
 const notFound = ref(false)
 const avatarFailed = ref(false)
@@ -54,6 +59,11 @@ const hasDetails = computed(() =>
   ),
 )
 
+const hasMutual = computed(() => {
+  const mutual = summary.value?.mutual_friends
+  return mutual !== undefined && mutual > 0
+})
+
 let loadId = 0
 
 function updateTitle() {
@@ -69,11 +79,22 @@ async function load() {
   notFound.value = false
   avatarFailed.value = false
   bannerFailed.value = false
+  summary.value = null
 
   try {
     const loaded = await accountApi.byName(name.value)
     if (id !== loadId) return
     account.value = loaded
+    // The social totals come from the relationships module; a deployment
+    // without it serves no summary at all, so skip the call entirely. A
+    // failure here leaves the counts at zero instead of failing the profile.
+    if (showRelationships.value) {
+      try {
+        summary.value = await accountApi.relationshipSummary(loaded.name)
+      } catch {
+        summary.value = null
+      }
+    }
   } catch (error) {
     if (id !== loadId) return
     account.value = null
@@ -91,8 +112,22 @@ watch([locale, () => account.value?.name], updateTitle)
 
 <template>
   <div>
-    <div v-if="loading" class="px-5 py-16 text-center text-xs text-faint">
-      {{ t('publicProfile.loading') }}
+    <div v-if="loading" class="bg-base-200/30" aria-hidden="true">
+      <div class="skeleton h-36 rounded-none" />
+      <div class="px-5 pb-6">
+        <div class="relative z-10 flex flex-wrap items-end gap-4">
+          <span class="skeleton -mt-8 h-[72px] w-[72px] rounded-[2px]" />
+          <div class="min-w-0 space-y-2 pb-1">
+            <span class="skeleton h-4 w-40" />
+            <span class="skeleton h-2 w-24" />
+          </div>
+        </div>
+        <div class="mt-6 space-y-3">
+          <span class="skeleton h-2 w-16" />
+          <span class="skeleton h-3 w-full max-w-2xl" />
+          <span class="skeleton h-3 w-4/5 max-w-xl" />
+        </div>
+      </div>
     </div>
 
     <template v-else-if="!account">
@@ -119,8 +154,8 @@ watch([locale, () => account.value?.name], updateTitle)
           />
         </div>
 
-        <div class="px-5 pb-6">
-          <div class="flex flex-wrap items-end gap-4">
+        <div class="relative px-5 pb-6">
+          <div class="relative z-10 flex flex-wrap items-end gap-4">
             <div class="-mt-8 h-[72px] w-[72px] shrink-0 overflow-hidden rounded-[2px] bg-base-300">
               <img
                 v-if="hasPicture && !avatarFailed"
@@ -138,6 +173,24 @@ watch([locale, () => account.value?.name], updateTitle)
               <p class="mt-1 text-2xs text-faint">@{{ account.name }}</p>
             </div>
           </div>
+
+          <dl
+            v-if="showRelationships && summary"
+            class="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-1 text-xs"
+          >
+            <div class="flex items-baseline gap-1.5">
+              <dt class="text-faint">{{ t('publicProfile.followers') }}</dt>
+              <dd class="tabular-nums text-dim">{{ summary.followers }}</dd>
+            </div>
+            <div class="flex items-baseline gap-1.5">
+              <dt class="text-faint">{{ t('publicProfile.following') }}</dt>
+              <dd class="tabular-nums text-dim">{{ summary.following }}</dd>
+            </div>
+            <div v-if="hasMutual" class="flex items-baseline gap-1.5">
+              <dt class="text-faint">{{ t('publicProfile.mutualFriends') }}</dt>
+              <dd class="tabular-nums text-dim">{{ summary.mutual_friends }}</dd>
+            </div>
+          </dl>
 
           <div
             class="mt-6 grid gap-6"

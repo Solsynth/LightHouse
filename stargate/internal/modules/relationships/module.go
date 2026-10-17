@@ -41,7 +41,11 @@ func relationshipIndexes(ctx context.Context, db *gorm.DB) error {
 type instance struct{}
 
 func (i *instance) Configure(_ context.Context, host *module.Host) error {
-	profilectl.RegisterRelationships(host.API, common.Profile(host.Core, ports.FromRegistry(host.Ports)))
+	deps := common.Profile(host.Core, ports.FromRegistry(host.Ports))
+	profilectl.RegisterRelationships(host.API, deps)
+	// The anonymous follow totals are part of this module's surface: a
+	// deployment without relationships serves no summary at all.
+	profilectl.RegisterPublicRelationships(host.API, deps)
 	return nil
 }
 

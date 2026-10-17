@@ -11,6 +11,7 @@ import { punishmentTypeLabel } from '@/lib/enums'
 import { relative, shortId } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 
 const { t } = useI18n()
 
@@ -90,15 +91,15 @@ onMounted(load)
 
     <ConsolePanel
       :title="t('admin.accounts.panelTitle')"
-      :note="t('admin.accounts.matching', { n: total })"
+      :note="loading ? undefined : t('admin.accounts.matching', { n: total })"
     >
-      <div v-if="loading" class="py-6 text-xs text-faint">{{ t('admin.accounts.loading') }}</div>
+      <LoadingSkeleton v-if="loading" :rows="5" :columns="[3, 2, 1, 1, 1, 1]" header />
 
       <p v-else-if="!rows.length" class="voice py-6 text-[12px]">
         {{ t('admin.accounts.empty') }}
       </p>
 
-      <div v-else class="overflow-x-auto">
+      <div v-else class="table-bleed overflow-x-auto">
         <table class="ledger">
           <thead>
             <tr>
@@ -153,7 +154,7 @@ onMounted(load)
 
       <template #footer>
         <div class="flex items-center justify-between text-2xs text-faint">
-          <span>
+          <span v-if="!loading">
             {{
               t('admin.accounts.page', {
                 page: page + 1,

@@ -11,6 +11,7 @@ import { factorTypeDescription, factorTypeLabel } from '@/lib/enums'
 import { relative, remaining } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import IconButton from '@/components/IconButton.vue'
 import SecurityNav from '@/components/SecurityNav.vue'
@@ -138,8 +139,8 @@ onMounted(load)
     <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <ConsolePanel :title="t('factors.configured')" :note="t('factors.totalNote', { n: factors.length })">
-        <div v-if="loading" class="py-6 text-xs text-faint">{{ t('factors.reading') }}</div>
+      <ConsolePanel :title="t('factors.configured')" :note="loading ? undefined : t('factors.totalNote', { n: factors.length })">
+        <LoadingSkeleton v-if="loading" variant="rows" :rows="4" />
 
         <p v-else-if="!factors.length" class="voice py-6">
           {{ t('factors.empty') }}

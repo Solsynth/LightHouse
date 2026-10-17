@@ -16,9 +16,9 @@ import (
 
 	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/config"
-	"src.solsynth.dev/sosys/stargate/internal/grpcclient"
-	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
+	"src.solsynth.dev/sosys/stargate/internal/middleware"
+	"src.solsynth.dev/sosys/stargate/internal/ports"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
@@ -31,7 +31,9 @@ type Deps struct {
 	JWT     *auth.JWTService
 	Token   *auth.TokenAuthService
 	Auth    *auth.AuthService
-	Clients *grpcclient.Clients
+	// Clients is the oauthClients port, not a raw gRPC client: it covers
+	// deployment configuration, the oauthapps module table and Develop.
+	Clients ports.OAuthClients
 	Log     *slog.Logger
 }
 

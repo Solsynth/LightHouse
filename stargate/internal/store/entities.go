@@ -443,7 +443,70 @@ type AffiliationResultEntity struct {
 	SpellID            uuid.UUID `gorm:"column:spell_id"`
 }
 
-func (AffiliationResultEntity) TableName() string { return "affiliation_results" }
+// ---------------------------------------------------------------------------
+// Module-owned: app.solian.id.oauthapps (OAuth/OIDC client registrations).
+// Migrated only while that module is enabled; core code never queries it.
+// ---------------------------------------------------------------------------
+
+// OAuthAppEntity is the OAuth client (Stargate-side registration) of an
+// OIDC app. It mirrors SnCustomApp's oauth-relevant subset: the client
+// metadata the provider needs plus the links it exposes on the consent
+// screen. Picture/Background stay reference-only data in this service.
+type OAuthAppEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	Slug        string `gorm:"column:slug;uniqueIndex"`
+	Name        string `gorm:"column:name"`
+	Description string `gorm:"column:description"`
+	// Status mirrors CustomAppStatus: 0 developing, 1 staging,
+	// 2 production, 3 suspended. Only production enforces redirect URIs.
+	Status int `gorm:"column:status"`
+	// Exactly one of ProjectID and AccountID is set. A project-linked app
+	// is managed by its developer team; an individually owned app needs no
+	// Develop service deployment.
+	ProjectID *uuid.UUID `gorm:"column:project_id;index"`
+	AccountID *uuid.UUID `gorm:"column:account_id;index"`
+
+	OauthConfig OAuthAppOauthConfigEntity `gorm:"column:oauth_config;type:jsonb;serializer:json"`
+	Links       OAuthAppLinksEntity      `gorm:"column:links;type:jsonb;serializer:json"`
+}
+
+func (OAuthAppEntity) TableName() string { return "oauth_apps" }
+
+// OAuthAppOauthConfigEntity mirrors SnCustomAppOauthConfig.
+type OAuthAppOauthConfigEntity struct {
+	ClientUri                string   `json:"client_uri,omitempty"`
+	RedirectUris             []string `json:"redirect_uris"`
+	PostLogoutRedirectUris   []string `json:"post_logout_redirect_uris,omitempty"`
+	AllowedScopes            []string `json:"allowed_scopes"`
+	AllowedGrantTypes        []string `json:"allowed_grant_types"`
+	RequirePkce              bool     `json:"require_pkce"`
+	AllowOfflineAccess       bool     `json:"allow_offline_access"`
+	IsPublicClient           bool     `json:"is_public_client"`
+}
+
+// OAuthAppLinksEntity mirrors SnCustomAppLinks.
+type OAuthAppLinksEntity struct {
+	HomePage       string `json:"home_page,omitempty"`
+	PrivacyPolicy  string `json:"privacy_policy,omitempty"`
+	TermsOfService string `json:"terms_of_service,omitempty"`
+}
+
+// OAuthAppSecretEntity mirrors SnCustomAppSecret. The secret is stored in
+// plaintext, exactly as Develop does: verification compares the stored value
+// against the presented one. is_oidc distinguishes an OIDC client secret
+// from an app API key.
+type OAuthAppSecretEntity struct {
+	ID        uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	Secret      string     `gorm:"column:secret"`
+	Description string     `gorm:"column:description"`
+	ExpiredAt   *time.Time `gorm:"column:expired_at"`
+	IsOidc      bool      `gorm:"column:is_oidc"`
+	AppID       uuid.UUID `gorm:"column:app_id;index"`
+}
+
+func (OAuthAppSecretEntity) TableName() string { return "oauth_app_secrets" }
 
 type SchemaMigrationEntity struct {
 	Version   string    `gorm:"column:version;primaryKey"`

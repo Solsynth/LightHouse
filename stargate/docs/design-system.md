@@ -214,7 +214,26 @@ shell inline.
 header rule, no zebra striping, hover tinting the row, right-aligned last
 column. First and last cells carry 8 px outer padding by default. Wrap tables
 in `.table-bleed` inside a panel to let row rules meet the panel edge; cell
-text then keeps 16 px to match the panel header.
+text then keeps 16 px to match the panel header. Every table inside a
+`ConsolePanel` is bled — a table whose rules stop short of the panel edge
+reads as a nested card, which the layout does not allow.
+
+### Loading
+
+`LoadingSkeleton` stands in for content that has not resolved: the same row
+height, column count and spacing as the loaded state, so the reader sees that
+something is arriving and the real content lands where the placeholder was.
+
+| Variant | Shape |
+| --- | --- |
+| `columns` (default) | table row: one bar per column, split by `:columns` ratios |
+| `rows` | list row: title plus chips, then a description line |
+
+Set `header` for tables so the column labels have a shorter bar. Bars are
+`aria-hidden`, and the sweep is one opacity animation that the reduced-motion
+rule already neutralizes. While a surface is loading, a count or page range is
+not a fact: gate the panel `note` and the pager label on `!loading` rather than
+printing `0 total` or `Page 1 of 1`.
 
 ### Forms
 

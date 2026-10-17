@@ -10,6 +10,7 @@ import type { Connection } from '@/lib/api/types'
 import { relative } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import IconButton from '@/components/IconButton.vue'
 import SecurityNav from '@/components/SecurityNav.vue'
 
@@ -77,9 +78,9 @@ onMounted(load)
 
     <ConsolePanel
       :title="t('connections.panelTitle')"
-      :note="t('connections.note', { n: connections.length })"
+      :note="loading ? undefined : t('connections.note', { n: connections.length })"
     >
-      <p v-if="loading" class="py-4 text-xs text-faint">{{ t('connections.reading') }}</p>
+      <LoadingSkeleton v-if="loading" variant="rows" :rows="3" />
       <p v-else-if="!connections.length" class="voice py-4 text-[12px]">
         {{ t('connections.empty') }}
       </p>

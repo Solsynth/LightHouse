@@ -12,6 +12,7 @@ import { actorTypeLabel } from '@/lib/enums'
 import { relative, remaining } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import IconButton from '@/components/IconButton.vue'
 
@@ -140,9 +141,7 @@ onMounted(load)
 
     <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
 
-    <div v-if="loading" class="py-10 text-xs text-faint">
-      {{ t('admin.permissionGroup.reading') }}
-    </div>
+    <LoadingSkeleton v-if="loading" compact :rows="6" :columns="[4, 3, 2, 1]" header />
 
     <div v-else-if="detail" class="grid gap-6 lg:grid-cols-2">
       <ConsolePanel

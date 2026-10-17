@@ -86,8 +86,9 @@ type PerkProvider interface {
 	GetPerkSubscription(ctx context.Context, accountID string) (*model.SnSubscriptionReferenceObject, error)
 }
 
-// CustomAppProvider looks up OIDC clients (custom apps) from the Develop
-// service, mirroring OidcProviderService.FindClientByIdAsync.
+// CustomAppProvider resolves the OIDC client an OAuth session is bound to.
+// It consults deployment configuration, the oauthapps module table and
+// Develop, in that order.
 type CustomAppProvider interface {
 	GetCustomAppSlug(ctx context.Context, appID string) (string, error)
 }

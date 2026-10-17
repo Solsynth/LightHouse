@@ -10,6 +10,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/authctl"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/e2eectl"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/oidcctl"
+	"src.solsynth.dev/sosys/stargate/internal/httpserver/oauthappctl"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/profilectl"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/securityctl"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/socialctl"
@@ -33,11 +34,11 @@ func Auth(c *core.Services, p *ports.Set) authctl.Deps {
 	}
 }
 
-func Security(c *core.Services) securityctl.Deps {
+func Security(c *core.Services, p *ports.Set) securityctl.Deps {
 	return securityctl.Deps{
 		Store: c.Store, Redis: c.Redis, Cfg: c.Config, Auth: c.Auth, Token: c.Token,
 		Perm: c.Perm, Logs: c.Logs, Clients: c.Clients, Spells: c.Spells,
-		Presence: c.Presence, Log: c.Log,
+		Presence: c.Presence, Ports: p, Log: c.Log,
 	}
 }
 
@@ -55,11 +56,16 @@ func Social(c *core.Services) socialctl.Deps {
 	}
 }
 
-func OIDC(c *core.Services) oidcctl.Deps {
+func OIDC(c *core.Services, p *ports.Set) oidcctl.Deps {
 	return oidcctl.Deps{
 		Store: c.Store, Redis: c.Redis, Cfg: c.Config, JWT: c.JWT, Token: c.Token,
-		Auth: c.Auth, Clients: c.Clients, Log: c.Log,
+		Auth: c.Auth, Clients: p.OAuthClients, Log: c.Log,
 	}
+}
+
+// OAuthApp builds the OAuth app controller dependencies.
+func OAuthApp(c *core.Services) oauthappctl.Deps {
+	return oauthappctl.Deps{Store: c.Store, Perm: c.Perm, Log: c.Log}
 }
 
 func Admin(c *core.Services) adminctl.Deps {

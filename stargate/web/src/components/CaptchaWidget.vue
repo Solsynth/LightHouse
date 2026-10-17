@@ -158,7 +158,7 @@ onUnmounted(cleanup)
 
 <template>
   <div class="flex min-h-[68px] w-full flex-col items-center justify-center gap-2">
-    <p v-if="loading" class="text-2xs text-faint">{{ t('captchaWidget.loading') }}</p>
+    <span v-if="loading" class="skeleton h-3 w-32" aria-hidden="true" />
     <p v-else-if="error" class="text-center text-2xs text-error">{{ error }}</p>
     <div ref="container" class="flex w-full justify-center" />
   </div>

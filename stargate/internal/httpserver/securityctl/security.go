@@ -29,8 +29,6 @@ import (
 	"github.com/go-webauthn/webauthn/protocol/webauthncbor"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
-	"src.solsynth.dev/sosys/go/pkg/models"
-	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/go/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/internal/actionlog"
@@ -40,6 +38,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
+	"src.solsynth.dev/sosys/stargate/internal/ports"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
 	"src.solsynth.dev/sosys/stargate/internal/spell"
 	"src.solsynth.dev/sosys/stargate/internal/store"
@@ -55,6 +54,9 @@ type Deps struct {
 	Perm     *permission.Service
 	Logs     *actionlog.Service
 	Clients  *grpcclient.Clients
+	// Ports resolves the oauthClients provider (oauthapps module, config or
+	// Develop) for authorized-app hydration.
+	Ports    *ports.Set
 	Spells   *spell.Service
 	Presence *auth.DevicePresence
 	Log      *slog.Logger
@@ -1781,11 +1783,11 @@ func (c *controller) getAuthorizedApps(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, response)
 }
 
-// fetchAppDetails resolves custom-app details from Develop, degrading
-// gracefully when the client is unavailable or the app was deleted.
-func (c *controller) fetchAppDetails(ctx context.Context, apps []model.AuthorizedApp) map[string]*gen.DyCustomApp {
-	details := map[string]*gen.DyCustomApp{}
-	if c.d.Clients == nil || c.d.Clients.Develop == nil {
+// fetchAppDetails resolves app details through the oauthClients port,
+// degrading gracefully when no provider is enabled or the app was deleted.
+func (c *controller) fetchAppDetails(ctx context.Context, apps []model.AuthorizedApp) map[string]*ports.OAuthApp {
+	details := map[string]*ports.OAuthApp{}
+	if c.d.Ports == nil || c.d.Ports.OAuthClients == nil || !c.d.Ports.OAuthClients.Available() {
 		return details
 	}
 	seen := map[string]struct{}{}
@@ -1794,13 +1796,11 @@ func (c *controller) fetchAppDetails(ctx context.Context, apps []model.Authorize
 			continue
 		}
 		seen[app.AppId] = struct{}{}
-		resp, err := c.d.Clients.Develop.GetCustomApp(ctx, &gen.DyGetCustomAppRequest{
-			Query: &gen.DyGetCustomAppRequest_Id{Id: app.AppId},
-		})
-		if err != nil || resp == nil || resp.App == nil {
+		detail, err := c.d.Ports.OAuthClients.Get(ctx, app.AppId)
+		if err != nil || detail == nil {
 			continue
 		}
-		details[app.AppId] = resp.App
+		details[app.AppId] = detail
 	}
 	return details
 }
@@ -1861,10 +1861,8 @@ func (c *controller) authorizeAppScopes(ctx *gin.Context) {
 	}
 
 	allowedScopes := map[string]struct{}{}
-	if app.OauthConfig != nil {
-		for _, scope := range app.OauthConfig.AllowedScopes {
-			allowedScopes[scope] = struct{}{}
-		}
+	for _, scope := range app.Scopes {
+		allowedScopes[scope] = struct{}{}
 	}
 	// Port of: request.Scopes (trimmed, distinct) concat authorized.Scopes
 	// (distinct); every scope must be allowed by the app.
@@ -1958,26 +1956,26 @@ func (c *controller) deauthorizeApp(ctx *gin.Context) {
 }
 
 // ---------------------------------------------------------------------------
-// Custom-app gRPC helpers (Develop service; degrade when unavailable)
+// Custom-app helpers (oauthClients port; degrade when unavailable)
 // ---------------------------------------------------------------------------
 
-func (c *controller) getCustomApp(ctx context.Context, appID string) (*gen.DyCustomApp, error) {
-	if c.d.Clients == nil || c.d.Clients.Develop == nil {
-		return nil, errors.New("develop client not configured")
+// getCustomApp resolves an app through the oauthClients port, which covers
+// the oauthapps module table, deployment configuration and Develop.
+func (c *controller) getCustomApp(ctx context.Context, appID string) (*ports.OAuthApp, error) {
+	if c.d.Ports == nil || c.d.Ports.OAuthClients == nil || !c.d.Ports.OAuthClients.Available() {
+		return nil, errors.New("no oauth client provider is enabled")
 	}
-	resp, err := c.d.Clients.Develop.GetCustomApp(ctx, &gen.DyGetCustomAppRequest{
-		Query: &gen.DyGetCustomAppRequest_Id{Id: appID},
-	})
+	app, err := c.d.Ports.OAuthClients.Get(ctx, appID)
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil || resp.App == nil {
+	if app == nil {
 		return nil, errors.New("app not found")
 	}
-	return resp.App, nil
+	return app, nil
 }
 
-func appSlugName(app *gen.DyCustomApp) (*string, *string) {
+func appSlugName(app *ports.OAuthApp) (*string, *string) {
 	var slug, name *string
 	if app.Slug != "" {
 		slug = &app.Slug
@@ -1988,30 +1986,20 @@ func appSlugName(app *gen.DyCustomApp) (*string, *string) {
 	return slug, name
 }
 
-func appDescription(app *gen.DyCustomApp) *string {
-	if app.Description == "" {
-		return nil
-	}
-	return &app.Description
+func appDescription(app *ports.OAuthApp) *string {
+	// The OAuth port carries no free-form description (Develop's custom app
+	// description is not part of the client contract); the authorized-app
+	// row keeps its own label.
+	_ = app
+	return nil
 }
 
-func appPicture(app *gen.DyCustomApp) *model.SnCloudFileReferenceObject {
-	if app.Picture == nil {
-		return nil
-	}
-	return fileRefFromProto(app.Picture)
+func appPicture(app *ports.OAuthApp) *model.SnCloudFileReferenceObject {
+	return app.Picture
 }
 
-func appBackground(app *gen.DyCustomApp) *model.SnCloudFileReferenceObject {
-	if app.Background == nil {
-		return nil
-	}
-	return fileRefFromProto(app.Background)
-}
-
-func fileRefFromProto(file *gen.DyCloudFile) *model.SnCloudFileReferenceObject {
-	ref := models.FromProtoValue(file)
-	return &ref
+func appBackground(app *ports.OAuthApp) *model.SnCloudFileReferenceObject {
+	return app.Background
 }
 
 // nullCoalesce mirrors C# `??`: returns a when non-nil, else b.
@@ -2022,7 +2010,7 @@ func nullCoalesce(a, b *string) *string {
 	return b
 }
 
-func appSlugOf(detail *gen.DyCustomApp, has bool) *string {
+func appSlugOf(detail *ports.OAuthApp, has bool) *string {
 	if !has {
 		return nil
 	}
@@ -2030,7 +2018,7 @@ func appSlugOf(detail *gen.DyCustomApp, has bool) *string {
 	return slug
 }
 
-func appNameOf(detail *gen.DyCustomApp, has bool) *string {
+func appNameOf(detail *ports.OAuthApp, has bool) *string {
 	if !has {
 		return nil
 	}
@@ -2038,21 +2026,21 @@ func appNameOf(detail *gen.DyCustomApp, has bool) *string {
 	return name
 }
 
-func appDescriptionOf(detail *gen.DyCustomApp, has bool) *string {
+func appDescriptionOf(detail *ports.OAuthApp, has bool) *string {
 	if !has {
 		return nil
 	}
 	return appDescription(detail)
 }
 
-func appPictureOf(detail *gen.DyCustomApp, has bool) *model.SnCloudFileReferenceObject {
+func appPictureOf(detail *ports.OAuthApp, has bool) *model.SnCloudFileReferenceObject {
 	if !has {
 		return nil
 	}
 	return appPicture(detail)
 }
 
-func appBackgroundOf(detail *gen.DyCustomApp, has bool) *model.SnCloudFileReferenceObject {
+func appBackgroundOf(detail *ports.OAuthApp, has bool) *model.SnCloudFileReferenceObject {
 	if !has {
 		return nil
 	}

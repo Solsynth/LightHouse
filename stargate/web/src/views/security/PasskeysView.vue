@@ -13,6 +13,7 @@ import { relative, shortId } from '@/lib/format'
 import { createCredential, passkeyFailure, passkeysSupported } from '@/lib/webauthn'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import IconButton from '@/components/IconButton.vue'
 import SecurityNav from '@/components/SecurityNav.vue'
@@ -160,9 +161,9 @@ onMounted(load)
 
     <ConsolePanel
       :title="t('passkeys.panelTitle')"
-      :note="t('passkeys.note', { n: passkeys.length })"
+      :note="loading ? undefined : t('passkeys.note', { n: passkeys.length })"
     >
-      <div v-if="loading" class="py-4 text-xs text-faint">{{ t('passkeys.reading') }}</div>
+      <LoadingSkeleton v-if="loading" variant="rows" :rows="3" />
       <p v-else-if="!passkeys.length" class="voice py-4 text-[12px]">
         {{ t('passkeys.empty') }}
       </p>

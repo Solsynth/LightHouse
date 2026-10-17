@@ -36,6 +36,7 @@ func TestRegisterRouteTable(t *testing.T) {
 	api := engine.Group("/api")
 	Register(api, Deps{Log: nil})
 	RegisterRelationships(api, Deps{Log: nil})
+	RegisterPublicRelationships(api, Deps{Log: nil})
 
 	type route struct {
 		method string
@@ -54,6 +55,7 @@ func TestRegisterRouteTable(t *testing.T) {
 		{"GET", "/api/accounts/:name/connections"},
 		{"GET", "/api/accounts/:name/followers"},
 		{"GET", "/api/accounts/:name/following"},
+		{"GET", "/api/accounts/:name/relationships"},
 		{"GET", "/api/relationships"},
 		{"GET", "/api/relationships/requests"},
 		{"GET", "/api/relationships/close-friends"},
@@ -433,4 +435,103 @@ func marshalToMap(t *testing.T, v any) map[string]any {
 		t.Fatal(err)
 	}
 	return m
+}
+
+// TestRelationshipSummaryCounts pins the module's public summary: the
+// follower/following totals come from the real friendship rows (the reason the
+// counts previously reported zero), mutual_friends appears only for an
+// authenticated third-party viewer, and the account reading its own profile
+// gets no mutual count.
+func TestRelationshipSummaryCounts(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(), searchDSN)
+	if err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	defer pool.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := pool.Ping(ctx); err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+
+	// alice follows bob; carol follows bob; alice and carol are mutual friends.
+	suffix := uuid.NewString()[:8]
+	alice, bob, carol := uuid.New(), uuid.New(), uuid.New()
+	now := time.Now().UTC()
+	accounts := []struct {
+		id   uuid.UUID
+		name string
+	}{
+		{alice, "anon_alice_" + suffix},
+		{bob, "anon_bob_" + suffix},
+		{carol, "anon_carol_" + suffix},
+	}
+	for _, a := range accounts {
+		if _, err := pool.Exec(ctx, `INSERT INTO accounts
+			(id, name, nick, language, region, is_superuser, created_at, updated_at)
+			VALUES ($1, $2, $2, 'en', 'US', false, $3, $3)`, a.id, a.name, now); err != nil {
+			t.Fatalf("seed account %s: %v", a.name, err)
+		}
+	}
+	defer func() {
+		bg := context.Background()
+		ids := []uuid.UUID{alice, bob, carol}
+		_, _ = pool.Exec(bg, `DELETE FROM account_relationships WHERE account_id = ANY($1) OR related_id = ANY($1)`, ids)
+		_, _ = pool.Exec(bg, `DELETE FROM account_profiles WHERE account_id = ANY($1)`, ids)
+		_, _ = pool.Exec(bg, `DELETE FROM accounts WHERE id = ANY($1)`, ids)
+	}()
+
+	// friendship writes, matching opAcceptFriendRelationship.
+	friend := func(from, to uuid.UUID) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, `INSERT INTO account_relationships
+			(account_id, related_id, status, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $4)`, from, to, int16(model.RelationshipFriends), now); err != nil {
+			t.Fatalf("seed relationship: %v", err)
+		}
+	}
+	// The accept flow writes the friendship row in both directions, so every
+	// friendship below is a pair. bob is followed by alice and carol; alice
+	// and carol are friends with each other.
+	friend(alice, bob)
+	friend(bob, alice)
+	friend(carol, bob)
+	friend(bob, carol)
+	friend(alice, carol)
+	friend(carol, alice)
+
+	deps := Deps{Store: store.New(pool), Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	// The handler resolves the account then asks for the summary relative to
+	// the attached viewer; driving the helper directly keeps the viewer swap
+	// explicit and exercises the profile lookup by name.
+	summary := func(t *testing.T, accountName string, viewer *model.Account) relationshipSummaryResponse {
+		t.Helper()
+		account, err := deps.resolveAccount(ctx, accountName)
+		if err != nil {
+			t.Fatalf("resolve %s: %v", accountName, err)
+		}
+		response, err := deps.relationshipSummary(ctx, account, viewer)
+		if err != nil {
+			t.Fatalf("summary for %s: %v", accountName, err)
+		}
+		return response
+	}
+
+	bobName := "anon_bob_" + suffix
+	if got := summary(t, bobName, nil); got.Followers != 2 || got.Following != 2 {
+		t.Errorf("anonymous summary = %+v, want followers 2, following 2", got)
+	} else if got.MutualFriends != nil {
+		t.Errorf("anonymous summary reported mutual_friends = %d", *got.MutualFriends)
+	}
+
+	// alice's friends are {bob, carol}; bob's are {alice, carol}; so they
+	// share exactly one friend.
+	aliceView := summary(t, bobName, &model.Account{Id: alice.String()})
+	if aliceView.Followers != 2 || aliceView.MutualFriends == nil || *aliceView.MutualFriends != 1 {
+		t.Errorf("alice's view = %+v, want followers 2, mutual 1", aliceView)
+	}
+
+	if got := summary(t, bobName, &model.Account{Id: bob.String()}); got.MutualFriends != nil {
+		t.Errorf("self view reported mutual_friends = %d", *got.MutualFriends)
+	}
 }

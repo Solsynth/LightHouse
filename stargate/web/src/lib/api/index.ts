@@ -30,6 +30,8 @@ import type {
   PermissionNode,
   Profile,
   Punishment,
+  ModulesState,
+  RelationshipSummary,
 } from './types'
 
 export type { Page }
@@ -46,6 +48,20 @@ export const accountApi = {
   search: (query: string, take = 20) =>
     request<Account[]>('/accounts/search', { query: { query, take } }),
   byName: (name: string) => request<Account>(`/accounts/${encodeURIComponent(name)}`),
+  /** Public social-graph summary; mutual_friends needs a session on the call. */
+  relationshipSummary: (name: string) =>
+    request<RelationshipSummary>(`/accounts/${encodeURIComponent(name)}/relationships`),
+}
+
+// ── Modules ──
+
+/**
+ * The resolved module set and capabilities. The console uses it to hide the
+ * surfaces a deployment does not serve, so a disabled module never renders a
+ * nav entry or a route that would 404.
+ */
+export const modulesApi = {
+  state: () => request<ModulesState>('/modules'),
 }
 
 // ── Auth ──

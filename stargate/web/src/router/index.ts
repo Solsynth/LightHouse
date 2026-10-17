@@ -1,8 +1,20 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteMeta } from 'vue-router'
 
+import { MODULES } from '@/lib/modules'
 import { i18n } from '@/lib/i18n'
+import { useModulesStore } from '@/stores/modules'
 import { useSessionStore } from '@/stores/session'
+
+declare module 'vue-router' {
+  interface RouteMeta {
+    /**
+     * Module IDs that must be enabled for this route to be served. A route
+     * with an unmounted module is redirected by the global guard.
+     */
+    modules?: string[]
+  }
+}
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -57,7 +69,7 @@ const router = createRouter({
       path: '/account',
       name: 'account',
       component: () => import('@/views/AccountView.vue'),
-      meta: { titleKey: 'app.titles.profile' },
+      meta: { titleKey: 'app.titles.profile', modules: [MODULES.profiles] },
     },
     {
       path: '/security',
@@ -67,91 +79,91 @@ const router = createRouter({
       path: '/security/sessions',
       name: 'sessions',
       component: () => import('@/views/security/SessionsView.vue'),
-      meta: { titleKey: 'app.titles.sessions', wide: true },
+      meta: { titleKey: 'app.titles.sessions', wide: true, modules: [MODULES.accounts] },
     },
     {
       path: '/security/factors',
       name: 'factors',
       component: () => import('@/views/security/FactorsView.vue'),
-      meta: { titleKey: 'app.titles.signInFactors' },
+      meta: { titleKey: 'app.titles.signInFactors', modules: [MODULES.accounts] },
     },
     {
       path: '/security/passkeys',
       name: 'passkeys',
       component: () => import('@/views/security/PasskeysView.vue'),
-      meta: { titleKey: 'app.titles.passkeys' },
+      meta: { titleKey: 'app.titles.passkeys', modules: [MODULES.accounts] },
     },
     {
       path: '/security/contacts',
       name: 'contacts',
       component: () => import('@/views/security/ContactsView.vue'),
-      meta: { titleKey: 'app.titles.contacts' },
+      meta: { titleKey: 'app.titles.contacts', modules: [MODULES.accounts] },
     },
     {
       path: '/security/connections',
       name: 'connections',
       component: () => import('@/views/security/ConnectionsView.vue'),
-      meta: { titleKey: 'app.titles.connections' },
+      meta: { titleKey: 'app.titles.connections', modules: [MODULES.accounts] },
     },
     {
       path: '/security/preferences',
       name: 'preferences',
       component: () => import('@/views/security/PreferencesView.vue'),
-      meta: { titleKey: 'app.titles.securityMode' },
+      meta: { titleKey: 'app.titles.securityMode', modules: [MODULES.accounts] },
     },
     {
       path: '/developers',
       name: 'developers',
       component: () => import('@/views/DevelopersView.vue'),
-      meta: { titleKey: 'app.titles.developers', wide: true },
+      meta: { titleKey: 'app.titles.developers', wide: true, modules: [MODULES.accounts] },
     },
     {
       path: '/activity',
       name: 'activity',
       component: () => import('@/views/ActivityView.vue'),
-      meta: { titleKey: 'app.titles.activity', wide: true },
+      meta: { titleKey: 'app.titles.activity', wide: true, modules: [MODULES.accounts] },
     },
     {
       path: '/admin',
       name: 'admin',
       component: () => import('@/views/admin/AdminOverview.vue'),
-      meta: { titleKey: 'app.titles.admin', admin: true, full: true, fullBleed: true },
+      meta: { titleKey: 'app.titles.admin', admin: true, full: true, fullBleed: true, modules: [MODULES.admin] },
     },
     {
       path: '/admin/accounts',
       name: 'admin-accounts',
       component: () => import('@/views/admin/AdminAccounts.vue'),
-      meta: { titleKey: 'app.titles.accounts', admin: true, full: true, fullBleed: true },
+      meta: { titleKey: 'app.titles.accounts', admin: true, full: true, fullBleed: true, modules: [MODULES.admin] },
     },
     {
       path: '/admin/accounts/:name',
       name: 'admin-account',
       component: () => import('@/views/admin/AdminAccountDetail.vue'),
-      meta: { titleKey: 'app.titles.account', admin: true, full: true, fullBleed: true },
+      meta: { titleKey: 'app.titles.account', admin: true, full: true, fullBleed: true, modules: [MODULES.admin] },
     },
     {
       path: '/admin/permissions',
       name: 'admin-permissions',
       component: () => import('@/views/admin/AdminPermissions.vue'),
-      meta: { titleKey: 'app.titles.permissions', admin: true, full: true, fullBleed: true },
+      meta: { titleKey: 'app.titles.permissions', admin: true, full: true, fullBleed: true, modules: [MODULES.admin] },
     },
     {
       path: '/admin/permissions/:id',
       name: 'admin-permission-group',
       component: () => import('@/views/admin/AdminPermissionGroup.vue'),
-      meta: { titleKey: 'app.titles.permissionGroup', admin: true, full: true, fullBleed: true },
+      meta: { titleKey: 'app.titles.permissionGroup', admin: true, full: true, fullBleed: true, modules: [MODULES.admin] },
     },
     {
       path: '/admin/cache',
       name: 'admin-cache',
       component: () => import('@/views/admin/AdminCache.vue'),
-      meta: { titleKey: 'app.titles.cache', admin: true, full: true, fullBleed: true },
+      meta: { titleKey: 'app.titles.cache', admin: true, full: true, fullBleed: true, modules: [MODULES.admin] },
     },
     {
       path: '/admin/geography',
       name: 'admin-geography',
       component: () => import('@/views/admin/AdminGeography.vue'),
-      meta: { titleKey: 'app.titles.geography', admin: true, full: true, fullBleed: true },
+      meta: { titleKey: 'app.titles.geography', admin: true, full: true, fullBleed: true, modules: [MODULES.admin] },
     },
     {
       path: '/@:name',
@@ -173,6 +185,12 @@ router.beforeEach(async (to) => {
   const session = useSessionStore()
   if (session.loading) await session.load()
 
+  // The module set is a single cached read, shared by every navigation. It
+  // must land before the module gate below can decide anything; a failed
+  // read leaves the gates open, so the console keeps working.
+  const modules = useModulesStore()
+  await modules.load()
+
   if (!to.meta.public && !session.signedIn) {
     return { name: 'sign-in', query: { next: to.fullPath } }
   }
@@ -185,6 +203,18 @@ router.beforeEach(async (to) => {
   }
   if (to.meta.admin && session.account?.is_superuser !== true) {
     return { name: 'account' }
+  }
+
+  // A route whose serving module is not mounted is unreachable: send the
+  // navigation to a surface that is always served. The fallback is the same
+  // one this route would get while signed out, so the outcome never depends
+  // on the session state.
+  if (!modules.hasAll(to.meta.modules ?? [])) {
+    // Signed-in visitors keep their account page when it is served; a chain
+    // of disabled modules (profiles + accounts) falls back to sign-in, which
+    // the required auth module alone mounts.
+    if (session.signedIn && modules.hasAll([MODULES.profiles])) return { name: 'account' }
+    return { name: 'sign-in' }
   }
   return true
 })

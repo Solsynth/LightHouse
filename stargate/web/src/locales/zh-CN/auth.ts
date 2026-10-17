@@ -83,7 +83,6 @@ export default {
     title: '授权 {name}',
     introPrefix: '此应用请求以你的账号',
     introSuffix: ' 的身份操作。做出决定后，你将返回该应用。',
-    reading: '正在读取请求…',
     requestedAccess: '请求的访问权限',
     scopeOpenid: '读取你的 Solar Network 个人资料',
     scopeProfile: '读取你的公开个人资料信息',

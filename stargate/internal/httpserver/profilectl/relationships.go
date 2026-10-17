@@ -61,6 +61,70 @@ func registerRelationships(api *gin.RouterGroup, d Deps) {
 	r.GET("/:accountId/mutual-friends", d.getMutualFriends)
 }
 
+// relationshipSummaryResponse is the anonymous public projection of an
+// account's social graph. MutualFriends is omitted for anonymous callers: it
+// is relative to the viewer's session, so an anonymous request has no answer
+// rather than a zero.
+type relationshipSummaryResponse struct {
+	Followers     int  `json:"followers"`
+	Following     int  `json:"following"`
+	MutualFriends *int `json:"mutual_friends,omitempty"`
+}
+
+// RegisterPublicRelationships mounts the anonymous social-graph summary the
+// relationships module exposes: GET /api/accounts/{name|id}/relationships
+// returns the follower/following totals plus the viewer's mutual-friend count
+// when a session is attached. It lives here because the account lookup is
+// shared with the rest of the profile surface, but the route is owned by the
+// relationships module: disabling it removes the endpoint.
+func RegisterPublicRelationships(api *gin.RouterGroup, d Deps) {
+	api.GET("/accounts/:name/relationships", d.getRelationshipSummary)
+}
+
+// relationshipSummary builds the public summary for one account. viewer is
+// the authenticated account when one is attached; a nil viewer (anonymous
+// read) or the account reading its own profile leaves MutualFriends unset.
+func (d Deps) relationshipSummary(ctx context.Context, account *model.Account, viewer *model.Account) (relationshipSummaryResponse, error) {
+	accountID := accountIDOf(account)
+	followers, following, err := d.Store.CountRelationshipDirections(ctx, accountID)
+	if err != nil {
+		return relationshipSummaryResponse{}, err
+	}
+	response := relationshipSummaryResponse{Followers: followers, Following: following}
+	if viewer == nil {
+		return response, nil
+	}
+	if viewerID := accountIDOf(viewer); viewerID != accountID {
+		mutual, err := d.Store.CountMutualFriends(ctx, viewerID, accountID)
+		if err != nil {
+			return relationshipSummaryResponse{}, err
+		}
+		response.MutualFriends = &mutual
+	}
+	return response, nil
+}
+
+func (d Deps) getRelationshipSummary(c *gin.Context) {
+	ctx := c.Request.Context()
+	name := c.Param("name")
+	account, err := d.resolveAccount(ctx, name)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			c.JSON(http.StatusNotFound, notFound(name))
+			return
+		}
+		internalError(c, err)
+		return
+	}
+
+	response, err := d.relationshipSummary(ctx, account, middleware.CurrentUser(ctx))
+	if err != nil {
+		internalError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response)
+}
+
 // ─────────────────────────── DTOs ───────────────────────────
 
 type relationshipRequest struct {

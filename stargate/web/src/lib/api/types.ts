@@ -30,6 +30,28 @@ export interface Account {
   deleted_at?: string
 }
 
+/** One compiled-in module, as reported by GET /api/modules. */
+export interface ModuleInfo {
+  id: string
+  kind: 'feature' | 'integration'
+}
+
+/** The resolved module set plus the capabilities it exposes. */
+export interface ModulesState {
+  modules: ModuleInfo[]
+  capabilities: string[]
+}
+
+/**
+ * Public social-graph summary for an account. `mutual_friends` is present only
+ * when the request carried a session and the viewer is not the account itself.
+ */
+export interface RelationshipSummary {
+  followers: number
+  following: number
+  mutual_friends?: number
+}
+
 export interface Profile {
   id: string
   first_name?: string

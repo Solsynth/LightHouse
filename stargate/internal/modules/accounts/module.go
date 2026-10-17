@@ -9,6 +9,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/securityctl"
 	"src.solsynth.dev/sosys/stargate/internal/module"
 	"src.solsynth.dev/sosys/stargate/internal/modules/common"
+	"src.solsynth.dev/sosys/stargate/internal/ports"
 )
 
 // Factory returns the compiled module descriptor.
@@ -30,7 +31,7 @@ func Factory() module.Factory {
 type instance struct{}
 
 func (i *instance) Configure(_ context.Context, host *module.Host) error {
-	securityctl.Register(host.API, common.Security(host.Core))
+	securityctl.Register(host.API, common.Security(host.Core, ports.FromRegistry(host.Ports)))
 	grpcserver.RegisterAccounts(host.GRPC, common.GRPC(host.Core))
 	return nil
 }

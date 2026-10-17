@@ -6,6 +6,7 @@ package integrations
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -316,6 +317,10 @@ func (a *presenceAdapter) OnlineDevices(ctx context.Context, accountIDs []string
 
 // ── oauth clients ──────────────────────────────────────────────────────────
 
+// oauthAdapter resolves custom apps from the Develop service. The
+// Stargate-owned OAuth app module is the feature provider for this port and
+// chains configuration, its own table and then this adapter; selecting
+// [ports] oauthClients = "app.solian.develop" bypasses the module.
 type oauthAdapter struct {
 	client gen.DyCustomAppServiceClient
 	cfg    *config.Config
@@ -330,11 +335,7 @@ func (a *oauthAdapter) Get(ctx context.Context, id string) (*ports.OAuthApp, err
 	}
 	if a.cfg != nil {
 		if client := a.cfg.FindLocalOAuthClientByID(id); client != nil {
-			return &ports.OAuthApp{
-				ID: client.Id, Slug: client.Slug, Name: client.Name,
-				ClientSecret: client.ClientSecret, Status: client.Status,
-				RedirectURIs: client.RedirectUris, Scopes: client.AllowedScopes,
-			}, nil
+			return LocalOAuthApp(client), nil
 		}
 	}
 	if a.client == nil {
@@ -346,11 +347,120 @@ func (a *oauthAdapter) Get(ctx context.Context, id string) (*ports.OAuthApp, err
 	if err != nil || resp == nil || resp.App == nil {
 		return nil, err
 	}
-	app := resp.App
-	out := &ports.OAuthApp{ID: app.Id, Slug: app.Slug, Name: app.Name, Status: int(app.Status)}
-	if app.OauthConfig != nil {
-		out.RedirectURIs = app.OauthConfig.RedirectUris
-		out.Scopes = app.OauthConfig.AllowedScopes
+	return OAuthAppFromProto(resp.App), nil
+}
+
+func (a *oauthAdapter) GetBySlug(ctx context.Context, slug string) (*ports.OAuthApp, error) {
+	if a == nil {
+		return nil, ports.ErrUnavailable
 	}
-	return out, nil
+	if a.cfg != nil {
+		if client := a.cfg.FindLocalOAuthClient(slug); client != nil {
+			return LocalOAuthApp(client), nil
+		}
+	}
+	if a.client == nil {
+		return nil, ports.ErrUnavailable
+	}
+	resp, err := a.client.GetCustomApp(ctx, &gen.DyGetCustomAppRequest{
+		Query: &gen.DyGetCustomAppRequest_Slug{Slug: slug},
+	})
+	if err != nil || resp == nil || resp.App == nil {
+		return nil, err
+	}
+	return OAuthAppFromProto(resp.App), nil
+}
+
+func (a *oauthAdapter) CheckSecret(ctx context.Context, appID, secret string) (bool, error) {
+	if a == nil {
+		return false, ports.ErrUnavailable
+	}
+	if a.cfg != nil {
+		if client := a.cfg.FindLocalOAuthClientByID(appID); client != nil {
+			if client.ClientSecret == "" {
+				return false, nil
+			}
+			return subtle.ConstantTimeCompare([]byte(client.ClientSecret), []byte(secret)) == 1, nil
+		}
+	}
+	if a.client == nil {
+		return false, nil
+	}
+	isOidc := true
+	resp, err := a.client.CheckCustomAppSecret(ctx, &gen.DyCheckCustomAppSecretRequest{
+		SecretIdentifier: &gen.DyCheckCustomAppSecretRequest_AppId{AppId: appID},
+		Secret:           secret,
+		IsOidc:           &isOidc,
+	})
+	if err != nil {
+		return false, err
+	}
+	return resp.GetValid(), nil
+}
+
+// LocalOAuthApp maps a configured TOML client onto the port shape.
+func LocalOAuthApp(client *config.OAuthClient) *ports.OAuthApp {
+	id := client.Id
+	slug := client.Slug
+	if id == "" {
+		id = slug
+	}
+	if slug == "" {
+		slug = id
+	}
+	status := client.Status
+	if status == 0 {
+		status = 2 // CustomAppStatus.Production
+	}
+	app := &ports.OAuthApp{
+		ID: id, Slug: slug, Name: client.Name,
+		ClientSecret: client.ClientSecret, Status: status,
+		RedirectURIs: client.RedirectUris, Scopes: client.AllowedScopes,
+		IsPublicClient: client.IsPublicClient,
+	}
+	if client.HomeUri != "" {
+		app.HomeUri = &client.HomeUri
+	}
+	if client.PolicyUri != "" {
+		app.PolicyUri = &client.PolicyUri
+	}
+	if client.TermsOfServiceUri != "" {
+		app.TermsOfServiceUri = &client.TermsOfServiceUri
+	}
+	return app
+}
+
+// OAuthAppFromProto maps a Develop custom app onto the port shape.
+func OAuthAppFromProto(app *gen.DyCustomApp) *ports.OAuthApp {
+	out := &ports.OAuthApp{
+		ID: app.GetId(), Slug: app.GetSlug(), Name: app.GetName(), Status: int(app.GetStatus()),
+	}
+	if f := app.GetPicture(); f != nil {
+		ref := models.FromProtoValue(f)
+		out.Picture = &ref
+	}
+	if f := app.GetBackground(); f != nil {
+		ref := models.FromProtoValue(f)
+		out.Background = &ref
+	}
+	if l := app.GetLinks(); l != nil {
+		if v := l.GetHomePage(); v != "" {
+			out.HomeUri = &v
+		}
+		if v := l.GetPrivacyPolicy(); v != "" {
+			out.PolicyUri = &v
+		}
+		if v := l.GetTermsOfService(); v != "" {
+			out.TermsOfServiceUri = &v
+		}
+	}
+	if o := app.GetOauthConfig(); o != nil {
+		out.RedirectURIs = o.GetRedirectUris()
+		out.PostLogoutRedirectURIs = o.GetPostLogoutRedirectUris()
+		out.Scopes = o.GetAllowedScopes()
+		out.RequirePkce = o.GetRequirePkce()
+		out.AllowOfflineAccess = o.GetAllowOfflineAccess()
+		out.IsPublicClient = o.GetIsPublicClient()
+	}
+	return out
 }

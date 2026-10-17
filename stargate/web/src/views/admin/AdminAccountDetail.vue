@@ -11,6 +11,7 @@ import { factorTypeLabel, punishmentTypeLabel } from '@/lib/enums'
 import { age, relative, remaining, shortId, utcStamp } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 
 const { t } = useI18n()
@@ -164,9 +165,7 @@ onMounted(load)
 
     <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
 
-    <div v-if="loading" class="py-10 text-xs text-faint">
-      {{ t('admin.accountDetail.reading') }}
-    </div>
+    <LoadingSkeleton v-if="loading" compact :rows="5" :columns="[3, 3, 2, 1]" header />
 
     <div v-else-if="detail" class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div class="space-y-6">

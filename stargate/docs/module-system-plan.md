@@ -266,7 +266,7 @@ startup.
 | `app.solian.id.auth` | feature | `/api/auth/**`, auth gRPC, registration routes | — | core tables |
 | `app.solian.id.accounts` | feature | `/api/{identity,factors,sessions,devices,contacts,api-keys,connections}`, account/bot/authorized-app gRPC | auth | core tables |
 | `app.solian.id.profiles` | feature | `/api/accounts/**` profile/public routes, profile gRPC | accounts | core tables |
-| `app.solian.id.relationships` | feature | `/api/relationships/**`, followers/following | profiles | `account_relationships` |
+| `app.solian.id.relationships` | feature | `/api/relationships/**`, followers/following, `GET /api/accounts/{name}/relationships` (anonymous totals; `mutual_friends` with a session) | profiles | `account_relationships` |
 | `app.solian.id.spells` | feature | `/api/spells/**` | accounts | `magic_spells`, `affiliation_*` (later phase) |
 | `app.solian.id.social` | feature | `/api/auth/login/{provider}`, callbacks | auth, accounts | none |
 | `app.solian.id.oidc` | feature | `/api/oidc/**`, `/.well-known/openid-configuration` | auth, accounts | none |

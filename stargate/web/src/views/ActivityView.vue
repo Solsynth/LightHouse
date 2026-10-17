@@ -11,6 +11,7 @@ import { describeAgent, place, shortId, utcStamp } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import IconButton from '@/components/IconButton.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 
 const { t } = useI18n()
 const notice = useNoticeStore()
@@ -117,8 +118,11 @@ onMounted(load)
       </button>
     </div>
 
-    <ConsolePanel :title="t('activity.log')" :note="t('activity.entries', { n: total })">
-      <div v-if="loading" class="py-6 text-xs text-faint">{{ t('activity.reading') }}</div>
+    <ConsolePanel
+      :title="t('activity.log')"
+      :note="loading ? undefined : t('activity.entries', { n: total })"
+    >
+      <LoadingSkeleton v-if="loading" :rows="6" :columns="[5, 2]" header />
 
       <p v-else-if="!logs.length" class="voice py-6 text-[12px]">
         {{ t('activity.empty') }}
@@ -163,7 +167,7 @@ onMounted(load)
         <div class="flex items-center justify-between text-2xs text-faint">
           <span>{{ t('activity.copyHint') }}</span>
           <div class="flex items-center gap-3">
-            <span class="tabular-nums">
+            <span v-if="!loading" class="tabular-nums">
               {{ t('activity.range', { from: offset + 1, to: Math.min(offset + pageSize, total), total }) }}
             </span>
             <button

@@ -9,6 +9,7 @@ import { StargateError } from '@/lib/api/client'
 import type { ApiKey, ApiKeyCreated, AuthorizedApp } from '@/lib/api/types'
 import { relative, remaining, shortId } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import IconButton from '@/components/IconButton.vue'
@@ -131,13 +132,13 @@ onMounted(load)
     <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
 
     <div class="space-y-6">
-      <ConsolePanel :title="t('developers.authorizedApps')" :note="t('developers.appsNote', { n: apps.length })">
-        <p v-if="loading" class="py-4 text-xs text-faint">{{ t('developers.readingAuthorizations') }}</p>
+      <ConsolePanel :title="t('developers.authorizedApps')" :note="loading ? undefined : t('developers.appsNote', { n: apps.length })">
+        <LoadingSkeleton v-if="loading" :rows="3" :columns="[3, 2, 1, 1]" header />
         <p v-else-if="!apps.length" class="voice py-4 text-[12px]">
           {{ t('developers.noApps') }}
         </p>
 
-        <div v-else class="overflow-x-auto">
+        <div v-else class="table-bleed overflow-x-auto">
           <table class="ledger">
             <thead>
               <tr>
@@ -183,7 +184,7 @@ onMounted(load)
         </template>
       </ConsolePanel>
 
-      <ConsolePanel :title="t('developers.apiKeys')" :note="t('developers.keysNote', { n: keys.length })">
+      <ConsolePanel :title="t('developers.apiKeys')" :note="loading ? undefined : t('developers.keysNote', { n: keys.length })">
         <div class="mb-4 flex flex-wrap items-end gap-2">
           <div class="min-w-[200px] flex-1">
             <label for="key-label" class="field-label">{{ t('developers.label') }}</label>
@@ -216,12 +217,12 @@ onMounted(load)
           </p>
         </div>
 
-        <p v-if="loading" class="py-4 text-xs text-faint">{{ t('developers.readingKeys') }}</p>
+        <LoadingSkeleton v-if="loading" :rows="3" :columns="[2, 4, 1, 1]" header />
         <p v-else-if="!keys.length" class="voice py-4 text-[12px]">
           {{ t('developers.noKeys') }}
         </p>
 
-        <div v-else class="overflow-x-auto">
+        <div v-else class="table-bleed overflow-x-auto">
           <table class="ledger">
             <thead>
               <tr>

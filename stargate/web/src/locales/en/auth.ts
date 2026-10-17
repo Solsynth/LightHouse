@@ -85,7 +85,6 @@ export default {
     title: 'Authorize {name}',
     introPrefix: 'This application asks to act with your account',
     introSuffix: '. You will return to the application after deciding.',
-    reading: 'Reading the request…',
     requestedAccess: 'requested access',
     scopeOpenid: 'Read your Solar Network profile',
     scopeProfile: 'Read your public profile information',

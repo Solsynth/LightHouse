@@ -9,6 +9,7 @@ import { StargateError } from '@/lib/api/client'
 import { securityModeCopy } from '@/lib/enums'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import SecurityNav from '@/components/SecurityNav.vue'
 
 const { t } = useI18n()
@@ -77,7 +78,7 @@ onMounted(load)
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <ConsolePanel :title="t('preferences.mode')">
-        <div v-if="loading" class="py-6 text-xs text-faint">{{ t('preferences.reading') }}</div>
+        <LoadingSkeleton v-if="loading" variant="rows" :rows="3" :rules="false" />
 
         <fieldset v-else class="space-y-2">
           <legend class="sr-only">{{ t('preferences.legend') }}</legend>

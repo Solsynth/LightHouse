@@ -312,6 +312,24 @@
   .dot {
     @apply inline-block size-[6px] shrink-0 rounded-full;
   }
+
+  /* Loading placeholder: a single soft sweep replaces a "reading…" line, so a
+     surface that has not resolved yet still shows its layout. It carries no
+     information and must never be announced as content. */
+  .skeleton {
+    @apply block rounded-[2px] bg-base-300/70;
+    animation: skeleton-sweep 1.4s ease-in-out infinite;
+  }
+
+  @keyframes skeleton-sweep {
+    0%,
+    100% {
+      opacity: 0.55;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

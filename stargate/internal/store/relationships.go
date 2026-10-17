@@ -202,6 +202,51 @@ func (s *Store) CountRelationshipsByStatus(ctx context.Context, accountID uuid.U
 	return int(count), err
 }
 
+// CountRelationshipDirections counts the non-expired friend/close-friend rows
+// on each side of the given account: followers (rows where the account is the
+// related side) and following (rows where the account is the account side).
+// It is the total-only companion to ListFollowers/ListFollowing, used by the
+// public profile summary where the accounts themselves are not needed.
+func (s *Store) CountRelationshipDirections(ctx context.Context, accountID uuid.UUID) (followers, following int, err error) {
+	type row struct {
+		RelatedCount int64 `gorm:"column:related_count"`
+		AccountCount int64 `gorm:"column:account_count"`
+	}
+	var counts row
+	if err := s.DB.WithContext(ctx).Model(&RelationshipEntity{}).
+		Select(`COUNT(*) FILTER (WHERE related_id = ?) AS related_count,
+			COUNT(*) FILTER (WHERE account_id = ?) AS account_count`, accountID, accountID).
+		Where("account_id = ? OR related_id = ?", accountID, accountID).
+		Where("(expired_at IS NULL OR expired_at > now())").
+		Where("status = ? OR status = ?", int16(model.RelationshipFriends), int16(model.RelationshipCloseFriend)).
+		Scan(&counts).Error; err != nil {
+		return 0, 0, err
+	}
+	return int(counts.RelatedCount), int(counts.AccountCount), nil
+}
+
+// CountMutualFriends counts accounts that hold a friend/close-friend row
+// toward both accounts. The directed friendship rows are written on accept in
+// both directions, so intersecting the two outgoing sets matches what the
+// mutual-friends endpoint returns.
+func (s *Store) CountMutualFriends(ctx context.Context, accountID, otherID uuid.UUID) (int, error) {
+	if accountID == otherID {
+		return 0, nil
+	}
+	var count int64
+	err := s.DB.WithContext(ctx).Model(&RelationshipEntity{}).
+		Where("account_id = ?", accountID).
+		Where("related_id IN (?)", s.DB.WithContext(ctx).Model(&RelationshipEntity{}).
+			Select("related_id").
+			Where("account_id = ?", otherID).
+			Where("(expired_at IS NULL OR expired_at > now())").
+			Where("status = ? OR status = ?", int16(model.RelationshipFriends), int16(model.RelationshipCloseFriend))).
+		Where("(expired_at IS NULL OR expired_at > now())").
+		Where("status = ? OR status = ?", int16(model.RelationshipFriends), int16(model.RelationshipCloseFriend)).
+		Count(&count).Error
+	return int(count), err
+}
+
 // ListRelatedAccountIDs returns the non-expired related account IDs for a
 // directed relationship status (mirrors GetCachedRelationships; the Friends
 // status includes CloseFriend rows). isRelated=true flips the direction

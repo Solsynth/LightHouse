@@ -7,6 +7,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/oidcctl"
 	"src.solsynth.dev/sosys/stargate/internal/module"
 	"src.solsynth.dev/sosys/stargate/internal/modules/common"
+	"src.solsynth.dev/sosys/stargate/internal/ports"
 )
 
 // Factory returns the compiled module descriptor.
@@ -23,7 +24,7 @@ func Factory() module.Factory {
 type instance struct{}
 
 func (i *instance) Configure(_ context.Context, host *module.Host) error {
-	deps := common.OIDC(host.Core)
+	deps := common.OIDC(host.Core, ports.FromRegistry(host.Ports))
 	oidcctl.Register(host.API, deps)
 	oidcctl.RegisterTop(host.Engine, deps)
 	return nil

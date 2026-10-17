@@ -10,6 +10,7 @@ import type { CacheStats, GeographyBucket } from '@/lib/api/types'
 import { bytes, compactNumber } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import IconButton from '@/components/IconButton.vue'
 
 const { t } = useI18n()
@@ -82,7 +83,8 @@ onMounted(load)
           {{ t('admin.overview.statAccounts') }}
         </p>
         <p class="mt-2 text-2xl font-light tabular-nums text-base-content">
-          {{ loading ? '—' : compactNumber(accounts) }}
+          <span v-if="loading" class="skeleton h-6 w-16" aria-hidden="true" />
+          <template v-else>{{ compactNumber(accounts) }}</template>
         </p>
         <p class="mt-1 text-2xs text-faint">{{ t('admin.overview.statAccountsNote') }}</p>
       </div>
@@ -91,7 +93,8 @@ onMounted(load)
           {{ t('admin.overview.statRestricted') }}
         </p>
         <p class="mt-2 text-2xl font-light tabular-nums text-base-content">
-          {{ loading ? '—' : compactNumber(suspended) }}
+          <span v-if="loading" class="skeleton h-6 w-16" aria-hidden="true" />
+          <template v-else>{{ compactNumber(suspended) }}</template>
         </p>
         <p class="mt-1 text-2xs text-faint">{{ t('admin.overview.statRestrictedNote') }}</p>
       </div>
@@ -132,9 +135,7 @@ onMounted(load)
         :title="t('admin.overview.geographyTitle')"
         :note="t('admin.overview.geographyNote')"
       >
-        <p v-if="loading" class="py-6 text-xs text-faint">
-          {{ t('admin.overview.geographyLoading') }}
-        </p>
+        <LoadingSkeleton v-if="loading" :rows="4" :columns="[4, 2, 2]" header />
         <p v-else-if="!topCountries.length" class="voice py-6 text-[12px]">
           {{ t('admin.overview.geographyEmpty') }}
         </p>

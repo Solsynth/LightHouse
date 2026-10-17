@@ -85,21 +85,50 @@ type Presence interface {
 	OnlineDevices(ctx context.Context, accountIDs []string, namespace string) (map[string][]OnlineDevice, error)
 }
 
-// OAuthApp is the minimal custom OAuth client shape.
+// OAuthApp is one custom OAuth/OIDC client. It is the merge of the local
+// TOML client, the Stargate-owned OAuth app and the Develop custom app, so
+// a provider fills only the fields it knows; nil optional fields mean the
+// provider has nothing to say about them.
 type OAuthApp struct {
 	ID           string
 	Slug         string
 	Name         string
-	ClientSecret string
 	Status       int
+	ClientSecret string
 	RedirectURIs []string
 	Scopes       []string
+
+	// PostLogoutRedirectURIs are the RFC 9700 RP-initiated logout targets.
+	PostLogoutRedirectURIs []string
+	RequirePkce           bool
+	AllowOfflineAccess    bool
+	IsPublicClient        bool
+
+	HomeUri           *string
+	PolicyUri         *string
+	TermsOfServiceUri *string
+
+	// Cloud-file references the consent screen renders.
+	Picture    *model.SnCloudFileReferenceObject
+	Background *model.SnCloudFileReferenceObject
 }
 
-// OAuthClients resolves custom OAuth/OIDC clients.
+// OAuthClients resolves custom OAuth/OIDC clients. A provider may serve
+// several sources (configuration, a local table, a remote service); it must
+// merge them in its own precedence order.
 type OAuthClients interface {
 	Available() bool
+	// Get resolves a client by its ID. Lookup by slug is the caller's job:
+	// iterate Slugged for a slug, or a provider may implement Slugged.
 	Get(ctx context.Context, id string) (*OAuthApp, error)
+	// CheckSecret verifies a presented client secret for an app.
+	CheckSecret(ctx context.Context, appID, secret string) (bool, error)
+}
+
+// OAuthClientsSlugged is an optional extension a provider implements to
+// resolve a client by its human-readable slug without scanning.
+type OAuthClientsSlugged interface {
+	GetBySlug(ctx context.Context, slug string) (*OAuthApp, error)
 }
 
 // NfcTokens validates a physical NFC token for login. tagUID is the optional

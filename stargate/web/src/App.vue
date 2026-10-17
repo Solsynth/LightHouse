@@ -14,8 +14,10 @@ import {
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 
-import { useSessionStore } from '@/stores/session'
+import { MODULES } from '@/lib/modules'
+import { useModulesStore } from '@/stores/modules'
 import { useNoticeStore } from '@/stores/notice'
+import { useSessionStore } from '@/stores/session'
 import { useUiStore } from '@/stores/ui'
 import { applyRouteTitle } from '@/router'
 import type { Locale } from '@/lib/prefs'
@@ -24,6 +26,7 @@ import ElevationSheet from '@/components/ElevationSheet.vue'
 const session = useSessionStore()
 const notice = useNoticeStore()
 const ui = useUiStore()
+const modules = useModulesStore()
 const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
@@ -34,6 +37,8 @@ interface NavItem {
   icon: Component
   scope: 'account' | 'security' | 'admin'
   match: string
+  /** Module IDs that must be mounted for this entry's routes to exist. */
+  modules?: string[]
 }
 
 const nav: NavItem[] = [
@@ -43,6 +48,7 @@ const nav: NavItem[] = [
     icon: User16,
     scope: 'account',
     match: '/account',
+    modules: [MODULES.profiles],
   },
   {
     to: '/security/sessions',
@@ -50,6 +56,7 @@ const nav: NavItem[] = [
     icon: SettingsAdjust16,
     scope: 'security',
     match: '/security',
+    modules: [MODULES.accounts],
   },
   {
     to: '/developers',
@@ -57,6 +64,7 @@ const nav: NavItem[] = [
     icon: Api16,
     scope: 'security',
     match: '/developers',
+    modules: [MODULES.accounts],
   },
   {
     to: '/activity',
@@ -64,13 +72,28 @@ const nav: NavItem[] = [
     icon: Activity16,
     scope: 'account',
     match: '/activity',
+    modules: [MODULES.accounts],
   },
-  { to: '/admin', labelKey: 'app.nav.admin', icon: Tools16, scope: 'admin', match: '/admin' },
+  {
+    to: '/admin',
+    labelKey: 'app.nav.admin',
+    icon: Tools16,
+    scope: 'admin',
+    match: '/admin',
+    modules: [MODULES.admin],
+  },
 ]
 
 const showAdmin = computed(() => session.account?.is_superuser === true)
 
-const visibleNav = computed(() => nav.filter((item) => item.scope !== 'admin' || showAdmin.value))
+// A nav entry disappears when the module serving its routes is not mounted:
+// the router redirects those routes anyway, and a tab that always lands on the
+// fallback is worse than no tab.
+const visibleNav = computed(() =>
+  nav.filter(
+    (item) => (item.scope !== 'admin' || showAdmin.value) && modules.hasAll(item.modules ?? []),
+  ),
+)
 
 const activeSection = computed(() => {
   const path = route.path

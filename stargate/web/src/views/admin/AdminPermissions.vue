@@ -11,6 +11,7 @@ import type { PermissionGroup } from '@/lib/api/types'
 import { relative } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import IconButton from '@/components/IconButton.vue'
 
@@ -122,17 +123,15 @@ onMounted(load)
 
         <ConsolePanel
           :title="t('admin.permissions.panelTitle')"
-          :note="t('admin.permissions.panelNote', { n: total })"
+          :note="loading ? undefined : t('admin.permissions.panelNote', { n: total })"
         >
-          <div v-if="loading" class="py-6 text-xs text-faint">
-            {{ t('admin.permissions.loading') }}
-          </div>
+          <LoadingSkeleton v-if="loading" :rows="4" :columns="[2, 3, 1, 1, 1]" header />
 
           <p v-else-if="!groups.length" class="voice py-6 text-[12px]">
             {{ t('admin.permissions.empty') }}
           </p>
 
-          <div v-else class="overflow-x-auto">
+          <div v-else class="table-bleed overflow-x-auto">
             <table class="ledger">
               <thead>
                 <tr>

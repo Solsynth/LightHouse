@@ -8,6 +8,7 @@ import type { GeographyBucket } from '@/lib/api/types'
 import { utcStamp } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 
 const { t } = useI18n()
 
@@ -74,17 +75,15 @@ onMounted(load)
 
     <ConsolePanel
       :title="precision === 'country' ? t('admin.geography.byCountry') : t('admin.geography.byCity')"
-      :note="t('admin.geography.panelNote', { buckets: buckets.length, total: totalUsers })"
+      :note="loading ? undefined : t('admin.geography.panelNote', { buckets: buckets.length, total: totalUsers })"
     >
-      <div v-if="loading" class="py-6 text-xs text-faint">
-        {{ t('admin.geography.loading') }}
-      </div>
+      <LoadingSkeleton v-if="loading" :rows="5" :columns="[2, 1, 3, 2]" header />
 
       <p v-else-if="!buckets.length" class="voice py-6 text-[12px]">
         {{ t('admin.geography.empty') }}
       </p>
 
-      <div v-else class="overflow-x-auto">
+      <div v-else class="table-bleed overflow-x-auto">
         <table class="ledger">
           <thead>
             <tr>

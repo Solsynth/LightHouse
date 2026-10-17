@@ -91,7 +91,13 @@ onMounted(load)
       >{{ t('authorize.introSuffix') }}
     </p>
 
-    <p v-if="loading" class="mt-6 text-xs text-faint">{{ t('authorize.reading') }}</p>
+    <div v-if="loading" class="mt-6 border border-line" aria-hidden="true">
+      <span class="skeleton mx-4 my-2.5 h-2 w-24" />
+      <div class="space-y-3 border-t border-line px-4 py-3">
+        <span class="skeleton h-3 w-2/3" />
+        <span class="skeleton h-3 w-1/2" />
+      </div>
+    </div>
 
     <template v-else-if="info">
       <div class="mt-6 border border-line">

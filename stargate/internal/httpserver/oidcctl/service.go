@@ -24,14 +24,11 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"src.solsynth.dev/sosys/go/pkg/models"
-	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/config"
 	"src.solsynth.dev/sosys/stargate/internal/model"
+	"src.solsynth.dev/sosys/stargate/internal/ports"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
@@ -147,8 +144,13 @@ type service struct {
 	jwt     *auth.JWTService
 	token   *auth.TokenAuthService
 	authSvc *auth.AuthService
-	develop gen.DyCustomAppServiceClient
-	log     *slog.Logger
+	// clients is the oauthClients port. It resolves deployment
+	// configuration, the Stargate-owned app table and Develop in the
+	// provider's documented precedence order.
+	clients ports.OAuthClients
+	// bySlug is the optional slug resolver a port provider may implement.
+	bySlug ports.OAuthClientsSlugged
+	log    *slog.Logger
 
 	issuer          string
 	publicKey       *rsa.PublicKey
@@ -168,9 +170,9 @@ func newService(d Deps) (*service, error) {
 		issuer = defaultIssuer
 	}
 	pubKey, privKey := loadOIDCKeys(d.Cfg)
-	var develop gen.DyCustomAppServiceClient
-	if d.Clients != nil {
-		develop = d.Clients.Develop
+	var bySlug ports.OAuthClientsSlugged
+	if slugged, ok := d.Clients.(ports.OAuthClientsSlugged); ok {
+		bySlug = slugged
 	}
 	return &service{
 		store:           d.Store,
@@ -179,7 +181,8 @@ func newService(d Deps) (*service, error) {
 		jwt:             d.JWT,
 		token:           d.Token,
 		authSvc:         d.Auth,
-		develop:         develop,
+		clients:         d.Clients,
+		bySlug:          bySlug,
 		log:             d.Log,
 		issuer:          issuer,
 		publicKey:       pubKey,
@@ -333,83 +336,51 @@ func (s *service) findClientBySlug(ctx context.Context, slug string) (*oidcClien
 }
 
 func (s *service) fetchClient(ctx context.Context, id, slug string) (oidcClient, error) {
-	if s.develop == nil {
+	if s.clients == nil || !s.clients.Available() {
 		if s.log != nil {
-			s.log.Warn("OIDC client lookup skipped: Develop gRPC client is not configured ([services] develop)", "id", id, "slug", slug)
+			s.log.Warn("OIDC client lookup skipped: no oauthClients provider is enabled (app.solian.id.oauthapps or app.solian.develop)", "id", id, "slug", slug)
 		}
 		return oidcClient{}, nil
 	}
-	req := &gen.DyGetCustomAppRequest{}
+	var (
+		app *ports.OAuthApp
+		err error
+	)
 	if id != "" {
-		req.Query = &gen.DyGetCustomAppRequest_Id{Id: id}
+		app, err = s.clients.Get(ctx, id)
+	} else if s.bySlug != nil {
+		app, err = s.bySlug.GetBySlug(ctx, slug)
 	} else {
-		req.Query = &gen.DyGetCustomAppRequest_Slug{Slug: slug}
+		// A provider that cannot resolve slugs cannot serve a slug-first
+		// request; every shipped provider implements GetBySlug.
+		return oidcClient{}, nil
 	}
-	resp, err := s.develop.GetCustomApp(ctx, req)
-	if err != nil {
-		if status.Code(err) == codes.NotFound {
-			return oidcClient{}, nil
-		}
+	if err != nil || app == nil {
 		return oidcClient{}, err
 	}
-	if resp == nil || resp.GetApp() == nil {
-		return oidcClient{}, nil
-	}
-	return clientFromProto(resp.GetApp()), nil
+	return clientFromPort(app), nil
 }
 
-func clientFromProto(p *gen.DyCustomApp) oidcClient {
-	client := oidcClient{
-		Id:     p.GetId(),
-		Slug:   p.GetSlug(),
-		Name:   p.GetName(),
-		Status: customAppStatusFromProto(p.GetStatus()),
-	}
-	if f := p.GetPicture(); f != nil {
-		client.Picture = cloudFileFromProto(f)
-	}
-	if f := p.GetBackground(); f != nil {
-		client.Background = cloudFileFromProto(f)
-	}
-	if l := p.GetLinks(); l != nil {
-		if v := l.GetHomePage(); v != "" {
-			client.HomeUri = &v
-		}
-		if v := l.GetPrivacyPolicy(); v != "" {
-			client.PolicyUri = &v
-		}
-		if v := l.GetTermsOfService(); v != "" {
-			client.TermsOfServiceUri = &v
-		}
-	}
-	if o := p.GetOauthConfig(); o != nil {
-		client.RedirectUris = o.GetRedirectUris()
-		client.AllowedScopes = o.GetAllowedScopes()
-		client.IsPublicClient = o.GetIsPublicClient()
-	}
-	return client
-}
-
-func customAppStatusFromProto(s gen.DyCustomAppStatus) int {
-	switch s {
-	case gen.DyCustomAppStatus_DY_PRODUCTION:
-		return 2
-	case gen.DyCustomAppStatus_DY_STAGING:
-		return 1
-	case gen.DyCustomAppStatus_DY_SUSPENDED:
-		return 3
-	default:
-		return 0
+// clientFromPort maps a resolved client onto the provider's cached shape.
+func clientFromPort(app *ports.OAuthApp) oidcClient {
+	return oidcClient{
+		Id:                app.ID,
+		Slug:              app.Slug,
+		Name:              app.Name,
+		Status:            app.Status,
+		Picture:           app.Picture,
+		Background:        app.Background,
+		HomeUri:           app.HomeUri,
+		PolicyUri:         app.PolicyUri,
+		TermsOfServiceUri: app.TermsOfServiceUri,
+		RedirectUris:      app.RedirectURIs,
+		AllowedScopes:     app.Scopes,
+		IsPublicClient:    app.IsPublicClient,
 	}
 }
 
-func cloudFileFromProto(f *gen.DyCloudFile) *model.SnCloudFileReferenceObject {
-	ref := models.FromProtoValue(f)
-	return &ref
-}
-
-// ValidateClientCredentialsAsync checks local configuration first, then
-// falls back to Develop's CheckCustomAppSecret with IsOidc=true.
+// validateClientCredentials checks the deployment-configured clients first,
+// then asks the port, which covers the Stargate-owned app table and Develop.
 func (s *service) validateClientCredentials(ctx context.Context, clientID, secret string) (bool, error) {
 	if s.cfg != nil {
 		if configured := s.cfg.FindLocalOAuthClient(clientID); configured != nil {
@@ -419,19 +390,10 @@ func (s *service) validateClientCredentials(ctx context.Context, clientID, secre
 			return subtle.ConstantTimeCompare([]byte(configured.ClientSecret), []byte(secret)) == 1, nil
 		}
 	}
-	if s.develop == nil {
+	if s.clients == nil || !s.clients.Available() {
 		return false, nil
 	}
-	isOidc := true
-	resp, err := s.develop.CheckCustomAppSecret(ctx, &gen.DyCheckCustomAppSecretRequest{
-		SecretIdentifier: &gen.DyCheckCustomAppSecretRequest_AppId{AppId: clientID},
-		Secret:           secret,
-		IsOidc:           &isOidc,
-	})
-	if err != nil {
-		return false, err
-	}
-	return resp.GetValid(), nil
+	return s.clients.CheckSecret(ctx, clientID, secret)
 }
 
 // --- Scope / redirect validation ---
