@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronLeft16, ChevronRight16, Close16 } from '@carbon/icons-vue'
+import { ChevronLeft16, ChevronRight16, Close16, Renew16 } from '@carbon/icons-vue'
 
 import { useNoticeStore } from '@/stores/notice'
 import { sessionApi } from '@/lib/api'
@@ -12,6 +12,7 @@ import { sessionTypeLabel } from '@/lib/enums'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
+import IconButton from '@/components/IconButton.vue'
 import SecurityNav from '@/components/SecurityNav.vue'
 
 const { t } = useI18n()
@@ -72,9 +73,9 @@ onMounted(load)
       :description="t('sessions.description')"
     >
       <template #actions>
-        <button type="button" class="btn btn-ghost btn-sm" :disabled="loading" @click="load">
-          {{ t('common.refresh') }}
-        </button>
+        <IconButton :label="t('common.refresh')" :disabled="loading" @click="load">
+          <Renew16 aria-hidden="true" />
+        </IconButton>
       </template>
     </PageHeader>
 
@@ -134,16 +135,14 @@ onMounted(load)
               </td>
               <td class="text-xs text-dim">{{ remaining(item.expired_at) }}</td>
               <td>
-                <button
+                <IconButton
                   v-if="!item.is_current"
-                  type="button"
-                  class="btn btn-ghost btn-xs px-1 text-dim hover:text-error"
-                  :title="t('sessions.revoke')"
-                  :aria-label="t('sessions.revoke')"
+                  :label="t('sessions.revoke')"
+                  tone="danger"
                   @click="pendingRevoke = item"
                 >
                   <Close16 aria-hidden="true" />
-                </button>
+                </IconButton>
                 <span v-else class="text-2xs text-faint">—</span>
               </td>
             </tr>

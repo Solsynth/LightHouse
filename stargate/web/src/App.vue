@@ -266,7 +266,7 @@ watch(locale, () => applyRouteTitle(route.meta))
                 aria-live="polite"
               >
                 <span :class="latest.tone === 'error' ? 'text-error' : 'text-success'">
-                  {{ latest.tone === 'error' ? 'err' : 'ok' }}
+                  {{ latest.tone === 'error' ? 'ERROR' : 'OK' }}
                 </span>
                 <span class="truncate text-dim">{{ latest.message }}</span>
               </div>

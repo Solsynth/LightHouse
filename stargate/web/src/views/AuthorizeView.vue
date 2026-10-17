@@ -95,8 +95,8 @@ onMounted(load)
 
     <template v-else-if="info">
       <div class="mt-6 border border-line">
-        <p class="eyebrow border-b border-line px-4 py-2.5">{{ t('authorize.requestedAccess') }}</p>
-        <ul class="divide-y divide-line-soft">
+        <p class="eyebrow px-4 py-2.5">{{ t('authorize.requestedAccess') }}</p>
+        <ul>
           <li v-for="scope in info.scopes" :key="scope" class="flex items-baseline gap-3 px-4 py-2.5">
             <span class="text-2xs text-faint">{{ scope }}</span>
             <span class="text-xs text-base-content">{{ scopeLabels[scope] ?? scope }}</span>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { TrashCan16, UserMinus16 } from '@carbon/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useNoticeStore } from '@/stores/notice'
@@ -12,6 +13,7 @@ import { relative, remaining } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
+import IconButton from '@/components/IconButton.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -170,7 +172,7 @@ onMounted(load)
           {{ t('admin.permissionGroup.emptyGrants') }}
         </p>
 
-        <ul v-else class="max-h-[420px] divide-y divide-line-soft overflow-y-auto">
+        <ul v-else class="max-h-[420px] overflow-y-auto">
           <li
             v-for="node in sortedNodes"
             :key="node.id"
@@ -183,14 +185,14 @@ onMounted(load)
                 <template v-if="node.expired_at"> · {{ remaining(node.expired_at) }}</template>
               </p>
             </div>
-            <button
-              type="button"
-              class="shrink-0 text-2xs text-dim hover:text-error"
+            <IconButton
+              :label="t('admin.permissionGroup.revoke')"
+              tone="danger"
               :disabled="busy"
               @click="pendingNode = node.key"
             >
-              {{ t('admin.permissionGroup.revoke') }}
-            </button>
+              <TrashCan16 aria-hidden="true" />
+            </IconButton>
           </li>
         </ul>
       </ConsolePanel>
@@ -222,7 +224,7 @@ onMounted(load)
           {{ t('admin.permissionGroup.emptyMembers') }}
         </p>
 
-        <ul v-else class="max-h-[420px] divide-y divide-line-soft overflow-y-auto">
+        <ul v-else class="max-h-[420px] overflow-y-auto">
           <li
             v-for="member in detail.members"
             :key="member.actor"
@@ -235,14 +237,14 @@ onMounted(load)
                 <template v-if="member.expired_at"> · {{ remaining(member.expired_at) }}</template>
               </p>
             </div>
-            <button
-              type="button"
-              class="shrink-0 text-2xs text-dim hover:text-error"
+            <IconButton
+              :label="t('common.remove')"
+              tone="danger"
               :disabled="busy"
               @click="pendingMember = member.actor"
             >
-              {{ t('common.remove') }}
-            </button>
+              <UserMinus16 aria-hidden="true" />
+            </IconButton>
           </li>
         </ul>
       </ConsolePanel>

@@ -50,7 +50,9 @@ The console ships English and Simplified Chinese, and a light and dark theme.
 Both follow the browser/OS on first visit, then remember the reader's choice in
 `localStorage`; the header carries the language pair and theme toggle on every
 page. The sign-in screen lists a social provider only when its credentials are
-complete in `[oidc]`, so no button leads to an unavailable provider.
+complete in `[oidc]`, so no button leads to an unavailable provider. The
+visual system — tokens, type, layout tiers, and component rules — is
+documented in [`docs/design-system.md`](docs/design-system.md).
 
 Routes resolve as follows:
 

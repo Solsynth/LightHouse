@@ -1,0 +1,308 @@
+# Solarpass console design system
+
+The console in `web/` is the account surface for Solar Network: sign-in,
+recovery, profile, security, developer apps, activity, and administration. It
+is served by Stargate itself, so the same document describes the deployment
+and the development server.
+
+This is the working reference for anyone adding a screen. It documents the
+choices already encoded in `web/src/assets/main.css`,
+`web/src/locales/`, and the shared components — not an aspirational style.
+
+## 1. Principles
+
+1. **A calm instrument, not a dashboard.** The interface reports state and
+   gets out of the way. No hero metrics, no decorative gradients, no chrome
+   that does not carry information.
+2. **One signal color.** Periwinkle (`primary`) marks the action or current
+   location. Semantic colors appear only when state needs them; brass
+   (`accent`) marks privilege and secondary emphasis.
+3. **Machine data and human explanation are typeset differently.** Monospace
+   is for identifiers, values, tables, labels, and chrome. Sans is the voice:
+   guidance, descriptions, and empty states.
+4. **Blocks, not rules.** Content areas are separated by surface color and
+   spacing. Horizontal hairlines survive only where they encode structure:
+   ledger rows, table headers, modal sections, and the boxed tab strip.
+5. **Boldness in one place.** The centered card, the blue-shifted palette, and
+   the terminal typography carry the identity. Everything else stays quiet.
+
+## 2. Color
+
+daisyUI themes are declared in `web/src/assets/main.css`:
+
+| Theme | Selector | Scheme |
+| --- | --- | --- |
+| `stargate` (default) | `data-theme="stargate"` | dark |
+| `stargate-light` | `data-theme="stargate-light"` | light |
+
+### Surfaces and text
+
+| Role | Token | Dark | Light |
+| --- | --- | --- | --- |
+| Page | `--color-base-100` | `#0a0d16` | `#f3f5fa` |
+| Panel | `--color-base-200` | `#10141f` | `#eaeef6` |
+| Raised | `--color-base-300` | `#171c2b` | `#dee3ee` |
+| Text | `--color-base-content` | `#ccd2e2` | `#1c2334` |
+| Hairline | `--console-line` | `#232a3c` | `#ccd3e1` |
+| Soft hairline | `--console-line-soft` | `#1a2030` | `#dee3ed` |
+| Secondary text | `--console-dim` | `#9aa3b8` | `#4d5770` |
+| Faint text | `--console-faint` | `#7d86a0` | `#646e86` |
+
+`line`, `line-soft`, `faint`, and `dim` are exposed to Tailwind as
+`border-line`, `border-line-soft`, `text-faint`, and `text-dim`. They resolve
+through the active theme, so shared components never hardcode a theme color.
+
+### Signal and state
+
+| Role | Dark | Light | Use |
+| --- | --- | --- | --- |
+| `primary` | `#7577ba` | `#54589f` | primary action, current tab, focus ring |
+| `accent` | `#c7b08a` | `#8a6a3b` | elevated sessions, trusted state |
+| `success` | `#8db39a` | `#3d6d4f` | `OK` status, verified state |
+| `warning` | `#c7b08a` | `#8a6a3b` | pending or expiring state |
+| `error` | `#c08579` | `#a4554a` | destructive action, `ERROR` status |
+| `info` | `#8fa6c9` | `#3f678c` | neutral live indicator |
+
+Contrast (measured in the browser on the light theme): body `14.37:1`, dim
+`6.61:1`, faint `4.68:1`, primary button text `6.05:1`. Faint is the floor for
+small text; do not lighten it further.
+
+Theme choice follows the OS on first visit, then persists in
+`localStorage['solarpass.theme']`. The toggle lives in the header on every
+page.
+
+## 3. Typography
+
+| Face | Weights | Role |
+| --- | --- | --- |
+| IBM Plex Mono | 400, 500 | interface chrome, labels, data, tables, buttons |
+| IBM Plex Sans | 400, 500, 600 | page titles, prose (`.voice`), display headings |
+
+| Token | Size | Use |
+| --- | --- | --- |
+| page title | 24 px (20 px on mobile) | one per route, `h1.title` |
+| title | 13 px / 600 | modal and header names |
+| body | 13 px mono | default |
+| voice | 13.5 px sans | descriptions, hints, empty states |
+| small | 12 px | dense prose in footers |
+| `text-2xs` | 11 px | labels, chips, metadata, table headers |
+
+Labels use uppercase, `0.14em` tracking, faint color. Table headers use
+uppercase `10 px` with `0.14em` tracking. Numeric columns use
+`tabular-nums`. Identifiers are truncated in dense tables and expose the full
+value through `title`.
+
+## 4. Layout
+
+The shell is one centered card; the page has no separate sidebar or top-level
+chrome beyond the card header.
+
+```
+┌─ viewport ───────────────────────────────────────────┐
+│        ┌─ card (width by route) ──────────────────┐  │
+│        │ brand · language · theme · identity      │  │
+│        ├──────────────────────────────────────────┤  │
+│        │ nav (signed in)                          │  │
+│        ├──────────────────────────────────────────┤  │
+│        │ page header (title, description, action) │  │
+│        │                                          │  │
+│        │ panels / forms / ledgers                 │  │
+│        │                                          │  │
+│        │ status bar (OK/ERROR + message)          │  │
+│        └──────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────┘
+```
+
+Width tiers are decided by route metadata in `web/src/router/index.ts`:
+
+| Tier | Width | Routes |
+| --- | --- | --- |
+| flow | 460 px | sign-in, create account, recovery, captcha, provider callback, authorize |
+| account | 880 px | profile, factors, contacts, security mode |
+| wide | 1120 px | sessions, developers, activity |
+| full | viewport − 32 px | all admin pages |
+
+The card floats in a 16 px viewport gutter; content padding is 20 px, 28 px
+from the `sm` breakpoint, and panel padding is 16 px. The 4 px spacing unit is
+used throughout; prefer gaps over nested borders.
+
+**Never nest a bordered card inside the page card.** Content sits directly on
+the page surface; panels use `bg-base-200/30` to group a region, and the
+status bar and table footers are separated by spacing, not rules.
+
+## 5. Components
+
+### Header
+
+Brand mark is a CSS mask over `currentColor` (so it repaints with the theme),
+then `SOLARPASS`, then `Solar Network` on wider screens. Right side, in order:
+language pair (`EN / 中文`), theme toggle, identity, sign out. The language
+pair is a pressed-button group, not a select. Every control is reachable
+before sign-in.
+
+### Navigation
+
+The main nav is a single horizontal line of 11 px links with a Carbon 16 icon.
+The active section is `text-base-content`; the rest are `text-faint`.
+
+`SecurityNav` is a contained tab box: 1 px border, hairline dividers between
+tabs, active tab filled with `base-300`, inactive tabs faint with a hover tint.
+It uses `aria-current="page"`. Do not use underlined tabs.
+
+### Page header
+
+`PageHeader` renders the route title, an optional description in the voice
+face, and an actions slot. It has no bottom rule; spacing separates it from
+the content.
+
+### ConsolePanel
+
+`section` with `border border-line bg-base-200/30`, a title/note header, a
+body, and an optional footer for pagination or notes. Header and footer have
+no horizontal rules. Use it for every grouped region; do not re-implement its
+shell inline.
+
+### Ledger
+
+`table.ledger` is the only table style: hairline row separators, a stronger
+header rule, no zebra striping, hover tinting the row, right-aligned last
+column. First and last cells carry 8 px outer padding by default. Wrap tables
+in `.table-bleed` inside a panel to let row rules meet the panel edge; cell
+text then keeps 16 px to match the panel header.
+
+### Forms
+
+Labels sit above the field (`.field-label`, uppercase 11 px). Inputs, selects,
+and textareas are full width, 40 px high, 2 px radius, `base-200` fill, hairline
+border, and periwinkle focus outline. Placeholders are only for examples
+(`name@example.com`) or format hints (`6-digit code`); do not repeat the label.
+
+### Buttons
+
+| Class | Use |
+| --- | --- |
+| `btn btn-primary` | the single committing action on a surface |
+| `btn btn-outline` | alternative flows (passkey, provider) |
+| `btn btn-ghost` | secondary/cancel |
+| `btn btn-error` | destructive confirmation |
+
+All buttons are 2 px radius, mono, 12 px, no shadow. One primary action per
+view.
+
+### IconButton
+
+`IconButton` is the standard row/list action: 26 × 24 px, Carbon 16 icon,
+`text-dim`, hover to `base-content`, danger tone to `error`. It requires a
+`label`, used for both `aria-label` and `title` (the native tooltip). Use it
+for table rows, list items, and panel header refresh actions. Text actions are
+reserved for forms and first-class choices.
+
+### CopyButton
+
+A compact chip with only an icon and a tooltip; it swaps to a checkmark after
+copying. The accessible name includes what is being copied.
+
+### Status bar
+
+The footer of the shell, rendered after any notice: uppercase `OK` in
+`text-success` or `ERROR` in `text-error`, followed by the message in `dim`.
+Never lowercase the marker.
+
+### Modals
+
+`ConfirmAction` and `ElevationSheet` are the only surfaces that keep internal
+horizontal rules: a header block, body, and an action footer. They are modal,
+so their boundaries are functional.
+
+## 6. Motion
+
+Motion explains a change, never decorates:
+
+| Motion | Duration | Where |
+| --- | --- | --- |
+| step swap | 160 ms, 6 px rise | sign-in identify ↔ challenge |
+| row enter/leave | 160 ms | factor rows |
+| notice | 160 ms | status bar |
+| card height | 220 ms | shell region resize |
+
+All of it is disabled under `prefers-reduced-motion: reduce`. Do not add
+scroll-triggered animation or ambient movement.
+
+## 7. Iconography
+
+Carbon 16 icons only, inheriting `currentColor`. Icons are `aria-hidden` and
+always paired with text or an `IconButton` label. New icons must be added to
+`web/src/types/carbon-icons-vue.d.ts`, which types only the glyphs the console
+imports.
+
+## 8. Language and copy
+
+Locales: English (`en`) and Simplified Chinese (`zh-CN`). Catalogs live in
+`web/src/locales/<locale>/<area>.ts`; each module exports unique top-level
+namespaces, merged by `import.meta.glob` in `web/src/lib/i18n.ts`. Return
+the reader to the same screen with the same state when switching languages.
+
+- The locale follows the browser on first visit, then persists in
+  `localStorage['solarpass.locale']`.
+- `html lang` and the document title update with the locale.
+- Use `useI18n()` in components; `translate()` only outside setup.
+- Formatters (`relative`, `remaining`, `compactNumber`, enum labels) are
+  locale-aware. Do not format dates or numbers by hand.
+- Literal `@`, `|`, and braces are message syntax in vue-i18n. Escape an email
+  placeholder as `name{'@'}example.com`.
+
+### Voice
+
+Write from the reader's side of the screen. Name what a control does, keep the
+same verb through the flow, and state outcomes plainly.
+
+- Sentence case in English; full-width punctuation in Chinese sentences.
+- No trailing punctuation on labels, buttons, or tabs.
+- Errors say what happened and what to do next; they do not apologize.
+- Empty states invite the next action.
+- Do not expose implementation details in user copy. Say "signed out", not
+  "cookies cleared"; "verification code", not "token"; "this browser", not
+  "this session's JWT".
+- Terminology: account 账号, sign in 登录, sign out 退出登录, session 会话,
+  passkey 通行密钥, verification code 验证码, elevated 已提权.
+
+## 9. Accessibility
+
+- Visible `:focus-visible` outline in primary, 2 px offset.
+- Icon-only controls carry both `aria-label` and `title`.
+- Active tabs use `aria-current="page"`; modal dialogs use `aria-modal` and a
+  labelled title.
+- Tables use `scope="col"` and a screen-reader-only actions header.
+- Body text is 13 px; the smallest text (11 px) is limited to labels and
+  metadata and meets 4.5:1 on both themes.
+- Hit targets are at least 24 px; row actions are spaced in a 26 px control.
+- Layout works from 360 px wide; tables scroll horizontally rather than
+  crushing columns.
+
+## 10. Implementation map
+
+| Concern | File |
+| --- | --- |
+| tokens, themes, base chrome | `web/src/assets/main.css` |
+| theme/locale persistence | `web/src/lib/prefs.ts`, `web/src/stores/ui.ts` |
+| i18n instance and helpers | `web/src/lib/i18n.ts` |
+| message catalogs | `web/src/locales/{en,zh-CN}/*.ts` |
+| date/number/enum presentation | `web/src/lib/format.ts`, `web/src/lib/enums.ts` |
+| shell and status bar | `web/src/App.vue` |
+| width tiers and titles | `web/src/router/index.ts` |
+| shared surfaces | `web/src/components/` |
+
+## 11. Adding a screen
+
+1. Register the route with a `titleKey` and the right width tier (`narrow`,
+   `wide`, or `full`; default is account width).
+2. Build the page from `PageHeader` and `ConsolePanel`; do not add a nested
+   bordered card.
+3. Use the ledger for tabular data and `.table-bleed` inside panels.
+4. Use `IconButton` with a label for row actions; use native `title` for
+   tooltips.
+5. Add copy to both locale modules with identical key shapes; run the
+   formatters instead of hand-formatting values.
+6. Give tables a periodic pager (icon buttons) when the API supports
+   `take`/`offset`; show the page count and live total.
+7. Run `make -C web check` (type check, lint, tests, production build).

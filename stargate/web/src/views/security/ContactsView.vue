@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Checkmark16, Favorite16, TrashCan16, View16, ViewOff16 } from '@carbon/icons-vue'
 
 import { useNoticeStore } from '@/stores/notice'
 import { securityApi } from '@/lib/api'
@@ -11,6 +12,7 @@ import { relative, utcStamp } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
+import IconButton from '@/components/IconButton.vue'
 import SecurityNav from '@/components/SecurityNav.vue'
 
 const { t } = useI18n()
@@ -132,7 +134,7 @@ onMounted(load)
           {{ t('contacts.empty') }}
         </p>
 
-        <ul v-else class="divide-y divide-line-soft">
+        <ul v-else>
           <li
             v-for="contact in contacts"
             :key="contact.id"
@@ -158,41 +160,39 @@ onMounted(load)
                 </template>
               </p>
             </div>
-            <div class="flex flex-wrap items-center gap-3">
-              <button
+            <div class="flex items-center gap-1">
+              <IconButton
                 v-if="!contact.verified_at"
-                type="button"
-                class="text-2xs text-dim hover:text-base-content"
+                :label="t('contacts.verify')"
                 :disabled="busy"
                 @click="verify(contact)"
               >
-                {{ t('contacts.verify') }}
-              </button>
-              <button
+                <Checkmark16 aria-hidden="true" />
+              </IconButton>
+              <IconButton
                 v-if="!contact.is_primary"
-                type="button"
-                class="text-2xs text-dim hover:text-base-content"
+                :label="t('contacts.makePrimary')"
                 :disabled="busy"
                 @click="makePrimary(contact)"
               >
-                {{ t('contacts.makePrimary') }}
-              </button>
-              <button
-                type="button"
-                class="text-2xs text-dim hover:text-base-content"
+                <Favorite16 aria-hidden="true" />
+              </IconButton>
+              <IconButton
+                :label="contact.is_public ? t('contacts.hide') : t('contacts.showPublicly')"
                 :disabled="busy"
                 @click="togglePublic(contact)"
               >
-                {{ contact.is_public ? t('contacts.hide') : t('contacts.showPublicly') }}
-              </button>
-              <button
-                type="button"
-                class="text-2xs text-dim hover:text-error"
+                <ViewOff16 v-if="contact.is_public" aria-hidden="true" />
+                <View16 v-else aria-hidden="true" />
+              </IconButton>
+              <IconButton
+                :label="t('common.delete')"
+                tone="danger"
                 :disabled="busy"
                 @click="pendingDelete = contact"
               >
-                {{ t('common.delete') }}
-              </button>
+                <TrashCan16 aria-hidden="true" />
+              </IconButton>
             </div>
           </li>
         </ul>

@@ -27,12 +27,12 @@ async function copy() {
 <template>
   <button
     type="button"
-    class="chip hover:border-faint hover:text-base-content"
+    class="chip justify-center"
     :title="t('copy.title', { label: label ?? t('copy.value') })"
+    :aria-label="t('copy.title', { label: label ?? t('copy.value') })"
     @click="copy"
   >
     <Checkmark16 v-if="copied" aria-hidden="true" />
     <Copy16 v-else aria-hidden="true" />
-    {{ copied ? t('common.copied') : t('common.copy') }}
   </button>
 </template>

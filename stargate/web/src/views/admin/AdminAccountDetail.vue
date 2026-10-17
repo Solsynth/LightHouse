@@ -194,31 +194,31 @@ onMounted(load)
 
         <ConsolePanel :title="t('admin.accountDetail.panelAccount')">
           <dl class="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-            <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
+            <div class="flex justify-between pb-2 text-xs">
               <dt class="text-faint">{{ t('common.name') }}</dt>
               <dd class="text-dim">{{ account?.name }}</dd>
             </div>
-            <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
+            <div class="flex justify-between pb-2 text-xs">
               <dt class="text-faint">{{ t('admin.accountDetail.nick') }}</dt>
               <dd class="text-dim">{{ account?.nick }}</dd>
             </div>
-            <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
+            <div class="flex justify-between pb-2 text-xs">
               <dt class="text-faint">{{ t('admin.accountDetail.locale') }}</dt>
               <dd class="text-dim">{{ account?.language }} · {{ account?.region }}</dd>
             </div>
-            <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
+            <div class="flex justify-between pb-2 text-xs">
               <dt class="text-faint">{{ t('admin.accountDetail.activated') }}</dt>
               <dd class="text-dim">
                 {{ account?.activated_at ? t('common.yes') : t('common.no') }}
               </dd>
             </div>
-            <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
+            <div class="flex justify-between pb-2 text-xs">
               <dt class="text-faint">{{ t('admin.accountDetail.superuser') }}</dt>
               <dd :class="account?.is_superuser ? 'text-accent' : 'text-dim'">
                 {{ account?.is_superuser ? t('common.yes') : t('common.no') }}
               </dd>
             </div>
-            <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
+            <div class="flex justify-between pb-2 text-xs">
               <dt class="text-faint">{{ t('common.created') }}</dt>
               <dd class="text-dim">{{ utcStamp(account?.created_at).slice(0, 10) }}</dd>
             </div>
@@ -232,7 +232,7 @@ onMounted(load)
           <p v-if="!detail.contacts.length" class="voice py-3 text-[12px]">
             {{ t('admin.accountDetail.noContacts') }}
           </p>
-          <ul v-else class="divide-y divide-line-soft">
+          <ul v-else>
             <li
               v-for="contact in detail.contacts"
               :key="contact.id"
@@ -270,7 +270,7 @@ onMounted(load)
           <p v-if="!detail.auth_factors.length" class="voice py-3 text-[12px]">
             {{ t('admin.accountDetail.noFactors') }}
           </p>
-          <ul v-else class="divide-y divide-line-soft">
+          <ul v-else>
             <li
               v-for="factor in detail.auth_factors"
               :key="factor.id"

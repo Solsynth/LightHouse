@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronLeft16, ChevronRight16 } from '@carbon/icons-vue'
+import { ChevronLeft16, ChevronRight16, TrashCan16 } from '@carbon/icons-vue'
 import { RouterLink } from 'vue-router'
 
 import { useNoticeStore } from '@/stores/notice'
@@ -12,6 +12,7 @@ import { relative } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
+import IconButton from '@/components/IconButton.vue'
 
 const { t } = useI18n()
 const notice = useNoticeStore()
@@ -156,14 +157,14 @@ onMounted(load)
                   <td class="text-xs tabular-nums text-dim">{{ group.member_count }}</td>
                   <td class="text-xs text-dim">{{ relative(group.updated_at) }}</td>
                   <td>
-                    <button
-                      type="button"
-                      class="text-2xs text-dim hover:text-error"
+                    <IconButton
+                      :label="t('common.delete')"
+                      tone="danger"
                       :disabled="busy"
                       @click="pendingDelete = group"
                     >
-                      {{ t('common.delete') }}
-                    </button>
+                      <TrashCan16 aria-hidden="true" />
+                    </IconButton>
                   </td>
                 </tr>
               </tbody>

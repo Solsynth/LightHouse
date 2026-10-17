@@ -103,7 +103,7 @@ onMounted(load)
           </label>
         </fieldset>
 
-        <div v-if="!loading" class="mt-5 flex items-center gap-2 border-t border-line-soft pt-4">
+        <div v-if="!loading" class="mt-5 flex items-center gap-2">
           <button
             type="button"
             class="btn btn-primary btn-sm"

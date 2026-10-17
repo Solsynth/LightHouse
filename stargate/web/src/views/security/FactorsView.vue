@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Power16, TrashCan16 } from '@carbon/icons-vue'
 
 import { useNoticeStore } from '@/stores/notice'
 import { securityApi } from '@/lib/api'
@@ -11,6 +12,7 @@ import { relative, remaining } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
+import IconButton from '@/components/IconButton.vue'
 import SecurityNav from '@/components/SecurityNav.vue'
 
 const { t } = useI18n()
@@ -130,7 +132,7 @@ onMounted(load)
           {{ t('factors.empty') }}
         </p>
 
-        <ul v-else class="divide-y divide-line-soft">
+        <ul v-else>
           <li
             v-for="factor in factors"
             :key="factor.id"
@@ -162,23 +164,22 @@ onMounted(load)
                 </template>
               </p>
             </div>
-            <div class="flex items-center gap-3">
-              <button
-                type="button"
-                class="text-2xs text-dim hover:text-base-content"
+            <div class="flex items-center gap-1">
+              <IconButton
+                :label="factor.enabled_at ? t('factors.disable') : t('factors.enable')"
                 :disabled="busy"
                 @click="toggle(factor)"
               >
-                {{ factor.enabled_at ? t('factors.disable') : t('factors.enable') }}
-              </button>
-              <button
-                type="button"
-                class="text-2xs text-dim hover:text-error"
+                <Power16 aria-hidden="true" />
+              </IconButton>
+              <IconButton
+                :label="t('common.delete')"
+                tone="danger"
                 :disabled="busy"
                 @click="pendingDelete = factor"
               >
-                {{ t('common.delete') }}
-              </button>
+                <TrashCan16 aria-hidden="true" />
+              </IconButton>
             </div>
           </li>
         </ul>

@@ -6,7 +6,7 @@ defineProps<{
 </script>
 
 <template>
-  <header class="mb-7 flex flex-wrap items-end justify-between gap-4 border-b border-line pb-5">
+  <header class="mb-7 flex flex-wrap items-end justify-between gap-4">
     <div>
       <h1 class="title mt-2 text-xl text-base-content sm:text-2xl">
         {{ title }}

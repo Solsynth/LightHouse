@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Renew16 } from '@carbon/icons-vue'
 
 import { useNoticeStore } from '@/stores/notice'
 import { adminApi } from '@/lib/api'
@@ -10,6 +11,7 @@ import { bytes, compactNumber } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
+import IconButton from '@/components/IconButton.vue'
 
 const { t } = useI18n()
 const notice = useNoticeStore()
@@ -105,9 +107,9 @@ onMounted(load)
   <div>
     <PageHeader :title="t('admin.cache.title')" :description="t('admin.cache.description')">
       <template #actions>
-        <button type="button" class="btn btn-ghost btn-sm" :disabled="loading" @click="load">
-          {{ t('common.refresh') }}
-        </button>
+        <IconButton :label="t('common.refresh')" :disabled="loading" @click="load">
+          <Renew16 aria-hidden="true" />
+        </IconButton>
       </template>
     </PageHeader>
 
@@ -149,19 +151,19 @@ onMounted(load)
     <div v-if="stats" class="mt-6 grid gap-6 lg:grid-cols-2">
       <ConsolePanel :title="t('admin.cache.counters')">
         <dl class="space-y-3 text-xs">
-          <div class="flex justify-between border-b border-line-soft pb-2">
+          <div class="flex justify-between pb-2">
             <dt class="text-faint">{{ t('admin.cache.keyspaceHits') }}</dt>
             <dd class="tabular-nums text-dim">{{ compactNumber(stats.keyspace_hits) }}</dd>
           </div>
-          <div class="flex justify-between border-b border-line-soft pb-2">
+          <div class="flex justify-between pb-2">
             <dt class="text-faint">{{ t('admin.cache.keyspaceMisses') }}</dt>
             <dd class="tabular-nums text-dim">{{ compactNumber(stats.keyspace_misses) }}</dd>
           </div>
-          <div class="flex justify-between border-b border-line-soft pb-2">
+          <div class="flex justify-between pb-2">
             <dt class="text-faint">{{ t('admin.cache.evictedKeys') }}</dt>
             <dd class="tabular-nums text-dim">{{ compactNumber(stats.evicted_keys) }}</dd>
           </div>
-          <div class="flex justify-between border-b border-line-soft pb-2">
+          <div class="flex justify-between pb-2">
             <dt class="text-faint">{{ t('admin.cache.expiredKeys') }}</dt>
             <dd class="tabular-nums text-dim">{{ compactNumber(stats.expired_keys) }}</dd>
           </div>
@@ -242,7 +244,7 @@ onMounted(load)
         <p class="text-2xs text-faint">
           {{ t('admin.cache.groupCount', { n: group.count, group: group.group }) }}
         </p>
-        <ul v-if="group.keys.length" class="mt-2 max-h-64 divide-y divide-line-soft overflow-y-auto">
+        <ul v-if="group.keys.length" class="mt-2 max-h-64 overflow-y-auto">
           <li v-for="key in group.keys" :key="key" class="break-all py-1.5 text-2xs text-dim">
             {{ key }}
           </li>

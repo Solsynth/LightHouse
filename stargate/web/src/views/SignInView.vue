@@ -290,7 +290,7 @@ onBeforeUnmount(() => {
         {{ busy ? t('signIn.checking') : t('common.continue') }}
       </button>
 
-      <div v-if="passkeySupported" class="mt-4 border-t border-line-soft pt-4">
+      <div v-if="passkeySupported" class="mt-5 pt-1">
         <button
           type="button"
           class="btn btn-outline w-full"
@@ -302,7 +302,7 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
-      <div v-if="providers.length" class="mt-4 border-t border-line-soft pt-4">
+      <div v-if="providers.length" class="mt-5 pt-1">
         <p class="field-label">{{ t('signIn.orContinueWith') }}</p>
         <div class="space-y-2">
           <a
@@ -318,7 +318,7 @@ onBeforeUnmount(() => {
     </form>
 
     <div v-else key="challenge">
-      <header class="flex items-center justify-between border-b border-line pb-3">
+      <header class="flex items-center justify-between pb-3">
         <div class="min-w-0">
           <p class="truncate text-xs text-base-content">{{ signIn.account }}</p>
           <p class="text-2xs text-faint">
@@ -400,7 +400,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <p v-if="error || signIn.error" class="mt-3 border-t border-line pt-3 text-xs text-error">
+      <p v-if="error || signIn.error" class="mt-3 text-xs text-error">
         {{ error || signIn.error }}
       </p>
     </div>

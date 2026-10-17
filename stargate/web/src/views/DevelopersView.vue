@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Renew16, TrashCan16, Unlink16, View16, ViewOff16 } from '@carbon/icons-vue'
 
 import { useNoticeStore } from '@/stores/notice'
 import { appApi } from '@/lib/api'
@@ -10,6 +11,7 @@ import { relative, remaining, shortId } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
+import IconButton from '@/components/IconButton.vue'
 import CopyButton from '@/components/CopyButton.vue'
 
 const { t } = useI18n()
@@ -193,14 +195,14 @@ onMounted(load)
                 <td class="text-xs text-dim">{{ relative(app.last_authorized_at) }}</td>
                 <td class="text-xs text-dim">{{ relative(app.last_used_at) }}</td>
                 <td>
-                  <button
-                    type="button"
-                    class="text-2xs text-dim hover:text-error"
+                  <IconButton
+                    :label="t('developers.revoke')"
+                    tone="danger"
                     :disabled="busy"
                     @click="pendingDeauth = app"
                   >
-                    {{ t('developers.revoke') }}
-                  </button>
+                    <TrashCan16 aria-hidden="true" />
+                  </IconButton>
                 </td>
               </tr>
             </tbody>
@@ -270,23 +272,22 @@ onMounted(load)
                 <td class="text-xs text-dim">{{ relative(key.created_at) }}</td>
                 <td class="text-xs text-dim">{{ remaining(key.expired_at) }}</td>
                 <td>
-                  <span class="flex items-center justify-end gap-3">
-                    <button
-                      type="button"
-                      class="text-2xs text-dim hover:text-base-content"
+                  <span class="flex items-center justify-end gap-1">
+                    <IconButton
+                      :label="t('developers.rotate')"
                       :disabled="busy"
                       @click="rotate(key)"
                     >
-                      {{ t('developers.rotate') }}
-                    </button>
-                    <button
-                      type="button"
-                      class="text-2xs text-dim hover:text-error"
+                      <Renew16 aria-hidden="true" />
+                    </IconButton>
+                    <IconButton
+                      :label="t('developers.revoke')"
+                      tone="danger"
                       :disabled="busy"
                       @click="pendingRevoke = key"
                     >
-                      {{ t('developers.revoke') }}
-                    </button>
+                      <TrashCan16 aria-hidden="true" />
+                    </IconButton>
                   </span>
                 </td>
               </tr>
@@ -304,7 +305,7 @@ onMounted(load)
           {{ t('developers.noConnections') }}
         </p>
 
-        <ul v-else class="divide-y divide-line-soft">
+        <ul v-else>
           <li
             v-for="connection in connections"
             :key="connection.id"
@@ -323,24 +324,24 @@ onMounted(load)
                 {{ t('developers.lastUsedAt', { time: relative(connection.last_used_at) }) }}
               </p>
             </div>
-            <div class="flex items-center gap-3">
-              <button
-                type="button"
-                class="text-2xs text-dim hover:text-base-content"
+            <div class="flex items-center gap-1">
+              <IconButton
+                :label="connection.is_public ? t('developers.hide') : t('developers.showPublicly')"
                 :disabled="busy"
                 @click="toggleVisibility(connection)"
               >
-                {{ connection.is_public ? t('developers.hide') : t('developers.showPublicly') }}
-              </button>
-              <button
+                <ViewOff16 v-if="connection.is_public" aria-hidden="true" />
+                <View16 v-else aria-hidden="true" />
+              </IconButton>
+              <IconButton
                 v-if="!connection.registered_at"
-                type="button"
-                class="text-2xs text-dim hover:text-error"
+                :label="t('developers.unlink')"
+                tone="danger"
                 :disabled="busy"
                 @click="removeConnection(connection)"
               >
-                {{ t('developers.unlink') }}
-              </button>
+                <Unlink16 aria-hidden="true" />
+              </IconButton>
             </div>
           </li>
         </ul>

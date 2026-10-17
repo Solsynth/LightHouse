@@ -114,7 +114,7 @@ onMounted(loadForm)
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div class="space-y-6">
         <ConsolePanel :title="t('account.identity')" :note="t('account.updated', { time: age(profile?.updated_at) })">
-          <dl class="divide-y divide-line-soft">
+          <dl>
             <div class="grid grid-cols-[132px_minmax(0,1fr)] gap-4 py-2.5 first:pt-0">
               <dt class="text-2xs uppercase tracking-[0.12em] text-faint">{{ t('account.name') }}</dt>
               <dd class="text-xs text-base-content">{{ session.account?.name }}</dd>
@@ -192,7 +192,7 @@ onMounted(loadForm)
 
             <p v-if="error" class="border-l border-error pl-3 text-xs text-error">{{ error }}</p>
 
-            <div class="flex items-center gap-2 border-t border-line-soft pt-4">
+            <div class="mt-4 flex items-center gap-2">
               <button type="submit" class="btn btn-primary btn-sm" :disabled="saving">
                 {{ saving ? t('common.saving') : t('account.saveProfile') }}
               </button>
@@ -207,19 +207,19 @@ onMounted(loadForm)
               {{ profile?.bio || t('account.noBio') }}
             </p>
             <dl class="mt-5 grid gap-x-6 gap-y-3 sm:grid-cols-2">
-              <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
+              <div class="flex justify-between pb-2 text-xs">
                 <dt class="text-faint">{{ t('account.pronouns') }}</dt>
                 <dd class="text-dim">{{ profile?.pronouns || '—' }}</dd>
               </div>
-              <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
+              <div class="flex justify-between pb-2 text-xs">
                 <dt class="text-faint">{{ t('account.location') }}</dt>
                 <dd class="text-dim">{{ profile?.location || '—' }}</dd>
               </div>
-              <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
+              <div class="flex justify-between pb-2 text-xs">
                 <dt class="text-faint">{{ t('account.timeZone') }}</dt>
                 <dd class="text-dim">{{ profile?.time_zone || '—' }}</dd>
               </div>
-              <div class="flex justify-between border-b border-line-soft pb-2 text-xs">
+              <div class="flex justify-between pb-2 text-xs">
                 <dt class="text-faint">{{ t('account.birthday') }}</dt>
                 <dd class="text-dim">{{ profile?.birthday ? utcStamp(profile.birthday).slice(0, 10) : '—' }}</dd>
               </div>
