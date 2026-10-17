@@ -244,14 +244,20 @@ func (s *Store) UpdateAuthChallenge(ctx context.Context, ch *model.AuthChallenge
 		}).Error
 }
 
-// FindLiveChallenge returns the newest live challenge for the same
-// (account, ip, user-agent, device) triple, mirroring the reuse semantics of
+// FindLiveChallenge returns the newest live login challenge for the same
+// (account, ip, user-agent, device) tuple, mirroring the reuse semantics of
 // AuthController.CreateChallenge.
+//
+// Elevation ("sudo") challenges are never reused: this is the anonymous login
+// path, and handing back a challenge bound to some session's elevation would
+// give the caller an id it cannot act on. purpose is NULL for a login
+// challenge (see optionalString).
 func (s *Store) FindLiveChallenge(ctx context.Context, accountID, ipAddress, userAgent, deviceID string) (*model.AuthChallenge, error) {
 	var entity ChallengeEntity
 	result := s.DB.WithContext(ctx).
 		Where("account_id = ? AND ip_address = ? AND user_agent = ? AND device_id = ?",
 			accountID, ipAddress, userAgent, deviceID).
+		Where("(purpose IS NULL OR purpose <> ?)", model.AuthChallengePurposeSudo).
 		Where("step_remain > 0 AND expired_at IS NOT NULL AND expired_at > now()").
 		Order("created_at DESC").Limit(1).Find(&entity)
 	if result.Error != nil {

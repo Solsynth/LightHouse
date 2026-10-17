@@ -254,6 +254,13 @@ zero-filled per type.
   `POST /api/auth/token` consult the fail2ban IP block before verifying, and
   `[security] maxChallengeAttempts` caps the failed attempts one challenge
   accepts.
+- **A challenge id is a bearer credential.** `GET /api/auth/challenge/{id}`,
+  its `/factors` and code-request sub-paths, and the `PATCH` that verifies a
+  factor serve whoever presents the id; elevation (`sudo`) challenges
+  additionally require the session they were bound to. The id is a random v4
+  UUID returned only to the client that created the challenge, so it must never
+  be logged where other operators can read it, embedded in a URL that leaks to
+  third parties, or minted from a guessable value.
 - **Disclosure.** `GET /.well-known/security.txt` (contact from
   `[securityTxt] contact`) and [`SECURITY.md`](SECURITY.md) describe how to
   report a vulnerability privately.

@@ -666,46 +666,26 @@ func (h *handler) getChallenge(c *gin.Context) {
 	c.JSON(http.StatusOK, challenge)
 }
 
-// challengeBoundToCaller reports whether the caller may read the challenge's
-// factor surface. The endpoint is part of the anonymous login flow (the factor
-// picker runs before any session exists), so the challenge itself is the
-// caller's credential: only a request from the address and user agent that
-// created it is served. Both values are mandatory on the challenge — a
-// challenge without them is never matched, so a partially recorded row cannot
-// widen the check. The IP uses the same trusted-proxy derivation as every
-// other rate-limited path (middleware.ClientIP), never the raw header.
-func (h *handler) challengeBoundToCaller(c *gin.Context, challenge *model.AuthChallenge) bool {
-	if challenge.IpAddress == nil || strings.TrimSpace(*challenge.IpAddress) == "" {
-		return false
-	}
-	if middleware.ClientIP(c.Request) != *challenge.IpAddress {
-		return false
-	}
-	return sameUserAgent(challenge.UserAgent, c.Request.UserAgent())
-}
-
 // elevationCallerAllowed reports whether the request carries the session an
 // elevation challenge is bound to. Elevation is granted to that session, so
 // acting on the challenge requires holding it.
+//
+// Login challenges get no such check: the factor surface is part of the
+// anonymous login flow, which runs before any session exists. The challenge id
+// is a random v4 UUID handed only to the creator, so it is itself the bearer
+// credential. Binding the read to the caller's derived client IP and user agent
+// instead made the endpoint answer 404 — indistinguishable from a missing
+// challenge — to legitimate clients whose address or agent moved between the
+// two requests (a dual-stack `localhost` flip, a mobile-network rebind, a
+// client that sends no User-Agent at all, which could then never read its own
+// factors). The id stays secret; the disclosure this guard was written against
+// is an unguessable id, not a leaked one.
 func (h *handler) elevationCallerAllowed(c *gin.Context, challenge *model.AuthChallenge) bool {
 	if challenge.SessionId == nil || *challenge.SessionId == "" {
 		return false
 	}
 	session := middleware.CurrentSession(c.Request.Context())
 	return session != nil && session.Id == *challenge.SessionId
-}
-
-// challengeCallerAllowed reports whether the caller may read the challenge's
-// factor surface: the anonymous IP/user-agent binding, or — for an elevation
-// challenge — the session it is bound to.
-func (h *handler) challengeCallerAllowed(c *gin.Context, challenge *model.AuthChallenge) bool {
-	if h.challengeBoundToCaller(c, challenge) {
-		return true
-	}
-	if challenge.Purpose == model.AuthChallengePurposeSudo {
-		return h.elevationCallerAllowed(c, challenge)
-	}
-	return false
 }
 
 func (h *handler) getChallengeFactors(c *gin.Context) {
@@ -719,8 +699,9 @@ func (h *handler) getChallengeFactors(c *gin.Context) {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
 		return
 	}
-	// A foreign challenge is indistinguishable from a missing one.
-	if !h.challengeCallerAllowed(c, challenge) {
+	// An elevation challenge belongs to the session that requested it; a login
+	// challenge is served to whoever holds its id.
+	if challenge.Purpose == model.AuthChallengePurposeSudo && !h.elevationCallerAllowed(c, challenge) {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
 		return
 	}
