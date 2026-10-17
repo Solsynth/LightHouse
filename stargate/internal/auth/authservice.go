@@ -650,45 +650,26 @@ func sudoFactorTypeName(t model.AuthFactorType) string {
 }
 
 // SudoFactorHint returns the comma-joined lowercase factor type names the
-// account may use to elevate. Real factors are the enabled, trustworthy
-// pickable factors; "email_code" is appended when the account has no real
-// factor combination reaching the elevation demand (2) and a verified email
-// contact exists (the emailed fallback).
+// account may use to elevate (see SudoFactorHintAnswers for the rules). An
+// empty hint means the account has nothing it can present — for such an account
+// the elevation cannot even be started (AUTH_NO_AUTH_FACTORS). A lookup failure
+// is returned as an error, never as an empty hint.
 func (s *AuthService) SudoFactorHint(ctx context.Context, accountID string) (string, error) {
 	factors, err := s.store.GetAuthFactors(ctx, uuid.MustParse(accountID))
 	if err != nil {
 		return "", err
 	}
-	names := make([]string, 0, len(factors))
-	seen := make(map[model.AuthFactorType]bool, len(factors))
-	completable := 0
-	for _, f := range factors {
-		if f.EnabledAt == nil || f.Trustworthy < 1 {
-			continue
-		}
-		ft := model.AuthFactorType(f.Type)
-		if ft == model.AuthFactorTypeRecoveryCode || ft == model.AuthFactorTypePinCode {
-			continue
-		}
-		if !seen[ft] {
-			seen[ft] = true
-			names = append(names, sudoFactorTypeName(ft))
-		}
-		switch ft {
-		case model.AuthFactorTypePasskey, model.AuthFactorTypeInAppCode, model.AuthFactorTypeQrLogin:
-			// Not usable as a pickable factor of an elevation challenge.
-		default:
-			completable += f.Trustworthy
-		}
-	}
-	if completable < 2 {
+	// The emailed fallback is only consulted when nothing else is presentable,
+	// so the common case costs no extra query.
+	hasVerifiedEmail := false
+	if len(SudoPickableFactorTypes(factors)) == 0 && len(SudoAssertableFactorTypes(factors)) == 0 {
 		if _, err := s.store.GetEmailContactForNotify(ctx, accountID, true); err == nil {
-			names = append(names, "email_code")
+			hasVerifiedEmail = true
 		} else if !errors.Is(err, store.ErrNotFound) {
 			return "", err
 		}
 	}
-	return strings.Join(names, ","), nil
+	return strings.Join(SudoFactorHintAnswers(factors, hasVerifiedEmail), ","), nil
 }
 
 // RecordSudoElevated writes the accounts.sudo.elevate action log.

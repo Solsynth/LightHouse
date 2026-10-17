@@ -317,10 +317,10 @@ func decodeChallenge(t *testing.T, rec *httptest.ResponseRecorder) *model.AuthCh
 	return &ch
 }
 
-// TestSudoPasswordOnlyCannotElevate pins (a): a password-only account's elevation
-// demand is 2, password alone drops it by 1, and no elevation is granted. The emailed
-// fallback is advertised because the account has a verified email.
-func TestSudoPasswordOnlyCannotElevate(t *testing.T) {
+// TestSudoPasswordOnlyElevatesInOneStep pins (a): the elevation costs one step
+// per pickable factor, so a password-only account elevates with its password.
+// The emailed fallback stays disarmed — a real factor exists.
+func TestSudoPasswordOnlyElevatesInOneStep(t *testing.T) {
 	sh := newSudoHarness(t, sudoSeed{
 		verifiedEmail: true,
 		factors:       []sudoFactorSeed{sudoPasswordSeed(t, model.AuthFactorTypePassword, sudoTestPassword, 1)},
@@ -329,11 +329,11 @@ func TestSudoPasswordOnlyCannotElevate(t *testing.T) {
 	if ch.Purpose != model.AuthChallengePurposeSudo {
 		t.Fatalf("purpose = %q, want sudo", ch.Purpose)
 	}
-	if ch.StepTotal != 2 || ch.StepRemain != 2 {
-		t.Fatalf("step %d/%d, want 2/2", ch.StepRemain, ch.StepTotal)
+	if ch.StepTotal != 1 || ch.StepRemain != 1 {
+		t.Fatalf("step %d/%d, want 1/1", ch.StepRemain, ch.StepTotal)
 	}
 
-	// The synthetic fallback factor (id == challenge id) is advertised.
+	// No synthetic fallback (id == challenge id): password is pickable.
 	rec := sh.request(t, http.MethodGet, "/auth/challenge/"+ch.Id+"/factors", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("factors: %d %s", rec.Code, rec.Body.String())
@@ -342,25 +342,37 @@ func TestSudoPasswordOnlyCannotElevate(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &factors); err != nil {
 		t.Fatalf("decode factors: %v", err)
 	}
-	synthetic := false
 	for _, f := range factors {
 		if f.Id == ch.Id {
-			synthetic = true
+			t.Fatalf("emailed fallback armed although a password is enabled: %+v", factors)
 		}
-	}
-	if !synthetic {
-		t.Fatalf("emailed fallback factor not advertised: %+v", factors)
 	}
 
 	rec = sh.submitFactor(t, ch.Id, sh.factorID(t, model.AuthFactorTypePassword), sudoTestPassword)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("password step: %d %s", rec.Code, rec.Body.String())
 	}
-	if got := decodeChallenge(t, rec); got.StepRemain != 1 {
-		t.Fatalf("step_remain = %d, want 1", got.StepRemain)
+	got := decodeChallenge(t, rec)
+	if got.StepRemain != 0 || got.SudoUntil == nil {
+		t.Fatalf("password did not complete the elevation: %+v", got)
 	}
-	if sh.isElevated(t) {
-		t.Fatal("password-only account was elevated by password alone")
+	if !sh.isElevated(t) {
+		t.Fatal("password-only account was not elevated by its password")
+	}
+}
+
+// TestSudoPasskeyCountsAsOneStep pins the step accounting: a factor's strength
+// score (a passkey scores 4) must not inflate the demand. Two pickable factors
+// cost two steps, not five.
+func TestSudoPasskeyCountsAsOneStep(t *testing.T) {
+	key, _ := totp.Generate(totp.GenerateOpts{Issuer: "SolarNetwork", AccountName: "sudo-test"})
+	sh := newSudoHarness(t, sudoSeed{factors: []sudoFactorSeed{
+		sudoPasswordSeed(t, model.AuthFactorTypePassword, sudoTestPassword, 1),
+		{ftype: model.AuthFactorTypeTimedCode, trustworthy: 3, secret: key.Secret()},
+	}})
+	ch := sh.createSudo(t)
+	if ch.StepTotal != 2 || ch.StepRemain != 2 {
+		t.Fatalf("step %d/%d, want 2/2 (one per pickable factor, not summed weights)", ch.StepRemain, ch.StepTotal)
 	}
 }
 
@@ -436,44 +448,41 @@ func TestSudoRejectsPinAndRecoveryCode(t *testing.T) {
 	}
 }
 
-// TestSudoNoFactorFailsClosed pins (e): an account that cannot reach the
-// elevation demand (no factor, or password without a verified email) cannot even
-// start an elevation.
+// TestSudoNoFactorFailsClosed pins (e): an account with nothing to present —
+// no pickable factor and no verified email for the emailed fallback — cannot
+// even start an elevation. Registration always seeds a password, so this is the
+// broken/half-provisioned account, which must fail closed rather than be handed
+// an elevation it never proved.
 func TestSudoNoFactorFailsClosed(t *testing.T) {
-	t.Run("no factors and no email", func(t *testing.T) {
-		sh := newSudoHarness(t, sudoSeed{})
-		rec := sh.request(t, http.MethodPost, "/auth/sudo", nil)
-		if rec.Code != http.StatusForbidden {
-			t.Fatalf("got %d, want 403 (body %s)", rec.Code, rec.Body.String())
-		}
-		if code := responseErrorCode(t, rec); code != "AUTH_NO_AUTH_FACTORS" {
-			t.Fatalf("code = %q, want AUTH_NO_AUTH_FACTORS", code)
-		}
-	})
-
-	t.Run("password only without an email contact", func(t *testing.T) {
-		sh := newSudoHarness(t, sudoSeed{factors: []sudoFactorSeed{
-			sudoPasswordSeed(t, model.AuthFactorTypePassword, sudoTestPassword, 1),
-		}})
-		rec := sh.request(t, http.MethodPost, "/auth/sudo", nil)
-		if rec.Code != http.StatusForbidden {
-			t.Fatalf("got %d, want 403 (body %s)", rec.Code, rec.Body.String())
-		}
-		if code := responseErrorCode(t, rec); code != "AUTH_NO_AUTH_FACTORS" {
-			t.Fatalf("code = %q, want AUTH_NO_AUTH_FACTORS", code)
-		}
-	})
+	sh := newSudoHarness(t, sudoSeed{})
+	// The harness seeds a password (every real account has one); drop it so the
+	// account is left with nothing to present.
+	if _, err := sh.pool.Exec(sh.ctx, `DELETE FROM account_auth_factors WHERE account_id = $1`, sh.accountID); err != nil {
+		t.Fatalf("delete factors: %v", err)
+	}
+	rec := sh.request(t, http.MethodPost, "/auth/sudo", nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("got %d, want 403 (body %s)", rec.Code, rec.Body.String())
+	}
+	if code := responseErrorCode(t, rec); code != "AUTH_NO_AUTH_FACTORS" {
+		t.Fatalf("code = %q, want AUTH_NO_AUTH_FACTORS", code)
+	}
 }
 
-// TestSudoEmailFallbackEndToEnd pins (f): the synthetic emailed fallback sends
-// a code through the spell service, stores it in Redis, decrements by 2 and
-// grants elevation; a resend while a live code exists is refused.
+// TestSudoEmailFallbackEndToEnd pins (f): an account with nothing presentable
+// but a verified email has the emailed fallback armed as its single step. It
+// sends a code through the spell service, stores it in Redis, settles that step
+// and grants the elevation; a resend while a live code exists is refused.
 func TestSudoEmailFallbackEndToEnd(t *testing.T) {
-	sh := newSudoHarness(t, sudoSeed{
-		verifiedEmail: true,
-		factors:       []sudoFactorSeed{sudoPasswordSeed(t, model.AuthFactorTypePassword, sudoTestPassword, 1)},
-	})
+	sh := newSudoHarness(t, sudoSeed{verifiedEmail: true})
+	// The harness seeds a password; drop it so nothing but the email is left.
+	if _, err := sh.pool.Exec(sh.ctx, `DELETE FROM account_auth_factors WHERE account_id = $1`, sh.accountID); err != nil {
+		t.Fatalf("delete factors: %v", err)
+	}
 	ch := sh.createSudo(t)
+	if ch.StepTotal != 1 || ch.StepRemain != 1 {
+		t.Fatalf("step %d/%d, want 1/1 (emailed fallback is the sole step)", ch.StepRemain, ch.StepTotal)
+	}
 
 	// Requesting the fallback code emails it through the fake Ring.
 	rec := sh.request(t, http.MethodPost, "/auth/challenge/"+ch.Id+"/factors/"+ch.Id, nil)
@@ -498,7 +507,7 @@ func TestSudoEmailFallbackEndToEnd(t *testing.T) {
 		t.Fatalf("resend code = %q, want AUTH_FACTOR_SEND_FAILED", ec)
 	}
 
-	// Verifying the code completes the elevation in one step (weight 2).
+	// Verifying the code settles the challenge's single step.
 	rec = sh.submitFactor(t, ch.Id, ch.Id, code)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("verify fallback: %d %s", rec.Code, rec.Body.String())
@@ -619,14 +628,19 @@ func TestSudoRedisUnavailableFailsClosed(t *testing.T) {
 }
 
 // TestSudoPasskeyOnlyElevatesInOneCeremony pins (c): a passkey-only account's
-// elevation demand is 2 and one passkey assertion (weight 4) completes it.
+// elevation costs one step and one passkey assertion completes it.
 func TestSudoPasskeyOnlyElevatesInOneCeremony(t *testing.T) {
 	sh := newSudoHarness(t, sudoSeed{factors: []sudoFactorSeed{
 		{ftype: model.AuthFactorTypePasskey, trustworthy: 4},
 	}})
+	// The harness seeds a password; drop it so the passkey is the only factor.
+	if _, err := sh.pool.Exec(sh.ctx, `DELETE FROM account_auth_factors WHERE account_id = $1 AND type = $2`,
+		sh.accountID, int(model.AuthFactorTypePassword)); err != nil {
+		t.Fatalf("delete password factor: %v", err)
+	}
 	ch := sh.createSudo(t)
-	if ch.StepTotal != 2 || ch.StepRemain != 2 {
-		t.Fatalf("step %d/%d, want 2/2", ch.StepRemain, ch.StepTotal)
+	if ch.StepTotal != 1 || ch.StepRemain != 1 {
+		t.Fatalf("step %d/%d, want 1/1", ch.StepRemain, ch.StepTotal)
 	}
 
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

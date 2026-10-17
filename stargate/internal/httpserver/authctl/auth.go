@@ -835,7 +835,10 @@ func (h *handler) doChallenge(c *gin.Context) {
 		return
 	}
 
-	challenge.StepRemain -= factor.Trustworthy
+	// One verified factor settles one step regardless of its strength score:
+	// the elevation demanded one step per factor, so anything more would let a
+	// strong factor cover steps it was never counted for.
+	challenge.StepRemain--
 	if challenge.StepRemain < 0 {
 		challenge.StepRemain = 0
 	}
@@ -897,7 +900,9 @@ func (h *handler) doChallengeSudoFallback(c *gin.Context, challenge *model.AuthC
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_PASSWORD", "Invalid password."))
 		return
 	}
-	challenge.StepRemain -= 2
+	// The fallback is armed only when it is the challenge's sole step (no
+	// pickable factor on the account), so verifying it settles that one step.
+	challenge.StepRemain--
 	if challenge.StepRemain < 0 {
 		challenge.StepRemain = 0
 	}
@@ -1391,7 +1396,10 @@ func (h *handler) completePasskeyChallenge(c *gin.Context) {
 		return
 	}
 
-	challenge.StepRemain -= factor.Trustworthy
+	// A passkey assertion settles one step, like any other factor (see
+	// doChallenge): a passkey-only elevation costs exactly the one step it
+	// demanded.
+	challenge.StepRemain--
 	if challenge.StepRemain < 0 {
 		challenge.StepRemain = 0
 	}
@@ -2401,18 +2409,6 @@ func (h *handler) createSudoChallenge(c *gin.Context) {
 		return
 	}
 
-	steps, err := h.allRequiredStepCount(ctx, user.Id)
-	if err != nil {
-		h.logError("sudo step count", err)
-		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
-		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
-		return
-	}
-	demand := steps
-	if demand < 2 {
-		demand = 2
-	}
-
 	factors, err := h.d.Store.GetAuthFactors(ctx, uuid.MustParse(user.Id))
 	if err != nil {
 		h.logError("sudo factors", err)
@@ -2420,48 +2416,38 @@ func (h *handler) createSudoChallenge(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
 		return
 	}
-	// usableWeight counts every factor that can reduce the demand (including
-	// passkeys, which complete it through the assertion endpoints);
-	// completableWeight only the pickable factors, which is what decides
-	// whether the emailed fallback is offered.
-	usableWeight := 0
-	completableWeight := 0
-	for _, f := range factors {
-		if f.EnabledAt == nil || f.Trustworthy < 1 {
-			continue
-		}
-		ft := model.AuthFactorType(f.Type)
-		if ft == model.AuthFactorTypeRecoveryCode || ft == model.AuthFactorTypePinCode {
-			continue
-		}
-		usableWeight += f.Trustworthy
-		switch ft {
-		case model.AuthFactorTypePasskey, model.AuthFactorTypeInAppCode, model.AuthFactorTypeQrLogin:
-			// Not usable as a pickable factor of an elevation challenge.
-		default:
-			completableWeight += f.Trustworthy
-		}
-	}
-	fallbackArmed := completableWeight < 2
-	if fallbackArmed {
-		if _, cerr := h.d.Store.GetEmailContactForNotify(ctx, user.Id, true); cerr != nil {
-			if errors.Is(cerr, store.ErrNotFound) {
-				fallbackArmed = false
-			} else {
-				h.logError("sudo fallback contact", cerr)
-				risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
-				c.JSON(http.StatusServiceUnavailable, errs.New("SERVICE_UNAVAILABLE", "An internal server error occurred.", http.StatusServiceUnavailable))
-				return
-			}
+	// The elevation costs one step per factor the client can present as a
+	// pickable factor, and each verified factor settles exactly one step —
+	// never its Trustworthy score. A password-only account therefore elevates
+	// with its password; an account with password + TOTP still needs both. The
+	// demanded step count equals what it actually costs to satisfy, so it can
+	// never strand the challenge on an unreachable last step.
+	steps := len(auth.SudoPickableFactorTypes(factors))
+	fallbackArmed := false
+	switch {
+	case steps > 0:
+		// Covered by the pickable factors.
+	case len(auth.SudoAssertableFactorTypes(factors)) > 0:
+		// A passkey is presented through its own assertion endpoint rather
+		// than the picker, but it satisfies a step just the same.
+		steps = len(auth.SudoAssertableFactorTypes(factors))
+	default:
+		// Nothing presentable is enabled: the emailed fallback is the only way
+		// to re-authenticate, and it settles the single step.
+		_, cerr := h.d.Store.GetEmailContactForNotify(ctx, user.Id, true)
+		if cerr == nil {
+			steps = 1
+			fallbackArmed = true
+		} else if !errors.Is(cerr, store.ErrNotFound) {
+			h.logError("sudo fallback contact", cerr)
+			risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
+			c.JSON(http.StatusServiceUnavailable, errs.New("SERVICE_UNAVAILABLE", "An internal server error occurred.", http.StatusServiceUnavailable))
+			return
 		}
 	}
-	// Fail closed: an account that cannot reach the elevation demand — even
-	// with the emailed fallback — must not be able to start an elevation.
-	reachable := usableWeight
-	if fallbackArmed {
-		reachable += 2
-	}
-	if reachable < demand {
+	// Fail closed: an account with nothing to present and no verified email
+	// cannot re-authenticate at all, so it must not start an elevation.
+	if steps < 1 {
 		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
 		c.JSON(http.StatusForbidden, errs.New("AUTH_NO_AUTH_FACTORS",
 			"Account has no authentication factors that can satisfy re-authentication.", http.StatusForbidden))
@@ -2472,8 +2458,8 @@ func (h *handler) createSudoChallenge(c *gin.Context) {
 	challenge := &model.AuthChallenge{
 		Id:         challengeID,
 		ExpiredAt:  model.NewTime(now.Add(h.sudoChallengeLifetime())),
-		StepTotal:  demand,
-		StepRemain: demand,
+		StepTotal:  steps,
+		StepRemain: steps,
 		Audiences:  []string{},
 		Scopes:     []string{},
 		IpAddress:  &ipAddress,

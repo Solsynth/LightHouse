@@ -101,6 +101,35 @@ func TestRequireSudo(t *testing.T) {
 		}
 	})
 
+	t.Run("denies even with an empty hint", func(t *testing.T) {
+		// Every real account can present a factor; an empty hint means a broken
+		// account, which must not reach the gated action unelevated.
+		checker := &fakeSudoChecker{elevated: false, hint: ""}
+		e := newSudoRouter(checker)
+		rec := doSudoRequest(e)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("got %d, want 403 (body %s)", rec.Code, rec.Body.String())
+		}
+		if body := decodeSudoError(t, rec); body["code"] != "AUTH_SUDO_REQUIRED" {
+			t.Fatalf("code = %v, want AUTH_SUDO_REQUIRED", body["code"])
+		}
+	})
+
+	t.Run("fails closed with 503 when the hint lookup errors", func(t *testing.T) {
+		checker := &fakeSudoChecker{elevated: false, hintErr: errors.New("db down")}
+		e := newSudoRouter(checker)
+		rec := doSudoRequest(e)
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Fatalf("got %d, want 503 (body %s)", rec.Code, rec.Body.String())
+		}
+		if body := decodeSudoError(t, rec); body["code"] != "SERVICE_UNAVAILABLE" {
+			t.Fatalf("code = %v, want SERVICE_UNAVAILABLE", body["code"])
+		}
+		if checker.failures != 0 {
+			t.Fatalf("failure records = %d, want 0", checker.failures)
+		}
+	})
+
 	t.Run("fails closed with 503 when the elevation store errors", func(t *testing.T) {
 		e := newSudoRouter(&fakeSudoChecker{elevErr: errors.New("redis down")})
 		rec := doSudoRequest(e)

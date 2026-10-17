@@ -290,6 +290,12 @@ func getSudoChecker() SudoChecker {
 //   - an unavailable elevation store fails closed with 503 (never allows);
 //   - otherwise it answers 403 AUTH_SUDO_REQUIRED with the usable factor type
 //     names in `detail`, and records the denied attempt.
+//
+// There is deliberately no "no factors, so skip" path. Every account has a
+// factor it can present — registration seeds a password — so an empty hint
+// would only be reachable for a broken or half-provisioned account, and letting
+// those through would hand an unelevated session the security settings. Such
+// accounts are told what is missing instead (see SudoFactorHint).
 func RequireSudo() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		checker := getSudoChecker()
@@ -313,9 +319,14 @@ func RequireSudo() gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		// A failed hint lookup is not a denied attempt: the account may well be
+		// able to elevate, we just cannot say how. Fail closed rather than
+		// let the request through or log a misleading failure.
 		hint, herr := checker.SudoFactorHint(c.Request.Context(), user.Id)
 		if herr != nil {
-			hint = ""
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable,
+				errs.New("SERVICE_UNAVAILABLE", "Elevation could not be verified.", http.StatusServiceUnavailable))
+			return
 		}
 		checker.RecordSudoFailure(c.Request.Context(), user.Id, session.Id, ClientIP(c.Request), c.Request.UserAgent())
 		c.AbortWithStatusJSON(http.StatusForbidden, &errs.ApiError{

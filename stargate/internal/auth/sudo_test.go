@@ -140,14 +140,36 @@ func TestSudoFactorHint(t *testing.T) {
 		}
 	})
 
-	t.Run("passkey admits the emailed fallback", func(t *testing.T) {
+	t.Run("passkey needs no emailed fallback", func(t *testing.T) {
 		accountID := seedSudoHintAccount(t, ctx, pool, true, model.AuthFactorTypePasskey)
 		hint, err := svc.SudoFactorHint(ctx, accountID)
 		if err != nil {
 			t.Fatalf("SudoFactorHint: %v", err)
 		}
-		if hint != "passkey,email_code" {
-			t.Fatalf("hint = %q, want passkey,email_code", hint)
+		if hint != "passkey" {
+			t.Fatalf("hint = %q, want passkey (asserted in its own ceremony)", hint)
+		}
+	})
+
+	t.Run("verified email is the fallback when nothing is presentable", func(t *testing.T) {
+		accountID := seedSudoHintAccount(t, ctx, pool, true)
+		hint, err := svc.SudoFactorHint(ctx, accountID)
+		if err != nil {
+			t.Fatalf("SudoFactorHint: %v", err)
+		}
+		if hint != "email_code" {
+			t.Fatalf("hint = %q, want email_code", hint)
+		}
+	})
+
+	t.Run("no factor at all yields an empty hint", func(t *testing.T) {
+		accountID := seedSudoHintAccount(t, ctx, pool, false)
+		hint, err := svc.SudoFactorHint(ctx, accountID)
+		if err != nil {
+			t.Fatalf("SudoFactorHint: %v", err)
+		}
+		if hint != "" {
+			t.Fatalf("hint = %q, want empty (RequireSudo skips the challenge)", hint)
 		}
 	})
 
