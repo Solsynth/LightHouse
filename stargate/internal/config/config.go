@@ -21,6 +21,12 @@ type Config struct {
 	HTTP struct {
 		Port string `toml:"port"`
 	} `toml:"http"`
+	// Web configures hosting of the built SPA (web/dist). The zero value
+	// disables static hosting and leaves the server API-only; config.example.toml
+	// enables it for the repo layout and the Docker image (/app/web/dist).
+	Web struct {
+		DistPath string `toml:"distPath"`
+	} `toml:"web"`
 	GRPC struct {
 		Port     string `toml:"port"`
 		UseTLS   bool   `toml:"useTLS"`
@@ -453,6 +459,7 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("STARGATE_SITE_URL", &cfg.SiteUrl)
 	setStr("STARGATE_BASE_URL", &cfg.BaseUrl)
 	setStr("STARGATE_HTTP_PORT", &cfg.HTTP.Port)
+	setStr("STARGATE_WEB_DISTPATH", &cfg.Web.DistPath)
 	setStr("STARGATE_GRPC_PORT", &cfg.GRPC.Port)
 	setStr("STARGATE_DATABASE__DSN", &cfg.Database.DSN)
 	setStr("STARGATE_REDIS_ADDR", &cfg.Redis.Addr)

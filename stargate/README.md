@@ -27,6 +27,35 @@ board updates indirectly via the profile read-model.
 - `internal/nats` — thin wrapper over the shared event bus
   (`src.solsynth.dev/sosys/go/pkg/eventbus`): JetStream events
   (`auth.session.revoked`, `websocket_push`)
+- `internal/webui` — serves the built SPA (`web/dist`) with history fallback
+- `web/` — the Vue 3 + Vite single-page frontend
+
+## Web frontend
+
+The SPA in `web/` is served by Stargate itself from `[web] distPath` (the
+shipped `config.example.toml` uses `web/dist`); there is no separate static
+file server. Build it before starting the service:
+
+```sh
+make web            # cd web && bun install --frozen-lockfile && bun run build
+CONFIG_PATH=config.toml make run
+```
+
+Routes resolve as follows:
+
+- existing files under `web/dist` are served directly (`/assets/*` is
+  fingerprinted by Vite and cached immutably; everything else revalidates);
+- any other GET without a file extension returns `index.html`, so
+  client-side routes survive a reload;
+- `/api/**`, `/.well-known/**`, `/swagger/**`, `/health` and `/alive` never
+  fall back and answer with the canonical JSON 404;
+- an empty `[web] distPath` leaves the server API-only.
+
+In development run `make web-dev` and open the Vite server: it proxies
+`/api`, `/.well-known`, `/swagger`, `/health` and `/alive` to
+`STARGATE_DEV_PROXY` (default `http://localhost:8080`), so the app uses
+same-origin relative URLs in both modes. The Docker image builds `web/` with
+Bun and copies the output to `/app/web/dist`.
 
 ## Run
 

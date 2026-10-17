@@ -223,6 +223,14 @@ func run(log *slog.Logger) error {
 	})
 	authctl.RegisterWellKnown(srv.Engine, cfg)
 
+	// A configured but unusable SPA build leaves the server API-only instead
+	// of taking the service down; the API itself keeps working.
+	if srv.WebError != nil {
+		log.Warn("web SPA hosting disabled", "dist", cfg.Web.DistPath, "error", srv.WebError)
+	} else if strings.TrimSpace(cfg.Web.DistPath) != "" {
+		log.Info("web SPA hosted", "dist", cfg.Web.DistPath)
+	}
+
 	// gRPC server (Phase 9 service servers). TLS mirrors DysonFS: when
 	// grpc.useTLS is set, certFile/keyFile are required (self-signed fleet
 	// certs; clients skip CA validation).

@@ -4,6 +4,13 @@ baseUrl = "http://localhost:5011"
 [http]
 port = "8080"
 
+# Built SPA served from this origin (web/dist). Unknown non-API paths fall
+# back to index.html for client-side routing; /api, /.well-known, /swagger and
+# health paths stay API-only. Empty disables hosting (API-only server). The
+# Docker image ships the build at /app/web/dist.
+[web]
+distPath = "web/dist"
+
 [grpc]
 port = "9090"
 # TLS is on by default (the C# fleet and Blade dial https://_grpc.stargate).

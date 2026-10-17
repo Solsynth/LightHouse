@@ -12,22 +12,43 @@ import (
 
 	"src.solsynth.dev/sosys/stargate/internal/config"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
+	"src.solsynth.dev/sosys/stargate/internal/webui"
 )
 
 // Server hosts the HTTP API.
 type Server struct {
 	Engine *gin.Engine
 	cfg    *config.Config
+	// WebError reports why the SPA was not mounted (missing dist directory or
+	// no index.html). The server stays API-only in that case.
+	WebError error
 }
 
 // RouteRegistrar registers routes on the /api group.
 type RouteRegistrar func(api *gin.RouterGroup)
 
 // New builds the gin engine with the middleware chain and health endpoints.
+// When [web] distPath is set, the built SPA is mounted here: existing dist
+// files are served before the auth middleware (a fingerprinted asset must not
+// cost a session lookup) and the NoRoute handler returns index.html for
+// client-side routes.
 func New(cfg *config.Config, authMiddleware gin.HandlerFunc) *Server {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 	engine.Use(gin.Recovery())
+
+	s := &Server{Engine: engine, cfg: cfg}
+
+	if cfg != nil && strings.TrimSpace(cfg.Web.DistPath) != "" {
+		web, err := webui.New(cfg.Web.DistPath)
+		if err != nil {
+			s.WebError = err
+		} else {
+			engine.Use(web.ServeStatic)
+			engine.NoRoute(web.Serve)
+		}
+	}
+
 	engine.Use(authMiddleware)
 
 	// The client IP is derived from X-Forwarded-For by the configured trusted
@@ -36,8 +57,6 @@ func New(cfg *config.Config, authMiddleware gin.HandlerFunc) *Server {
 	if cfg != nil {
 		middleware.SetTrustedProxyHops(cfg.Security.TrustedProxyHopCount())
 	}
-
-	s := &Server{Engine: engine, cfg: cfg}
 
 	engine.GET("/health", func(c *gin.Context) { c.Status(http.StatusOK) })
 	engine.GET("/alive", func(c *gin.Context) { c.Status(http.StatusOK) })

@@ -15,3 +15,6 @@ bin/
 
 # Go
 *.test
+
+# Vite dependency cache
+.vite/
