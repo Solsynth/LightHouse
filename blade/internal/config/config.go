@@ -95,6 +95,13 @@ type WebSocketConfig struct {
 	KeepAliveSeconds     int    `mapstructure:"keepAliveSeconds"`
 	MaxMessageBytes      int64  `mapstructure:"maxMessageBytes"`
 	DefaultNamespace     string `mapstructure:"defaultNamespace"`
+	// AckTracking enables at-least-once delivery for ack-tracked pushes
+	// (messages.*). It needs Redis; without it pushes stay fire-and-forget.
+	AckTracking         bool `mapstructure:"ackTracking"`
+	AckRetrySeconds     int  `mapstructure:"ackRetrySeconds"`
+	AckRetentionSeconds int  `mapstructure:"ackRetentionSeconds"`
+	AckMaxPending       int  `mapstructure:"ackMaxPending"`
+	AckMaxAttempts      int  `mapstructure:"ackMaxAttempts"`
 }
 
 type RouteRule struct {
@@ -150,6 +157,11 @@ func Load(configPath string) (*Config, error) {
 	viper.SetDefault("websocket.profileTlsServerName", "")
 	viper.SetDefault("websocket.keepAliveSeconds", 60)
 	viper.SetDefault("websocket.maxMessageBytes", 4096)
+	viper.SetDefault("websocket.ackTracking", false)
+	viper.SetDefault("websocket.ackRetrySeconds", 3)
+	viper.SetDefault("websocket.ackRetentionSeconds", 600)
+	viper.SetDefault("websocket.ackMaxPending", 256)
+	viper.SetDefault("websocket.ackMaxAttempts", 20)
 	viper.SetDefault("maintenance.enabled", false)
 	viper.SetDefault("maintenance.mode", "full")
 	viper.SetDefault("maintenance.services", []string{})

@@ -82,6 +82,14 @@ authTlsSkipVerify = true
 keepAliveSeconds = 60
 maxMessageBytes = 4096
 defaultNamespace = "dev.solsynth.solian"
+# At-least-once delivery for messages.* pushes: each frame carries an `_ack_id`,
+# stays in Redis until the client acks it, and is re-sent on a backoff. Needs
+# cache.redisUrl. Off = today's fire-and-forget behaviour.
+ackTracking = false
+ackRetrySeconds = 3        # re-send interval per unacknowledged frame
+ackRetentionSeconds = 600  # retry horizon; an unacked frame is dropped after it
+ackMaxPending = 256        # per-account buffer cap, oldest evicted first
+ackMaxAttempts = 20        # re-sends per frame before it is dropped
 
 [maintenance]
 enabled = false

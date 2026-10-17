@@ -241,6 +241,27 @@ func main() {
 		} else {
 			logging.Log.Warn().Msg("Redis is not configured; websocket presence remains local to each gateway replica")
 		}
+		if cfg.WebSocket.AckTracking {
+			if redisClient == nil {
+				logging.Log.Warn().Msg("ack tracking disabled: redis is not configured")
+			} else {
+				ackTracker := wsgateway.NewRedisAckTracker(
+					redisClient,
+					time.Duration(cfg.WebSocket.AckRetentionSeconds)*time.Second,
+					cfg.WebSocket.AckMaxPending,
+				)
+				wsService.SetAckTracker(ackTracker)
+				wsService.SetAckRetryInterval(time.Duration(cfg.WebSocket.AckRetrySeconds) * time.Second)
+				wsService.SetAckMaxAttempts(cfg.WebSocket.AckMaxAttempts)
+				go wsService.RunAckReconciler(context.Background())
+				logging.Log.Info().
+					Int("ackRetrySeconds", cfg.WebSocket.AckRetrySeconds).
+					Int("ackRetentionSeconds", cfg.WebSocket.AckRetentionSeconds).
+					Int("ackMaxPending", cfg.WebSocket.AckMaxPending).
+					Int("ackMaxAttempts", cfg.WebSocket.AckMaxAttempts).
+					Msg("Enabled websocket push ack tracking")
+			}
+		}
 		if natsBus != nil {
 			if _, err := wsgateway.SubscribeWebSocketPushes(natsBus.Conn, cfg.NATS.WebSocketSubjectPrefix, wsService); err != nil {
 				logging.Log.Fatal().Err(err).Msg("Failed to subscribe to websocket push events")

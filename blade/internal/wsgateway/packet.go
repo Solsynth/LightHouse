@@ -14,11 +14,16 @@ const (
 )
 
 // Packet is the on-wire websocket packet structure (JSON over binary frame).
+//
+// AckID is stamped only on the JSON egress path for ack-tracked packet
+// families (see ack.go). It never appears on the protobuf wire, so
+// packetToProto/packetFromProto stay free of it.
 type Packet struct {
 	Type         string          `json:"type"`
 	Data         json.RawMessage `json:"data,omitempty"`
 	Endpoint     string          `json:"endpoint,omitempty"`
 	ErrorMessage string          `json:"errorMessage,omitempty"`
+	AckID        string          `json:"_ack_id,omitempty"`
 }
 
 func packetFromProto(p *gen.DyWebSocketPacket) Packet {

@@ -87,6 +87,11 @@ type wsConnection struct {
 	closeOnce    sync.Once
 	metaMu       sync.RWMutex
 	probe        func() bool
+	// ackCapable is set once the client proves it speaks the ack protocol
+	// (session.resume or session.ack). A connection that never does keeps
+	// today's fire-and-forget delivery: no _ack_id, no stored entry, no
+	// re-sends.
+	ackCapable bool
 }
 
 type ConnectionSnapshot struct {
@@ -108,14 +113,17 @@ var (
 )
 
 type Service struct {
-	cfg           Config
-	handlers      map[string]PacketHandler
-	forwarder     UnknownPacketForwarder
-	events        ConnectionEventPublisher
-	authenticator dyauth.TokenAuthenticator
-	cache         cache.CacheService
-	profiles      gen.DyProfileServiceClient
-	presence      PresenceStore
+	cfg            Config
+	handlers       map[string]PacketHandler
+	forwarder      UnknownPacketForwarder
+	events         ConnectionEventPublisher
+	authenticator  dyauth.TokenAuthenticator
+	cache          cache.CacheService
+	profiles       gen.DyProfileServiceClient
+	presence       PresenceStore
+	acks           PacketAckTracker
+	ackRetry       time.Duration
+	ackMaxAttempts int
 
 	mu          sync.RWMutex
 	connections map[connectionKey]*wsConnection
@@ -810,7 +818,7 @@ func (s *Service) SendPacketToAccountsExcept(namespace string, accountIDs []stri
 			Str("deviceId", entry.deviceID).
 			Str("packetType", packet.GetType()).
 			Msg("Sending websocket packet to account connection")
-		if err := entry.sendProto(packet); err != nil {
+		if err := s.enqueueTracked(entry, packet, false); err != nil {
 			logging.Log.Warn().Err(err).Str("namespace", namespace).Str("accountId", entry.getAccountID()).Str("deviceId", entry.deviceID).Msg("Failed to send packet to account connection")
 		}
 	}
@@ -866,7 +874,7 @@ func (s *Service) SendPacketToDevice(namespace, deviceID string, packet *gen.DyW
 			Str("deviceId", deviceID).
 			Str("packetType", packet.GetType()).
 			Msg("Sending websocket packet to device connection")
-		if err := entry.sendProtoPriority(packet); err != nil {
+		if err := s.enqueueTracked(entry, packet, true); err != nil {
 			logging.Log.Warn().Err(err).Str("namespace", namespace).Str("accountId", entry.getAccountID()).Str("deviceId", deviceID).Msg("Failed to send packet to device")
 		}
 	}
@@ -893,6 +901,15 @@ func (s *Service) HandlePacket(ctx context.Context, account *gen.DyAccount, name
 	if packet.Type == PacketTypePing {
 		s.SendPacketToDevice(namespace, deviceID, &gen.DyWebSocketPacket{Type: PacketTypePong})
 		return nil
+	}
+
+	// Ack and resume are connection-scoped control packets: they must never
+	// reach a handler or the forwarder.
+	switch packet.Type {
+	case PacketTypeAck:
+		return s.handleSessionAck(ctx, namespace, account.GetId(), deviceID, packet)
+	case PacketTypeResume:
+		return s.handleSessionResume(ctx, namespace, account.GetId(), deviceID)
 	}
 
 	protoPacket := packetToProto(packet)
@@ -1012,6 +1029,14 @@ func (s *Service) HandleConnection(ctx context.Context, auth SessionAuthContext,
 			continue
 		}
 
+		// A client that sends either control packet has proven it speaks the
+		// ack protocol, so this connection may now receive ack-tracked frames.
+		// Until then it keeps the untracked push path, which is what keeps an
+		// un-upgraded client from being retried forever.
+		if packet.Type == PacketTypeAck || packet.Type == PacketTypeResume {
+			entry.markAckCapable()
+		}
+
 		if err := s.HandlePacket(connCtx, account, namespace, deviceID, packet); err != nil {
 			logging.Log.Warn().
 				Err(err).
@@ -1051,6 +1076,41 @@ func (c *wsConnection) sendJSON(packet Packet) error {
 
 func (c *wsConnection) sendJSONPriority(packet Packet) error {
 	return c.enqueue(packet, c.priority)
+}
+
+// sendJSONReplay writes a replayed frame, waiting briefly for queue space
+// instead of taking the live-push path.
+//
+// enqueue closes the connection when the queue is full, which is the right
+// answer to a live push into a stuck client but catastrophic for a burst: a
+// session.resume replaying a buffer larger than the priority queue would tear
+// down the very connection it is trying to repair. Here a full queue just means
+// "not now" — the frame stays pending and the reconciler retries it.
+func (c *wsConnection) sendJSONReplay(packet Packet) error {
+	if c == nil || c.conn == nil {
+		return errors.New("websocket connection is nil")
+	}
+	if c.priority == nil {
+		return errors.New("websocket outbound queue is nil")
+	}
+
+	select {
+	case <-c.done:
+		return errWebSocketClosed
+	default:
+	}
+
+	timer := time.NewTimer(ackReplayQueueWait)
+	defer timer.Stop()
+
+	select {
+	case c.priority <- packet:
+		return nil
+	case <-c.done:
+		return errWebSocketClosed
+	case <-timer.C:
+		return errOutboundQueueFull
+	}
 }
 
 func (c *wsConnection) enqueue(packet Packet, queue chan<- Packet) error {
@@ -1231,6 +1291,25 @@ func (c *wsConnection) supportsReauth() bool {
 	c.metaMu.RLock()
 	defer c.metaMu.RUnlock()
 	return c.reauthOK
+}
+
+// markAckCapable records that this connection speaks the ack protocol.
+func (c *wsConnection) markAckCapable() {
+	if c == nil {
+		return
+	}
+	c.metaMu.Lock()
+	c.ackCapable = true
+	c.metaMu.Unlock()
+}
+
+func (c *wsConnection) supportsAcks() bool {
+	if c == nil {
+		return false
+	}
+	c.metaMu.RLock()
+	defer c.metaMu.RUnlock()
+	return c.ackCapable
 }
 
 func (c *wsConnection) isAlive() bool {

@@ -67,6 +67,14 @@ authService = "stargate"
 keepAliveSeconds = 60
 maxMessageBytes = 4096
 defaultNamespace = "dev.solsynth.solian"
+# At-least-once delivery for messages.* pushes: each frame carries an `_ack_id`,
+# stays in Redis until the client acks it, and is re-sent on a backoff. Needs
+# cache.redisUrl. Off = fire-and-forget.
+ackTracking = false
+ackRetrySeconds = 3
+ackRetentionSeconds = 600
+ackMaxPending = 256
+ackMaxAttempts = 20
 
 [nats]
 # Placeholder: this stack runs no broker. Websocket fan-out and presence need a

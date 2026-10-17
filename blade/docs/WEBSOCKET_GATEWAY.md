@@ -170,3 +170,131 @@ Different tenants may have different SLA requirements for online detection. Shor
 ### Gradual rollout
 
 Deploy a new namespace alongside the default to test configuration changes without affecting existing clients. Once validated, migrate clients by having them pass the new namespace in their connection URL.
+
+## Ack tracking / at-least-once delivery
+
+Client-side requirements are in
+[`WEBSOCKET_PUSH_ACKS_CLIENT.md`](./WEBSOCKET_PUSH_ACKS_CLIENT.md).
+
+Push delivery used to be fire-and-forget: a full outbound queue, a write error, an
+offline device or a replica restart silently lost the frame. With ack tracking
+enabled, `messages.*` pushes instead survive until the client says it handled them.
+
+### Scope
+
+Tracking is opt-in **per connection**, not per deployment: a connection becomes
+tracked only after the client sends `session.resume` or `session.ack` on it.
+
+| Connection | `messages.*` delivery | `_ack_id` | Redis entry | Re-sends |
+|---|---|---|---|---|
+| Ack-capable (sent `session.resume`/`session.ack`) | At-least-once until acked, budget exhausted, or retention passes | yes | yes | up to `ackMaxAttempts` |
+| Legacy (never sent either) | Best effort, byte-identical to before this change | no | no | none |
+
+The capability gate is `shouldTrack` (`internal/wsgateway/ack.go`): the packet
+family alone is not enough, because a client that cannot ack would otherwise be retried
+forever for behaving exactly as it was written. The connection is marked capable
+in the receive loop (`HandleConnection`) before the packet is dispatched, so the
+**first** push after a `session.resume` is already tracked. A reconnect resets the
+flag — every connection generation re-establishes it with its own resume.
+
+`messages.*` is the tracked family because its client consumers key on the message
+id, so a re-delivered frame is idempotent client-side. The family is the single
+constant `ackedPacketPrefix` (`internal/wsgateway/ack.go`). Adding a family later
+needs no client change (clients ack any frame that carries an `_ack_id`); it needs
+an idempotency audit of that family's consumers.
+
+### Wire protocol
+
+An ack-tracked frame carries one extra JSON key. It exists only on the JSON egress
+path; `DyWebSocketPacket` and `packetToProto`/`packetFromProto` are untouched, so
+there is no proto change and clients that ignore unknown keys keep working.
+
+```json
+{"type":"messages.new","data":{"...":"..."},"_ack_id":"5f0d1c2e-..."}
+```
+
+The client answers with the ack id it just received:
+
+```json
+{"type":"session.ack","data":{"ack_id":"5f0d1c2e-..."}}
+```
+
+and asks for everything still pending for its account+device on connect:
+
+```json
+{"type":"session.resume","data":null}
+```
+
+Both are intercepted in `HandlePacket` before the handler/forwarder lookup, are
+valid for any packet family, and produce no error frame on success. An unknown or
+repeated ack id is a no-op — acks are idempotent by design.
+
+`session.resume` replays pending frames in send order and **does not** remove them:
+only an ack clears an entry. A resume and a reconciler pass may therefore deliver
+the same frame twice in the same window, which is exactly why client-side
+idempotency is a precondition, not a nicety.
+
+### Redis keys
+
+```
+ws:ack:pending:<namespace>:<accountID>   # list, append order = send order, element = pending entry JSON
+ws:ack:index:<namespace>:<accountID>     # hash, ack_id -> device_id
+```
+
+Acking is one `HDEL` on the index; the list element it orphans is pruned lazily by
+the next `List`/`Drop`. Both keys carry `EXPIRE` = retention on every write, so an
+abandoned account never leaks memory.
+
+When checking by hand, note the two keys move at different times:
+
+- `redis-cli HLEN ws:ack:index:<ns>:<account>` drops **immediately** on ack — this
+  is the authoritative "still unacknowledged" count.
+- `redis-cli LLEN ws:ack:pending:<ns>:<account>` drops on the next `List` pass (the
+  reconciler runs one every 3s), because the orphaned element is pruned lazily.
+
+A pending list that reaches `0` in both keys is the answer to "did the client
+receive it".
+
+Deleting the pending list is safe at any time (in-flight retries stop, nothing
+crashes); deleting only the index makes the pending entries get pruned.
+
+### Semantics and the residual gap
+
+- An entry is created before the frame is written, so an instant ack always finds it.
+- The reconciler (`RunAckReconciler`, one pass per `ackReconcileInterval`, 3s)
+  re-sends every entry whose `next_try_at` has passed, and drops entries at
+  `ackMaxAttempts` (20) attempts or `ackRetentionSeconds` of age, logging one Warn
+  per dropped ack id. A device with no live connection gets its attempts counted but
+  no bytes, which is what bounds the buffer while it stays offline.
+- **Every replay is capped, in both directions:**
+  - per frame: `ackMaxAttempts` (20) re-sends, then the entry is dropped with a Warn;
+  - per resume: one `session.resume` replays at most 64 frames. The overflow is not
+    lost — it stays pending and the reconciler retries it on its own schedule. This
+    bounds a client that reconnects in a loop, which would otherwise re-receive the
+    whole buffer on every connect.
+- Replays are written through a queue wait (`sendJSONReplay`) instead of the live
+  push path. The live path closes the connection when the queue is full, which is
+  correct for one stuck client but catastrophic for a replay burst larger than the
+  priority queue (16): it would tear down the connection it is repairing.
+- The pending list is capped (`ackMaxPending`, oldest evicted first, one Warn per
+  eviction). Exceeding 90% of the cap logs a "client is not acknowledging" Warn.
+- **Known gap:** cross-replica pushes travel core NATS (publish/subscribe), so a
+  frame lost inside the broker before it reaches the target replica is still lost —
+  the tracker fixes queue-full, write-error, offline-device and replica-restart
+  drops only. Making the bus durable is wiring, not new infrastructure: `eb.Bus`
+  already exposes JetStream (`EnsureStream`/`Consume`).
+
+### Configuration
+
+```toml
+[websocket]
+ackTracking = false          # needs cache.redisUrl; off = fire-and-forget
+ackRetrySeconds = 3          # re-send interval per unacknowledged frame
+ackRetentionSeconds = 600    # retry horizon; older entries are dropped
+ackMaxPending = 256          # per-account buffer cap, oldest evicted first
+ackMaxAttempts = 20          # re-sends per frame before it is dropped
+```
+
+With `ackTracking = true` and no Redis configured, the gateway logs a Warn and keeps
+today's behaviour. `Service.SetAckTracker` stays optional, so a service built without
+a tracker (unit tests, single-node dev) behaves exactly as before.
