@@ -48,11 +48,11 @@ the same targets scoped to the frontend.
 
 The console ships English and Simplified Chinese, and a light and dark theme.
 Both follow the browser/OS on first visit, then remember the reader's choice in
-`localStorage`; the footer carries the language dropdown and the header the
-theme toggle. The sign-in screen lists a social provider only when its
-credentials are complete in `[oidc]`, so no button leads to an unavailable
-provider. The visual system — tokens, type, layout tiers, and component
-rules — is documented in [`docs/design-system.md`](docs/design-system.md).
+`localStorage`; the footer carries the theme toggle and language dropdown.
+The sign-in screen lists a social provider only when its credentials are
+complete in `[oidc]`, so no button leads to an unavailable provider. The
+visual system — tokens, type, layout tiers, and component rules — is
+documented in [`docs/design-system.md`](docs/design-system.md).
 
 Routes resolve as follows:
 

@@ -111,7 +111,7 @@ chrome beyond the card header.
 │        │                                          │  │
 │        │ status bar (OK/ERROR + message)          │  │
 │        └──────────────────────────────────────────┘  │
-│        © 2026 Solar Network            [Language ▾]  │
+│        © 2026 Solar Network        [☾]  [Language ▾]  │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -137,17 +137,16 @@ status bar and table footers are separated by spacing, not rules.
 ### Header
 
 Brand mark is a CSS mask over `currentColor` (so it repaints with the theme),
-then `SOLARPASS`, then `Solar Network` on wider screens. Right side: theme
-toggle, identity, sign out. Every control except identity is reachable before
-sign-in.
+then `SOLARPASS`, then `Solar Network` on wider screens. With a session, the
+right side holds identity and sign out; signed out it is just the brand.
 
 ### Footer
 
 The footer sits outside the card, aligned to the card's current width, and
-holds the copyright (`© {year} Solar Network`) and the language dropdown.
-Language is a native `<select>` styled as a compact inline field: the catalog
-will grow beyond two entries, and a select scales without redesigning the
-header. It is present on every page, signed in or not.
+holds the copyright (`© {year} Solar Network`), the theme toggle, and the
+language dropdown. Language is a native `<select>` styled as a compact inline
+field: the catalog will grow beyond two entries, and a select scales without
+redesigning the header. It is present on every page, signed in or not.
 
 ### Navigation
 

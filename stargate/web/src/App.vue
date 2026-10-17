@@ -178,34 +178,19 @@ function changeLocale(event: Event) {
             </span>
           </RouterLink>
 
-          <div class="flex items-center gap-4">
-            <button
-              type="button"
-              class="btn btn-ghost btn-xs px-1.5"
-              :title="ui.isDark ? t('app.switchToLight') : t('app.switchToDark')"
-              :aria-label="ui.isDark ? t('app.switchToLight') : t('app.switchToDark')"
-              @click="ui.toggleTheme()"
+          <div v-if="session.signedIn" class="flex items-center gap-3">
+            <span
+              v-if="session.elevated"
+              class="hidden items-center gap-1.5 text-2xs text-accent sm:flex"
+              :title="t('app.elevatedHint')"
             >
-              <component :is="ui.isDark ? Sun16 : Moon16" aria-hidden="true" />
+              <span class="dot bg-accent" />
+              {{ t('app.elevated') }}
+            </span>
+            <span class="text-2xs text-dim">{{ session.identity?.name }}</span>
+            <button class="btn btn-ghost btn-xs" type="button" @click="signOut">
+              {{ t('app.signOut') }}
             </button>
-
-            <div
-              v-if="session.signedIn"
-              class="flex items-center gap-3 border-l border-line pl-4"
-            >
-              <span
-                v-if="session.elevated"
-                class="hidden items-center gap-1.5 text-2xs text-accent sm:flex"
-                :title="t('app.elevatedHint')"
-              >
-                <span class="dot bg-accent" />
-                {{ t('app.elevated') }}
-              </span>
-              <span class="text-2xs text-dim">{{ session.identity?.name }}</span>
-              <button class="btn btn-ghost btn-xs" type="button" @click="signOut">
-                {{ t('app.signOut') }}
-              </button>
-            </div>
           </div>
         </div>
 
@@ -262,15 +247,26 @@ function changeLocale(event: Event) {
       :class="cardWidth"
     >
       <span>{{ t('app.copyright', { year }) }}</span>
-      <select
-        class="select select-xs footer-locale"
-        :value="ui.locale"
-        :aria-label="t('app.language')"
-        @change="changeLocale"
-      >
-        <option value="en">{{ t('app.languageEnglish') }}</option>
-        <option value="zh-CN">{{ t('app.languageChinese') }}</option>
-      </select>
+      <div class="flex items-center gap-3">
+        <button
+          type="button"
+          class="btn btn-ghost btn-xs px-1.5"
+          :title="ui.isDark ? t('app.switchToLight') : t('app.switchToDark')"
+          :aria-label="ui.isDark ? t('app.switchToLight') : t('app.switchToDark')"
+          @click="ui.toggleTheme()"
+        >
+          <component :is="ui.isDark ? Sun16 : Moon16" aria-hidden="true" />
+        </button>
+        <select
+          class="select select-xs footer-locale"
+          :value="ui.locale"
+          :aria-label="t('app.language')"
+          @change="changeLocale"
+        >
+          <option value="en">{{ t('app.languageEnglish') }}</option>
+          <option value="zh-CN">{{ t('app.languageChinese') }}</option>
+        </select>
+      </div>
     </footer>
 
     <ElevationSheet />
