@@ -119,6 +119,14 @@ func runOne(ctx context.Context, factory module.Factory, importer module.Importe
 	if opts.DryRun {
 		mode = "dry-run"
 	}
+	if len(stats.Tables) > 1 {
+		// A multi-table module reports each table, so a partial skip (for
+		// instance a slug already taken) is visible where it happened.
+		for _, table := range stats.Tables {
+			log.Printf("%s %s %s: read=%d written=%d skipped=%d",
+				mode, stats.Module, table.Table, table.Read, table.Written, table.Skipped)
+		}
+	}
 	log.Printf("%s %s: read=%d written=%d skipped=%d", mode, stats.Table, stats.Read, stats.Written, stats.Skipped)
 	return nil
 }

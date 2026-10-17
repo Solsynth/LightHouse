@@ -4,13 +4,15 @@
 package common
 
 import (
+	"context"
+
 	"src.solsynth.dev/sosys/stargate/internal/core"
 	"src.solsynth.dev/sosys/stargate/internal/grpcserver"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/adminctl"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/authctl"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/e2eectl"
-	"src.solsynth.dev/sosys/stargate/internal/httpserver/oidcctl"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/oauthappctl"
+	"src.solsynth.dev/sosys/stargate/internal/httpserver/oidcctl"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/profilectl"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/securityctl"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/socialctl"
@@ -37,7 +39,7 @@ func Auth(c *core.Services, p *ports.Set) authctl.Deps {
 func Security(c *core.Services, p *ports.Set) securityctl.Deps {
 	return securityctl.Deps{
 		Store: c.Store, Redis: c.Redis, Cfg: c.Config, Auth: c.Auth, Token: c.Token,
-		Perm: c.Perm, Logs: c.Logs, Clients: c.Clients, Spells: c.Spells,
+		Perm: c.Perm, Logs: c.Logs, Spells: c.Spells,
 		Presence: c.Presence, Ports: p, Log: c.Log,
 	}
 }
@@ -65,7 +67,21 @@ func OIDC(c *core.Services, p *ports.Set) oidcctl.Deps {
 
 // OAuthApp builds the OAuth app controller dependencies.
 func OAuthApp(c *core.Services) oauthappctl.Deps {
-	return oauthappctl.Deps{Store: c.Store, Perm: c.Perm, Log: c.Log}
+	deps := oauthappctl.Deps{Store: c.Store, Perm: c.Perm, Log: c.Log}
+	if c.Redis != nil && c.Redis.Cache != nil {
+		cache := c.Redis.Cache
+		deps.Invalidate = func(ctx context.Context, appID string, slugs ...string) {
+			if appID != "" {
+				_ = cache.Remove(ctx, oauthappctl.CacheKeyPrefixClientID+appID)
+			}
+			for _, slug := range slugs {
+				if slug != "" {
+					_ = cache.Remove(ctx, oauthappctl.CacheKeyPrefixClientSlug+slug)
+				}
+			}
+		}
+	}
+	return deps
 }
 
 func Admin(c *core.Services) adminctl.Deps {

@@ -34,7 +34,6 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/actionlog"
 	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/config"
-	"src.solsynth.dev/sosys/stargate/internal/grpcclient"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
@@ -46,14 +45,13 @@ import (
 
 // Deps carries the dependencies the security controllers need.
 type Deps struct {
-	Store    *store.Store
-	Redis    *redis.Client
-	Cfg      *config.Config
-	Auth     *auth.AuthService
-	Token    *auth.TokenAuthService
-	Perm     *permission.Service
-	Logs     *actionlog.Service
-	Clients  *grpcclient.Clients
+	Store *store.Store
+	Redis *redis.Client
+	Cfg   *config.Config
+	Auth  *auth.AuthService
+	Token *auth.TokenAuthService
+	Perm  *permission.Service
+	Logs  *actionlog.Service
 	// Ports resolves the oauthClients provider (oauthapps module, config or
 	// Develop) for authorized-app hydration.
 	Ports    *ports.Set

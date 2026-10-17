@@ -242,7 +242,7 @@ fails startup.
 | `email` | auth, spells, admin | `app.solian.ring` |
 | `push` | auth, admin, relationships | `app.solian.ring` |
 | `presence` | security, admin | `app.solian.blade` |
-| `oauthClients` | oidc, security | `app.solian.develop` |
+| `oauthClients` | oidc, security, token auth | `app.solian.id.oauthapps`, `app.solian.develop` |
 | `nfcTokens` | auth | `app.solian.id.nfc`, `app.solian.pass` |
 | `verificationSpells` | auth | `app.solian.id.spells` |
 
@@ -270,6 +270,7 @@ startup.
 | `app.solian.id.spells` | feature | `/api/spells/**` | accounts | `magic_spells`, `affiliation_*` (later phase) |
 | `app.solian.id.social` | feature | `/api/auth/login/{provider}`, callbacks | auth, accounts | none |
 | `app.solian.id.oidc` | feature | `/api/oidc/**`, `/.well-known/openid-configuration` | auth, accounts | none |
+| `app.solian.id.oauthapps` | feature | `/api/oauth-apps/**`, provides `oauthClients` | auth | `oauth_apps`, `oauth_app_secrets` |
 | `app.solian.e2ee` | feature | `/api/e2ee/**`, MLS gRPC | accounts | `e2ee_*`, `mls_*` (later phase) |
 | `app.solian.admin` | feature | `/api/admin/**`, actions/punishments | accounts | core tables |
 | `app.solian.wellknown` | feature | `/.well-known/*` docs | — | none |
@@ -368,6 +369,21 @@ whose schema diverged.
       modules.
 - [ ] Refactor profile/auth/admin/security/OIDC/presence call sites to ports.
 - [ ] Port selection and capability gating at every call site.
+
+### Phase 4b — OAuth app extraction from Develop
+
+- [x] Move the OAuth/OIDC client registry out of Develop into
+      `app.solian.id.oauthapps` (`oauth_apps`, `oauth_app_secrets`).
+- [x] Individual (`account_id`) or project-linked (`project_id`) ownership, so
+      the provider runs without the Develop service.
+- [x] `/api/oauth-apps` CRUD plus secret create/rotate/delete.
+- [x] Module provides `oauthClients`; Develop remains an integration provider.
+- [x] `oidcctl`, `securityctl` and token binding resolve through the port.
+- [x] Cache invalidation on app and secret mutations.
+- [ ] Retire `grpcclient.DevelopAppProvider` once the Develop integration
+      stops being the only consumer of `GetCustomAppSlug`.
+- [x] Legacy importer from Develop's `custom_apps` and `custom_app_secrets`,
+      with `scripts/import-oauth-apps.sh`.
 
 ### Phase 5 — NFC
 

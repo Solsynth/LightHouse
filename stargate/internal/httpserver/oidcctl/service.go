@@ -295,23 +295,29 @@ func (s *service) findClientByIdentifier(ctx context.Context, identifier string)
 	}
 	return s.findClientBySlug(ctx, identifier)
 }
+
 func (s *service) findClientByID(ctx context.Context, id string) (*oidcClient, error) {
 	if client := s.findLocalClient(id); client != nil {
 		return client, nil
 	}
-	if !s.cacheAvailable() {
-		return nil, nil
+	// The cache only mirrors a provider's answer, so it is consulted only
+	// while a provider is mounted: disabling the module (or the Develop
+	// integration) stops serving its clients immediately instead of after
+	// the cache TTL.
+	if s.cacheAvailable() && s.clientsAvailable() {
+		var cached oidcClient
+		found, err := s.redis.Cache.Get(ctx, cacheKeyPrefixClientId+id, &cached)
+		if err == nil && found {
+			return &cached, nil
+		}
 	}
-	var client oidcClient
-	found, err := s.redis.Cache.Get(ctx, cacheKeyPrefixClientId+id, &client)
-	if err == nil && found {
-		return &client, nil
-	}
-	client, err = s.fetchClient(ctx, id, "")
+	client, err := s.fetchClient(ctx, id, "")
 	if err != nil || client.Id == "" {
 		return nil, err
 	}
-	_ = s.redis.Cache.Set(ctx, cacheKeyPrefixClientId+id, &client, clientCacheTTL)
+	if s.cacheAvailable() {
+		_ = s.redis.Cache.Set(ctx, cacheKeyPrefixClientId+id, &client, clientCacheTTL)
+	}
 	return &client, nil
 }
 
@@ -319,20 +325,26 @@ func (s *service) findClientBySlug(ctx context.Context, slug string) (*oidcClien
 	if client := s.findLocalClient(slug); client != nil {
 		return client, nil
 	}
-	if !s.cacheAvailable() {
-		return nil, nil
+	if s.cacheAvailable() && s.clientsAvailable() {
+		var cached oidcClient
+		found, err := s.redis.Cache.Get(ctx, cacheKeyPrefixClientSlug+slug, &cached)
+		if err == nil && found {
+			return &cached, nil
+		}
 	}
-	var client oidcClient
-	found, err := s.redis.Cache.Get(ctx, cacheKeyPrefixClientSlug+slug, &client)
-	if err == nil && found {
-		return &client, nil
-	}
-	client, err = s.fetchClient(ctx, "", slug)
+	client, err := s.fetchClient(ctx, "", slug)
 	if err != nil || client.Id == "" {
 		return nil, err
 	}
-	_ = s.redis.Cache.Set(ctx, cacheKeyPrefixClientSlug+slug, &client, clientCacheTTL)
+	if s.cacheAvailable() {
+		_ = s.redis.Cache.Set(ctx, cacheKeyPrefixClientSlug+slug, &client, clientCacheTTL)
+	}
 	return &client, nil
+}
+
+// clientsAvailable reports whether the oauthClients port has a provider.
+func (s *service) clientsAvailable() bool {
+	return s.clients != nil && s.clients.Available()
 }
 
 func (s *service) fetchClient(ctx context.Context, id, slug string) (oidcClient, error) {

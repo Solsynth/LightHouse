@@ -100,9 +100,9 @@ type OAuthApp struct {
 
 	// PostLogoutRedirectURIs are the RFC 9700 RP-initiated logout targets.
 	PostLogoutRedirectURIs []string
-	RequirePkce           bool
-	AllowOfflineAccess    bool
-	IsPublicClient        bool
+	RequirePkce            bool
+	AllowOfflineAccess     bool
+	IsPublicClient         bool
 
 	HomeUri           *string
 	PolicyUri         *string

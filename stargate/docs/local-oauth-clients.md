@@ -1,8 +1,13 @@
 # Local OAuth clients
 
-Stargate normally loads custom OAuth/OIDC clients from `DysonNetwork.Develop`.
-A deployment can run the OAuth provider without Develop by defining clients in
-Stargate's local TOML configuration.
+Stargate resolves custom OAuth/OIDC clients from three sources, in order:
+`[[oidcProvider.clients]]` in this configuration file, the
+`app.solian.id.oauthapps` registry (`/api/oauth-apps`, see
+[`oauth-apps.md`](oauth-apps.md)), and finally `DysonNetwork.Develop`. A
+deployment can therefore run the OAuth provider with neither Develop nor a
+local client list, registering clients through the API instead.
+
+This document covers the configuration-file form.
 
 ## Configuration
 

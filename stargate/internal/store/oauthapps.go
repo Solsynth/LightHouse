@@ -119,19 +119,26 @@ func (s *Store) CountOAuthAppsWithSlug(ctx context.Context, slug string) (int64,
 
 // ── Secrets ────────────────────────────────────────────────────────────────
 
-// CreateOAuthAppSecret inserts a secret and returns the stored app with the
-// plaintext, the only time it is readable.
+// CreateOAuthAppSecret inserts a secret. The caller supplies the ID so the
+// value returned to the client is the one that exists in the table.
 func (s *Store) CreateOAuthAppSecret(ctx context.Context, secret *model.OAuthAppSecret) error {
-	entity := OAuthAppSecretEntity{
-		ID: uuid.New(), EntityBase: EntityBase{CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()},
-		Secret: secret.Secret, Description: secret.Description, IsOidc: secret.IsOidc,
-		ExpiredAt: timeValue(secret.ExpiredAt),
-	}
 	appID, err := ParseUUID(secret.AppId)
 	if err != nil {
 		return err
 	}
-	entity.AppID = appID
+	id, err := ParseUUID(secret.Id)
+	if err != nil {
+		return err
+	}
+	entity := OAuthAppSecretEntity{
+		ID:          id,
+		EntityBase:  EntityBase{CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()},
+		Secret:      secret.Secret,
+		Description: secret.Description,
+		IsOidc:      secret.IsOidc,
+		ExpiredAt:   timeValue(secret.ExpiredAt),
+		AppID:       appID,
+	}
 	return s.DB.WithContext(ctx).Create(&entity).Error
 }
 

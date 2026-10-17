@@ -107,30 +107,8 @@ func (i *importer) Import(ctx context.Context, source, target *gorm.DB, opts mod
 	}
 
 	if opts.DryRun {
-		stats.Skipped = stats.Read
 		return stats, nil
 	}
 
-	if err := target.WithContext(ctx).Exec(`
-		CREATE TABLE IF NOT EXISTS module_import_state (
-			module text NOT NULL,
-			table_name text NOT NULL,
-			rows_read bigint NOT NULL,
-			rows_written bigint NOT NULL,
-			completed_at timestamptz NOT NULL DEFAULT now(),
-			PRIMARY KEY (module, table_name)
-		)`).Error; err != nil {
-		return stats, err
-	}
-	if err := target.WithContext(ctx).Exec(`
-		INSERT INTO module_import_state (module, table_name, rows_read, rows_written)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT (module, table_name) DO UPDATE SET
-			rows_read = EXCLUDED.rows_read,
-			rows_written = EXCLUDED.rows_written,
-			completed_at = now()`,
-		stats.Module, stats.Table, stats.Read, stats.Written).Error; err != nil {
-		return stats, err
-	}
-	return stats, nil
+	return stats, module.RecordImport(ctx, target, stats)
 }

@@ -26,11 +26,35 @@ type Deps struct {
 	Store *store.Store
 	Perm  *permission.Service
 	Log   *slog.Logger
+	// Invalidate drops the OIDC provider's cached view of a client. An app
+	// edit must be visible to the provider immediately, not after its TTL.
+	Invalidate func(ctx context.Context, appID string, slugs ...string)
 }
 
 type controller struct {
 	d Deps
 }
+
+// invalidate drops the cached client for the app, including a slug the app
+// no longer uses (a rename must not keep serving the old identifier).
+func (c *controller) invalidate(ctx context.Context, app *model.OAuthApp, previousSlug string) {
+	if c.d.Invalidate == nil || app == nil {
+		return
+	}
+	slugs := []string{app.Slug}
+	if previousSlug != "" && previousSlug != app.Slug {
+		slugs = append(slugs, previousSlug)
+	}
+	c.d.Invalidate(ctx, app.Id, slugs...)
+}
+
+// CacheKeyPrefixClientID and CacheKeyPrefixClientSlug are the OIDC
+// provider's client-cache key prefixes. The module supplies an invalidator
+// built from them so an app edit is visible immediately.
+const (
+	CacheKeyPrefixClientID   = "auth:oidc-client:id:"
+	CacheKeyPrefixClientSlug = "auth:oidc-client:slug:"
+)
 
 // Register mounts the OAuth app routes on the /api router group.
 func Register(api *gin.RouterGroup, d Deps) {
@@ -175,6 +199,7 @@ func (c *controller) createApp(ctx *gin.Context) {
 		jsonError(ctx, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to create the OAuth app.")
 		return
 	}
+	c.invalidate(reqCtx, app, "")
 	ctx.JSON(http.StatusCreated, app)
 }
 
@@ -220,6 +245,7 @@ func (c *controller) updateApp(ctx *gin.Context) {
 		jsonError(ctx, http.StatusBadRequest, "OAUTH_APP_REQUEST_INVALID", err.Error())
 		return
 	}
+	previousSlug := app.Slug
 	if err := c.applyRequest(reqCtx, &request, app, user); err != nil {
 		respondError(ctx, err)
 		return
@@ -228,6 +254,7 @@ func (c *controller) updateApp(ctx *gin.Context) {
 		jsonError(ctx, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to update the OAuth app.")
 		return
 	}
+	c.invalidate(reqCtx, app, previousSlug)
 	ctx.JSON(http.StatusOK, app)
 }
 
@@ -252,6 +279,7 @@ func (c *controller) deleteApp(ctx *gin.Context) {
 		jsonError(ctx, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to delete the OAuth app.")
 		return
 	}
+	c.invalidate(reqCtx, app, "")
 	ctx.Status(http.StatusNoContent)
 }
 
@@ -464,6 +492,7 @@ func (c *controller) createSecret(ctx *gin.Context) {
 		jsonError(ctx, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to create the app secret.")
 		return
 	}
+	c.invalidate(reqCtx, app, "")
 	ctx.JSON(http.StatusCreated, secret)
 }
 
@@ -507,6 +536,7 @@ func (c *controller) deleteSecret(ctx *gin.Context) {
 		jsonError(ctx, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to delete the app secret.")
 		return
 	}
+	c.invalidate(reqCtx, app, "")
 	ctx.Status(http.StatusNoContent)
 }
 
@@ -538,6 +568,7 @@ func (c *controller) rotateSecret(ctx *gin.Context) {
 		respondError(ctx, errSecretNotFound)
 		return
 	}
+	c.invalidate(reqCtx, app, "")
 	ctx.JSON(http.StatusOK, secret)
 }
 

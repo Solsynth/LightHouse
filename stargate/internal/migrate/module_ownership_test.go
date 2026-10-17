@@ -38,6 +38,7 @@ func TestModuleSchemaOwnership(t *testing.T) {
 	}
 
 	moduleTable := "account_relationships"
+	oauthTables := []string{"oauth_apps", "oauth_app_secrets"}
 
 	t.Run("relationships module disabled skips table", func(t *testing.T) {
 		database := newDatabase(t)
@@ -106,6 +107,59 @@ func TestModuleSchemaOwnership(t *testing.T) {
 		}
 		if !database.Migrator().HasTable(moduleTable) {
 			t.Fatalf("table %s must survive a disable cycle", moduleTable)
+		}
+	})
+
+	t.Run("oauthapps module disabled skips tables", func(t *testing.T) {
+		database := newDatabase(t)
+		if err := Run(ctx, database); err != nil {
+			t.Fatal(err)
+		}
+		resolution, err := module.Resolve(standard.Modules(), []string{"app.solian.id.auth"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resolution.Enabled["app.solian.id.oauthapps"] {
+			t.Fatal("oauthapps should be disabled by the allowlist")
+		}
+		if err := module.MigrateSchema(ctx, database, resolution.Factories); err != nil {
+			t.Fatal(err)
+		}
+		for _, table := range oauthTables {
+			if database.Migrator().HasTable(table) {
+				t.Fatalf("table %s should not exist when oauthapps is disabled", table)
+			}
+		}
+	})
+
+	t.Run("oauthapps module enabled creates tables and constraints", func(t *testing.T) {
+		database := newDatabase(t)
+		if err := Run(ctx, database); err != nil {
+			t.Fatal(err)
+		}
+		resolution, err := module.Resolve(standard.Modules(), nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !resolution.Enabled["app.solian.id.oauthapps"] {
+			t.Fatal("oauthapps should be enabled by default")
+		}
+		if err := module.MigrateSchema(ctx, database, resolution.Factories); err != nil {
+			t.Fatal(err)
+		}
+		for _, table := range oauthTables {
+			if !database.Migrator().HasTable(table) {
+				t.Fatalf("table %s should exist when oauthapps is enabled", table)
+			}
+		}
+		// The owner constraint is what keeps a registration meaningful.
+		var count int64
+		if err := database.WithContext(ctx).Raw(
+			`SELECT count(*) FROM pg_constraint WHERE conname = 'ck_oauth_apps_owner'`).Scan(&count).Error; err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Fatalf("ck_oauth_apps_owner constraints = %d; want 1", count)
 		}
 	})
 }

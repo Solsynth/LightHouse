@@ -15,9 +15,9 @@ type OAuthApp struct {
 	Description string `json:"description"`
 	// Status mirrors CustomAppStatus: 0 developing, 1 staging,
 	// 2 production, 3 suspended. Only production enforces redirect URIs.
-	Status      int      `json:"status"`
-	ProjectId   *string  `json:"project_id,omitempty"`
-	AccountId   *string  `json:"account_id,omitempty"`
+	Status      int                 `json:"status"`
+	ProjectId   *string             `json:"project_id,omitempty"`
+	AccountId   *string             `json:"account_id,omitempty"`
 	OauthConfig OAuthAppOauthConfig `json:"oauth_config"`
 	Links       OAuthAppLinks       `json:"links"`
 	CreatedAt   *Time               `json:"created_at,omitempty"`
