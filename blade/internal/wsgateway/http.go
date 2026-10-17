@@ -1,16 +1,16 @@
 package wsgateway
 
 import (
-	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
-	"srv.solsynth.dev/sosys/blade/internal/logging"
-	"src.solsynth.dev/sosys/go/pkg/cache"
-	dyauth "src.solsynth.dev/sosys/go/pkg/auth"
-	gen "src.solsynth.dev/sosys/go/proto"
+	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
-	"golang.org/x/net/websocket"
+	"srv.solsynth.dev/sosys/blade/internal/logging"
+	dyauth "src.solsynth.dev/sosys/go/pkg/auth"
+	"src.solsynth.dev/sosys/go/pkg/cache"
+	gen "src.solsynth.dev/sosys/go/proto"
 )
 
 type HttpHandler struct {
@@ -64,41 +64,55 @@ func (h *HttpHandler) Handle(c *gin.Context) {
 
 	deviceID := auth.Session.GetClientId()
 
-	server := websocket.Server{
-		Handshake: func(cfg *websocket.Config, req *http.Request) error {
-			// Allow browser and non-browser clients (some do not send Origin).
-			if _, err := websocket.Origin(cfg, req); err != nil {
-				logging.Log.Warn().
-					Err(err).
-					Str("path", requestPath).
-					Str("origin", requestOrigin).
-					Str("namespace", namespace).
-					Str("accountId", auth.Account.GetId()).
-					Str("deviceId", deviceID).
-					Msg("Rejected websocket handshake due to invalid origin")
-				return fmt.Errorf("invalid websocket origin: %w", err)
-			}
-			return nil
-		},
-		Handler: websocket.Handler(func(conn *websocket.Conn) {
-			logging.Log.Info().
+	// The gateway already allows every origin through CORS, so the handshake
+	// keeps accepting cross-origin browsers and clients that omit Origin. A
+	// present Origin must still parse, as it did under x/net's handshake check.
+	if requestOrigin != "" {
+		if _, err := url.ParseRequestURI(requestOrigin); err != nil {
+			logging.Log.Warn().
+				Err(err).
+				Str("path", requestPath).
+				Str("origin", requestOrigin).
 				Str("namespace", namespace).
 				Str("accountId", auth.Account.GetId()).
 				Str("deviceId", deviceID).
-				Str("sessionId", auth.Session.GetId()).
-				Str("origin", requestOrigin).
-				Str("path", requestPath).
-				Msg("Upgraded websocket connection")
-			h.service.HandleConnection(c.Request.Context(), SessionAuthContext{
-				Account:   auth.Account,
-				Session:   auth.Session,
-				TokenInfo: tokenInfo,
-				Request:   dyauth.CloneRequestMetadata(c.Request),
-			}, namespace, deviceID, conn)
-		}),
+				Msg("Rejected websocket handshake due to invalid origin")
+			c.JSON(http.StatusForbidden, gin.H{"error": "invalid websocket origin"})
+			return
+		}
 	}
 
-	server.ServeHTTP(c.Writer, c.Request)
+	conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{
+		InsecureSkipVerify: true,
+	})
+	if err != nil {
+		// Accept already wrote the HTTP error response.
+		logging.Log.Warn().
+			Err(err).
+			Str("path", requestPath).
+			Str("origin", requestOrigin).
+			Str("namespace", namespace).
+			Str("accountId", auth.Account.GetId()).
+			Str("deviceId", deviceID).
+			Msg("Failed to upgrade websocket connection")
+		return
+	}
+
+	logging.Log.Info().
+		Str("namespace", namespace).
+		Str("accountId", auth.Account.GetId()).
+		Str("deviceId", deviceID).
+		Str("sessionId", auth.Session.GetId()).
+		Str("origin", requestOrigin).
+		Str("path", requestPath).
+		Msg("Upgraded websocket connection")
+
+	h.service.HandleConnection(c.Request.Context(), SessionAuthContext{
+		Account:   auth.Account,
+		Session:   auth.Session,
+		TokenInfo: tokenInfo,
+		Request:   dyauth.CloneRequestMetadata(c.Request),
+	}, namespace, deviceID, conn)
 
 	logging.Log.Debug().
 		Str("namespace", namespace).

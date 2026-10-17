@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"golang.org/x/net/websocket"
+	"github.com/coder/websocket"
 	gen "src.solsynth.dev/sosys/go/proto"
 )
 
@@ -134,28 +135,36 @@ func newWSPair(t *testing.T) (server *websocket.Conn, client *websocket.Conn) {
 	t.Helper()
 	accepted := make(chan *websocket.Conn, 1)
 	release := make(chan struct{})
-	srv := httptest.NewServer(websocket.Server{Handler: func(c *websocket.Conn) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+		if err != nil {
+			return
+		}
 		accepted <- c
 		<-release
-	}})
+		_ = c.CloseNow()
+	}))
 	t.Cleanup(func() {
 		close(release)
 		srv.Close()
 	})
 
-	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
-	client, err := websocket.Dial(wsURL, "", "http://test/")
+	dialCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client, _, err := websocket.Dial(dialCtx, "ws"+strings.TrimPrefix(srv.URL, "http"), nil)
 	if err != nil {
 		t.Fatalf("failed to dial test websocket: %v", err)
 	}
-	t.Cleanup(func() { _ = client.Close() })
+	// CloseNow, not Close: a close handshake against a peer that is being torn
+	// down would spend its fixed 5s+5s timeouts in every test.
+	t.Cleanup(func() { _ = client.CloseNow() })
 
 	select {
 	case server = <-accepted:
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for the server side of the test websocket")
 	}
-	t.Cleanup(func() { _ = server.Close() })
+	t.Cleanup(func() { _ = server.CloseNow() })
 	return server, client
 }
 
@@ -192,9 +201,12 @@ func trackLegacyConnection(t *testing.T, svc *Service, server *websocket.Conn, a
 // readPacket reads one client frame; ok is false when nothing arrives in time.
 func readPacket(t *testing.T, conn *websocket.Conn, timeout time.Duration) (Packet, bool) {
 	t.Helper()
-	_ = conn.SetReadDeadline(time.Now().Add(timeout))
-	var raw []byte
-	if err := websocket.Message.Receive(conn, &raw); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	_, raw, err := conn.Read(ctx)
+	if err != nil {
+		// A timeout cancels the read, which closes this connection; every
+		// caller uses a miss as the last read on that connection.
 		return Packet{}, false
 	}
 	var packet Packet

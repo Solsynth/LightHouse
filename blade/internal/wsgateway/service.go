@@ -5,14 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/google/uuid"
-	"golang.org/x/net/websocket"
 	dyauth "src.solsynth.dev/sosys/go/pkg/auth"
 	"src.solsynth.dev/sosys/go/pkg/cache"
 	gen "src.solsynth.dev/sosys/go/proto"
@@ -994,9 +995,26 @@ func (s *Service) HandleConnection(ctx context.Context, auth SessionAuthContext,
 
 	nsCfg := s.resolveNamespaceConfig(namespace)
 
+	// The per-namespace limit is enforced below after the frame is read, so a
+	// client that overshoots gets an error frame and stays connected, exactly as
+	// it did under x/net. Disable the library default (32 KiB) so a namespace
+	// that raises MaxMessageBytes above it keeps working.
+	conn.SetReadLimit(-1)
+
 	for {
-		var raw []byte
-		if err := websocket.Message.Receive(conn, &raw); err != nil {
+		_, reader, err := conn.Reader(connCtx)
+		if err != nil {
+			logging.Log.Debug().
+				Err(err).
+				Str("namespace", namespace).
+				Str("accountId", account.GetId()).
+				Str("deviceId", deviceID).
+				Msg("Stopped websocket receive loop")
+			return
+		}
+
+		raw, err := io.ReadAll(io.LimitReader(reader, nsCfg.MaxMessageBytes+1))
+		if err != nil {
 			logging.Log.Debug().
 				Err(err).
 				Str("namespace", namespace).
@@ -1006,8 +1024,17 @@ func (s *Service) HandleConnection(ctx context.Context, auth SessionAuthContext,
 			return
 		}
 		if int64(len(raw)) > nsCfg.MaxMessageBytes {
+			// Drain the rest so the next Reader call starts on a frame boundary.
+			if _, err := io.Copy(io.Discard, reader); err != nil {
+				logging.Log.Debug().
+					Err(err).
+					Str("namespace", namespace).
+					Str("accountId", account.GetId()).
+					Str("deviceId", deviceID).
+					Msg("Stopped websocket receive loop")
+				return
+			}
 			logging.Log.Warn().
-				Int("sizeBytes", len(raw)).
 				Int64("maxMessageBytes", nsCfg.MaxMessageBytes).
 				Str("namespace", namespace).
 				Str("accountId", account.GetId()).
@@ -1188,14 +1215,12 @@ func (c *wsConnection) writeJSON(packet Packet) error {
 		return err
 	}
 
-	if err := c.conn.SetWriteDeadline(time.Now().Add(outboundWriteTimeout)); err != nil {
-		return err
-	}
-	defer func() {
-		_ = c.conn.SetWriteDeadline(time.Time{})
-	}()
+	ctx, cancel := context.WithTimeout(context.Background(), outboundWriteTimeout)
+	defer cancel()
 
-	return websocket.Message.Send(c.conn, payload)
+	// Frames stay binary: that is what x/net's Message codec emitted for a
+	// []byte payload, and existing clients decode binary frames.
+	return c.conn.Write(ctx, websocket.MessageBinary, payload)
 }
 
 func (c *wsConnection) close(reason string) {
@@ -1204,15 +1229,18 @@ func (c *wsConnection) close(reason string) {
 	}
 
 	c.closeOnce.Do(func() {
-		if c.cancel != nil {
-			c.cancel()
-		}
 		if reason != "" {
 			_ = c.sendJSON(Packet{Type: PacketTypeError, ErrorMessage: reason})
 			time.Sleep(closeReasonFlushDelay)
 		}
+		// CloseNow skips the close handshake. A peer that is already gone (the
+		// replaced-connection path calls close inline) must not stall the caller
+		// for the handshake's fixed timeouts.
 		if c.conn != nil {
-			_ = c.conn.Close()
+			_ = c.conn.CloseNow()
+		}
+		if c.cancel != nil {
+			c.cancel()
 		}
 		if c.done != nil {
 			close(c.done)
@@ -1320,12 +1348,15 @@ func (c *wsConnection) isAlive() bool {
 		return false
 	}
 
-	if err := c.conn.SetWriteDeadline(time.Now().Add(2 * time.Second)); err != nil {
-		return false
+	if c.done != nil {
+		select {
+		case <-c.done:
+			return false
+		default:
+		}
 	}
-	defer func() {
-		_ = c.conn.SetWriteDeadline(time.Time{})
-	}()
 
+	// The application-level ping is what this probe always was; the write
+	// timeout that used to bound it now comes from the write context.
 	return c.sendJSON(Packet{Type: PacketTypePing}) == nil
 }

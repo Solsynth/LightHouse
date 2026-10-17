@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/google/uuid"
-	"golang.org/x/net/websocket"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	dyauth "src.solsynth.dev/sosys/go/pkg/auth"
 	gen "src.solsynth.dev/sosys/go/proto"
@@ -18,14 +18,24 @@ import (
 
 func testWSConn(t *testing.T) *websocket.Conn {
 	t.Helper()
-	srv := httptest.NewServer(websocket.Server{Handler: func(*websocket.Conn) {}})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+		if err != nil {
+			return
+		}
+		// Hold the connection open until the client goes away.
+		_, _, _ = conn.Read(r.Context())
+		_ = conn.CloseNow()
+	}))
 	t.Cleanup(srv.Close)
-	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
-	conn, err := websocket.Dial(wsURL, "", "http://test/")
+
+	dialCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(dialCtx, "ws"+strings.TrimPrefix(srv.URL, "http"), nil)
 	if err != nil {
 		t.Fatalf("failed to dial test websocket: %v", err)
 	}
-	t.Cleanup(func() { _ = conn.Close() })
+	t.Cleanup(func() { _ = conn.CloseNow() })
 	return conn
 }
 
