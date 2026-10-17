@@ -34,12 +34,17 @@ board updates indirectly via the profile read-model.
 
 The SPA in `web/` is served by Stargate itself from `[web] distPath` (the
 shipped `config.example.toml` uses `web/dist`); there is no separate static
-file server. Build it before starting the service:
+file server. One command builds both and serves them on `:8080`:
 
 ```sh
-make web            # cd web && bun install --frozen-lockfile && bun run build
-CONFIG_PATH=config.toml make run
+make start                 # bun install + SPA build + Go build, then serve
+make start CONFIG=config.toml
 ```
+
+`make dev` runs the Go API and the Vite server together (Vite proxies the API,
+so the console uses same-origin URLs in both modes). `make web-check` runs the
+type checker, linter, unit tests, and a production build. `web/Makefile` has
+the same targets scoped to the frontend.
 
 Routes resolve as follows:
 
@@ -51,10 +56,10 @@ Routes resolve as follows:
   fall back and answer with the canonical JSON 404;
 - an empty `[web] distPath` leaves the server API-only.
 
-In development run `make web-dev` and open the Vite server: it proxies
-`/api`, `/.well-known`, `/swagger`, `/health` and `/alive` to
-`STARGATE_DEV_PROXY` (default `http://localhost:8080`), so the app uses
-same-origin relative URLs in both modes. The Docker image builds `web/` with
+In development run `make dev` (or `make web-dev` for the Vite server alone)
+and open `http://localhost:5173`: Vite proxies `/api`, `/.well-known`,
+`/swagger`, `/health` and `/alive` to `STARGATE_DEV_PROXY` (default
+`http://localhost:8080`). The Docker image builds `web/` with
 Bun and copies the output to `/app/web/dist`.
 
 ## Run
