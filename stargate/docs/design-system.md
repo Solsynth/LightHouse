@@ -120,7 +120,7 @@ Width tiers are decided by route metadata in `web/src/router/index.ts`:
 | Tier | Width | Routes |
 | --- | --- | --- |
 | flow | 460 px | sign-in, create account, recovery, captcha, provider callback, authorize, sudo |
-| account | 880 px | profile, factors, contacts, security mode |
+| account | 880 px | profile, factors, contacts, linked identities, security mode |
 | wide | 1120 px | sessions, developers, activity |
 | full | viewport − 32 px | all admin pages |
 
@@ -157,8 +157,9 @@ redesigning the header. It is present on every page, signed in or not.
 
 The main nav is a single horizontal line of 11 px links with a Carbon 16 icon.
 The active section is `text-base-content`; the rest are `text-faint`. The
-account-security entry is labelled **Security**; its contained tabs are
-Sessions, Sign-In Factors, Contacts, and Security Mode.
+account-settings entry is labelled **Settings** with the sliders icon; its
+contained tabs are Sessions, Sign-In Factors, Contacts, Linked Identities, and
+Security Mode.
 
 `SecurityNav` is a contained tab box: 1 px border, hairline dividers between
 tabs, active tab filled with `base-300`, inactive tabs faint with a hover tint.

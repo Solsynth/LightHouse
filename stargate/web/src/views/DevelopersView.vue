@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Renew16, TrashCan16, Unlink16, View16, ViewOff16 } from '@carbon/icons-vue'
+import { Renew16, TrashCan16 } from '@carbon/icons-vue'
 
 import { useNoticeStore } from '@/stores/notice'
 import { appApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
-import type { ApiKey, ApiKeyCreated, AuthorizedApp, Connection } from '@/lib/api/types'
+import type { ApiKey, ApiKeyCreated, AuthorizedApp } from '@/lib/api/types'
 import { relative, remaining, shortId } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
@@ -19,7 +19,6 @@ const notice = useNoticeStore()
 
 const apps = ref<AuthorizedApp[]>([])
 const keys = ref<ApiKey[]>([])
-const connections = ref<Connection[]>([])
 const loading = ref(true)
 const error = ref('')
 const busy = ref(false)
@@ -39,14 +38,12 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [appPage, keyList, connectionList] = await Promise.all([
+    const [appPage, keyList] = await Promise.all([
       appApi.authorized(),
       appApi.keys(),
-      appApi.connections(),
     ])
     apps.value = appPage.items ?? []
     keys.value = keyList ?? []
-    connections.value = connectionList ?? []
   } catch (caught) {
     error.value =
       caught instanceof StargateError ? caught.message : t('developers.errorLoad')
@@ -116,36 +113,6 @@ async function deauthorize() {
     await load()
   } catch (caught) {
     notice.fail(caught instanceof Error ? caught.message : t('developers.errorDeauthorize'))
-  } finally {
-    busy.value = false
-  }
-}
-
-async function toggleVisibility(connection: Connection) {
-  busy.value = true
-  try {
-    await appApi.setConnectionVisibility(connection.id, !connection.is_public)
-    notice.ok(
-      connection.is_public
-        ? t('developers.noticeConnectionHidden')
-        : t('developers.noticeConnectionShown'),
-    )
-    await load()
-  } catch (caught) {
-    notice.fail(caught instanceof Error ? caught.message : t('developers.errorVisibility'))
-  } finally {
-    busy.value = false
-  }
-}
-
-async function removeConnection(connection: Connection) {
-  busy.value = true
-  try {
-    await appApi.removeConnection(connection.id)
-    notice.ok(t('developers.noticeConnectionRemoved'))
-    await load()
-  } catch (caught) {
-    notice.fail(caught instanceof Error ? caught.message : t('developers.errorRemoveConnection'))
   } finally {
     busy.value = false
   }
@@ -294,57 +261,6 @@ onMounted(load)
             </tbody>
           </table>
         </div>
-      </ConsolePanel>
-
-      <ConsolePanel
-        :title="t('developers.linkedIdentities')"
-        :note="t('developers.connectionsNote', { n: connections.length })"
-      >
-        <p v-if="loading" class="py-4 text-xs text-faint">{{ t('developers.readingConnections') }}</p>
-        <p v-else-if="!connections.length" class="voice py-4 text-[12px]">
-          {{ t('developers.noConnections') }}
-        </p>
-
-        <ul v-else>
-          <li
-            v-for="connection in connections"
-            :key="connection.id"
-            class="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
-          >
-            <div>
-              <div class="flex flex-wrap items-center gap-2">
-                <span class="text-xs text-base-content">{{ connection.provider }}</span>
-                <span class="chip">{{ connection.provided_identifier }}</span>
-                <span v-if="connection.is_public" class="chip text-accent">{{ t('developers.public') }}</span>
-                <span v-if="connection.registered_at" class="chip text-primary">
-                  {{ t('developers.createdAccount') }}
-                </span>
-              </div>
-              <p class="mt-1 text-2xs text-faint">
-                {{ t('developers.lastUsedAt', { time: relative(connection.last_used_at) }) }}
-              </p>
-            </div>
-            <div class="flex items-center gap-1">
-              <IconButton
-                :label="connection.is_public ? t('developers.hide') : t('developers.showPublicly')"
-                :disabled="busy"
-                @click="toggleVisibility(connection)"
-              >
-                <ViewOff16 v-if="connection.is_public" aria-hidden="true" />
-                <View16 v-else aria-hidden="true" />
-              </IconButton>
-              <IconButton
-                v-if="!connection.registered_at"
-                :label="t('developers.unlink')"
-                tone="danger"
-                :disabled="busy"
-                @click="removeConnection(connection)"
-              >
-                <Unlink16 aria-hidden="true" />
-              </IconButton>
-            </div>
-          </li>
-        </ul>
       </ConsolePanel>
     </div>
 

@@ -82,6 +82,12 @@ const router = createRouter({
       meta: { titleKey: 'app.titles.contacts' },
     },
     {
+      path: '/security/connections',
+      name: 'connections',
+      component: () => import('@/views/security/ConnectionsView.vue'),
+      meta: { titleKey: 'app.titles.connections' },
+    },
+    {
       path: '/security/preferences',
       name: 'preferences',
       component: () => import('@/views/security/PreferencesView.vue'),

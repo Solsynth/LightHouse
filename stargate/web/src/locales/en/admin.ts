@@ -257,10 +257,11 @@ export default {
   panel: {},
   pageHeader: {},
   securityNav: {
-    aria: 'Security',
+    aria: 'Settings',
     sessions: 'Sessions',
     factors: 'Sign-In Factors',
     contacts: 'Contacts',
+    connections: 'Linked Identities',
     preferences: 'Security Mode',
   },
 }

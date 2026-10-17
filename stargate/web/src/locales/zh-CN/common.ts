@@ -94,6 +94,7 @@ export default {
       sessions: '会话',
       signInFactors: '登录验证方式',
       contacts: '联系方式',
+      connections: '已关联身份',
       securityMode: '安全模式',
       developers: '开发者',
       activity: '活动',
@@ -108,7 +109,7 @@ export default {
     },
     nav: {
       profile: '个人资料',
-      sessions: '安全',
+      settings: '设置',
       developers: '开发者',
       activity: '活动',
       admin: '管理',

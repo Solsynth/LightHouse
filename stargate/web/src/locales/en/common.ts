@@ -94,6 +94,7 @@ export default {
       sessions: 'Sessions',
       signInFactors: 'Sign-In Factors',
       contacts: 'Contacts',
+      connections: 'Linked Identities',
       securityMode: 'Security Mode',
       developers: 'Developers',
       activity: 'Activity',
@@ -108,7 +109,7 @@ export default {
     },
     nav: {
       profile: 'Profile',
-      sessions: 'Security',
+      settings: 'Settings',
       developers: 'Developers',
       activity: 'Activity',
       admin: 'Admin',

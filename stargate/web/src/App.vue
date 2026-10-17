@@ -4,8 +4,8 @@ import type { Component } from 'vue'
 import {
   Activity16,
   Api16,
-  Devices16,
   Moon16,
+  SettingsAdjust16,
   Sun16,
   Tools16,
   User16,
@@ -39,8 +39,8 @@ const nav: NavItem[] = [
   { to: '/account', labelKey: 'app.nav.profile', icon: User16, scope: 'account', match: '/account' },
   {
     to: '/security/sessions',
-    labelKey: 'app.nav.sessions',
-    icon: Devices16,
+    labelKey: 'app.nav.settings',
+    icon: SettingsAdjust16,
     scope: 'security',
     match: '/security',
   },

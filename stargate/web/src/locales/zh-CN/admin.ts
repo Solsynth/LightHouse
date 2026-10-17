@@ -240,10 +240,11 @@ export default {
   panel: {},
   pageHeader: {},
   securityNav: {
-    aria: '安全',
+    aria: '设置',
     sessions: '会话',
     factors: '登录验证方式',
     contacts: '联系方式',
+    connections: '已关联身份',
     preferences: '安全模式',
   },
 }
