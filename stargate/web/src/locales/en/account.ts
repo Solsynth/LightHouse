@@ -1,8 +1,7 @@
 export default {
   account: {
     title: 'Your Account',
-    description:
-      'The identity every Solar Network service reads. Changes publish to the profile read-model immediately.',
+    description: 'The identity every Solar Network service reads.',
     editProfile: 'Edit Profile',
     identity: 'Identity',
     updated: 'updated {time}',

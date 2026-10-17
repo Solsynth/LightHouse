@@ -1,8 +1,7 @@
 export default {
   account: {
     title: '你的账号',
-    description:
-      '所有 Solar Network 服务读取的身份。更改会立即发布到资料读模型。',
+    description: '所有 Solar Network 服务读取的身份。',
     editProfile: '编辑资料',
     identity: '身份',
     updated: '更新于 {time}',
