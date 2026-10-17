@@ -154,6 +154,12 @@ const router = createRouter({
       meta: { titleKey: 'app.titles.geography', admin: true, full: true },
     },
     {
+      path: '/@:name',
+      name: 'public-profile',
+      component: () => import('@/views/PublicProfileView.vue'),
+      meta: { public: true, profile: true, fullBleed: true, titleKey: 'app.titles.profile' },
+    },
+    {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
       component: () => import('@/views/NotFoundView.vue'),

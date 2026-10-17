@@ -123,6 +123,10 @@ Width tiers are decided by route metadata in `web/src/router/index.ts`:
 | account | 880 px | profile, factors, passkeys, contacts, linked identities, security mode |
 | wide | 1120 px | sessions, developers, activity |
 | full | viewport − 32 px | all admin pages |
+| profile | full bleed | public profiles (`/@name`) |
+
+Routes can opt into a full-bleed `meta.fullBleed`; the shell then drops its
+gutter and card border so page-owned media can reach the viewport edges.
 
 `/auth/sudo` renders the same factor flow as the elevation modal, so another
 client can open it in a browser or popup, elevate the session, and return.
@@ -132,6 +136,17 @@ opener on success.
 The card floats in a 16 px viewport gutter; content padding is 20 px, 28 px
 from the `sm` breakpoint, and panel padding is 16 px. The 4 px spacing unit is
 used throughout; prefer gaps over nested borders.
+
+Public profiles (`/@name`) are the one full-bleed route. The gutter, card
+border, and nav tabs are dropped; the card header still has 20 px padding and
+the profile background runs edge to edge beneath it. Profile copy is held to a
+980 px rail centred in the viewport. The site keeps the card shell everywhere
+else.
+
+When the signed-in account has a profile background, it is painted as a fixed
+backdrop behind the shell: cover-scaled, blurred 64 px, at 30% opacity under a
+70% base scrim. It is never fetched when the profile has no background, and a
+failed load falls back to the plain base surface.
 
 **Never nest a bordered card inside the page card.** Content sits directly on
 the page surface; panels use `bg-base-200/30` to group a region, and the
@@ -143,8 +158,10 @@ status bar and table footers are separated by spacing, not rules.
 
 Brand mark is a CSS mask over `currentColor` (so it repaints with the theme),
 then `SOLARPASS`, then `Solar Network` on wider screens. With a session, the
-right side holds the account avatar (links to Profile, falls back to a person
-glyph when no picture exists) and sign out; signed out it is just the brand.
+right side holds the 24 px account avatar (no border; falls back to a person
+glyph when no picture exists) and the elevated indicator. The avatar is a
+dropdown with **Public Profile** and **Sign Out**; it closes on select, Escape,
+or an outside click. Signed out the header is just the brand.
 
 ### Footer
 
@@ -165,6 +182,15 @@ Identities, and Security Mode.
 `SecurityNav` is a contained tab box: 1 px border, hairline dividers between
 tabs, active tab filled with `base-300`, inactive tabs faint with a hover tint.
 It uses `aria-current="page"`. Do not use underlined tabs.
+
+### Public profile
+
+`GET /@name` (SPA route `public-profile`) renders the public projection:
+background banner edge to edge, avatar, display name and handle, bio, public
+contacts, links, follower/following totals, and pronouns/location/time zone/
+join date. The nav tabs are hidden; the banner is the profile's background at
+full viewport width, while copy sits on a 980 px rail. A missing account gets
+the not-found header rather than a blank page.
 
 ### Page header
 

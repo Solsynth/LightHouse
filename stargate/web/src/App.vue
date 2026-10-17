@@ -74,14 +74,19 @@ const activeSection = computed(() => {
 // surfaces get more room than forms: ledgers and admin pages would waste
 // horizontal space at the account card's width.
 const cardWidth = computed(() => {
-  if (route.meta.narrow || route.meta.public || !session.signedIn) return 'max-w-[460px]'
+  if (route.meta.narrow) return 'max-w-[460px]'
   if (route.meta.full) return 'max-w-none'
   if (route.meta.wide) return 'max-w-[1120px]'
+  if (route.meta.profile) return 'max-w-[880px]'
+  if (route.meta.public || !session.signedIn) return 'max-w-[460px]'
   return 'max-w-[880px]'
 })
 
 const showNav = computed(
-  () => session.signedIn && !route.path.startsWith('/auth/'),
+  () =>
+    session.signedIn &&
+    !route.path.startsWith('/auth/') &&
+    route.name !== 'public-profile',
 )
 
 const latest = computed(() => notice.items[notice.items.length - 1])
@@ -89,14 +94,54 @@ const latest = computed(() => notice.items[notice.items.length - 1])
 const picture = computed(() => session.account?.profile?.picture)
 const pictureUrl = computed(
   () =>
+    session.account?.profile?.picture?.url ||
     `/api/accounts/${encodeURIComponent(session.account?.name ?? session.identity?.name ?? '')}/picture`,
 )
+const background = computed(() => session.account?.profile?.background)
+const backgroundUrl = computed(
+  () =>
+    background.value?.url ||
+    `/api/accounts/${encodeURIComponent(session.account?.name ?? '')}/background`,
+)
+const publicPath = computed(
+  () => `/@${encodeURIComponent(session.account?.name ?? '')}`,
+)
 const avatarFailed = ref(false)
+const backgroundFailed = ref(false)
+
+const menuOpen = ref(false)
+const menuRoot = ref<HTMLElement | null>(null)
+const fullBleed = computed(() => Boolean(route.meta.fullBleed))
+
+function closeMenuOutside(event: MouseEvent) {
+  if (!menuRoot.value?.contains(event.target as Node)) menuOpen.value = false
+}
+
+function signOutFromMenu() {
+  menuOpen.value = false
+  signOut()
+}
+
+onMounted(() => document.addEventListener('click', closeMenuOutside))
+onBeforeUnmount(() => document.removeEventListener('click', closeMenuOutside))
+watch(
+  () => route.fullPath,
+  () => {
+    menuOpen.value = false
+  },
+)
 
 watch(
   () => session.account?.profile?.picture?.id,
   () => {
     avatarFailed.value = false
+  },
+)
+
+watch(
+  () => session.account?.profile?.background?.id,
+  () => {
+    backgroundFailed.value = false
   },
 )
 
@@ -171,7 +216,24 @@ function changeLocale(event: Event) {
 </script>
 
 <template>
-  <div class="flex min-h-dvh flex-col items-center px-4 py-8 sm:py-12">
+  <div
+    class="relative flex min-h-dvh flex-col items-center"
+    :class="fullBleed ? '' : 'px-4 py-8 sm:py-12'"
+  >
+    <div
+      v-if="session.signedIn && background && !backgroundFailed"
+      class="pointer-events-none fixed inset-0 z-0 overflow-hidden"
+      aria-hidden="true"
+    >
+      <img
+        :src="backgroundUrl"
+        alt=""
+        class="h-full w-full scale-110 object-cover opacity-30 blur-3xl"
+        @error="backgroundFailed = true"
+      />
+      <div class="absolute inset-0 bg-base-100/70" />
+    </div>
+
     <a
       href="#main"
       class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:bg-base-300 focus:px-3 focus:py-2 focus:text-xs"
@@ -179,9 +241,22 @@ function changeLocale(event: Event) {
       {{ t('app.skipToContent') }}
     </a>
 
-    <div class="flex w-full flex-1 flex-col items-center justify-center">
-      <div class="w-full transition-[max-width]" :class="cardWidth">
-      <main id="main" class="border border-line bg-base-200/40">
+    <div
+      class="relative z-10 flex w-full flex-1 flex-col items-center"
+      :class="fullBleed ? 'justify-start' : 'justify-center'"
+    >
+      <div
+        class="w-full"
+        :class="fullBleed ? 'flex flex-1 flex-col' : 'transition-[max-width] ' + cardWidth"
+      >
+      <main
+        id="main"
+        :class="
+          fullBleed
+            ? 'flex flex-1 flex-col bg-base-100/40'
+            : 'border border-line bg-base-200/40'
+        "
+      >
         <div class="flex items-center justify-between gap-4 border-b border-line px-5 py-3">
           <RouterLink to="/" class="flex items-center gap-2.5" :aria-label="t('app.home')">
             <span class="brand-mark h-[22px] w-[22px] shrink-0" aria-hidden="true" />
@@ -202,29 +277,50 @@ function changeLocale(event: Event) {
               <span class="dot bg-accent" />
               {{ t('app.elevated') }}
             </span>
-            <RouterLink
-              to="/account"
-              class="block shrink-0"
-              :title="session.account?.name"
-              :aria-label="session.account?.name"
+            <div
+              ref="menuRoot"
+              class="dropdown dropdown-end"
+              @keydown.esc="menuOpen = false"
             >
-              <img
-                v-if="picture && !avatarFailed"
-                :src="pictureUrl"
-                alt=""
-                class="h-6 w-6 rounded-[2px] border border-line object-cover"
-                @error="avatarFailed = true"
-              />
-              <span
-                v-else
-                class="flex h-6 w-6 items-center justify-center rounded-[2px] border border-line text-faint"
+              <button
+                type="button"
+                class="block shrink-0"
+                :title="session.account?.name"
+                :aria-label="session.account?.name"
+                aria-haspopup="menu"
+                :aria-expanded="menuOpen"
+                @click="menuOpen = !menuOpen"
               >
-                <UserAvatar16 aria-hidden="true" />
-              </span>
-            </RouterLink>
-            <button class="btn btn-ghost btn-xs" type="button" @click="signOut">
-              {{ t('app.signOut') }}
-            </button>
+                <img
+                  v-if="picture && !avatarFailed"
+                  :src="pictureUrl"
+                  alt=""
+                  class="h-6 w-6 rounded-[2px] object-cover"
+                  @error="avatarFailed = true"
+                />
+                <span
+                  v-else
+                  class="flex h-6 w-6 items-center justify-center rounded-[2px] text-faint"
+                >
+                  <UserAvatar16 aria-hidden="true" />
+                </span>
+              </button>
+              <ul
+                v-if="menuOpen"
+                class="menu dropdown-content z-50 mt-2 w-44 border border-line bg-base-200 p-1 shadow-none"
+              >
+                <li>
+                  <RouterLink :to="publicPath" @click="menuOpen = false">
+                    {{ t('app.publicProfile') }}
+                  </RouterLink>
+                </li>
+                <li>
+                  <button type="button" @click="signOutFromMenu">
+                    {{ t('app.signOut') }}
+                  </button>
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
 
@@ -251,7 +347,7 @@ function changeLocale(event: Event) {
 
         <div ref="region" class="page-region">
           <div ref="regionInner">
-            <div class="px-5 py-6 sm:px-7 sm:py-8">
+            <div :class="fullBleed ? '' : 'px-5 py-6 sm:px-7 sm:py-8'">
               <RouterView v-slot="{ Component }">
                 <component :is="Component" />
               </RouterView>
@@ -277,8 +373,8 @@ function changeLocale(event: Event) {
     </div>
 
     <footer
-      class="mt-6 flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 text-2xs text-faint"
-      :class="cardWidth"
+      class="relative z-10 flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 text-2xs text-faint"
+      :class="fullBleed ? 'mt-0 border-t border-line px-5 py-3' : ['mt-6', cardWidth]"
     >
       <span>{{ t('app.copyright', { year }) }}</span>
       <div class="flex items-center gap-3">

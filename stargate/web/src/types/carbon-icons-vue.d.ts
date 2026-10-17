@@ -25,6 +25,7 @@ declare module '@carbon/icons-vue' {
   export const Unlink16: DefineComponent
   export const User16: DefineComponent
   export const UserAvatar16: DefineComponent
+  export const UserAvatar32: DefineComponent
   export const UserMinus16: DefineComponent
   export const View16: DefineComponent
   export const ViewOff16: DefineComponent

@@ -45,6 +45,14 @@ export const accountApi = {
   requestDeletion: () => request<void>('/accounts/me', { method: 'DELETE' }),
   search: (query: string, take = 20) =>
     request<Account[]>('/accounts/search', { query: { query, take } }),
+  byName: (name: string) => request<Account>(`/accounts/${encodeURIComponent(name)}`),
+}
+
+export const socialApi = {
+  followers: (name: string, query: { take?: number; offset?: number } = {}) =>
+    requestPage<Account>(`/accounts/${encodeURIComponent(name)}/followers`, query),
+  following: (name: string, query: { take?: number; offset?: number } = {}) =>
+    requestPage<Account>(`/accounts/${encodeURIComponent(name)}/following`, query),
 }
 
 // ── Auth ──
