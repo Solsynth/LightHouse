@@ -35,7 +35,7 @@ export default {
     perkLevel: '权益等级',
     lastSeen: '最近活动',
     lastSeenAgo: '{time} 前',
-    lastSeenHint: '由服务在已认证请求中写入，每五秒批量更新一次。',
+    lastSeenHint: '更新可能会有延迟。',
     noticeSaved: '资料已保存。',
     errorSave: '无法保存资料。',
   },

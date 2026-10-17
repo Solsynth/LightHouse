@@ -75,6 +75,7 @@ export default {
     elevated: '已提权',
     elevatedHint: '此会话可以执行提权操作',
     signOut: '退出登录',
+    copyright: '© {year} Solar Network',
     language: '语言',
     languageEnglish: 'English',
     languageChinese: '简体中文',

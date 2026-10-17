@@ -17,6 +17,7 @@ import { useSessionStore } from '@/stores/session'
 import { useNoticeStore } from '@/stores/notice'
 import { useUiStore } from '@/stores/ui'
 import { applyRouteTitle } from '@/router'
+import type { Locale } from '@/lib/prefs'
 import ElevationSheet from '@/components/ElevationSheet.vue'
 
 const session = useSessionStore()
@@ -146,10 +147,16 @@ async function signOut() {
 // Route changes set the title; a language switch must rewrite it for the
 // page that is already open.
 watch(locale, () => applyRouteTitle(route.meta))
+
+const year = new Date().getFullYear()
+
+function changeLocale(event: Event) {
+  ui.setLocale((event.target as HTMLSelectElement).value as Locale)
+}
 </script>
 
 <template>
-  <div class="flex min-h-dvh flex-col items-center justify-center px-4 py-8 sm:py-12">
+  <div class="flex min-h-dvh flex-col items-center px-4 py-8 sm:py-12">
     <a
       href="#main"
       class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:bg-base-300 focus:px-3 focus:py-2 focus:text-xs"
@@ -157,7 +164,8 @@ watch(locale, () => applyRouteTitle(route.meta))
       {{ t('app.skipToContent') }}
     </a>
 
-    <div class="w-full transition-[max-width]" :class="cardWidth">
+    <div class="flex w-full flex-1 flex-col items-center justify-center">
+      <div class="w-full transition-[max-width]" :class="cardWidth">
       <main id="main" class="border border-line bg-base-200/40">
         <div class="flex items-center justify-between gap-4 border-b border-line px-5 py-3">
           <RouterLink to="/" class="flex items-center gap-2.5" :aria-label="t('app.home')">
@@ -171,34 +179,6 @@ watch(locale, () => applyRouteTitle(route.meta))
           </RouterLink>
 
           <div class="flex items-center gap-4">
-            <div
-              class="flex items-center gap-1 text-2xs"
-              role="group"
-              :aria-label="t('app.language')"
-            >
-              <button
-                type="button"
-                class="transition-colors"
-                :class="ui.locale === 'en' ? 'text-base-content' : 'text-faint hover:text-dim'"
-                :aria-pressed="ui.locale === 'en'"
-                :title="t('app.languageEnglish')"
-                @click="ui.setLocale('en')"
-              >
-                EN
-              </button>
-              <span class="text-line" aria-hidden="true">/</span>
-              <button
-                type="button"
-                class="transition-colors"
-                :class="ui.locale === 'zh-CN' ? 'text-base-content' : 'text-faint hover:text-dim'"
-                :aria-pressed="ui.locale === 'zh-CN'"
-                :title="t('app.languageChinese')"
-                @click="ui.setLocale('zh-CN')"
-              >
-                中文
-              </button>
-            </div>
-
             <button
               type="button"
               class="btn btn-ghost btn-xs px-1.5"
@@ -261,7 +241,7 @@ watch(locale, () => applyRouteTitle(route.meta))
             <Transition name="notice">
               <div
                 v-if="latest"
-                class="flex items-baseline gap-2 border-t border-line px-5 py-2 text-2xs"
+                class="flex items-baseline gap-2 px-5 py-2 text-2xs"
                 role="status"
                 aria-live="polite"
               >
@@ -274,7 +254,24 @@ watch(locale, () => applyRouteTitle(route.meta))
           </div>
         </div>
       </main>
+      </div>
     </div>
+
+    <footer
+      class="mt-6 flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 text-2xs text-faint"
+      :class="cardWidth"
+    >
+      <span>{{ t('app.copyright', { year }) }}</span>
+      <select
+        class="select select-xs footer-locale"
+        :value="ui.locale"
+        :aria-label="t('app.language')"
+        @change="changeLocale"
+      >
+        <option value="en">{{ t('app.languageEnglish') }}</option>
+        <option value="zh-CN">{{ t('app.languageChinese') }}</option>
+      </select>
+    </footer>
 
     <ElevationSheet />
   </div>

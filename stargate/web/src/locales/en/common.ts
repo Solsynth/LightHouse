@@ -75,6 +75,7 @@ export default {
     elevated: 'elevated',
     elevatedHint: 'This session can perform elevated actions',
     signOut: 'Sign Out',
+    copyright: '© {year} Solar Network',
     language: 'Language',
     languageEnglish: 'English',
     languageChinese: '简体中文',

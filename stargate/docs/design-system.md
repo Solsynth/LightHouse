@@ -22,7 +22,8 @@ choices already encoded in `web/src/assets/main.css`,
    guidance, descriptions, and empty states.
 4. **Blocks, not rules.** Content areas are separated by surface color and
    spacing. Horizontal hairlines survive only where they encode structure:
-   ledger rows, table headers, modal sections, and the boxed tab strip.
+   the shell's chrome bands, ledger rows, table headers, modal sections, and
+   the boxed tab strip.
 5. **Boldness in one place.** The centered card, the blue-shifted palette, and
    the terminal typography carry the identity. Everything else stays quiet.
 
@@ -110,6 +111,7 @@ chrome beyond the card header.
 │        │                                          │  │
 │        │ status bar (OK/ERROR + message)          │  │
 │        └──────────────────────────────────────────┘  │
+│        © 2026 Solar Network            [Language ▾]  │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -135,10 +137,17 @@ status bar and table footers are separated by spacing, not rules.
 ### Header
 
 Brand mark is a CSS mask over `currentColor` (so it repaints with the theme),
-then `SOLARPASS`, then `Solar Network` on wider screens. Right side, in order:
-language pair (`EN / 中文`), theme toggle, identity, sign out. The language
-pair is a pressed-button group, not a select. Every control is reachable
-before sign-in.
+then `SOLARPASS`, then `Solar Network` on wider screens. Right side: theme
+toggle, identity, sign out. Every control except identity is reachable before
+sign-in.
+
+### Footer
+
+The footer sits outside the card, aligned to the card's current width, and
+holds the copyright (`© {year} Solar Network`) and the language dropdown.
+Language is a native `<select>` styled as a compact inline field: the catalog
+will grow beyond two entries, and a select scales without redesigning the
+header. It is present on every page, signed in or not.
 
 ### Navigation
 
@@ -243,7 +252,7 @@ namespaces, merged by `import.meta.glob` in `web/src/lib/i18n.ts`. Return
 the reader to the same screen with the same state when switching languages.
 
 - The locale follows the browser on first visit, then persists in
-  `localStorage['solarpass.locale']`.
+  `localStorage['solarpass.locale']`. The footer dropdown is the switch.
 - `html lang` and the document title update with the locale.
 - Use `useI18n()` in components; `translate()` only outside setup.
 - Formatters (`relative`, `remaining`, `compactNumber`, enum labels) are

@@ -412,3 +412,13 @@ textarea.textarea {
   inline-size: 100%;
   width: 100%;
 }
+
+/* The footer language picker is inline, not a full-width form field. */
+select.select.footer-locale {
+  inline-size: auto;
+  width: auto;
+  height: 1.75rem;
+  min-height: 1.75rem;
+  padding-block: 0;
+  font-size: 0.6875rem;
+}

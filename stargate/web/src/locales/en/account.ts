@@ -35,7 +35,7 @@ export default {
     perkLevel: 'perk level',
     lastSeen: 'Last Seen',
     lastSeenAgo: '{time} ago',
-    lastSeenHint: 'Written by the service on authenticated requests, batched every five seconds.',
+    lastSeenHint: 'Updates may be delayed.',
     noticeSaved: 'Profile saved.',
     errorSave: 'The profile could not be saved.',
   },
