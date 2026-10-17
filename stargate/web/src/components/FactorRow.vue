@@ -57,7 +57,7 @@ function submit() {
         :type="props.needsCode ? 'text' : 'password'"
         :inputmode="props.needsCode ? 'numeric' : undefined"
         :autocomplete="props.needsCode ? 'one-time-code' : 'current-password'"
-        :placeholder="props.needsCode ? t('factorRow.codePlaceholder') : t('factorRow.credentialPlaceholder')"
+        :placeholder="props.needsCode ? t('factorRow.codePlaceholder') : undefined"
         :disabled="props.busy"
         @keydown.enter="submit"
       />

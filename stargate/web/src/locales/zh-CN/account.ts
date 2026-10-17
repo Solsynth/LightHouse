@@ -273,6 +273,5 @@ export default {
     sendCode: '发送验证码',
     resend: '重新发送',
     codePlaceholder: '6 位验证码',
-    credentialPlaceholder: '密码',
   },
 }

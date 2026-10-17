@@ -200,6 +200,22 @@
     background: color-mix(in oklab, var(--color-base-200) 55%, transparent);
   }
 
+  /* Full-bleed ledger: cancels the panel body's horizontal padding so row
+     hairlines meet the card edge, while cell text keeps the panel rhythm. */
+  .table-bleed {
+    margin-inline: -1rem;
+  }
+
+  .table-bleed .ledger th:first-child,
+  .table-bleed .ledger td:first-child {
+    padding-left: 1rem;
+  }
+
+  .table-bleed .ledger th:last-child,
+  .table-bleed .ledger td:last-child {
+    padding-right: 1rem;
+  }
+
   .ledger td:first-child,
   .ledger th:first-child {
     padding-left: 8px;

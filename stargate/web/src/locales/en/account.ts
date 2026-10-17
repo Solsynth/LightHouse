@@ -283,6 +283,5 @@ export default {
     sendCode: 'send code',
     resend: 'resend',
     codePlaceholder: '6-digit code',
-    credentialPlaceholder: 'password',
   },
 }

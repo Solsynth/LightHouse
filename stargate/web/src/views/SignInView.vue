@@ -274,7 +274,7 @@ onBeforeUnmount(() => {
     </div>
 
     <Transition name="step" mode="out-in">
-    <form v-if="!started" key="identify" class="border border-line bg-base-200/40 p-5" @submit.prevent="identify">
+    <form v-if="!started" key="identify" @submit.prevent="identify">
       <label for="account" class="field-label">{{ t('signIn.accountLabel') }}</label>
       <input
         id="account"
@@ -317,8 +317,8 @@ onBeforeUnmount(() => {
       </div>
     </form>
 
-    <div v-else key="challenge" class="border border-line bg-base-200/40">
-      <header class="flex items-center justify-between border-b border-line px-5 py-3">
+    <div v-else key="challenge">
+      <header class="flex items-center justify-between border-b border-line pb-3">
         <div class="min-w-0">
           <p class="truncate text-xs text-base-content">{{ signIn.account }}</p>
           <p class="text-2xs text-faint">
@@ -338,7 +338,7 @@ onBeforeUnmount(() => {
         </button>
       </header>
 
-      <div class="px-5 py-4">
+      <div class="pt-4">
         <button
           v-if="canUsePasskey"
           type="button"
@@ -378,10 +378,8 @@ onBeforeUnmount(() => {
             </div>
 
             <div v-else-if="selectedFactor" key="chosen">
-              <div class="mb-3 flex items-center justify-between gap-3 border-b border-line-soft pb-2">
-                <span class="field-label mb-0">{{ factorTypeLabel(selectedFactor.type) }}</span>
+              <div v-if="choiceFactors.length > 1" class="mb-2 flex justify-end">
                 <button
-                  v-if="choiceFactors.length > 1"
                   type="button"
                   class="text-2xs text-dim hover:text-base-content"
                   @click="selectedFactorId = null"
@@ -402,13 +400,13 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <p v-if="error || signIn.error" class="border-t border-line px-5 py-3 text-xs text-error">
+      <p v-if="error || signIn.error" class="mt-3 border-t border-line pt-3 text-xs text-error">
         {{ error || signIn.error }}
       </p>
     </div>
     </Transition>
 
-    <div v-if="started" class="mt-4 flex items-center gap-2 text-2xs text-faint">
+    <div v-if="started && !selectedFactor" class="mt-4 flex items-center gap-2 text-2xs text-faint">
       <span class="dot animate-pulse bg-info" aria-hidden="true" />
       <span>{{ t('signIn.watching') }}</span>
     </div>

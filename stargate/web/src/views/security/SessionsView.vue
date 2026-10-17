@@ -87,7 +87,7 @@ onMounted(load)
         {{ t('sessions.empty') }}
       </p>
 
-      <div v-else class="overflow-x-auto">
+      <div v-else class="table-bleed overflow-x-auto">
         <table class="ledger">
           <thead>
             <tr>
