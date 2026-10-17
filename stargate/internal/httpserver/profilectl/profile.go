@@ -558,10 +558,11 @@ func (d Deps) updateProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, profile)
 }
 
-// requestDeleteAccount ports Passport's DELETE /api/accounts/me. The C#
-// creates an account_removal magic spell with a 24h prevent-repeat gate;
-// Stargate replicates that gate with a Redis flag (the magic-spell email flow
-// stays in Passport).
+// requestDeleteAccount ports Passport's DELETE /api/accounts/me. The legacy
+// flow emails an account-removal spell; Stargate has no removal spell path,
+// so the elevation-gated request closes the account directly: the account and
+// its sessions are soft-deleted, cookies are cleared, and a 24h Redis gate
+// keeps a raced repeat from producing a second audit entry.
 func (d Deps) requestDeleteAccount(c *gin.Context) {
 	user := requireCurrentUser(c)
 	if user == nil {
@@ -583,9 +584,24 @@ func (d Deps) requestDeleteAccount(c *gin.Context) {
 			"You already requested account deletion within 24 hours.", http.StatusBadRequest))
 		return
 	}
-	if err := d.Redis.Cache.SetFlag(ctx, key, 24*time.Hour); err != nil {
+	accountID, err := uuid.Parse(user.Id)
+	if err != nil {
 		internalError(c, err)
 		return
 	}
+
+	d.logAction(c, user.Id, model.ActionLogAccountDelete, map[string]any{})
+	if err := d.Store.AdminSoftDeleteAccount(ctx, accountID, time.Now().UTC()); err != nil {
+		internalError(c, err)
+		return
+	}
+	_ = d.Redis.Cache.SetFlag(ctx, key, 24*time.Hour)
+
+	// Clear the cookie pair so the next request is anonymous instead of
+	// bouncing off the deleted session.
+	domain := d.Cfg.Auth.CookieDomain
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("AuthToken", "", -1, "/", domain, false, true)
+	c.SetCookie("RefreshToken", "", -1, "/", domain, false, true)
 	c.Status(http.StatusOK)
 }

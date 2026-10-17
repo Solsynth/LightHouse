@@ -88,6 +88,7 @@ export default {
       continuingSignIn: '正在继续登录',
       verification: '验证',
       authorizeApp: '授权应用',
+      sudo: '验证身份',
       resetPassword: '重置密码',
       profile: '个人资料',
       sessions: '会话',
@@ -107,7 +108,7 @@ export default {
     },
     nav: {
       profile: '个人资料',
-      sessions: '会话',
+      sessions: '安全',
       developers: '开发者',
       activity: '活动',
       admin: '管理',

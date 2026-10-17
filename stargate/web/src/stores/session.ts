@@ -72,6 +72,13 @@ export const useSessionStore = defineStore('session', () => {
     }
   }
 
+  /** Forgets the local session after the server has already closed it. */
+  function clear() {
+    identity.value = null
+    account.value = null
+    elevationUntil.value = null
+  }
+
   /** Records a completed elevation so gated controls unlock immediately. */
   function noteElevation(challenge: ElevationChallenge) {
     if (challenge.sudo_until) {
@@ -100,6 +107,7 @@ export const useSessionStore = defineStore('session', () => {
     load,
     refreshAccount,
     signOut,
+    clear,
     noteElevation,
     dismissElevation,
   }

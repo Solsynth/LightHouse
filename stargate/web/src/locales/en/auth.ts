@@ -113,4 +113,13 @@ export default {
     loadFailed: 'Failed to load {src}',
     challengeFailed: 'The challenge could not be loaded.',
   },
+  sudo: {
+    title: "Verify It's You",
+    description:
+      'Confirm this action with one of your sign-in factors. Other apps can open this page to raise the permission of this session.',
+    verified: 'This session is verified.',
+    verifiedHint: 'Return to the app and try the action again.',
+    close: 'Close Window',
+    continue: 'Continue',
+  },
 }

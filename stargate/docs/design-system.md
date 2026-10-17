@@ -119,10 +119,15 @@ Width tiers are decided by route metadata in `web/src/router/index.ts`:
 
 | Tier | Width | Routes |
 | --- | --- | --- |
-| flow | 460 px | sign-in, create account, recovery, captcha, provider callback, authorize |
+| flow | 460 px | sign-in, create account, recovery, captcha, provider callback, authorize, sudo |
 | account | 880 px | profile, factors, contacts, security mode |
 | wide | 1120 px | sessions, developers, activity |
 | full | viewport − 32 px | all admin pages |
+
+`/auth/sudo` renders the same factor flow as the elevation modal, so another
+client can open it in a browser or popup, elevate the session, and return.
+It accepts only same-origin `next` paths and posts `solarpass:sudo` to the
+opener on success.
 
 The card floats in a 16 px viewport gutter; content padding is 20 px, 28 px
 from the `sm` breakpoint, and panel padding is 16 px. The 4 px spacing unit is
@@ -151,7 +156,9 @@ redesigning the header. It is present on every page, signed in or not.
 ### Navigation
 
 The main nav is a single horizontal line of 11 px links with a Carbon 16 icon.
-The active section is `text-base-content`; the rest are `text-faint`.
+The active section is `text-base-content`; the rest are `text-faint`. The
+account-security entry is labelled **Security**; its contained tabs are
+Sessions, Sign-In Factors, Contacts, and Security Mode.
 
 `SecurityNav` is a contained tab box: 1 px border, hairline dividers between
 tabs, active tab filled with `base-300`, inactive tabs faint with a hover tint.

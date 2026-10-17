@@ -88,6 +88,7 @@ export default {
       continuingSignIn: 'Continuing Sign-In',
       verification: 'Verification',
       authorizeApp: 'Authorize App',
+      sudo: "Verify It's You",
       resetPassword: 'Reset Password',
       profile: 'Profile',
       sessions: 'Sessions',
@@ -107,7 +108,7 @@ export default {
     },
     nav: {
       profile: 'Profile',
-      sessions: 'Sessions',
+      sessions: 'Security',
       developers: 'Developers',
       activity: 'Activity',
       admin: 'Admin',

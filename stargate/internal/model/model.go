@@ -87,6 +87,7 @@ const (
 	ActionLogChallengeSuccess              ActionLogType = "challenges.success"
 	ActionLogChallengeFailure              ActionLogType = "challenges.failure"
 	ActionLogAccountProfileUpdate          ActionLogType = "accounts.profile.update"
+	ActionLogAccountDelete                 ActionLogType = "accounts.delete"
 	ActionLogAuthFactorCreate              ActionLogType = "accounts.auth_factors.create"
 	ActionLogAuthFactorEnable              ActionLogType = "accounts.auth_factors.enable"
 	ActionLogAuthFactorDisable             ActionLogType = "accounts.auth_factors.disable"

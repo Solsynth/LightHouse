@@ -42,6 +42,12 @@ const router = createRouter({
       meta: { titleKey: 'app.titles.authorizeApp', narrow: true },
     },
     {
+      path: '/auth/sudo',
+      name: 'sudo',
+      component: () => import('@/views/security/SudoView.vue'),
+      meta: { titleKey: 'app.titles.sudo', narrow: true },
+    },
+    {
       path: '/recover',
       name: 'recover',
       component: () => import('@/views/RecoverView.vue'),

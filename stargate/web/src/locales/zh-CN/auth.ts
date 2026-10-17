@@ -111,4 +111,12 @@ export default {
     loadFailed: '无法加载 {src}',
     challengeFailed: '无法加载验证。',
   },
+  sudo: {
+    title: '验证身份',
+    description: '使用你的任一登录验证方式确认此操作。其他应用可以打开此页面来提升当前会话的权限。',
+    verified: '此会话已验证。',
+    verifiedHint: '返回应用后重试该操作。',
+    close: '关闭窗口',
+    continue: '继续',
+  },
 }

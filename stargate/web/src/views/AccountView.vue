@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { WarningAlt16 } from '@carbon/icons-vue'
+import { useRouter } from 'vue-router'
 
 import { useSessionStore } from '@/stores/session'
 import { useNoticeStore } from '@/stores/notice'
@@ -28,6 +30,11 @@ const form = ref({
 const saving = ref(false)
 const error = ref('')
 const editing = ref(false)
+const deleteOpen = ref(false)
+const deleteConfirm = ref('')
+const deleting = ref(false)
+const deleteError = ref('')
+const router = useRouter()
 
 const profile = computed<Profile | undefined>(() => session.account?.profile)
 
@@ -93,6 +100,35 @@ function cancel() {
   loadForm()
   editing.value = false
   error.value = ''
+}
+
+function openDelete() {
+  deleteConfirm.value = ''
+  deleteError.value = ''
+  deleteOpen.value = true
+}
+
+function closeDelete() {
+  if (deleting.value) return
+  deleteOpen.value = false
+}
+
+async function deleteAccount() {
+  if (deleteConfirm.value !== session.account?.name) return
+  deleting.value = true
+  deleteError.value = ''
+  try {
+    await accountApi.requestDeletion()
+    session.clear()
+    deleteOpen.value = false
+    notice.ok(t('account.deleted'))
+    await router.replace('/sign-in')
+  } catch (caught) {
+    deleteError.value =
+      caught instanceof StargateError ? caught.message : t('account.deleteError')
+  } finally {
+    deleting.value = false
+  }
 }
 
 onMounted(loadForm)
@@ -272,7 +308,69 @@ onMounted(loadForm)
             {{ utcStamp(profile.last_seen_at) }}
           </p>
         </ConsolePanel>
+
+        <ConsolePanel :title="t('account.dangerZone')">
+          <p class="voice text-[12px]">{{ t('account.dangerZoneHint') }}</p>
+          <button type="button" class="btn btn-error btn-sm mt-4 w-full" @click="openDelete">
+            {{ t('account.deleteAccount') }}
+          </button>
+        </ConsolePanel>
       </div>
     </div>
+
+    <dialog
+      v-if="deleteOpen"
+      class="modal modal-open"
+      aria-modal="true"
+      aria-labelledby="delete-account-title"
+    >
+      <div class="modal-box max-w-md rounded-[2px] border border-line bg-base-100 p-0 shadow-none">
+        <div class="border-b border-line px-5 py-4">
+          <h2 id="delete-account-title" class="flex items-center gap-1.5 text-sm text-base-content">
+            <WarningAlt16 class="shrink-0 text-error" aria-hidden="true" />
+            {{ t('account.deleteTitle') }}
+          </h2>
+        </div>
+        <div class="px-5 py-4">
+          <p class="voice">{{ t('account.deleteBody') }}</p>
+          <label for="delete-confirm" class="field-label mt-4">
+            {{ t('account.deleteConfirmLabel', { name: session.account?.name }) }}
+          </label>
+          <input
+            id="delete-confirm"
+            v-model="deleteConfirm"
+            class="input input-sm"
+            autocomplete="off"
+            spellcheck="false"
+            :disabled="deleting"
+          />
+          <p v-if="deleteError" class="mt-3 text-xs text-error">{{ deleteError }}</p>
+        </div>
+        <div class="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
+          <button
+            type="button"
+            class="btn btn-ghost btn-xs"
+            :disabled="deleting"
+            @click="closeDelete"
+          >
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-error btn-xs"
+            :disabled="deleting || deleteConfirm !== session.account?.name"
+            @click="deleteAccount"
+          >
+            {{ deleting ? t('common.loading') : t('account.deleteAction') }}
+          </button>
+        </div>
+      </div>
+      <button
+        type="button"
+        class="modal-backdrop bg-black/60"
+        :aria-label="t('common.cancel')"
+        @click="closeDelete"
+      />
+    </dialog>
   </div>
 </template>
