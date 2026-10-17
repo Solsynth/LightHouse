@@ -260,6 +260,7 @@ export default {
     aria: 'Settings',
     sessions: 'Sessions',
     factors: 'Sign-In Factors',
+    passkeys: 'Passkeys',
     contacts: 'Contacts',
     connections: 'Linked Identities',
     preferences: 'Security Mode',

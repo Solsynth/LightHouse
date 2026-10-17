@@ -243,6 +243,7 @@ export default {
     aria: '设置',
     sessions: '会话',
     factors: '登录验证方式',
+    passkeys: '通行密钥',
     contacts: '联系方式',
     connections: '已关联身份',
     preferences: '安全模式',

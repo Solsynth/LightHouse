@@ -76,6 +76,12 @@ const router = createRouter({
       meta: { titleKey: 'app.titles.signInFactors' },
     },
     {
+      path: '/security/passkeys',
+      name: 'passkeys',
+      component: () => import('@/views/security/PasskeysView.vue'),
+      meta: { titleKey: 'app.titles.passkeys' },
+    },
+    {
       path: '/security/contacts',
       name: 'contacts',
       component: () => import('@/views/security/ContactsView.vue'),

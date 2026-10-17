@@ -9,6 +9,7 @@ const route = useRoute()
 const tabs = computed(() => [
   { to: '/security/sessions', label: t('securityNav.sessions') },
   { to: '/security/factors', label: t('securityNav.factors') },
+  { to: '/security/passkeys', label: t('securityNav.passkeys') },
   { to: '/security/contacts', label: t('securityNav.contacts') },
   { to: '/security/connections', label: t('securityNav.connections') },
   { to: '/security/preferences', label: t('securityNav.preferences') },

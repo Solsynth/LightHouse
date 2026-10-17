@@ -120,7 +120,7 @@ Width tiers are decided by route metadata in `web/src/router/index.ts`:
 | Tier | Width | Routes |
 | --- | --- | --- |
 | flow | 460 px | sign-in, create account, recovery, captcha, provider callback, authorize, sudo |
-| account | 880 px | profile, factors, contacts, linked identities, security mode |
+| account | 880 px | profile, factors, passkeys, contacts, linked identities, security mode |
 | wide | 1120 px | sessions, developers, activity |
 | full | viewport − 32 px | all admin pages |
 
@@ -158,8 +158,8 @@ redesigning the header. It is present on every page, signed in or not.
 The main nav is a single horizontal line of 11 px links with a Carbon 16 icon.
 The active section is `text-base-content`; the rest are `text-faint`. The
 account-settings entry is labelled **Settings** with the sliders icon; its
-contained tabs are Sessions, Sign-In Factors, Contacts, Linked Identities, and
-Security Mode.
+contained tabs are Sessions, Sign-In Factors, Passkeys, Contacts, Linked
+Identities, and Security Mode.
 
 `SecurityNav` is a contained tab box: 1 px border, hairline dividers between
 tabs, active tab filled with `base-300`, inactive tabs faint with a hover tint.
@@ -192,6 +192,15 @@ Labels sit above the field (`.field-label`, uppercase 11 px). Inputs, selects,
 and textareas are full width, 40 px high, 2 px radius, `base-200` fill, hairline
 border, and periwinkle focus outline. Placeholders are only for examples
 (`name@example.com`) or format hints (`6-digit code`); do not repeat the label.
+
+### Factors and passkeys
+
+The factor picker offers only types that are not already configured; the API
+also rejects a second factor of the same type. Passkeys are credentials rather
+than a single factor: the Passkeys tab lists any number of them with add,
+rename, and delete, while the passkey method's enable/disable toggle stays in
+Sign-In Factors. A passkey can only be registered after the passkey factor and
+a recovery code are enabled.
 
 ### Buttons
 

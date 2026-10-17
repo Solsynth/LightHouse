@@ -66,6 +66,68 @@ export async function getAssertion(options: {
   return parts
 }
 
+/** the server's WebAuthnID is the raw 16 bytes of the account UUID. */
+function userHandle(value: string): Uint8Array<ArrayBuffer> {
+  const hex = value.replaceAll('-', '')
+  if (/^[0-9a-fA-F]{32}$/.test(hex)) {
+    const bytes = new Uint8Array(16)
+    for (let index = 0; index < 16; index += 1) {
+      bytes[index] = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16)
+    }
+    return bytes
+  }
+  return new TextEncoder().encode(value)
+}
+
+export interface CreationParts {
+  client_data_json: string
+  attestation_object: string
+}
+
+/** Runs a webauthn.create ceremony for a platform passkey. */
+export async function createCredential(options: {
+  challenge: string
+  rpId: string
+  rpName: string
+  userId: string
+  userName: string
+  displayName: string
+  timeout?: number
+  algorithms?: number[]
+}): Promise<CreationParts> {
+  const publicKey: PublicKeyCredentialCreationOptions = {
+    challenge: fromBase64Url(options.challenge),
+    rp: { id: options.rpId, name: options.rpName },
+    user: {
+      id: userHandle(options.userId),
+      name: options.userName,
+      displayName: options.displayName,
+    },
+    pubKeyCredParams: (options.algorithms ?? [-7]).map((alg) => ({
+      type: 'public-key' as const,
+      alg,
+    })),
+    timeout: options.timeout ?? 60_000,
+    authenticatorSelection: {
+      authenticatorAttachment: 'platform',
+      residentKey: 'preferred',
+      userVerification: 'preferred',
+    },
+    attestation: 'none',
+  }
+
+  const credential = (await navigator.credentials.create({
+    publicKey,
+  })) as PublicKeyCredential | null
+  if (!credential) throw new Error(translate('errors.passkeyNone'))
+
+  const response = credential.response as AuthenticatorAttestationResponse
+  return {
+    client_data_json: toB64(response.clientDataJSON),
+    attestation_object: toB64(response.attestationObject),
+  }
+}
+
 /** True when this browser can run a WebAuthn ceremony at all. */
 export function passkeysSupported(): boolean {
   return typeof window.PublicKeyCredential !== 'undefined'

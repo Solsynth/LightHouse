@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Power16, TrashCan16 } from '@carbon/icons-vue'
 
@@ -24,7 +24,7 @@ const error = ref('')
 const busy = ref(false)
 const pendingDelete = ref<AuthFactor | null>(null)
 
-const addable = computed(() => [
+const factorOptions = computed(() => [
   { type: 5, label: factorTypeLabel(5), note: t('factors.recoveryNote') },
   { type: 3, label: factorTypeLabel(3), note: t('factors.authenticatorNote') },
   { type: 0, label: factorTypeLabel(0), note: t('factors.passwordNote') },
@@ -33,11 +33,24 @@ const addable = computed(() => [
   { type: 4, label: factorTypeLabel(4), note: t('factors.pinNote') },
 ])
 
+// The API rejects a second factor of the same type; do not offer one.
+const addable = computed(() =>
+  factorOptions.value.filter(
+    (option) => !factors.value.some((factor) => factor.type === option.type),
+  ),
+)
+
 const chosenType = ref(3)
 const secret = ref('')
 const created = ref<AuthFactor | null>(null)
 
 const hasRecovery = computed(() => factors.value.some((f) => f.type === 5))
+
+watch(addable, (options) => {
+  if (!options.some((option) => option.type === chosenType.value)) {
+    chosenType.value = options[0]?.type ?? 0
+  }
+})
 
 async function load() {
   loading.value = true
@@ -191,51 +204,57 @@ onMounted(load)
             {{ t('factors.recoveryFirst') }}
           </p>
 
-          <label for="factor-type" class="field-label">{{ t('factors.factor') }}</label>
-          <select id="factor-type" v-model="chosenType" class="select select-sm">
-            <option v-for="option in addable" :key="option.type" :value="option.type">
-              {{ option.label }}
-            </option>
-          </select>
-          <p class="mt-2 voice text-[12px] text-faint">
-            {{ addable.find((item) => item.type === chosenType)?.note }}
-          </p>
+          <template v-if="addable.length">
+            <label for="factor-type" class="field-label">{{ t('factors.factor') }}</label>
+            <select id="factor-type" v-model="chosenType" class="select select-sm">
+              <option v-for="option in addable" :key="option.type" :value="option.type">
+                {{ option.label }}
+              </option>
+            </select>
+            <p class="mt-2 voice text-[12px] text-faint">
+              {{ addable.find((item) => item.type === chosenType)?.note }}
+            </p>
 
-          <template v-if="chosenType === 0 || chosenType === 4">
-            <label for="factor-secret" class="field-label mt-4">{{ t('factors.secret') }}</label>
-            <input
-              id="factor-secret"
-              v-model="secret"
-              class="input input-sm"
-              type="password"
-              autocomplete="new-password"
-            />
+            <template v-if="chosenType === 0 || chosenType === 4">
+              <label for="factor-secret" class="field-label mt-4">{{ t('factors.secret') }}</label>
+              <input
+                id="factor-secret"
+                v-model="secret"
+                class="input input-sm"
+                type="password"
+                autocomplete="new-password"
+              />
+            </template>
+
+            <button
+              type="button"
+              class="btn btn-primary btn-sm mt-4 w-full"
+              :disabled="busy"
+              @click="create"
+            >
+              {{ busy ? t('factors.adding') : t('factors.addAction') }}
+            </button>
+
+            <div
+              v-if="created && createdSecret()"
+              class="mt-4 border border-warning/50 bg-warning/5 p-3"
+            >
+              <p class="text-2xs uppercase tracking-[0.12em] text-warning">
+                {{ created.type === 5 ? t('factors.recoveryCode') : t('factors.authenticatorSecret') }}
+              </p>
+              <p class="mt-2 break-all font-mono text-xs text-base-content">{{ createdSecret() }}</p>
+              <p class="mt-2 voice text-[12px] text-faint">
+                {{ t('factors.shownOnce') }}
+              </p>
+              <p v-if="created.created_response?.uri" class="mt-2 break-all text-2xs text-faint">
+                {{ created.created_response.uri }}
+              </p>
+            </div>
           </template>
 
-          <button
-            type="button"
-            class="btn btn-primary btn-sm mt-4 w-full"
-            :disabled="busy"
-            @click="create"
-          >
-            {{ busy ? t('factors.adding') : t('factors.addAction') }}
-          </button>
-
-          <div
-            v-if="created && createdSecret()"
-            class="mt-4 border border-warning/50 bg-warning/5 p-3"
-          >
-            <p class="text-2xs uppercase tracking-[0.12em] text-warning">
-              {{ created.type === 5 ? t('factors.recoveryCode') : t('factors.authenticatorSecret') }}
-            </p>
-            <p class="mt-2 break-all font-mono text-xs text-base-content">{{ createdSecret() }}</p>
-            <p class="mt-2 voice text-[12px] text-faint">
-              {{ t('factors.shownOnce') }}
-            </p>
-            <p v-if="created.created_response?.uri" class="mt-2 break-all text-2xs text-faint">
-              {{ created.created_response.uri }}
-            </p>
-          </div>
+          <p v-else class="voice text-[12px]">
+            {{ t('factors.allConfigured') }}
+          </p>
         </ConsolePanel>
 
         <ConsolePanel :title="t('factors.howSteps')">

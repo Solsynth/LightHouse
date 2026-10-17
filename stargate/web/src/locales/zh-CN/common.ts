@@ -93,6 +93,7 @@ export default {
       profile: '个人资料',
       sessions: '会话',
       signInFactors: '登录验证方式',
+      passkeys: '通行密钥',
       contacts: '联系方式',
       connections: '已关联身份',
       securityMode: '安全模式',

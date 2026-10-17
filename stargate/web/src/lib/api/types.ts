@@ -361,6 +361,26 @@ export interface PasskeyLoginStart {
   auth_challenge_id: string
 }
 
+/** Credential row returned by GET /api/factors/passkey. */
+export interface Passkey {
+  id: string
+  label: string
+  created_at?: string
+  updated_at?: string
+}
+
+/** Server-issued options for a WebAuthn registration ceremony. */
+export interface PasskeyRegistrationStart {
+  challenge: string
+  rp_id: string
+  rp_name: string
+  user_id: string
+  user_name: string
+  display_name: string
+  pub_key_cred_params: Array<{ type: string; alg: number }>
+  timeout: number
+}
+
 /** Client metadata returned by GET /api/auth/open/authorize. */
 export interface AuthorizeClientInfo {
   client_id: string

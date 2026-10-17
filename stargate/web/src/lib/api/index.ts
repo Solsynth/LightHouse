@@ -21,7 +21,9 @@ import type {
   Contact,
   Device,
   GeographyBucket,
+  Passkey,
   PasskeyLoginStart,
+  PasskeyRegistrationStart,
   PermissionGroup,
   PermissionGroupDetail,
   PermissionMember,
@@ -150,7 +152,15 @@ export const securityApi = {
   disableFactor: (id: string) =>
     request<AuthFactor>(`/factors/${id}/disable`, { method: 'POST' }),
   deleteFactor: (id: string) => request<void>(`/factors/${id}`, { method: 'DELETE' }),
-  passkeys: () => request<Array<{ id: string; label: string; created_at?: string }>>('/factors/passkey'),
+  passkeys: () => request<Passkey[]>('/factors/passkey'),
+  startPasskeyRegistration: (body: { device_id: string; device_name?: string }) =>
+    request<PasskeyRegistrationStart>('/factors/passkey/start', { method: 'POST', body }),
+  completePasskeyRegistration: (body: {
+    device_id: string
+    client_data_json: string
+    attestation_object: string
+    label: string
+  }) => request<Passkey>('/factors/passkey/complete', { method: 'POST', body }),
   updatePasskey: (id: string, label: string) =>
     request<unknown>(`/factors/passkey/${id}`, { method: 'PATCH', body: { label } }),
   deletePasskey: (id: string) => request<void>(`/factors/passkey/${id}`, { method: 'DELETE' }),

@@ -93,6 +93,7 @@ export default {
       profile: 'Profile',
       sessions: 'Sessions',
       signInFactors: 'Sign-In Factors',
+      passkeys: 'Passkeys',
       contacts: 'Contacts',
       connections: 'Linked Identities',
       securityMode: 'Security Mode',

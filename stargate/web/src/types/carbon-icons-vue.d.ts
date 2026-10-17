@@ -10,6 +10,8 @@ declare module '@carbon/icons-vue' {
   export const ChevronRight16: DefineComponent
   export const Close16: DefineComponent
   export const Copy16: DefineComponent
+  export const Devices16: DefineComponent
+  export const Edit16: DefineComponent
   export const Favorite16: DefineComponent
   export const FingerprintRecognition16: DefineComponent
   export const Launch16: DefineComponent
