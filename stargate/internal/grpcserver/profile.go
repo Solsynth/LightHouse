@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/stargate/internal/auth"
@@ -41,4 +42,35 @@ func (s *dyProfileService) GetProfile(ctx context.Context, req *gen.DyGetProfile
 		return nil, err
 	}
 	return auth.ProfileToProto(profile), nil
+}
+
+// ── relationship RPCs (owned by the relationships module) ────────────────
+//
+// These six methods carry the social graph. They live in relationship.go and
+// are owned by the relationships module: when it is disabled the read service
+// is nil and every method reports Unimplemented, so a deployment without the
+// module serves exactly the unimplemented surface it did before the port.
+
+func (s *dyProfileService) GetRelationship(ctx context.Context, req *gen.DyGetRelationshipRequest) (*gen.DyGetRelationshipResponse, error) {
+	return newRelationshipRPCs(s.d).GetRelationship(ctx, req)
+}
+
+func (s *dyProfileService) HasRelationship(ctx context.Context, req *gen.DyGetRelationshipRequest) (*wrapperspb.BoolValue, error) {
+	return newRelationshipRPCs(s.d).HasRelationship(ctx, req)
+}
+
+func (s *dyProfileService) ListFriends(ctx context.Context, req *gen.DyListRelationshipSimpleRequest) (*gen.DyListRelationshipSimpleResponse, error) {
+	return newRelationshipRPCs(s.d).ListFriends(ctx, req)
+}
+
+func (s *dyProfileService) ListBlocked(ctx context.Context, req *gen.DyListRelationshipSimpleRequest) (*gen.DyListRelationshipSimpleResponse, error) {
+	return newRelationshipRPCs(s.d).ListBlocked(ctx, req)
+}
+
+func (s *dyProfileService) ListMuted(ctx context.Context, req *gen.DyListRelationshipSimpleRequest) (*gen.DyListRelationshipSimpleResponse, error) {
+	return newRelationshipRPCs(s.d).ListMuted(ctx, req)
+}
+
+func (s *dyProfileService) ListCloseFriends(ctx context.Context, req *gen.DyListRelationshipSimpleRequest) (*gen.DyListRelationshipSimpleResponse, error) {
+	return newRelationshipRPCs(s.d).ListCloseFriends(ctx, req)
 }

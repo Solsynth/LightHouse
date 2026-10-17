@@ -266,7 +266,7 @@ startup.
 | `app.solian.id.auth` | feature | `/api/auth/**`, auth gRPC, registration routes | — | core tables |
 | `app.solian.id.accounts` | feature | `/api/{identity,factors,sessions,devices,contacts,api-keys,connections}`, account/bot/authorized-app gRPC | auth | core tables |
 | `app.solian.id.profiles` | feature | `/api/accounts/**` profile/public routes, profile gRPC | accounts | core tables |
-| `app.solian.id.relationships` | feature | `/api/relationships/**`, followers/following, `GET /api/accounts/{name}/relationships` (anonymous totals; `mutual_friends` with a session) | profiles | `account_relationships` |
+| `app.solian.id.relationships` | feature | `/api/relationships/**`, `/api/friends/overview`, followers/following, `GET /api/accounts/{name}/relationships` (anonymous totals; `mutual_friends` with a session), the six `DyProfileService` relationship RPCs | profiles | `account_relationships` |
 | `app.solian.id.spells` | feature | `/api/spells/**` | accounts | `magic_spells`, `affiliation_*` (later phase) |
 | `app.solian.id.social` | feature | `/api/auth/login/{provider}`, callbacks | auth, accounts | none |
 | `app.solian.id.oidc` | feature | `/api/oidc/**`, `/.well-known/openid-configuration` | auth, accounts | none |
@@ -358,6 +358,36 @@ whose schema diverged.
 - [x] Split `profilectl.Register` into profiles and relationships.
 - [x] Relationship routes and followers/following move to the module.
 - [x] Relationship model only migrates when enabled.
+- [x] gRPC: the six `DyProfileService` relationship RPCs (`GetRelationship`,
+      `HasRelationship`, `ListFriends`, `ListBlocked`, `ListMuted`,
+      `ListCloseFriends`) move to the module. A disabled module leaves them
+      `Unimplemented`.
+- [x] `GET /api/friends/overview` moves to the module. Activities are omitted
+      (empty array) until `DyPresenceService` gains a batch-read RPC.
+- [x] The five-minute expiry sweep moves with the table.
+      `RelationshipExpiryJob` is deleted from Passport; the module runs the
+      equivalent sweep (`relationship.Service.StartSweeper`, see
+      `SweepExpiredRelationships`) and purges the shared Redis keys for every
+      row it changes. Inactive rows are soft-deleted, which is what keeps the
+      removal visible to `GET /api/relationships/sync`.
+- [x] Account removal drops the rows. Passport's removal flow no longer
+      deletes `account_relationships` (the table is not its own); the module
+      consumes `accounts.removal.confirmed` and hard-deletes the account's
+      rows in both directions, purging the shared caches.
+- [ ] `GET /api/friends/overview` `activities` stay empty until
+      `DyPresenceService` gains a batch-read RPC; the rest of the payload is
+      at parity.
+- [x] The split stops at the account read. `RemoteAccountService` stays on the
+      unkeyed `DyProfileServiceClient` (`https://_grpc.passport`), which is
+      Passport: Passport's `GetAccount`/`GetAccountBatch` are not passthroughs,
+      they run `PopulateContactsAsync` + `PopulateBadgesAsync` on top of the
+      account Stargate returns. Pointing that reader at `DyAccountService`
+      would silently drop both fields from every fleet account read (Solian
+      renders `account.badges` in chat member cards, from Messager's
+      `/members` response), and Stargate cannot take the read over without
+      first owning the badge data (Passport's `badges` table) and adding a
+      batch badge read — `badgesAdapter` is one RPC per account, so a
+      `GetAccountBatch` parity implementation would fan out N+1.
 
 ### Phase 4 — ports and integrations
 

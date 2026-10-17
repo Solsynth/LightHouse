@@ -39,6 +39,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/nats"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
 	redisclient "src.solsynth.dev/sosys/stargate/internal/redis"
+	"src.solsynth.dev/sosys/stargate/internal/relationship"
 	"src.solsynth.dev/sosys/stargate/internal/seed"
 	"src.solsynth.dev/sosys/stargate/internal/spell"
 	"src.solsynth.dev/sosys/stargate/internal/store"
@@ -199,6 +200,24 @@ func Run(parent context.Context, log *slog.Logger, factories []module.Factory) e
 		Presence: presence, Toucher: toucher, Clients: clients, Log: log,
 	}
 
+	// The social graph is a module-owned table. Build its read service only
+	// when the module is enabled: a disabled module leaves it nil, and the
+	// gRPC relationship RPCs report Unimplemented rather than serving a
+	// table that a fresh database never created.
+	if resolution.Enabled["app.solian.id.relationships"] {
+		services.Relationships = relationship.New(st, rc, log)
+		// Passport's RelationshipExpiryJob (every 5 minutes) went away with
+		// the table it swept, so the module owns the sweep now: without it a
+		// timed block/mute never lapses and an unaccepted friend request
+		// never resolves.
+		services.Relationships.StartSweeper(ctx)
+		// Passport's account-removal flow no longer deletes the relationship
+		// rows (the table is not its own); it publishes
+		// accounts.removal.confirmed and this consumer drops them.
+		if nc != nil {
+			go consumeAccountRemoval(ctx, nc, services.Relationships, log)
+		}
+	}
 	// gRPC server. TLS mirrors DysonFS: when grpc.useTLS is set, certFile and
 	// keyFile are required (self-signed fleet certs; clients skip CA checks).
 	grpcOpts := []grpc.ServerOption{}

@@ -317,6 +317,9 @@ var passportSwagger = buildDoc(
 		{path: "/api/relationships/{accountId}/mutual-friends", method: "GET", tag: "Relationships", summary: "List mutual friends", params: []string{"accountId"}},
 		{path: "/api/relationships/sync", method: "POST", tag: "Relationships", summary: "Incremental relationship sync"},
 		{path: "/api/relationships/inspect/{accountId}", method: "GET", tag: "Relationships", summary: "Inspect the relationship status with an account", params: []string{"accountId"}},
+		// Session-gated only: a missing session answers 401, not 403, so
+		// this route must not claim a permission failure it never emits.
+		{path: "/api/friends/overview", method: "GET", tag: "Relationships", summary: "List friends with presence and activity"},
 
 		{path: "/api/spells/contact-verification/resend", method: "POST", tag: "Spells", summary: "Resend the current account's contact-verification spell", forbidden: true},
 		{path: "/api/spells/{word}", method: "GET", tag: "Spells", summary: "Get a magic spell by its secret word", params: []string{"word"}, notFound: true},

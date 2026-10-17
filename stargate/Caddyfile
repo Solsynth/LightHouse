@@ -91,6 +91,11 @@ api.solian.app {
     @pm_rels path /passport/relationships*
     rewrite @pm_rels /stargate{path}
 
+    # friends overview (GET /api/friends/overview) moved with the rest of
+    # the social graph; Solian still calls the /passport prefix.
+    @pm_friends path /passport/friends*
+    rewrite @pm_friends /stargate{path}
+
     reverse_proxy localhost:5001
 }
 

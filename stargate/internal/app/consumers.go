@@ -11,6 +11,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/nats"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
 	redisclient "src.solsynth.dev/sosys/stargate/internal/redis"
+	"src.solsynth.dev/sosys/stargate/internal/relationship"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
 
@@ -162,5 +163,37 @@ func consumeLastActive(ctx context.Context, nc *nats.Client, st *store.Store, lo
 		return nil
 	}); err != nil {
 		log.Warn("accounts.last_active consumer stopped", "error", err)
+	}
+}
+
+// consumeAccountRemoval drops the removed account's relationship rows.
+//
+// The table moved to Stargate, so Passport's removal flow no longer deletes
+// the rows itself (MagicSpellService.ExecuteSpellAccountRemoval used to) and
+// publishes accounts.removal.confirmed instead. Without this consumer the
+// account's id keeps appearing in its friends' and followers' lists, and each
+// row keeps satisfying HasExistingRelationship, which is what a re-registered
+// account would collide with. Malformed events are acked; DB errors redeliver.
+func consumeAccountRemoval(ctx context.Context, nc *nats.Client, rel *relationship.Service, log *slog.Logger) {
+	if err := nc.ConsumeAccountEvents(ctx, "accounts.removal.confirmed", "stargate_accountremovalconfirmedevent_consumer", func(payload []byte) error {
+		var ev nats.AccountRemovalConfirmedEvent
+		if err := json.Unmarshal(payload, &ev); err != nil {
+			log.Warn("malformed accounts.removal.confirmed event", "error", err)
+			return nil
+		}
+		id, err := uuid.Parse(ev.AccountID)
+		if err != nil {
+			log.Warn("accounts.removal.confirmed event has invalid account id",
+				"account_id", ev.AccountID, "payload", string(payload))
+			return nil
+		}
+		removed, err := rel.PurgeAccount(ctx, id)
+		if err != nil {
+			return err
+		}
+		log.Info("purged relationships for removed account", "account_id", ev.AccountID, "rows", removed)
+		return nil
+	}); err != nil {
+		log.Warn("accounts.removal.confirmed consumer stopped", "error", err)
 	}
 }

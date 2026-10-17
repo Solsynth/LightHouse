@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -59,6 +60,12 @@ func registerRelationships(api *gin.RouterGroup, d Deps) {
 	r.DELETE("/:accountId/close-friend", middleware.AskPermission(d.Perm, permission.RelationshipsCloseFriendsManage), d.removeCloseFriend)
 	r.PATCH("/:accountId/alias", middleware.AskPermission(d.Perm, permission.RelationshipsAliasManage), d.updateAlias)
 	r.GET("/:accountId/mutual-friends", d.getMutualFriends)
+	// friends/overview mirrors Passport's FriendsController.GetOverview.
+	// Account/status data is from Stargate; activities require a proto
+	// batch-read RPC and are omitted until that is added.
+	friends := api.Group("/friends")
+	friends.Use(middleware.RequireAuth())
+	friends.GET("/overview", d.getFriendsOverview)
 }
 
 // relationshipSummaryResponse is the anonymous public projection of an
@@ -69,6 +76,161 @@ type relationshipSummaryResponse struct {
 	Followers     int  `json:"followers"`
 	Following     int  `json:"following"`
 	MutualFriends *int `json:"mutual_friends,omitempty"`
+}
+
+// friendOverviewItem mirrors Passport's FriendsController.FriendOverviewItem.
+// activities are omitted until the proto gains a batch presence read RPC.
+type friendOverviewItem struct {
+	Account    *model.Account `json:"account"`
+	Status     any            `json:"status"`
+	Activities []any          `json:"activities"`
+}
+
+// getFriendsOverview serves GET /api/friends/overview, ported from
+// Passport's FriendsController.GetOverview. It mirrors the C# response
+// shape (online-first friends with SnAccountStatus). Activities are
+// omitted (empty array) until DyPresenceService gains a batch read RPC.
+func (d Deps) getFriendsOverview(c *gin.Context) {
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
+	ctx := c.Request.Context()
+	accountID := accountIDOf(user)
+
+	// Load friend IDs: Friends OR CloseFriend, non-expired, outgoing.
+	friendIDs, err := d.Store.ListRelatedAccountIDs(ctx, accountID, model.RelationshipFriends, false)
+	if err != nil {
+		internalError(c, err)
+		return
+	}
+	if len(friendIDs) == 0 {
+		c.JSON(http.StatusOK, []friendOverviewItem{})
+		return
+	}
+
+	// Batch-load accounts.
+	var uuids []uuid.UUID
+	for _, id := range friendIDs {
+		if u, err := uuid.Parse(id); err == nil {
+			uuids = append(uuids, u)
+		}
+	}
+	accounts, err := d.Store.GetAccountsByIDs(ctx, uuids)
+	if err != nil {
+		internalError(c, err)
+		return
+	}
+	// Hydrate profiles.
+	for i := range accounts {
+		if p, err := d.Store.GetOrCreateAccountProfile(ctx, uuid.MustParse(accounts[i].Id)); err == nil {
+			accounts[i].Profile = p
+		}
+	}
+
+	now := time.Now()
+	items := make([]friendOverviewItem, 0, len(accounts))
+	for _, account := range accounts {
+		a := account          // copy for pointer
+		a.IsSuperuser = false // strip admin flag
+		items = append(items, friendOverviewItem{
+			Account:    &a,
+			Status:     buildOverviewStatus(account.Profile, now),
+			Activities: []any{}, // deferred: needs presence batch-read RPC
+		})
+	}
+
+	// Sort: online first (lastSeenAt desc), then offline (name asc).
+	slices.SortFunc(items, func(a, b friendOverviewItem) int {
+		aSeen, bSeen := profileLastSeen(a.Account.Profile), profileLastSeen(b.Account.Profile)
+		switch {
+		case aSeen != nil && bSeen == nil:
+			return -1
+		case aSeen == nil && bSeen != nil:
+			return 1
+		case aSeen != nil && bSeen != nil:
+			if aSeen.After(*bSeen) {
+				return -1
+			}
+			if bSeen.After(*aSeen) {
+				return 1
+			}
+		}
+		return strings.Compare(a.Account.Name, b.Account.Name)
+	})
+
+	c.JSON(http.StatusOK, items)
+}
+
+// profileLastSeen returns a pointer to the profile's last_seen_at time,
+// matching the C# lastSeenAt field used for the overview sort.
+func profileLastSeen(p *model.Profile) *time.Time {
+	if p == nil || p.LastSeenAt == nil {
+		return nil
+	}
+	t := p.LastSeenAt.Time()
+	return &t
+}
+
+// buildOverviewStatus mirrors the C# SnAccountStatus JSON shape the Dart
+// client parses. online status uses lastSeenAt: within 5 min = Online.
+func buildOverviewStatus(p *model.Profile, now time.Time) any {
+	if p == nil {
+		return gin.H{
+			"account_id":     "",
+			"is_online":      false,
+			"is_idle":        false,
+			"is_customized":  false,
+			"is_automated":   false,
+			"type":           0,
+			"attitude":       1,
+			"is_invisible":   false,
+			"is_not_disturb": false,
+			"created_at":     nil,
+			"updated_at":     nil,
+			"label":          "Offline",
+		}
+	}
+
+	var lastSeen time.Time
+	var isOnline bool
+	if p.LastSeenAt != nil {
+		lastSeen = p.LastSeenAt.Time()
+		isOnline = lastSeen.After(now.Add(-5 * time.Minute))
+	}
+	var isIdle bool
+	if isOnline {
+		isIdle = lastSeen.Before(now.Add(-30 * time.Minute))
+	}
+
+	var lastSeenPtr *time.Time
+	if p.LastSeenAt != nil {
+		lastSeenPtr = &lastSeen
+	}
+
+	var label string
+	if isOnline {
+		label = "Online"
+	} else {
+		label = "Offline"
+	}
+
+	return gin.H{
+		"account_id":     p.AccountId,
+		"is_online":      isOnline,
+		"is_idle":        isIdle,
+		"is_customized":  false,
+		"is_automated":   false,
+		"type":           0,
+		"attitude":       1,
+		"is_invisible":   false,
+		"is_not_disturb": false,
+		"created_at":     lastSeenPtr,
+		"updated_at":     lastSeenPtr,
+		"label":          label,
+		"icon":           nil,
+		"background":     nil,
+	}
 }
 
 // RegisterPublicRelationships mounts the anonymous social-graph summary the

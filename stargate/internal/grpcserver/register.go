@@ -18,6 +18,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/e2eectl"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
+	"src.solsynth.dev/sosys/stargate/internal/relationship"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
 
@@ -36,6 +37,11 @@ type Deps struct {
 	SingleUser *auth.SingleUser
 	Cfg        *config.Config
 	Log        *slog.Logger
+
+	// Relationships is the social-graph read service. It is nil when the
+	// relationships module is disabled, in which case the six relationship
+	// RPCs stay Unimplemented.
+	Relationships *relationship.Service
 
 	// Capabilities is the enabled capability list. Nil keeps the historical
 	// full registry (tests and legacy callers).

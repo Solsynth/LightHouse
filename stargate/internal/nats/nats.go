@@ -242,6 +242,16 @@ type AccountActivatedEvent struct {
 	ActivatedAt time.Time `json:"activated_at"`
 }
 
+// AccountRemovalConfirmedEvent mirrors the C# AccountRemovalConfirmedEvent
+// wire shape. Passport publishes it on accounts.removal.confirmed once an
+// account-removal spell is confirmed, after which the account row is gone and
+// every relationship row naming it is orphaned.
+type AccountRemovalConfirmedEvent struct {
+	AccountID   string    `json:"account_id"`
+	SpellID     string    `json:"spell_id"`
+	ConfirmedAt time.Time `json:"confirmed_at"`
+}
+
 // AccountTestPassedPermissionGroupEvent mirrors the C#
 // AccountTestPassedPermissionGroupEvent wire shape. Passport publishes it on
 // accounts.tests.permission-group-granted when a passed test is configured

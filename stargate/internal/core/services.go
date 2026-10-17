@@ -17,6 +17,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/nats"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
+	"src.solsynth.dev/sosys/stargate/internal/relationship"
 	"src.solsynth.dev/sosys/stargate/internal/spell"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
@@ -41,4 +42,9 @@ type Services struct {
 	Toucher    *middleware.LastSeenToucher
 	Clients    *grpcclient.Clients
 	Log        *slog.Logger
+
+	// Relationships is the social-graph read service. It is nil unless the
+	// relationships module is enabled, so gRPC relationship RPCs report
+	// Unimplemented instead of answering from a table that may not exist.
+	Relationships *relationship.Service
 }

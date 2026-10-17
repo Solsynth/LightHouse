@@ -280,6 +280,19 @@ func (s *Store) ListRelatedAccountIDs(ctx context.Context, accountID uuid.UUID, 
 	return ids, nil
 }
 
+// IsBlockedEitherDirection reports whether either account blocks the other
+// with a non-expired row (mirrors RelationshipService.IsBlockedEitherDirection).
+func (s *Store) IsBlockedEitherDirection(ctx context.Context, accountID, relatedID uuid.UUID) (bool, error) {
+	var count int64
+	err := s.DB.WithContext(ctx).Model(&RelationshipEntity{}).
+		Where("status = ?", int16(model.RelationshipBlocked)).
+		Where("(expired_at IS NULL OR expired_at > now())").
+		Where("(account_id = ? AND related_id = ?) OR (account_id = ? AND related_id = ?)",
+			accountID, relatedID, relatedID, accountID).
+		Count(&count).Error
+	return count > 0, err
+}
+
 // ListAllBlockedAccountIDs returns the distinct non-expired account IDs
 // blocked in either direction (mirrors ListAllBlockedAccountIds).
 func (s *Store) ListAllBlockedAccountIDs(ctx context.Context, accountID uuid.UUID) ([]string, error) {
@@ -431,4 +444,115 @@ func (s *Store) listFollowPage(ctx context.Context, accountID uuid.UUID, offset,
 		}
 	}
 	return accounts, int(total), nil
+}
+
+// RelationshipSweepCounts reports the work the expiry sweeper has to do.
+type RelationshipSweepCounts struct {
+	Degraded int64
+	Deleted  int64
+}
+
+// SweepExpiredRelationships applies expired_at to the graph, mirroring
+// RelationshipService.ProcessExpiredRelationshipsAsync (the Quartz
+// RelationshipExpiryJob that ran every five minutes):
+//
+//   - a row with degrade_to_status lapses into that status and clears
+//     expired_at/degrade_to_status (the "timed mute/block, then back to
+//     Friends" flow);
+//   - every other row is soft-deleted, not removed: the C# db.Remove is
+//     rewritten to DeletedAt = now by ApplyAuditableAndSoftDelete, and
+//     ModelBase.DeletedAt is a global query filter there.
+//
+// The soft delete is load-bearing for the sync surface:
+// GetRelationshipDelta builds Removed from `deleted_at IS NOT NULL AND
+// deleted_at > since`, so physically deleting the row would silently drop
+// the removal from every client's incremental sync (delta.Added/Updated use
+// the default scope and ignore soft-deleted rows). Writes revive such a row
+// rather than conflicting, because SaveRelationship is Unscoped and
+// restoreRelationship clears DeletedAt.
+//
+// It returns the rows it changed so the caller can purge the shared caches;
+// the table and the C# fleet's keys are the same, so a sweep that skipped
+// the purge would leave a lapsed block answering from Redis for an hour.
+func (s *Store) SweepExpiredRelationships(ctx context.Context, limit int) ([]model.Relationship, RelationshipSweepCounts, error) {
+	var counts RelationshipSweepCounts
+
+	var expired []RelationshipEntity
+	if err := s.DB.WithContext(ctx).Model(&RelationshipEntity{}).
+		Where("expired_at IS NOT NULL AND expired_at <= now()").
+		Order("expired_at").
+		Limit(limit).
+		Find(&expired).Error; err != nil {
+		return nil, counts, err
+	}
+	if len(expired) == 0 {
+		return nil, counts, nil
+	}
+
+	now := time.Now().UTC()
+	// changed carries every row this pass touched, degraded or deleted: the
+	// caller purges both accounts' cache keys from it, and a lapsed mute that
+	// degraded back to Friends lives in the same accounts:friends: entry.
+	changed := make([]model.Relationship, 0, len(expired))
+	for i := range expired {
+		entity := &expired[i]
+		row := relationshipFromEntity(entity)
+		if entity.DegradeToStatus != nil {
+			counts.Degraded++
+			if err := s.DB.WithContext(ctx).Unscoped().Model(&RelationshipEntity{}).
+				Where("account_id = ? AND related_id = ?", entity.AccountID, entity.RelatedID).
+				Updates(map[string]any{
+					"status":            *entity.DegradeToStatus,
+					"expired_at":        nil,
+					"degrade_to_status": nil,
+					"updated_at":        now,
+				}).Error; err != nil {
+				return changed, counts, err
+			}
+			changed = append(changed, row)
+			continue
+		}
+		counts.Deleted++
+		if err := s.DB.WithContext(ctx).Unscoped().Model(&RelationshipEntity{}).
+			Where("account_id = ? AND related_id = ?", entity.AccountID, entity.RelatedID).
+			Updates(map[string]any{
+				"deleted_at": now,
+				"updated_at": now,
+			}).Error; err != nil {
+			return changed, counts, err
+		}
+		changed = append(changed, row)
+	}
+	return changed, counts, nil
+}
+
+// PurgeAccountRelationships physically removes every row naming the account on
+// either side and returns them, so the caller can purge the shared caches.
+//
+// This mirrors the delete Passport's account-removal flow used to run against
+// its own table (MagicSpellService.ExecuteSpellAccountRemoval deleted
+// AccountRelationships both ways). The rows go away with the account: an
+// account is never revived, so a soft delete would only leave a row that
+// still satisfies HasExistingRelationship (which is Unscoped) and blocks the
+// surviving side from ever relating to another account with the same id.
+func (s *Store) PurgeAccountRelationships(ctx context.Context, accountID uuid.UUID) ([]model.Relationship, error) {
+	var entities []RelationshipEntity
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&RelationshipEntity{}).
+		Where("account_id = ? OR related_id = ?", accountID, accountID).
+		Find(&entities).Error; err != nil {
+		return nil, err
+	}
+	if len(entities) == 0 {
+		return nil, nil
+	}
+	rows := make([]model.Relationship, 0, len(entities))
+	for i := range entities {
+		rows = append(rows, relationshipFromEntity(&entities[i]))
+	}
+	if err := s.DB.WithContext(ctx).Unscoped().
+		Where("account_id = ? OR related_id = ?", accountID, accountID).
+		Delete(&RelationshipEntity{}).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
