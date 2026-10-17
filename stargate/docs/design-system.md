@@ -143,7 +143,8 @@ status bar and table footers are separated by spacing, not rules.
 
 Brand mark is a CSS mask over `currentColor` (so it repaints with the theme),
 then `SOLARPASS`, then `Solar Network` on wider screens. With a session, the
-right side holds identity and sign out; signed out it is just the brand.
+right side holds the account avatar (links to Profile, falls back to a person
+glyph when no picture exists) and sign out; signed out it is just the brand.
 
 ### Footer
 

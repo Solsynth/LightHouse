@@ -9,6 +9,7 @@ import {
   Sun16,
   Tools16,
   User16,
+  UserAvatar16,
 } from '@carbon/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
@@ -84,6 +85,20 @@ const showNav = computed(
 )
 
 const latest = computed(() => notice.items[notice.items.length - 1])
+
+const picture = computed(() => session.account?.profile?.picture)
+const pictureUrl = computed(
+  () =>
+    `/api/accounts/${encodeURIComponent(session.account?.name ?? session.identity?.name ?? '')}/picture`,
+)
+const avatarFailed = ref(false)
+
+watch(
+  () => session.account?.profile?.picture?.id,
+  () => {
+    avatarFailed.value = false
+  },
+)
 
 // The card is the whole page, so a route or notice changing the content should
 // move its edge, not snap it. The region is measured from a real height and
@@ -170,10 +185,10 @@ function changeLocale(event: Event) {
         <div class="flex items-center justify-between gap-4 border-b border-line px-5 py-3">
           <RouterLink to="/" class="flex items-center gap-2.5" :aria-label="t('app.home')">
             <span class="brand-mark h-[22px] w-[22px] shrink-0" aria-hidden="true" />
-            <span class="text-[13px] font-semibold tracking-[0.24em] text-base-content">
+            <span class="text-[13px] font-semibold tracking-[0.14em] text-base-content">
               SOLARPASS
             </span>
-            <span class="hidden text-2xs tracking-[0.12em] text-faint sm:inline">
+            <span class="hidden text-2xs tracking-[0.04em] text-faint sm:inline">
               {{ t('app.network') }}
             </span>
           </RouterLink>
@@ -187,7 +202,26 @@ function changeLocale(event: Event) {
               <span class="dot bg-accent" />
               {{ t('app.elevated') }}
             </span>
-            <span class="text-2xs text-dim">{{ session.identity?.name }}</span>
+            <RouterLink
+              to="/account"
+              class="block shrink-0"
+              :title="session.account?.name"
+              :aria-label="session.account?.name"
+            >
+              <img
+                v-if="picture && !avatarFailed"
+                :src="pictureUrl"
+                alt=""
+                class="h-6 w-6 rounded-[2px] border border-line object-cover"
+                @error="avatarFailed = true"
+              />
+              <span
+                v-else
+                class="flex h-6 w-6 items-center justify-center rounded-[2px] border border-line text-faint"
+              >
+                <UserAvatar16 aria-hidden="true" />
+              </span>
+            </RouterLink>
             <button class="btn btn-ghost btn-xs" type="button" @click="signOut">
               {{ t('app.signOut') }}
             </button>

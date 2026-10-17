@@ -50,6 +50,8 @@ export interface Profile {
   leveling_progress: number
   social_credits: number
   social_credits_level: number
+  picture?: { id?: string; url?: string }
+  background?: { id?: string; url?: string }
   account_id: string
   created_at?: string
   updated_at?: string
