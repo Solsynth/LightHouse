@@ -25,6 +25,12 @@ func GRPC(c *core.Services) grpcserver.Deps {
 		Store: c.Store, Redis: c.Redis, Auth: c.Auth, Token: c.Token, JWT: c.JWT,
 		Perm: c.Perm, Logs: c.Logs, Cfg: c.Config, Log: c.Log, Presence: c.Presence,
 		SingleUser: c.SingleUser,
+		// The relationships module owns the six DyProfileService social-graph
+		// RPCs but does not register the service itself (profiles does), so the
+		// module's read service has to travel through every GRPC deps bundle.
+		// Dropping it leaves the field nil and every relationship RPC answers
+		// Unimplemented even though the module is enabled.
+		Relationships: c.Relationships,
 	}
 }
 
