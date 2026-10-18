@@ -18,7 +18,8 @@ export default {
       geographyTitle: '登录地理',
       geographyNote: '最近 30 天，按国家',
       geographyLoading: '正在读取会话位置…',
-      geographyEmpty: '此时间窗口内没有可定位的会话。当地理数据库解析出登录地址后，位置会显示在这里。',
+      geographyEmpty:
+        '此时间窗口内没有可定位的会话。当地理数据库解析出登录地址后，位置会显示在这里。',
       countriesReporting: '{n} 个国家有数据',
       openMap: '打开完整地图表',
       shortcuts: '快捷入口',
@@ -134,7 +135,8 @@ export default {
       createGroup: '创建权限组',
       seededHint: '预置权限组：default、verified、moderator、developer。新建权限组初始为空。',
       confirmDeleteTitle: '删除此权限组？',
-      confirmDeleteBody: '{key} 中的所有权限与成员都会被移除。持有该权限组的账号会在下次校验时失去这些授权。',
+      confirmDeleteBody:
+        '{key} 中的所有权限与成员都会被移除。持有该权限组的账号会在下次校验时失去这些授权。',
       confirmDeleteAction: '删除权限组',
       created: '已创建权限组 {key}。',
       deleted: '已删除权限组 {key}。',
@@ -237,6 +239,7 @@ export default {
   securityNav: {
     aria: '设置',
     sessions: '会话',
+    devices: '设备',
     factors: '登录验证方式',
     passkeys: '通行密钥',
     contacts: '联系方式',

@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1356,6 +1357,33 @@ type deviceWithSessions struct {
 	Sessions    []model.AuthSession  `json:"sessions"`
 }
 
+// liveDeviceSessions keeps the sessions that can still authenticate, ordered
+// newest grant first. A nil expiry means no expiry; a row whose expiry has
+// passed was revoked or ran out and must not be presented as active.
+func liveDeviceSessions(sessions []model.AuthSession, now time.Time) []model.AuthSession {
+	live := make([]model.AuthSession, 0, len(sessions))
+	for _, session := range sessions {
+		if session.ExpiredAt != nil && !session.ExpiredAt.Time().After(now) {
+			continue
+		}
+		live = append(live, session)
+	}
+	sort.Slice(live, func(i, j int) bool {
+		a, b := live[i].LastGrantedAt, live[j].LastGrantedAt
+		if a == nil || b == nil {
+			if a == nil && b == nil {
+				return live[i].Id < live[j].Id
+			}
+			return b == nil
+		}
+		if a.Time().Equal(b.Time()) {
+			return live[i].Id < live[j].Id
+		}
+		return a.Time().After(b.Time())
+	})
+	return live
+}
+
 // GET /api/devices
 func (c *controller) getDevices(ctx *gin.Context) {
 	reqCtx := ctx.Request.Context()
@@ -1404,6 +1432,12 @@ func (c *controller) getDevices(ctx *gin.Context) {
 		}
 		item.Category = model.SessionCategory(device.Platform)
 		if sessions, ok := sessionsByClient[device.Id]; ok {
+			// A device row outlives its sessions: revoking one expires the
+			// session but keeps the client until the device itself is removed,
+			// so an unfiltered list would report credentials that can no longer
+			// sign in. Show live sessions only — and filter before annotating,
+			// because annotateSessions drops expired_at for browser sessions.
+			sessions = liveDeviceSessions(sessions, now)
 			// Annotate nested sessions and compute device-level trust from the
 			// most recent granted-at timestamp across login sessions. OAuth
 			// sessions carry a (client-declared) device too, but they never

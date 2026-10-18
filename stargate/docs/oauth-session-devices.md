@@ -145,5 +145,24 @@ plays here.
 | `auth_clients.device_name` | Display name; client-declared or a platform label. |
 | `auth_clients.platform` | Client platform, client-declared or guessed from the user agent. |
 
+## Live sessions on a device
+
+`GET /api/devices` returns one row per auth client with the sessions bound to
+it. The client outlives its sessions: revoking a session expires the row but
+leaves the client in place, so the device keeps its name, label and platform
+until the device itself is deleted.
+
+The handler therefore keeps only sessions that can still authenticate
+(`expired_at IS NULL OR expired_at > now`) and filters *before* annotating:
+`annotateSessions` clears `expired_at` on browser sessions, so a post-annotation
+filter would keep dead sessions that look live. The device's `trusted` flag is
+computed from the surviving login sessions only.
+
+Rows are ordered newest `last_granted_at` first, never-granted last, session id
+as the stable tie-break — the order `auth.DevicePresence` uses, so the devices
+page and presence agree. A device with nothing live still appears with
+`sessions: []`: the row explains where the device was used, and it is what the
+devices page offers to revoke once the last credential has expired.
+
 See [local-oauth-clients.md](local-oauth-clients.md) for the client configuration
 these parameters are used with.

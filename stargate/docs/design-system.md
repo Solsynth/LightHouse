@@ -122,7 +122,7 @@ Width tiers are decided by route metadata in `web/src/router/index.ts`:
 | flow | 460 px | sign-in, create account, recovery, captcha, provider callback, sudo, magic spell, device authorization |
 | consent | 880 px | OAuth authorize (the app rail beside its request) |
 | account | 880 px | profile, factors, passkeys, contacts, linked identities, security mode, public profiles |
-| wide | 1120 px | sessions, friends, developers, OAuth app, activity |
+| wide | 1120 px | sessions, devices, friends, developers, OAuth app, activity |
 | full | viewport (full bleed) | all admin pages |
 
 Admin routes set `meta.fullBleed`. The shell then drops its 16 px gutter and
@@ -185,8 +185,8 @@ redesigning the header. It is present on every page, signed in or not.
 The main nav is a single horizontal line of 11 px links with a Carbon 16 icon.
 The active section is `text-base-content`; the rest are `text-faint`. The
 account-settings entry is labelled **Settings** with the sliders icon; its
-contained tabs are Sessions, Sign-In Factors, Passkeys, Contacts, Linked
-Identities, and Security Mode.
+contained tabs are Sessions, Devices, Sign-In Factors, Passkeys, Contacts,
+Linked Identities, and Security Mode.
 
 `SecurityNav` is a contained tab box: 1 px border, hairline dividers between
 tabs, active tab filled with `base-300`, inactive tabs faint with a hover tint.
@@ -284,6 +284,35 @@ than a single factor: the Passkeys tab lists any number of them with add,
 rename, and delete, while the passkey method's enable/disable toggle stays in
 Sign-In Factors. A passkey can only be registered after the passkey factor and
 a recovery code are enabled.
+
+### Devices
+
+`/security/devices` (SPA route `devices`, wide card) lists the auth clients —
+one per browser or app install — that `GET /api/devices` returns, each with the
+sessions bound to it. The Sessions tab answers "which credentials are live";
+this one answers "where", which is the question people ask before revoking
+something they do not recognise.
+
+The device key is the identity: renaming and deleting both address
+`device_id`, not the row's client id, and the row's platform picks a Carbon
+glyph (web, phone, mobile, laptop, screen, terminal) with `devices` as the
+fallback for an unidentified platform. The label wins over the client-declared
+name, matching the fleet's `device_label ?? device_name` rule.
+
+Three signals decide what the row may do. A row whose `device_id` matches the
+one this browser stores (`localStorage['stargate.device']`) is "this device";
+a row holding the console's own `session_id` is treated the same way, because
+an older login may have bound the session to a different key. Neither can be
+revoked — the request would sign the page out mid-flight — and they are the
+only rows that can be renamed through `PATCH /api/devices/current/label`.
+Everything else uses the per-device routes, which need an elevated session.
+
+Session rows inside a device are the server's `sessions` array; the console
+shows only the ones still live, since a revoked session lingers in the row
+until it falls off the page. Each carries its own revoke action (the plain
+session route), so revoking one credential does not take the device with it.
+The `trusted` chip on a device comes from native login sessions only: OAuth
+devices can never be trusted.
 
 ### Sign-in methods
 

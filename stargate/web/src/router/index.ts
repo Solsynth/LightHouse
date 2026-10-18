@@ -134,6 +134,15 @@ const router = createRouter({
       meta: { titleKey: 'app.titles.sessions', wide: true, modules: [MODULES.accounts] },
     },
     {
+      // Devices are the auth clients a session binds to: one row per browser
+      // or app install, with the sessions it authorized. Revoking a device
+      // expires every session on it, which is why it sits beside Sessions.
+      path: '/security/devices',
+      name: 'devices',
+      component: () => import('@/views/security/DevicesView.vue'),
+      meta: { titleKey: 'app.titles.devices', wide: true, modules: [MODULES.accounts] },
+    },
+    {
       path: '/security/factors',
       name: 'factors',
       component: () => import('@/views/security/FactorsView.vue'),
@@ -192,43 +201,85 @@ const router = createRouter({
       path: '/admin',
       name: 'admin',
       component: () => import('@/views/admin/AdminOverview.vue'),
-      meta: { titleKey: 'app.titles.admin', admin: true, full: true, fullBleed: true, modules: [MODULES.admin] },
+      meta: {
+        titleKey: 'app.titles.admin',
+        admin: true,
+        full: true,
+        fullBleed: true,
+        modules: [MODULES.admin],
+      },
     },
     {
       path: '/admin/accounts',
       name: 'admin-accounts',
       component: () => import('@/views/admin/AdminAccounts.vue'),
-      meta: { titleKey: 'app.titles.accounts', admin: true, full: true, fullBleed: true, modules: [MODULES.admin] },
+      meta: {
+        titleKey: 'app.titles.accounts',
+        admin: true,
+        full: true,
+        fullBleed: true,
+        modules: [MODULES.admin],
+      },
     },
     {
       path: '/admin/accounts/:name',
       name: 'admin-account',
       component: () => import('@/views/admin/AdminAccountDetail.vue'),
-      meta: { titleKey: 'app.titles.account', admin: true, full: true, fullBleed: true, modules: [MODULES.admin] },
+      meta: {
+        titleKey: 'app.titles.account',
+        admin: true,
+        full: true,
+        fullBleed: true,
+        modules: [MODULES.admin],
+      },
     },
     {
       path: '/admin/permissions',
       name: 'admin-permissions',
       component: () => import('@/views/admin/AdminPermissions.vue'),
-      meta: { titleKey: 'app.titles.permissions', admin: true, full: true, fullBleed: true, modules: [MODULES.admin] },
+      meta: {
+        titleKey: 'app.titles.permissions',
+        admin: true,
+        full: true,
+        fullBleed: true,
+        modules: [MODULES.admin],
+      },
     },
     {
       path: '/admin/permissions/:id',
       name: 'admin-permission-group',
       component: () => import('@/views/admin/AdminPermissionGroup.vue'),
-      meta: { titleKey: 'app.titles.permissionGroup', admin: true, full: true, fullBleed: true, modules: [MODULES.admin] },
+      meta: {
+        titleKey: 'app.titles.permissionGroup',
+        admin: true,
+        full: true,
+        fullBleed: true,
+        modules: [MODULES.admin],
+      },
     },
     {
       path: '/admin/cache',
       name: 'admin-cache',
       component: () => import('@/views/admin/AdminCache.vue'),
-      meta: { titleKey: 'app.titles.cache', admin: true, full: true, fullBleed: true, modules: [MODULES.admin] },
+      meta: {
+        titleKey: 'app.titles.cache',
+        admin: true,
+        full: true,
+        fullBleed: true,
+        modules: [MODULES.admin],
+      },
     },
     {
       path: '/admin/geography',
       name: 'admin-geography',
       component: () => import('@/views/admin/AdminGeography.vue'),
-      meta: { titleKey: 'app.titles.geography', admin: true, full: true, fullBleed: true, modules: [MODULES.admin] },
+      meta: {
+        titleKey: 'app.titles.geography',
+        admin: true,
+        full: true,
+        fullBleed: true,
+        modules: [MODULES.admin],
+      },
     },
     {
       path: '/@:name',

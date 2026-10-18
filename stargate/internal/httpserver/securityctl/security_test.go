@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/go-webauthn/webauthn/webauthn"
@@ -269,5 +270,45 @@ func TestBuildAuthFactorInvalidType(t *testing.T) {
 	account := &model.Account{Id: "11111111-1111-1111-1111-111111111111", Name: "testuser"}
 	if _, err := c.buildAuthFactor(context.Background(), account, model.AuthFactorType(99), nil); err == nil {
 		t.Fatal("unsupported factor type should fail")
+	}
+}
+
+// TestLiveDeviceSessions pins the device-row contract: a device outlives its
+// sessions, so the handler must not present a revoked or expired session as
+// active. Ordering is newest grant first, with nil grants last.
+func TestLiveDeviceSessions(t *testing.T) {
+	now := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
+	stamp := func(at time.Time) *model.Time { return model.NewTime(at) }
+	sessions := []model.AuthSession{
+		{Id: "expired-ago", ExpiredAt: stamp(now.Add(-time.Hour))},
+		{Id: "expires-now", ExpiredAt: stamp(now)},
+		{Id: "older", LastGrantedAt: stamp(now.Add(-2 * time.Hour))},
+		{Id: "newer", LastGrantedAt: stamp(now.Add(-time.Minute)), ExpiredAt: stamp(now.Add(time.Hour))},
+		{Id: "never", ExpiredAt: nil},
+	}
+
+	got := liveDeviceSessions(sessions, now)
+	ids := make([]string, 0, len(got))
+	for _, session := range got {
+		ids = append(ids, session.Id)
+	}
+	want := []string{"newer", "older", "never"}
+	if strings.Join(ids, ",") != strings.Join(want, ",") {
+		t.Fatalf("live sessions = %v, want %v", ids, want)
+	}
+}
+
+// A device with nothing live keeps an empty, non-nil row: the JSON shape must
+// carry `sessions: []`, never null, so the console can iterate it directly.
+func TestLiveDeviceSessionsEmpty(t *testing.T) {
+	now := time.Now().UTC()
+	got := liveDeviceSessions([]model.AuthSession{
+		{Id: "revoked", ExpiredAt: model.NewTime(now.Add(-time.Minute))},
+	}, now)
+	if got == nil {
+		t.Fatal("live sessions is nil; want an empty slice")
+	}
+	if len(got) != 0 {
+		t.Fatalf("live sessions = %v, want empty", got)
 	}
 }

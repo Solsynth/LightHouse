@@ -98,6 +98,7 @@ export default {
       profile: 'Profile',
       relationships: 'Friends',
       sessions: 'Sessions',
+      devices: 'Devices',
       signInFactors: 'Sign-In Factors',
       passkeys: 'Passkeys',
       contacts: 'Contacts',

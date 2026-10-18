@@ -39,8 +39,7 @@ export default {
     },
     accounts: {
       title: 'Accounts',
-      description:
-        'Search the account table, open a record, or filter to restricted accounts.',
+      description: 'Search the account table, open a record, or filter to restricted accounts.',
       query: 'Query',
       queryPlaceholder: 'name or nickname',
       restrictedOnly: 'restricted only',
@@ -141,8 +140,7 @@ export default {
       newGroup: 'New Group',
       key: 'Key',
       createGroup: 'Create Group',
-      seededHint:
-        'Seeded groups: default, verified, moderator, developer. New Groups start empty.',
+      seededHint: 'Seeded groups: default, verified, moderator, developer. New Groups start empty.',
       confirmDeleteTitle: 'Delete This Group?',
       confirmDeleteBody:
         'Every permission and membership in {key} is removed. Accounts holding it lose those grants on their next check.',
@@ -178,8 +176,7 @@ export default {
         '{node} is removed from {group}. Accounts in this group lose the grant on their next check.',
       confirmRevokeAction: 'Revoke',
       confirmRemoveTitle: 'Remove This Member?',
-      confirmRemoveBody:
-        'The account leaves {group} and loses every permission it granted.',
+      confirmRemoveBody: 'The account leaves {group} and loses every permission it granted.',
       confirmRemoveAction: 'Remove Member',
     },
     cache: {
@@ -232,13 +229,13 @@ export default {
       byCountry: 'By Country',
       byCity: 'By City',
       panelNote: '{buckets} buckets · {total} located accounts',
-      empty: 'No located sessions in this window. Locations resolve from the GeoLite database on sign-in.',
+      empty:
+        'No located sessions in this window. Locations resolve from the GeoLite database on sign-in.',
       colPlace: 'place',
       colAccounts: 'accounts',
       colShare: 'share',
       colCentroid: 'centroid',
-      footer:
-        'Read at {stamp}. Accounts without a located session are not counted.',
+      footer: 'Read at {stamp}. Accounts without a located session are not counted.',
     },
   },
   confirm: {
@@ -254,6 +251,7 @@ export default {
   securityNav: {
     aria: 'Settings',
     sessions: 'Sessions',
+    devices: 'Devices',
     factors: 'Sign-In Factors',
     passkeys: 'Passkeys',
     contacts: 'Contacts',

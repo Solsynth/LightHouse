@@ -231,11 +231,8 @@ export const signInApi = {
    * Starts a QR login for this browser. The reply's `qr_data` is the payload a
    * signed-in device scans; the web page only polls `qrStatus` afterwards.
    */
-  qrGenerate: (body: {
-    device_id: string
-    device_name?: string
-    platform: number
-  }) => request<QrChallengeCreated>('/auth/qr/generate', { method: 'POST', body }),
+  qrGenerate: (body: { device_id: string; device_name?: string; platform: number }) =>
+    request<QrChallengeCreated>('/auth/qr/generate', { method: 'POST', body }),
   /** The status of a QR challenge: 0 pending, 1 scanned, 2 approved, 3 declined. */
   qrStatus: (id: string) => request<QrChallengeStatus>(`/auth/qr/${id}`),
   /**
@@ -304,8 +301,11 @@ export const sessionApi = {
   revokeCurrent: () => request<void>('/sessions/current', { method: 'DELETE' }),
   devices: (query: { take?: number; offset?: number } = {}) =>
     requestPage<Device>('/devices', query),
-  deleteDevice: (id: string) => request<void>(`/devices/${id}`, { method: 'DELETE' }),
-  renameDevice: (id: string, label: string) => sendString(`/devices/${id}/label`, label),
+  // Both routes take the device key (`device_id`), not the row's client id.
+  deleteDevice: (deviceId: string) =>
+    request<void>(`/devices/${encodeURIComponent(deviceId)}`, { method: 'DELETE' }),
+  renameDevice: (deviceId: string, label: string) =>
+    sendString(`/devices/${encodeURIComponent(deviceId)}/label`, label),
   renameCurrentDevice: (label: string) => sendString('/devices/current/label', label),
 }
 
