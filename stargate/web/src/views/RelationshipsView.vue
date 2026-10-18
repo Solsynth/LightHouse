@@ -24,6 +24,7 @@ import { StargateError } from '@/lib/api/client'
 import type { Account, FriendOverview, Relationship } from '@/lib/api/types'
 import { RELATIONSHIP_STATUS } from '@/lib/enums'
 import { relative, remaining, utcStamp } from '@/lib/format'
+import AccountAvatar from '@/components/AccountAvatar.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
@@ -457,41 +458,43 @@ onMounted(load)
             :key="row.related_id"
             class="flex flex-wrap items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
           >
-            <div class="min-w-0">
-              <div class="flex flex-wrap items-center gap-2">
-                <template v-if="editingId && editingId === counterpart(row)?.id">
-                  <input
-                    v-model="aliasDraft"
-                    class="input input-xs max-w-[180px]"
-                    :aria-label="t('relationships.alias')"
-                    :placeholder="displayName(counterpart(row))"
-                    @keyup.enter="saveAlias(row)"
-                    @keyup.esc="editingId = ''"
-                  />
-                  <IconButton :label="t('common.save')" :disabled="busy" @click="saveAlias(row)">
-                    <Checkmark16 aria-hidden="true" />
-                  </IconButton>
-                  <IconButton :label="t('common.cancel')" @click="editingId = ''">
-                    <Close16 aria-hidden="true" />
-                  </IconButton>
-                </template>
-                <template v-else>
-                  <RouterLink
-                    v-if="counterpart(row)"
-                    :to="`/@${encodeURIComponent(counterpart(row)!.name)}`"
-                    class="text-xs text-base-content hover:underline"
-                  >
-                    {{ title(row) }}
-                  </RouterLink>
-                  <span v-else class="text-xs text-base-content">{{ title(row) }}</span>
-                  <span v-if="row.alias && counterpart(row)" class="text-2xs text-faint">
-                    {{ displayName(counterpart(row)) }}
-                  </span>
-                </template>
+            <div class="flex min-w-0 flex-1 items-start gap-3">
+              <AccountAvatar :account="counterpart(row)" />
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <template v-if="editingId && editingId === counterpart(row)?.id">
+                    <input
+                      v-model="aliasDraft"
+                      class="input input-xs max-w-[180px]"
+                      :aria-label="t('relationships.alias')"
+                      :placeholder="displayName(counterpart(row))"
+                      @keyup.enter="saveAlias(row)"
+                      @keyup.esc="editingId = ''"
+                    />
+                    <IconButton :label="t('common.save')" :disabled="busy" @click="saveAlias(row)">
+                      <Checkmark16 aria-hidden="true" />
+                    </IconButton>
+                    <IconButton :label="t('common.cancel')" @click="editingId = ''">
+                      <Close16 aria-hidden="true" />
+                    </IconButton>
+                  </template>
+                  <template v-else>
+                    <RouterLink
+                      v-if="counterpart(row)"
+                      :to="`/@${encodeURIComponent(counterpart(row)!.name)}`"
+                      class="text-xs text-base-content hover:underline"
+                    >
+                      {{ title(row) }}
+                    </RouterLink>
+                    <span v-else class="text-xs text-base-content">{{ title(row) }}</span>
+                    <span v-if="row.alias && counterpart(row)" class="text-2xs text-faint">
+                      {{ displayName(counterpart(row)) }}
+                    </span>
+                  </template>
 
-                <span v-if="panel === 'friends' && presenceOf(row)">
                   <span
-                    class="chip"
+                    v-if="panel === 'friends' && presenceOf(row)"
+                    class="inline-flex items-center gap-1.5 text-2xs"
                     :class="presenceOf(row)?.is_online ? 'text-success' : 'text-faint'"
                   >
                     <span
@@ -500,27 +503,27 @@ onMounted(load)
                     />
                     {{ presenceLabel(row) }}
                   </span>
-                </span>
-                <span v-if="isCloseFriend(row)" class="chip text-accent">
-                  {{ t('relationships.standing.closeFriend') }}
-                </span>
-                <span v-if="panel === 'requests'" class="chip text-warning">
-                  {{ t('relationships.incoming') }}
-                </span>
-                <span
-                  v-if="row.expired_at && (panel === 'blocked' || panel === 'muted')"
-                  class="chip"
-                  :title="utcStamp(row.expired_at)"
-                >
-                  {{ t('relationships.lapses', { time: remaining(row.expired_at) }) }}
-                </span>
+                  <span v-if="isCloseFriend(row)" class="chip text-accent">
+                    {{ t('relationships.standing.closeFriend') }}
+                  </span>
+                  <span v-if="panel === 'requests'" class="chip text-warning">
+                    {{ t('relationships.incoming') }}
+                  </span>
+                  <span
+                    v-if="row.expired_at && (panel === 'blocked' || panel === 'muted')"
+                    class="chip"
+                    :title="utcStamp(row.expired_at)"
+                  >
+                    {{ t('relationships.lapses', { time: remaining(row.expired_at) }) }}
+                  </span>
+                </div>
+                <p class="mt-1 text-2xs text-faint">
+                  <span v-if="counterpart(row)">@{{ counterpart(row)!.name }}</span>
+                  <template v-if="row.created_at">
+                    · {{ t('relationships.since', { time: relative(row.created_at) }) }}
+                  </template>
+                </p>
               </div>
-              <p class="mt-1 text-2xs text-faint">
-                <span v-if="counterpart(row)">@{{ counterpart(row)!.name }}</span>
-                <template v-if="row.created_at">
-                  · {{ t('relationships.since', { time: relative(row.created_at) }) }}
-                </template>
-              </p>
             </div>
 
             <div v-if="counterpart(row)" class="flex items-center gap-1">
@@ -656,28 +659,31 @@ onMounted(load)
               <li
                 v-for="account in results"
                 :key="account.id"
-                class="flex items-start justify-between gap-3 border-b border-line-soft py-2.5 last:border-0"
+                class="flex items-start gap-3 border-b border-line-soft py-2.5 last:border-0"
               >
-                <div class="min-w-0">
-                  <RouterLink
-                    :to="`/@${encodeURIComponent(account.name)}`"
-                    class="block truncate text-xs text-base-content hover:underline"
+                <AccountAvatar :account="account" />
+                <div class="flex min-w-0 flex-1 items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <RouterLink
+                      :to="`/@${encodeURIComponent(account.name)}`"
+                      class="block truncate text-xs text-base-content hover:underline"
+                    >
+                      {{ displayName(account) }}
+                    </RouterLink>
+                    <p class="mt-0.5 text-2xs text-faint">@{{ account.name }}</p>
+                    <span v-if="standing(account)" class="chip mt-1.5 text-dim">
+                      {{ standing(account) }}
+                    </span>
+                  </div>
+                  <IconButton
+                    v-if="!standing(account)"
+                    :label="t('relationships.sendRequest')"
+                    :disabled="busy"
+                    @click="requestFrom(account)"
                   >
-                    {{ displayName(account) }}
-                  </RouterLink>
-                  <p class="mt-0.5 text-2xs text-faint">@{{ account.name }}</p>
-                  <span v-if="standing(account)" class="chip mt-1.5 text-dim">
-                    {{ standing(account) }}
-                  </span>
+                    <UserFollow16 aria-hidden="true" />
+                  </IconButton>
                 </div>
-                <IconButton
-                  v-if="!standing(account)"
-                  :label="t('relationships.sendRequest')"
-                  :disabled="busy"
-                  @click="requestFrom(account)"
-                >
-                  <UserFollow16 aria-hidden="true" />
-                </IconButton>
               </li>
             </ul>
           </template>
@@ -702,21 +708,24 @@ onMounted(load)
               :key="row.related_id"
               class="flex items-center justify-between gap-3"
             >
-              <div class="min-w-0">
-                <RouterLink
-                  v-if="counterpart(row)"
-                  :to="`/@${encodeURIComponent(counterpart(row)!.name)}`"
-                  class="block truncate text-xs text-base-content hover:underline"
-                >
-                  {{ displayName(counterpart(row)) }}
-                </RouterLink>
-                <p class="text-2xs text-faint">
-                  {{
-                    row.expired_at
-                      ? t('relationships.expiresIn', { time: remaining(row.expired_at) })
-                      : t('relationships.pending')
-                  }}
-                </p>
+              <div class="flex min-w-0 items-center gap-3">
+                <AccountAvatar :account="counterpart(row)" />
+                <div class="min-w-0">
+                  <RouterLink
+                    v-if="counterpart(row)"
+                    :to="`/@${encodeURIComponent(counterpart(row)!.name)}`"
+                    class="block truncate text-xs text-base-content hover:underline"
+                  >
+                    {{ displayName(counterpart(row)) }}
+                  </RouterLink>
+                  <p class="text-2xs text-faint">
+                    {{
+                      row.expired_at
+                        ? t('relationships.expiresIn', { time: remaining(row.expired_at) })
+                        : t('relationships.pending')
+                    }}
+                  </p>
+                </div>
               </div>
               <IconButton
                 :label="t('relationships.cancelRequest')"
