@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useNoticeStore } from '@/stores/notice'
+import { landingQuery } from '@/lib/signInTarget'
 import { authApi, signInApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
 import CaptchaWidget from '@/components/CaptchaWidget.vue'
@@ -73,7 +74,7 @@ async function submit() {
     await signInApi.register({ ...form.value, captcha_token: captchaToken.value })
     created.value = true
     notice.ok(t('createAccount.noticeCreated'))
-    await router.push({ name: 'sign-in', query: { next: '/account' } })
+    await router.push({ name: 'sign-in', query: landingQuery(route.query) })
   } catch (caught) {
     if (caught instanceof StargateError) {
       fieldErrors.value = caught.fields ?? {}
@@ -187,7 +188,10 @@ onMounted(async () => {
 
     <p class="voice mt-6 text-[12px]">
       {{ t('createAccount.alreadyRegistered') }}
-      <RouterLink to="/sign-in" class="link-quiet">{{ t('signIn.title') }}</RouterLink>.
+      <RouterLink :to="{ name: 'sign-in', query: landingQuery(route.query) }" class="link-quiet">{{
+        t('signIn.title')
+      }}</RouterLink
+      >.
     </p>
   </div>
 </template>

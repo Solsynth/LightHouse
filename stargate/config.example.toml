@@ -83,6 +83,11 @@ refreshTokenLifetime = "720h"
 # would otherwise force a re-login. Longer = more tolerant, wider replay
 # window. "0s" disables the grace.
 refreshGracePeriod = "60s"
+# Session cookie scope. Every origin under this domain receives AuthToken and
+# RefreshToken, so it also decides which apps may reuse the console's sign-in
+# page: /sign-in?redirectUri=… hands a finished sign-in only to a host the
+# cookie reaches (this domain or a subdomain). Production is ".solian.app";
+# set cookieSecure = true there so the hand-off has to be https.
 cookieDomain = "localhost"
 cookieSecure = false
 

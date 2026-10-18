@@ -36,6 +36,7 @@ import type {
   OAuthAppLinks,
   OAuthAppSecret,
   QrChallengeCreated,
+  SignInConfig,
   QrChallengeStatus,
   Punishment,
   FriendOverview,
@@ -128,6 +129,8 @@ export const modulesApi = {
 
 export const authApi = {
   captchaConfig: () => request<CaptchaConfig>('/auth/captcha'),
+  /** The shared login page's hand-off policy (cookie hosts + https rule). */
+  signInConfig: () => request<SignInConfig>('/auth/sign-in/config'),
   providers: () => request<string[]>('/auth/providers'),
   authorizeInfo: (query: Record<string, string>) =>
     request<AuthorizeClientInfo>('/auth/open/authorize', { query }),

@@ -316,22 +316,51 @@ devices can never be trusted.
 
 ### Sign-in methods
 
-The account field and its primary action come first. Every other way to sign
-in — passkey, QR, and each social provider — sits under `Or continue with` in
-a two-column tile grid of outline buttons, so nine ways cost the same vertical
-space as four and none of them outranks another. A tile carries only a mark
-and a name; the phone-only variants are named for the action, not the
-machinery ("Scan to Sign In", not "QR login").
+The account field and its primary action come first. Below it, `Or continue
+with` is two tiers: the console's own ways in — passkey and QR — share one
+two-column row of labelled tiles, and each social provider is a 40 px
+icon-only tile in a wrapped row beneath. The mark is the label; `title` and
+`aria-label` ("Continue with GitHub") carry the name for hover and screen
+readers, and brand names are not translated while the sentence around them is.
+
+The split states ownership. Passkey and QR are this deployment's sign-in
+methods and read as actions; a provider is somebody else's identity, and a row
+of marks is the shape people already recognise. Keeping the provider row
+icon-only also means nine providers cost one row instead of five.
 
 `ProviderMark` draws a provider's brand silhouette from
 `web/src/lib/providers.ts` in `currentColor`, so it repaints with the theme and
 never ships a second color. A provider with no mark in the catalog — including
-one a newer server lists — falls back to its initial, so the grid never has a
-blank tile. Brand names are not translated; only the sentence around them is.
+one a newer server lists — falls back to its initial, so the row never has a
+blank tile.
 
 The provider list comes from `GET /api/auth/providers`, which answers only the
 providers whose credentials are configured and only when the social module is
 mounted. The console therefore never offers a button that ends in an error.
+
+### Shared sign-in and the hand-off target
+
+Any other app on the same cookie domain reuses this page instead of shipping
+its own login form: it opens `{siteUrl}/sign-in?redirectUri={its callback}`
+(a page of this console uses `?next={path}`). The session cookie is scoped by
+`[auth] cookieDomain`, so a subdomain shares it and the person arrives signed
+in; `POST /api/auth/callback/{provider}` also accepts the return URL, which is
+how a provider round-trip started from the shared page gets back to the app.
+
+The address is written by the caller — and therefore by anyone who can write a
+link — so it is a policy decision, made on the server:
+
+- `GET /api/auth/sign-in/config` publishes `redirect_hosts` (the cookie domain
+  plus the site host) and `require_https` (the Secure flag on the cookie). The
+  console refuses a target those rules refuse before navigating away.
+- `GET /api/auth/login/{provider}?flow=login&returnUrl=…` drops a return URL
+  that names anything else and falls back to `{siteUrl}/auth/success`.
+- A refused target never blocks the sign-in: the console says once that the
+  link points somewhere it cannot sign you in, and continues to `/account`.
+
+The create-account and reset-password links carry the same parameters through,
+so a person who arrives without an account still lands back in the app that
+sent them.
 
 ### QR sign-in
 

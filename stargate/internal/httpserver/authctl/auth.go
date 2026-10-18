@@ -138,6 +138,9 @@ func Register(api *gin.RouterGroup, d Deps) {
 	// WebAuthnDiscoveryController (the /.well-known/webauthn route is
 	// registered engine-level via RegisterWellKnown).
 	api.GET("/auth/webauthn/config", h.webauthnConfig)
+	// The shared login page's hand-off policy (see signinconfig.go). Public,
+	// like the rest of /auth: the page that needs it has no session yet.
+	api.GET("/auth/sign-in/config", h.signInConfig)
 }
 
 // registerSingleUser mounts the minimal stateless auth surface.
@@ -148,6 +151,7 @@ func registerSingleUser(api *gin.RouterGroup, h *handler) {
 	g.POST("/logout", h.singleUserLogout)
 	g.GET("/me", middleware.RequireAuth(), h.getCurrentAuthIdentity)
 	g.GET("/webauthn/config", h.webauthnConfig)
+	g.GET("/sign-in/config", h.signInConfig)
 }
 
 type singleUserCredentials struct {

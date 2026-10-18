@@ -31,6 +31,7 @@ export default {
     errorLocked: 'That account is locked.',
     errorUntrusted: 'Only a trusted session can approve a sign-in.',
     errorRequestFailed: 'The request failed.',
+    errorRedirectRefused: 'That sign-in link points somewhere this service cannot sign you in. Continue on your account page.',
   },
   createAccount: {
     title: 'Create an Account',

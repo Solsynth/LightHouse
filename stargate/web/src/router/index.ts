@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import type { LocationQuery, RouteMeta } from 'vue-router'
 
 import { MODULES } from '@/lib/modules'
+import { requestedLanding } from '@/lib/signInTarget'
 import { i18n } from '@/lib/i18n'
 import { useModulesStore } from '@/stores/modules'
 import { useSessionStore } from '@/stores/session'
@@ -317,10 +318,15 @@ router.beforeEach(async (to) => {
   if (!to.meta.public && !session.signedIn) {
     return { name: 'sign-in', query: { next: to.fullPath } }
   }
+  // A shared sign-in may be opened by an already-signed-in person (another app
+  // links to it, or a previous round-trip left the cookie). The page resolves
+  // where the hand-off goes and leaves immediately; bouncing to the account
+  // page here would strand the app that sent them.
   if (
     to.meta.public &&
     session.signedIn &&
-    (to.name === 'sign-in' || to.name === 'create-account')
+    (to.name === 'sign-in' || to.name === 'create-account') &&
+    !(to.name === 'sign-in' && requestedLanding(to.query) !== '')
   ) {
     return { name: 'account' }
   }

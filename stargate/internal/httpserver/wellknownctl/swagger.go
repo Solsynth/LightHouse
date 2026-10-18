@@ -206,6 +206,7 @@ var padlockSwagger = buildDoc(
 		{path: "/api/auth/captcha/verify", method: "POST", tag: "Captcha", summary: "Verify a captcha token"},
 		{path: "/api/auth/captcha/config", method: "GET", tag: "Captcha", summary: "Get the captcha provider configuration"},
 		{path: "/api/auth/webauthn/config", method: "GET", tag: "Captcha", summary: "Get the WebAuthn relying-party configuration"},
+		{path: "/api/auth/sign-in/config", method: "GET", tag: "Auth", summary: "Get the shared sign-in page's hand-off policy (cookie hosts, https rule)"},
 
 		{path: "/api/auth/open/authorize", method: "GET", tag: "OIDC Provider", summary: "OIDC authorize (browser consent page)"},
 		{path: "/api/auth/open/authorize", method: "POST", tag: "OIDC Provider", summary: "OIDC authorize — approve the consent"},

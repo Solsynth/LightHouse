@@ -2,8 +2,11 @@ package socialctl
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
+	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/config"
 )
 
@@ -43,10 +46,9 @@ func TestAvailableProvidersRequiresCompleteCredentials(t *testing.T) {
 // targets may ride through the redirect; anything else would turn a client
 // parameter into an open redirect, so it is dropped and the built-in landing
 // stays in force.
-func TestIsSameOriginPath(t *testing.T) {
+func TestIsSiteOriginTarget(t *testing.T) {
 	cfg := config.Default()
 	cfg.SiteUrl = "https://id.example.com"
-	d := testDeps(cfg)
 
 	for _, raw := range []string{
 		"/security/connections",
@@ -54,8 +56,8 @@ func TestIsSameOriginPath(t *testing.T) {
 		"https://id.example.com/security/connections",
 		"/",
 	} {
-		if !d.isSameOriginPath(raw) {
-			t.Errorf("isSameOriginPath(%q) = false, want true", raw)
+		if !cfg.IsSiteOriginTarget(raw) {
+			t.Errorf("IsSiteOriginTarget(%q) = false, want true", raw)
 		}
 	}
 
@@ -67,8 +69,39 @@ func TestIsSameOriginPath(t *testing.T) {
 		"javascript:alert(1)",
 		"/\nSet-Cookie: x=y",
 	} {
-		if d.isSameOriginPath(raw) {
-			t.Errorf("isSameOriginPath(%q) = true, want false", raw)
+		if cfg.IsSiteOriginTarget(raw) {
+			t.Errorf("IsSiteOriginTarget(%q) = true, want false", raw)
 		}
+	}
+}
+
+// A provider round-trip ends on the URL the login page asked for. A target on
+// this deployment's own site keeps the historical query token pair (native
+// clients that cannot read cookies redeem it); a hand-off to another app on
+// the cookie domain does not, because the cookie already reaches it and its
+// address would put credentials in a third-party page's URL and history.
+func TestLoginRedirectURLOmitsTokensOnCrossSiteHandoff(t *testing.T) {
+	cfg := config.Default()
+	cfg.SiteUrl = "https://id.solian.app"
+	cfg.Auth.CookieDomain = ".solian.app"
+	cfg.Auth.CookieSecure = true
+	d := testDeps(cfg)
+
+	pair := &auth.TokenPair{
+		AccessToken:           "access-token",
+		RefreshToken:          "refresh-token",
+		AccessTokenExpiresAt:  time.Now().Add(time.Minute),
+		RefreshTokenExpiresAt: time.Now().Add(time.Hour),
+	}
+
+	own := d.loginRedirectURL("https://id.solian.app/account", pair)
+	if !strings.Contains(own, "token=access-token") {
+		t.Fatalf("same-site redirect dropped the token pair: %q", own)
+	}
+
+	landing := "https://fs.solian.app/drive?tab=files"
+	handoff := d.loginRedirectURL(landing, pair)
+	if handoff != landing {
+		t.Fatalf("cross-site hand-off = %q, want %q", handoff, landing)
 	}
 }

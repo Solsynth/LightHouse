@@ -16,6 +16,7 @@ import { getAssertion, passkeyFailure, passkeysSupported } from '@/lib/webauthn'
 import { deviceIdentity } from '@/lib/device'
 import { MODULES } from '@/lib/modules'
 import { useModulesStore } from '@/stores/modules'
+import { landingQuery, requestedLanding, resolveLanding, type Landing } from '@/lib/signInTarget'
 import ProviderMark from '@/components/ProviderMark.vue'
 import { providerLabel } from '@/lib/providers'
 import FactorRow from '@/components/FactorRow.vue'
@@ -39,9 +40,29 @@ const providers = ref<string[]>([])
 const mode = ref<'identify' | 'qr'>('identify')
 const modules = useModulesStore()
 
+/**
+ * Where this sign-in ends. The address may name another Solar Network app
+ * (`?redirectUri=`, for a shared login page) or a page of this console
+ * (`?next=`); a target the server's hand-off policy refuses is dropped, so the
+ * sign-in still completes on the account page.
+ */
+const landing = ref<Landing | null>(null)
+const landingRequested = requestedLanding(route.query)
+// A provider tile is a plain link, so its return URL has to be final before it
+// is clickable. Until the policy answers, the tile renders without an address.
+const landingPending = ref(landingRequested !== '')
+const landingResolved = resolveLanding(landingRequested).then((resolved) => {
+  landing.value = resolved
+  landingPending.value = false
+  if (landingRequested && resolved === null) notice.fail(t('signIn.errorRedirectRefused'))
+  return resolved ?? { target: '/account', external: false }
+})
+
+/** The return URL a provider round-trip carries; it must be resolved first. */
+const providerReturnUrl = computed(() => landing.value?.target ?? '/account')
+
 /** Social sign-in is a module surface: an unmounted one lists no providers. */
 const socialServed = computed(() => modules.hasAll([MODULES.social]))
-
 
 let pollTimer: number | undefined
 
@@ -53,7 +74,7 @@ let pollTimer: number | undefined
 function providerUrl(provider: string): string {
   const query = new URLSearchParams({
     flow: 'login',
-    returnUrl: nextPath(),
+    returnUrl: providerReturnUrl.value,
     deviceId: deviceIdentity().id,
   })
   return `/api/auth/login/${encodeURIComponent(provider)}?${query.toString()}`
@@ -81,7 +102,7 @@ async function qrApproved(challengeId: string) {
     await session.load()
     signIn.reset()
     notice.ok(t('signIn.noticeSignedIn'))
-    await router.replace(nextPath())
+    await leave()
   } catch (caught) {
     error.value = messageOf(caught)
     mode.value = 'identify'
@@ -103,12 +124,16 @@ const qrServed = computed(
   () => !modules.loaded || modules.capabilities.includes('auth.qr-login'),
 )
 
-/** Every non-password way this deployment offers: passkey, QR, then providers. */
-const alternativeWays = computed(() => {
+/**
+ * Passkey and QR are this console's own ways in: they sit together in one row
+ * of labelled tiles. Providers are third-party identities and get a row of
+ * brand marks only — the mark is the name, and the accessible label spells it
+ * out for a screen reader.
+ */
+const deviceWays = computed(() => {
   const ways: string[] = []
   if (passkeySupported) ways.push('passkey')
   if (qrServed.value) ways.push('qr')
-  if (socialServed.value) ways.push(...providers.value)
   return ways
 })
 
@@ -177,7 +202,7 @@ async function passkeyDiscoverable() {
     await signInApi.exchange(start.auth_challenge_id)
     await session.load()
     notice.ok(t('signIn.noticePasskey'))
-    await router.replace(nextPath())
+    await leave()
   } catch (caught) {
     error.value = caught instanceof StargateError ? messageOf(caught) : passkeyFailure(caught)
   } finally {
@@ -253,8 +278,18 @@ async function submit(factor: AuthFactor | null, secret: string) {
   }
 }
 
-function nextPath(): string {
-  return typeof route.query.next === 'string' ? route.query.next : '/account'
+/**
+ * Leaves for wherever this sign-in ends. A hand-off to another app is a
+ * full-page navigation: that app owns its own router, and the session is
+ * already in the cookie both origins share.
+ */
+async function leave() {
+  const target = (await landingResolved).target
+  if (landing.value?.external) {
+    window.location.assign(target)
+    return
+  }
+  await router.replace(target)
 }
 
 async function finish() {
@@ -264,7 +299,7 @@ async function finish() {
     await session.load()
     signIn.reset()
     notice.ok(t('signIn.noticeSignedIn'))
-    await router.replace(nextPath())
+    await leave()
   } catch (caught) {
     error.value = messageOf(caught)
   } finally {
@@ -302,6 +337,10 @@ function restart() {
 onMounted(() => {
   startPolling()
   void loadProviders()
+  // A shared sign-in can be opened by someone who is already signed in (an app
+  // links to it, or a previous round trip left the cookie). There is nothing to
+  // ask them; resolve the target and hand them back.
+  if (session.signedIn && landingRequested) void leave()
 })
 onBeforeUnmount(() => {
   if (pollTimer !== undefined) window.clearInterval(pollTimer)
@@ -338,9 +377,9 @@ onBeforeUnmount(() => {
         {{ busy ? t('signIn.checking') : t('common.continue') }}
       </button>
 
-      <div v-if="alternativeWays.length" class="mt-5 pt-1">
+      <div v-if="deviceWays.length || providers.length" class="mt-5 pt-1">
         <p class="field-label">{{ t('signIn.orContinueWith') }}</p>
-        <div class="grid grid-cols-2 gap-2">
+        <div v-if="deviceWays.length" class="grid grid-cols-2 gap-2">
           <button
             v-if="passkeySupported"
             type="button"
@@ -351,19 +390,33 @@ onBeforeUnmount(() => {
             <FingerprintRecognition16 aria-hidden="true" />
             {{ t('signIn.passkeyTile') }}
           </button>
-          <button type="button" class="btn btn-outline" :disabled="busy" @click="mode = 'qr'">
+          <button
+            v-if="qrServed"
+            type="button"
+            class="btn btn-outline"
+            :disabled="busy"
+            @click="mode = 'qr'"
+          >
             <QrCode16 aria-hidden="true" />
             {{ t('signIn.qrTile') }}
           </button>
+        </div>
+        <div
+          v-if="providers.length"
+          class="flex flex-wrap items-center gap-2"
+          :class="{ 'mt-2': deviceWays.length }"
+        >
           <a
             v-for="provider in providers"
             :key="provider"
-            :href="providerUrl(provider)"
-            class="btn btn-outline"
+            :href="landingPending ? undefined : providerUrl(provider)"
+            class="btn btn-outline btn-square size-10 text-base-content"
+            :class="{ 'pointer-events-none opacity-50': landingPending }"
+            :aria-disabled="landingPending"
+            :title="providerLabel(provider)"
             :aria-label="t('signIn.continueWith', { provider: providerLabel(provider) })"
           >
             <ProviderMark :provider="provider" />
-            {{ providerLabel(provider) }}
           </a>
         </div>
       </div>
@@ -466,11 +519,19 @@ onBeforeUnmount(() => {
     <div class="mt-8 space-y-1 voice text-[12px] text-faint">
       <p>
         {{ t('signIn.noAccount') }}
-        <RouterLink to="/create-account" class="link-quiet">{{ t('signIn.createOne') }}</RouterLink>
+        <RouterLink
+          :to="{ name: 'create-account', query: landingQuery(route.query) }"
+          class="link-quiet"
+          >{{ t('signIn.createOne') }}</RouterLink
+        >
       </p>
       <p>
         {{ t('signIn.lostPassword') }}
-        <RouterLink to="/recover" class="link-quiet">{{ t('signIn.resetByEmail') }}</RouterLink>
+        <RouterLink
+          :to="{ name: 'recover', query: landingQuery(route.query) }"
+          class="link-quiet"
+          >{{ t('signIn.resetByEmail') }}</RouterLink
+        >
       </p>
     </div>
   </div>

@@ -142,6 +142,11 @@ The sign-in screen lists a social provider only when its credentials are
 complete in `[oidc]`, so no button leads to an unavailable provider. It also
 offers sign-in by passkey and by QR code: the browser starts a challenge, a
 signed-in device scans and approves it, and the browser redeems the result.
+Other apps on the cookie domain reuse that page instead of building their own:
+`/sign-in?redirectUri={callback}` returns the person to the app once they are
+signed in. The session cookie is scoped by `[auth] cookieDomain`, and only a
+host that cookie reaches is accepted as a landing target, so a shared link
+cannot turn the page into an open redirect.
 Linking a provider from **Settings → Linked Identities** uses the same login
 endpoint with `flow=connect`, which attaches the identity to the signed-in
 account and returns to the console.

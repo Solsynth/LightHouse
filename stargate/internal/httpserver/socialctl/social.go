@@ -140,13 +140,14 @@ func (d Deps) oidcLogin(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, errs.New("OIDC_INIT_FLOW_FAILED", "Error initiating OpenID Connect flow: "+err.Error(), http.StatusBadRequest))
 				return
 			}
-			// A connect flow that names a same-origin page returns there instead
-			// of the built-in /auth/success landing, so a client can show the
-			// result where the person started. The write is best-effort: a cache
-			// miss only costs the custom landing (handleManualConnection falls
-			// back to SiteUrl + /auth/success), and a cross-origin target is
-			// dropped rather than turned into an open redirect.
-			if d.isSameOriginPath(returnURL) {
+			// A connect flow that names a page on this deployment's own site
+			// returns there instead of the built-in /auth/success landing, so a
+			// client can show the result where the person started. The write is
+			// best-effort: a cache miss only costs the custom landing
+			// (handleManualConnection falls back to SiteUrl + /auth/success), and
+			// a foreign target is dropped rather than turned into an open
+			// redirect.
+			if d.Cfg.IsSiteOriginTarget(returnURL) {
 				_ = d.cacheSet(ctx, returnURLCachePrefix+state, returnURL, stateExpiration)
 			}
 			authURL, err := svc.authorizationURL(ctx, state, nonce)
@@ -157,6 +158,16 @@ func (d Deps) oidcLogin(c *gin.Context) {
 			c.Redirect(http.StatusFound, authURL)
 			return
 		}
+	}
+	// The login page is shared: another app points it at
+	// `?returnUrl={its callback}` and expects the person back after the
+	// providers are done. The target comes from that app's page, so it is only
+	// honoured when it lands somewhere this deployment can actually sign in —
+	// its own site origin or a host sharing the session cookie's domain.
+	// Anything else would make /api/auth/login/{provider} an open redirect;
+	// the built-in /auth/success landing stays in force instead.
+	if !d.Cfg.AllowsSignInTarget(returnURL) {
+		returnURL = ""
 	}
 
 	st := &oidcState{FlowType: flowLogin, ReturnUrl: &returnURL, DeviceId: strPtr(deviceID), Version: 1}
@@ -369,7 +380,7 @@ func (d Deps) handleLoginOrRegistration(c *gin.Context, svc provider, data *call
 			return
 		}
 		d.appendAuthCookies(c, pair)
-		redirectURL := buildLoginRedirectURL(returnURL, pair)
+		redirectURL := d.loginRedirectURL(returnURL, pair)
 		if d.Log != nil {
 			d.Log.Info("OIDC login successful", "userId", conn.AccountId, "redirectUrl", redirectURL)
 		}
@@ -421,7 +432,7 @@ func (d Deps) handleLoginOrRegistration(c *gin.Context, svc provider, data *call
 		return
 	}
 	d.appendAuthCookies(c, pair)
-	redirectURL := buildLoginRedirectURL(returnURL, pair)
+	redirectURL := d.loginRedirectURL(returnURL, pair)
 	if d.Log != nil {
 		d.Log.Info("OIDC registration successful", "userId", account.Id, "redirectUrl", redirectURL)
 	}
@@ -655,6 +666,23 @@ func (d Deps) appendAuthCookies(c *gin.Context, pair *auth.TokenPair) {
 	c.SetCookie("RefreshToken", pair.RefreshToken, cookieMaxAge(pair.RefreshTokenExpiresAt), "/", d.Cfg.Auth.CookieDomain, d.Cfg.Auth.CookieSecure, true)
 }
 
+// loginRedirectURL is the redirect a finished provider round-trip sends. The
+// session is already in the HttpOnly cookies the same response sets, and those
+// cookies follow the person to any host under [auth] cookieDomain — so a
+// hand-off to another app carries no tokens in its address. Appending the pair
+// there would put credentials in a third-party page's URL, referrer, and
+// history, for no gain: the app shares the cookie.
+//
+// A target on this deployment's own site keeps the historical query pair:
+// native clients that cannot read cookies redeem it, and the console's router
+// drops the parameters before they reach a view.
+func (d Deps) loginRedirectURL(returnURL string, pair *auth.TokenPair) string {
+	if d.Cfg.IsSiteOriginTarget(returnURL) {
+		return buildLoginRedirectURL(returnURL, pair)
+	}
+	return returnURL
+}
+
 // buildLoginRedirectURL ports ConnectionController.BuildLoginRedirectUrl: the
 // token pair is appended to the return URL as query parameters.
 func buildLoginRedirectURL(redirectBaseURL string, pair *auth.TokenPair) string {
@@ -704,32 +732,6 @@ func extractCallbackData(c *gin.Context) *callbackData {
 func isFormContentType(contentType string) bool {
 	ct := strings.ToLower(strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0]))
 	return ct == "application/x-www-form-urlencoded" || ct == "multipart/form-data"
-}
-
-// isSameOriginPath reports whether a client-supplied landing target can be
-// honoured: either a root-relative path ("/security/connections") or an
-// absolute URL on this deployment's own site origin. Protocol-relative "//host"
-// and foreign hosts are refused, so a returnUrl can never become an open
-// redirect.
-func (d Deps) isSameOriginPath(raw string) bool {
-	if raw == "" || strings.HasPrefix(raw, "//") {
-		return false
-	}
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return false
-	}
-	if parsed.Scheme == "" && parsed.Host == "" {
-		return strings.HasPrefix(parsed.Path, "/")
-	}
-	site, serr := url.Parse(strings.TrimRight(d.Cfg.SiteUrl, "/"))
-	if serr != nil || site.Host == "" {
-		return false
-	}
-	if !strings.EqualFold(parsed.Host, site.Host) {
-		return false
-	}
-	return site.Scheme == "" || strings.EqualFold(parsed.Scheme, site.Scheme)
 }
 
 // loadOidcState reads the state object from the cache; on a miss it falls

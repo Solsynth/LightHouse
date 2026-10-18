@@ -31,6 +31,7 @@ export default {
     errorLocked: '该账号已被锁定。',
     errorUntrusted: '只有受信任的会话才能批准登录。',
     errorRequestFailed: '请求失败。',
+    errorRedirectRefused: '该登录链接指向本服务无法登录的地址。已改为继续前往你的账号页面。',
   },
   createAccount: {
     title: '创建账号',

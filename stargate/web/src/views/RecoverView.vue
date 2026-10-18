@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useNoticeStore } from '@/stores/notice'
+import { landingQuery } from '@/lib/signInTarget'
 import { authApi, signInApi } from '@/lib/api'
 import CaptchaWidget from '@/components/CaptchaWidget.vue'
 import type { CaptchaConfig } from '@/lib/api/types'
@@ -102,7 +103,10 @@ onMounted(async () => {
     </form>
 
     <p class="voice mt-6 text-[12px]">
-      <RouterLink to="/sign-in" class="link-quiet">{{ t('recover.backToSignIn') }}</RouterLink>
+      <RouterLink :to="{ name: 'sign-in', query: landingQuery(route.query) }" class="link-quiet">{{
+        t('recover.backToSignIn')
+      }}</RouterLink
+      >
     </p>
   </div>
 </template>
