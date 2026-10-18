@@ -121,11 +121,15 @@ func (d Deps) getFriendsOverview(c *gin.Context) {
 		internalError(c, err)
 		return
 	}
-	// Hydrate profiles.
+	// Hydrate profiles. solar_network_sdk parses account.profile as non-null,
+	// so one unhydrated friend fails the whole list client-side; surface it.
 	for i := range accounts {
-		if p, err := d.Store.GetOrCreateAccountProfile(ctx, uuid.MustParse(accounts[i].Id)); err == nil {
-			accounts[i].Profile = p
+		p, err := d.Store.GetOrCreateAccountProfile(ctx, uuid.MustParse(accounts[i].Id))
+		if err != nil {
+			internalError(c, err)
+			return
 		}
+		accounts[i].Profile = p
 	}
 
 	now := time.Now()
@@ -135,7 +139,7 @@ func (d Deps) getFriendsOverview(c *gin.Context) {
 		a.IsSuperuser = false // strip admin flag
 		items = append(items, friendOverviewItem{
 			Account:    &a,
-			Status:     buildOverviewStatus(account.Profile, now),
+			Status:     buildOverviewStatus(a.Id, account.Profile, now),
 			Activities: []any{}, // deferred: needs presence batch-read RPC
 		})
 	}
@@ -172,29 +176,20 @@ func profileLastSeen(p *model.Profile) *time.Time {
 	return &t
 }
 
-// buildOverviewStatus mirrors the C# SnAccountStatus JSON shape the Dart
-// client parses. online status uses lastSeenAt: within 5 min = Online.
-func buildOverviewStatus(p *model.Profile, now time.Time) any {
-	if p == nil {
-		return gin.H{
-			"account_id":     "",
-			"is_online":      false,
-			"is_idle":        false,
-			"is_customized":  false,
-			"is_automated":   false,
-			"type":           0,
-			"attitude":       1,
-			"is_invisible":   false,
-			"is_not_disturb": false,
-			"created_at":     nil,
-			"updated_at":     nil,
-			"label":          "Offline",
-		}
-	}
+// buildOverviewStatus synthesizes the SnAccountStatus JSON shape the Dart
+// client parses. solar_network_sdk requires id, account_id, created_at and
+// updated_at to be non-null, so the status carries a stable UUIDv5 derived
+// from the account and falls back to the profile timestamps when the account
+// has never been seen. Online status uses lastSeenAt: within 5 min = Online.
+func buildOverviewStatus(accountID string, p *model.Profile, now time.Time) any {
+	statusID := uuid.NewSHA1(
+		uuid.NameSpaceURL,
+		[]byte("stargate:friend-status:"+accountID),
+	).String()
 
 	var lastSeen time.Time
 	var isOnline bool
-	if p.LastSeenAt != nil {
+	if p != nil && p.LastSeenAt != nil {
 		lastSeen = p.LastSeenAt.Time()
 		isOnline = lastSeen.After(now.Add(-5 * time.Minute))
 	}
@@ -203,9 +198,18 @@ func buildOverviewStatus(p *model.Profile, now time.Time) any {
 		isIdle = lastSeen.Before(now.Add(-30 * time.Minute))
 	}
 
-	var lastSeenPtr *time.Time
-	if p.LastSeenAt != nil {
-		lastSeenPtr = &lastSeen
+	// The synthesized status has no lifetime of its own; report the profile's
+	// timestamps, and lastSeenAt when present because the client sorts offline
+	// friends by status.updatedAt.
+	createdAt, updatedAt := now, now
+	if p != nil && p.CreatedAt != nil {
+		createdAt = p.CreatedAt.Time()
+	}
+	if p != nil && p.UpdatedAt != nil {
+		updatedAt = p.UpdatedAt.Time()
+	}
+	if p != nil && p.LastSeenAt != nil {
+		createdAt, updatedAt = lastSeen, lastSeen
 	}
 
 	var label string
@@ -216,7 +220,8 @@ func buildOverviewStatus(p *model.Profile, now time.Time) any {
 	}
 
 	return gin.H{
-		"account_id":     p.AccountId,
+		"id":             statusID,
+		"account_id":     accountID,
 		"is_online":      isOnline,
 		"is_idle":        isIdle,
 		"is_customized":  false,
@@ -225,8 +230,8 @@ func buildOverviewStatus(p *model.Profile, now time.Time) any {
 		"attitude":       1,
 		"is_invisible":   false,
 		"is_not_disturb": false,
-		"created_at":     lastSeenPtr,
-		"updated_at":     lastSeenPtr,
+		"created_at":     createdAt,
+		"updated_at":     updatedAt,
 		"label":          label,
 		"icon":           nil,
 		"background":     nil,
