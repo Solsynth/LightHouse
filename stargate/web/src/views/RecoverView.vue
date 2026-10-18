@@ -19,7 +19,7 @@ const captchaToken = ref('')
 const busy = ref(false)
 const error = ref('')
 const sent = ref(false)
-const resetting = ref(false)
+
 
 async function requestReset() {
   if (!account.value.trim()) return
@@ -39,21 +39,6 @@ async function requestReset() {
   }
 }
 
-/** A reset link lands here with ?word=…; applying it verifies the contact. */
-async function applySpell() {
-  const word = typeof route.query.word === 'string' ? route.query.word : ''
-  if (!word) return
-  resetting.value = true
-  try {
-    await signInApi.applySpell(word)
-    notice.ok(t('recover.noticeApplied'))
-  } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : t('recover.errorApplyFailed')
-  } finally {
-    resetting.value = false
-  }
-}
-
 onMounted(async () => {
   // The deployment's standalone verification page hands its token back through
   // the address. It is single-use at the provider, so it goes straight into the
@@ -69,7 +54,6 @@ onMounted(async () => {
   } catch {
     captcha.value = null
   }
-  await applySpell()
 })
 </script>
 
@@ -82,11 +66,7 @@ onMounted(async () => {
       </p>
     </div>
 
-    <div v-if="resetting" class="border border-line bg-base-200/40 p-5 text-xs text-dim">
-      {{ t('recover.applying') }}
-    </div>
-
-    <form v-else class="border border-line bg-base-200/40 p-5" @submit.prevent="requestReset">
+    <form class="border border-line bg-base-200/40 p-5" @submit.prevent="requestReset">
       <label for="recover-account" class="field-label">{{ t('signIn.accountLabel') }}</label>
       <input
         id="recover-account"

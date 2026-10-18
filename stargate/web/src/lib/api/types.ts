@@ -448,3 +448,21 @@ export interface QrChallengeStatus {
   device_name?: string
   platform: number
 }
+
+/**
+ * A magic spell as `GET /api/spells/{word}` reports it. The secret word is
+ * never serialized (`json:"-"` on the server), so the page can render what it
+ * is and whose it is without holding a credential it could leak.
+ */
+export interface MagicSpell {
+  id: string
+  /** MagicSpellType ordinal: 3 password reset, 4 contact verification. */
+  type: number
+  expires_at?: string
+  affected_at?: string
+  meta: Record<string, unknown>
+  account_id?: string
+  account?: Account
+  created_at?: string
+  updated_at?: string
+}

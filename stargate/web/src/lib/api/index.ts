@@ -21,6 +21,7 @@ import type {
   Contact,
   Device,
   GeographyBucket,
+  MagicSpell,
   Passkey,
   PasskeyLoginStart,
   PasskeyRegistrationStart,
@@ -164,8 +165,24 @@ export const signInApi = {
   }) => request<QrChallengeCreated>('/auth/qr/generate', { method: 'POST', body }),
   /** The status of a QR challenge: 0 pending, 1 scanned, 2 approved, 3 declined. */
   qrStatus: (id: string) => request<QrChallengeStatus>(`/auth/qr/${id}`),
-  applySpell: (word: string) =>
-    request<unknown>(`/spells/${encodeURIComponent(word)}/apply`, { method: 'POST' }),
+  /**
+   * Reads a magic spell by the secret word in its emailed link. An expired
+   * spell answers 410 (PASSPORT_SPELL_EXPIRED), a wrong or used one 404.
+   */
+  getSpell: (word: string, signal?: AbortSignal) =>
+    request<MagicSpell>(`/spells/${encodeURIComponent(word)}`, { signal }),
+  /**
+   * Redeems a spell. A password-reset spell consumes the word and installs the
+   * new password; a contact-verification spell marks the contact verified.
+   */
+  applySpell: (word: string, newPassword?: string) =>
+    request<void>(`/spells/${encodeURIComponent(word)}/apply`, {
+      method: 'POST',
+      body: newPassword === undefined ? undefined : { new_password: newPassword },
+    }),
+  /** Re-sends the email for a spell that never arrived. */
+  resendSpell: (id: string) =>
+    request<void>(`/spells/${encodeURIComponent(id)}/resend`, { method: 'POST' }),
 }
 
 // ── Security ──

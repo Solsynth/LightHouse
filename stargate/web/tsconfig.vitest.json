@@ -1,15 +1,19 @@
 {
   "extends": "./tsconfig.app.json",
 
-  // Override to include only test files and clear exclusions.
-  // Application code imported in tests is automatically included via module resolution.
-  "include": ["src/**/__tests__/*", "env.d.ts"],
+  // Override to include only test files and clear exclusions. The ambient
+  // declarations must be listed explicitly: a spec that imports application
+  // code (the router, a store) pulls those modules into this project, and
+  // without src/types the on-disk packages that ship no typings — the icon set
+  // is the one that bites — type-check as any.
+  "include": ["src/**/__tests__/*", "src/types/**/*.d.ts", "env.d.ts"],
   "exclude": [],
 
   "compilerOptions": {
-    // Vitest runs in a different environment than the application code.
-    // Adjust lib and types accordingly.
-    "lib": [],
+    // Vitest runs in a different environment than the application code, so the
+    // test project does not re-declare `types`; the libs still match the DOM
+    // APIs the application under test calls (String.replaceAll needs ES2021).
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node", "jsdom"],
 
     // `vue-tsc --build` produces a .tsbuildinfo file for incremental type-checking.

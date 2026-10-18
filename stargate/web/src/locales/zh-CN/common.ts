@@ -91,6 +91,7 @@ export default {
       authorizeApp: '授权应用',
       sudo: '验证身份',
       resetPassword: '重置密码',
+      spell: '魔法咒语',
       profile: '个人资料',
       sessions: '会话',
       signInFactors: '登录验证方式',

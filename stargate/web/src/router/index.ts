@@ -87,6 +87,15 @@ const router = createRouter({
       meta: { public: true, titleKey: 'app.titles.resetPassword' },
     },
     {
+      // Where the emailed magic-spell links land. Stargate mints
+      // `{siteUrl}/spells/{word}` for verification and password-reset emails,
+      // so this must stay a public route with the word in the path.
+      path: '/spells/:word',
+      name: 'spell',
+      component: () => import('@/views/SpellView.vue'),
+      meta: { public: true, titleKey: 'app.titles.spell', narrow: true },
+    },
+    {
       path: '/account',
       name: 'account',
       component: () => import('@/views/AccountView.vue'),

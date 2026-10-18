@@ -23,6 +23,19 @@ import (
 
 const spellWordCharset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 
+// ErrSpellExpired reports a spell past its ExpiresAt.
+var ErrSpellExpired = errors.New("magic spell has expired")
+
+// Expired reports whether a spell's lifetime has run out. A nil ExpiresAt never
+// expires, matching FindLiveMagicSpell's SQL.
+//
+// A spell is a bearer credential with a fixed lifetime: a reset link minted for
+// 24 hours must not still work a year later. Every path that presents or redeems
+// one re-checks the clock rather than trusting the caller to have filtered.
+func Expired(spell *model.MagicSpell) bool {
+	return spell.ExpiresAt != nil && !spell.ExpiresAt.Time().After(time.Now().UTC())
+}
+
 // Service owns the magic-spell lifecycle.
 type Service struct {
 	store   *store.Store
@@ -219,6 +232,9 @@ func (s *Service) SendFactorCodeEmail(ctx context.Context, account *model.Accoun
 // Stargate produces (contact verification and the legacy account-activation
 // alias). Applied spells are consumed (deleted).
 func (s *Service) ApplyMagicSpell(ctx context.Context, spell *model.MagicSpell) error {
+	if Expired(spell) {
+		return ErrSpellExpired
+	}
 	switch spell.Type {
 	case model.MagicSpellTypeContactVerification, model.MagicSpellTypeAccountActivation:
 		if spell.AccountId == "" {
@@ -291,6 +307,9 @@ func (s *Service) clearActorPermissionCache(ctx context.Context, actor string) {
 // ApplyPasswordReset mirrors MagicSpellService.ApplyPasswordReset: replaces
 // the account's password factor and consumes the spell.
 func (s *Service) ApplyPasswordReset(ctx context.Context, spell *model.MagicSpell, newPassword string) error {
+	if Expired(spell) {
+		return ErrSpellExpired
+	}
 	if spell.Type != model.MagicSpellTypeAuthPasswordReset {
 		return errors.New("this spell is not a password reset spell")
 	}

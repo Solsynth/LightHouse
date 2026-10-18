@@ -77,6 +77,7 @@ type routeSpec struct {
 	summary   string   // human-readable operation summary
 	params    []string // path parameter names ({id} → "id")
 	notFound  bool     // document a 404 response
+	gone      bool     // document a 410 response (an expired magic spell)
 	forbidden bool     // document a 403 response (permission-gated route)
 }
 
@@ -106,6 +107,9 @@ func buildDoc(title, description string, routes []routeSpec) openAPIDoc {
 		}
 		if r.notFound {
 			responses["404"] = apiErrorResponse("Not found")
+		}
+		if r.gone {
+			responses["410"] = apiErrorResponse("Gone — the link's lifetime has run out")
 		}
 		responses["200"] = openAPIResponse{Description: "Success"}
 
@@ -322,8 +326,8 @@ var passportSwagger = buildDoc(
 		{path: "/api/friends/overview", method: "GET", tag: "Relationships", summary: "List friends with presence and activity"},
 
 		{path: "/api/spells/contact-verification/resend", method: "POST", tag: "Spells", summary: "Resend the current account's contact-verification spell", forbidden: true},
-		{path: "/api/spells/{word}", method: "GET", tag: "Spells", summary: "Get a magic spell by its secret word", params: []string{"word"}, notFound: true},
-		{path: "/api/spells/{word}/apply", method: "POST", tag: "Spells", summary: "Apply a magic spell (verify contact / reset password)", params: []string{"word"}, notFound: true},
-		{path: "/api/spells/{id}/resend", method: "POST", tag: "Spells", summary: "Resend a magic spell by id", params: []string{"id"}, notFound: true},
+		{path: "/api/spells/{word}", method: "GET", tag: "Spells", summary: "Get a magic spell by its secret word", params: []string{"word"}, notFound: true, gone: true},
+		{path: "/api/spells/{word}/apply", method: "POST", tag: "Spells", summary: "Apply a magic spell (verify contact / reset password)", params: []string{"word"}, notFound: true, gone: true},
+		{path: "/api/spells/{id}/resend", method: "POST", tag: "Spells", summary: "Resend a magic spell by id", params: []string{"id"}, notFound: true, gone: true},
 	},
 )

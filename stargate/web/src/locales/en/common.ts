@@ -91,6 +91,7 @@ export default {
       authorizeApp: 'Authorize App',
       sudo: "Verify It's You",
       resetPassword: 'Reset Password',
+      spell: 'Magic Spell',
       profile: 'Profile',
       sessions: 'Sessions',
       signInFactors: 'Sign-In Factors',

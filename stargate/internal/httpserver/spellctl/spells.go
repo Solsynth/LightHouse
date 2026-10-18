@@ -13,14 +13,16 @@ import (
 	"src.solsynth.dev/sosys/go/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
-	"src.solsynth.dev/sosys/stargate/internal/spell"
+	// Aliased because every handler binds its result to a local named `spell`,
+	// which would otherwise shadow the package.
+	spellpkg "src.solsynth.dev/sosys/stargate/internal/spell"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
 
 // Deps bundles the services spellctl uses.
 type Deps struct {
 	Store *store.Store
-	Spell *spell.Service
+	Spell *spellpkg.Service
 	Log   *slog.Logger
 }
 
@@ -40,8 +42,17 @@ func spellNotFound(c *gin.Context) {
 	c.JSON(http.StatusNotFound, errs.New("PASSPORT_SPELL_NOT_FOUND", "Magic spell not found.", http.StatusNotFound))
 }
 
+// spellExpired answers a spell whose lifetime has run out. It is distinct from
+// "not found" so the console can tell a stale link from a wrong one and offer a
+// fresh email instead of a dead end.
+func spellExpired(c *gin.Context) {
+	c.JSON(http.StatusGone, errs.New("PASSPORT_SPELL_EXPIRED", "This link has expired.", http.StatusGone))
+}
+
 // getMagicSpell mirrors MagicSpellController.GetMagicSpell: the spell is
 // returned without its secret word, with the account hydrated when present.
+// An expired spell answers 410 instead of 200: the page must be able to say
+// "ask for a new link" rather than render a form whose submit cannot succeed.
 func getMagicSpell(d Deps) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		spell, err := d.Store.GetMagicSpellByWord(c.Request.Context(), c.Param("word"))
@@ -51,6 +62,10 @@ func getMagicSpell(d Deps) gin.HandlerFunc {
 				return
 			}
 			serverError(c, d, err)
+			return
+		}
+		if spellpkg.Expired(spell) {
+			spellExpired(c)
 			return
 		}
 		if spell.AccountId != "" {
@@ -81,11 +96,23 @@ func applyMagicSpell(d Deps) gin.HandlerFunc {
 		var req magicSpellApplyRequest
 		_ = c.ShouldBindJSON(&req)
 
+		// A reset link carries a new password; without one the request can only
+		// be a contact-verification apply. Keeping the two apart matters because
+		// ApplyMagicSpell refuses a reset spell outright rather than silently
+		// treating it as a verification.
 		var applyErr error
-		if spell.Type == model.MagicSpellTypeAuthPasswordReset && req.NewPassword != nil {
+		if spell.Type == model.MagicSpellTypeAuthPasswordReset {
+			if req.NewPassword == nil {
+				c.JSON(http.StatusBadRequest, errs.New("PASSPORT_SPELL_APPLY_FAILED", "New password is required for a password reset spell.", http.StatusBadRequest))
+				return
+			}
 			applyErr = d.Spell.ApplyPasswordReset(c.Request.Context(), spell, *req.NewPassword)
 		} else {
 			applyErr = d.Spell.ApplyMagicSpell(c.Request.Context(), spell)
+		}
+		if errors.Is(applyErr, spellpkg.ErrSpellExpired) {
+			spellExpired(c)
+			return
 		}
 		if applyErr != nil {
 			c.JSON(http.StatusBadRequest, errs.New("PASSPORT_SPELL_APPLY_FAILED", applyErr.Error(), http.StatusBadRequest))
@@ -116,6 +143,13 @@ func resendMagicSpell(d Deps) gin.HandlerFunc {
 				return
 			}
 			serverError(c, d, err)
+			return
+		}
+		// Re-sending a dead link only wastes an email and builds a habit of
+		// clicking a URL that cannot work: the resend is for a delivery that
+		// went missing, not for resurrecting an expired spell.
+		if spellpkg.Expired(spell) {
+			spellExpired(c)
 			return
 		}
 		if err := d.Spell.ResendMagicSpell(c.Request.Context(), spell, true); err != nil {

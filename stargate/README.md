@@ -145,6 +145,11 @@ signed-in device scans and approves it, and the browser redeems the result.
 Linking a provider from **Settings → Linked Identities** uses the same login
 endpoint with `flow=connect`, which attaches the identity to the signed-in
 account and returns to the console.
+The emails Stargate sends for contact verification and password reset link to
+`{siteUrl}/spells/{word}`, which the console serves as a page: the reset form
+asks for a new password, and the verification form confirms the contact. A link
+that is wrong, already spent, or past its 24 hours says so instead of offering a
+form that cannot work.
 The visual system — tokens, type, layout tiers, and component rules — is
 documented in [`docs/design-system.md`](docs/design-system.md).
 

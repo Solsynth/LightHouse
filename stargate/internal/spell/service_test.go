@@ -1,8 +1,11 @@
 package spell
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
 )
@@ -156,5 +159,48 @@ func TestRenderPasswordResetTemplate(t *testing.T) {
 		if !strings.Contains(body, "http://localhost:3000/spells/abc") {
 			t.Errorf("%s: body missing link substitution: %s", locale, body)
 		}
+	}
+}
+
+// TestExpired pins the lifetime rule every redeem path re-checks. A reset link
+// is a bearer credential: once its 24 hours are up it must stop working, and a
+// spell minted without a deadline must keep working forever.
+func TestExpired(t *testing.T) {
+	past := model.NewTime(time.Now().UTC().Add(-time.Minute))
+	future := model.NewTime(time.Now().UTC().Add(time.Minute))
+
+	cases := []struct {
+		name string
+		at   *model.Time
+		want bool
+	}{
+		{"no deadline never expires", nil, false},
+		{"future deadline is live", future, false},
+		{"past deadline is dead", past, true},
+	}
+	for _, tc := range cases {
+		if got := Expired(&model.MagicSpell{ExpiresAt: tc.at}); got != tc.want {
+			t.Errorf("%s: Expired = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestApplyRefusesExpiredSpell: both redeem paths refuse a dead spell before
+// touching the account, so an expired word cannot verify a contact or replace a
+// password even if a caller forgot to check first.
+func TestApplyRefusesExpiredSpell(t *testing.T) {
+	s := &Service{}
+	spell := &model.MagicSpell{
+		Type:      model.MagicSpellTypeAuthPasswordReset,
+		AccountId: "11111111-1111-1111-1111-111111111111",
+		Meta:      map[string]any{"contact_id": "22222222-2222-2222-2222-222222222222"},
+		ExpiresAt: model.NewTime(time.Now().UTC().Add(-time.Hour)),
+	}
+
+	if err := s.ApplyMagicSpell(context.Background(), spell); !errors.Is(err, ErrSpellExpired) {
+		t.Errorf("ApplyMagicSpell error = %v, want ErrSpellExpired", err)
+	}
+	if err := s.ApplyPasswordReset(context.Background(), spell, "hunter2"); !errors.Is(err, ErrSpellExpired) {
+		t.Errorf("ApplyPasswordReset error = %v, want ErrSpellExpired", err)
 	}
 }

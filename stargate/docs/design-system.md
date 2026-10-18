@@ -119,7 +119,7 @@ Width tiers are decided by route metadata in `web/src/router/index.ts`:
 
 | Tier | Width | Routes |
 | --- | --- | --- |
-| flow | 460 px | sign-in, create account, recovery, captcha, provider callback, authorize, sudo |
+| flow | 460 px | sign-in, create account, recovery, captcha, provider callback, authorize, sudo, magic spell |
 | account | 880 px | profile, factors, passkeys, contacts, linked identities, security mode, public profiles |
 | wide | 1120 px | sessions, developers, activity |
 | full | viewport (full bleed) | all admin pages |
@@ -291,6 +291,21 @@ The Connections panel lists what is already attached. A second panel,
 "link this identity to the signed-in account" rather than "sign in". A linked
 provider disappears from that panel, and the return trip lands on the same page
 with the connection already listed and one `OK` line naming it.
+
+### Magic spell links
+
+Stargate emails `{siteUrl}/spells/{word}` for contact verification and
+password resets, so that path is a console route, not an API one. The word in the
+address is the credential: never rendered, never stored, and handed only to the
+API that issued it. `GET /api/spells/{word}` decides the page — a reset spell
+asks for a new password, a verification spell asks for nothing but a click —
+while a 404 says the word is wrong or already spent and a 410 says its 24-hour
+lifetime has run out.
+
+A dead or unusable link renders a sentence and no form: offering a submit that
+cannot succeed is worse than saying so. Only the expired state has an action
+worth showing ("Request a new link"); every other dead end is complete as one
+sentence.
 
 ### Buttons
 
