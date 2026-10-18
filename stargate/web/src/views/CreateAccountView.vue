@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { useNoticeStore } from '@/stores/notice'
 import { authApi, signInApi } from '@/lib/api'
@@ -11,6 +11,7 @@ import type { CaptchaConfig } from '@/lib/api/types'
 
 const { t } = useI18n()
 const router = useRouter()
+const route = useRoute()
 const notice = useNoticeStore()
 
 const form = ref({
@@ -87,6 +88,13 @@ async function submit() {
 }
 
 onMounted(async () => {
+  // The deployment's standalone verification page hands its token back through
+  // the address. It is single-use at the provider, so it goes straight into the
+  // create request — that request is the check.
+  if (typeof route.query.captcha_tk === 'string') {
+    captchaToken.value = route.query.captcha_tk
+    await router.replace({ name: 'create-account' })
+  }
   try {
     captcha.value = await authApi.captchaConfig()
   } catch {

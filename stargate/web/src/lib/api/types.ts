@@ -426,3 +426,25 @@ export interface AuthorizeClientInfo {
 export interface AuthorizeDecision {
   redirect_uri?: string
 }
+
+/** POST /api/auth/qr/generate reply: the payload a phone scans, plus the
+ *  challenge the web page polls and eventually exchanges. */
+export interface QrChallengeCreated {
+  qr_challenge_id: string
+  auth_challenge_id: string
+  qr_data: string
+  expires_at?: string
+  expires_in_seconds: number
+}
+
+/** GET /api/auth/qr/{id} reply. `status` is the QrLoginStatus ordinal. */
+export interface QrChallengeStatus {
+  qr_challenge_id: string
+  auth_challenge_id: string
+  status: number
+  expires_at?: string
+  approved_at?: string
+  approved_device_id?: string
+  device_name?: string
+  platform: number
+}

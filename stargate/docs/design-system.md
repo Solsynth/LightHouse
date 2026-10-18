@@ -251,6 +251,47 @@ rename, and delete, while the passkey method's enable/disable toggle stays in
 Sign-In Factors. A passkey can only be registered after the passkey factor and
 a recovery code are enabled.
 
+### Sign-in methods
+
+The account field and its primary action come first. Every other way to sign
+in — passkey, QR, and each social provider — sits under `Or continue with` in
+a two-column tile grid of outline buttons, so nine ways cost the same vertical
+space as four and none of them outranks another. A tile carries only a mark
+and a name; the phone-only variants are named for the action, not the
+machinery ("Scan to Sign In", not "QR login").
+
+`ProviderMark` draws a provider's brand silhouette from
+`web/src/lib/providers.ts` in `currentColor`, so it repaints with the theme and
+never ships a second color. A provider with no mark in the catalog — including
+one a newer server lists — falls back to its initial, so the grid never has a
+blank tile. Brand names are not translated; only the sentence around them is.
+
+The provider list comes from `GET /api/auth/providers`, which answers only the
+providers whose credentials are configured and only when the social module is
+mounted. The console therefore never offers a button that ends in an error.
+
+### QR sign-in
+
+The QR step replaces the form inside the same flow card. The code is rendered
+locally from the server's `qr_data` payload, never through an image service:
+the payload is a bearer credential and a third-party rasterizer would see it.
+The tile stays white with dark modules in both themes because a camera reads
+the code, not the theme.
+
+While it waits, the panel reports one state at a time — waiting, scanned,
+declined, expired — with a countdown beside it. Approval is the only state that
+redeems the challenge, and the watcher stops before the exchange so a second
+poll can never spend the same code twice.
+
+### Linked identities
+
+The Connections panel lists what is already attached. A second panel,
+**Available Providers**, offers the rest: `POST`-free links to
+`/api/auth/login/{provider}?flow=connect&returnUrl=…`, which the API reads as
+"link this identity to the signed-in account" rather than "sign in". A linked
+provider disappears from that panel, and the return trip lands on the same page
+with the connection already listed and one `OK` line naming it.
+
 ### Buttons
 
 | Class | Use |

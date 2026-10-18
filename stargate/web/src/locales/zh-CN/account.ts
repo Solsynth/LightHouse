@@ -125,6 +125,11 @@ export default {
     errorLoad: '无法加载已关联身份。',
     errorVisibility: '无法更改可见性。',
     errorRemove: '无法移除连接。',
+    noticeLinked: '{provider} 已连接到该账号。',
+    availableTitle: '可用提供方',
+    availableNote: '可连接 {n} 个',
+    availableIntro: '连接其他服务的账号，即可用它在此登录，或让该账号使用该服务。',
+    establish: '连接 {provider}',
   },
   passkeys: {
     title: '通行密钥',

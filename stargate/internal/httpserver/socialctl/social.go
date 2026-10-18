@@ -140,6 +140,15 @@ func (d Deps) oidcLogin(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, errs.New("OIDC_INIT_FLOW_FAILED", "Error initiating OpenID Connect flow: "+err.Error(), http.StatusBadRequest))
 				return
 			}
+			// A connect flow that names a same-origin page returns there instead
+			// of the built-in /auth/success landing, so a client can show the
+			// result where the person started. The write is best-effort: a cache
+			// miss only costs the custom landing (handleManualConnection falls
+			// back to SiteUrl + /auth/success), and a cross-origin target is
+			// dropped rather than turned into an open redirect.
+			if d.isSameOriginPath(returnURL) {
+				_ = d.cacheSet(ctx, returnURLCachePrefix+state, returnURL, stateExpiration)
+			}
 			authURL, err := svc.authorizationURL(ctx, state, nonce)
 			if err != nil {
 				c.JSON(http.StatusBadRequest, errs.New("OIDC_INIT_FLOW_FAILED", "Error initiating OpenID Connect flow: "+err.Error(), http.StatusBadRequest))
@@ -695,6 +704,32 @@ func extractCallbackData(c *gin.Context) *callbackData {
 func isFormContentType(contentType string) bool {
 	ct := strings.ToLower(strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0]))
 	return ct == "application/x-www-form-urlencoded" || ct == "multipart/form-data"
+}
+
+// isSameOriginPath reports whether a client-supplied landing target can be
+// honoured: either a root-relative path ("/security/connections") or an
+// absolute URL on this deployment's own site origin. Protocol-relative "//host"
+// and foreign hosts are refused, so a returnUrl can never become an open
+// redirect.
+func (d Deps) isSameOriginPath(raw string) bool {
+	if raw == "" || strings.HasPrefix(raw, "//") {
+		return false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	if parsed.Scheme == "" && parsed.Host == "" {
+		return strings.HasPrefix(parsed.Path, "/")
+	}
+	site, serr := url.Parse(strings.TrimRight(d.Cfg.SiteUrl, "/"))
+	if serr != nil || site.Host == "" {
+		return false
+	}
+	if !strings.EqualFold(parsed.Host, site.Host) {
+		return false
+	}
+	return site.Scheme == "" || strings.EqualFold(parsed.Scheme, site.Scheme)
 }
 
 // loadOidcState reads the state object from the cache; on a miss it falls

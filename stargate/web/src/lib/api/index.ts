@@ -29,6 +29,8 @@ import type {
   PermissionMember,
   PermissionNode,
   Profile,
+  QrChallengeCreated,
+  QrChallengeStatus,
   Punishment,
   ModulesState,
   RelationshipSummary,
@@ -151,6 +153,17 @@ export const signInApi = {
     request<void>('/accounts/validate', { method: 'POST', body }),
   requestPasswordReset: (body: { account: string; captcha_token: string }) =>
     request<void>('/accounts/recovery/password', { method: 'POST', body }),
+  /**
+   * Starts a QR login for this browser. The reply's `qr_data` is the payload a
+   * signed-in device scans; the web page only polls `qrStatus` afterwards.
+   */
+  qrGenerate: (body: {
+    device_id: string
+    device_name?: string
+    platform: number
+  }) => request<QrChallengeCreated>('/auth/qr/generate', { method: 'POST', body }),
+  /** The status of a QR challenge: 0 pending, 1 scanned, 2 approved, 3 declined. */
+  qrStatus: (id: string) => request<QrChallengeStatus>(`/auth/qr/${id}`),
   applySpell: (word: string) =>
     request<unknown>(`/spells/${encodeURIComponent(word)}/apply`, { method: 'POST' }),
 }

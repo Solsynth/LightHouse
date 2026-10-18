@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import type { RouteMeta } from 'vue-router'
+import type { LocationQuery, RouteMeta } from 'vue-router'
 
 import { MODULES } from '@/lib/modules'
 import { i18n } from '@/lib/i18n'
@@ -16,6 +16,19 @@ declare module 'vue-router' {
   }
 }
 
+/**
+ * The token pair a social sign-in appends to its return URL, for clients that
+ * cannot read the HttpOnly cookies the same redirect sets. This console reads
+ * the cookie and never stores a token, so these parameters are erased from the
+ * address the moment the app sees them.
+ */
+const SESSION_TOKEN_PARAMS = ['token', 'refreshToken', 'expiresIn', 'refreshExpiresIn'] as const
+
+function withoutTokenParams(query: LocationQuery): LocationQuery {
+  const rest: LocationQuery = { ...query }
+  for (const key of SESSION_TOKEN_PARAMS) delete rest[key]
+  return rest
+}
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -40,6 +53,14 @@ const router = createRouter({
       name: 'auth-callback',
       component: () => import('@/views/CallbackView.vue'),
       meta: { public: true, titleKey: 'app.titles.continuingSignIn' },
+    },
+    {
+      // The landing page Stargate redirects to when a social round-trip has no
+      // explicit return URL: it picks the session up and drops the tokens.
+      path: '/auth/success',
+      name: 'auth-landing',
+      component: () => import('@/views/AuthLandingView.vue'),
+      meta: { public: true, titleKey: 'app.titles.continuingSignIn', narrow: true },
     },
     {
       path: '/auth/captcha',
@@ -183,6 +204,13 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   const session = useSessionStore()
+  // A social sign-in appends its token pair to the return URL for clients that
+  // cannot read cookies. This console never stores tokens, so they are dropped
+  // before anything else sees the address — they must not reach history, a
+  // shared link, or a log.
+  if (SESSION_TOKEN_PARAMS.some((key) => to.query[key] !== undefined)) {
+    return { path: to.path, query: withoutTokenParams(to.query), hash: to.hash, replace: true }
+  }
   if (session.loading) await session.load()
 
   // The module set is a single cached read, shared by every navigation. It

@@ -17,6 +17,7 @@ declare module '@carbon/icons-vue' {
   export const Launch16: DefineComponent
   export const Moon16: DefineComponent
   export const Power16: DefineComponent
+  export const QrCode16: DefineComponent
   export const Renew16: DefineComponent
   export const SettingsAdjust16: DefineComponent
   export const Sun16: DefineComponent

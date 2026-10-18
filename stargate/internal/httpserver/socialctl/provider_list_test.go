@@ -38,3 +38,37 @@ func TestAvailableProvidersRequiresCompleteCredentials(t *testing.T) {
 		t.Fatalf("complete Microsoft config not offered: %v", got)
 	}
 }
+
+// A connect flow names the page the console shows afterwards. Only same-origin
+// targets may ride through the redirect; anything else would turn a client
+// parameter into an open redirect, so it is dropped and the built-in landing
+// stays in force.
+func TestIsSameOriginPath(t *testing.T) {
+	cfg := config.Default()
+	cfg.SiteUrl = "https://id.example.com"
+	d := testDeps(cfg)
+
+	for _, raw := range []string{
+		"/security/connections",
+		"/security/connections?linked=github",
+		"https://id.example.com/security/connections",
+		"/",
+	} {
+		if !d.isSameOriginPath(raw) {
+			t.Errorf("isSameOriginPath(%q) = false, want true", raw)
+		}
+	}
+
+	for _, raw := range []string{
+		"",
+		"//evil.example.com/path",
+		"https://evil.example.com/security/connections",
+		"http://id.example.com/security/connections",
+		"javascript:alert(1)",
+		"/\nSet-Cookie: x=y",
+	} {
+		if d.isSameOriginPath(raw) {
+			t.Errorf("isSameOriginPath(%q) = true, want false", raw)
+		}
+	}
+}

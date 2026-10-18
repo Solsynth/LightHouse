@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { FingerprintRecognition16 } from '@carbon/icons-vue'
+import { FingerprintRecognition16, QrCode16 } from '@carbon/icons-vue'
 
 import { useSignInStore } from '@/stores/signIn'
 import { useSessionStore } from '@/stores/session'
@@ -14,7 +14,12 @@ import { codeRequestFactorTypes, factorTypeDescription, factorTypeLabel } from '
 import { remaining } from '@/lib/format'
 import { getAssertion, passkeyFailure, passkeysSupported } from '@/lib/webauthn'
 import { deviceIdentity } from '@/lib/device'
+import { MODULES } from '@/lib/modules'
+import { useModulesStore } from '@/stores/modules'
+import ProviderMark from '@/components/ProviderMark.vue'
+import { providerLabel } from '@/lib/providers'
 import FactorRow from '@/components/FactorRow.vue'
+import QrLoginPanel from '@/components/QrLoginPanel.vue'
 
 const { t } = useI18n()
 const signIn = useSignInStore()
@@ -31,30 +36,33 @@ const passkeyFactor = ref<AuthFactor | null>(null)
 const codeSentIds = ref<string[]>([])
 const selectedFactorId = ref<string | null>(null)
 const providers = ref<string[]>([])
+const mode = ref<'identify' | 'qr'>('identify')
+const modules = useModulesStore()
+
+/** Social sign-in is a module surface: an unmounted one lists no providers. */
+const socialServed = computed(() => modules.hasAll([MODULES.social]))
+
 
 let pollTimer: number | undefined
 
-const providerLabels: Record<string, string> = {
-  github: 'GitHub',
-  google: 'Google',
-  microsoft: 'Microsoft',
-  discord: 'Discord',
-  apple: 'Apple',
-  steam: 'Steam',
-  twitter: 'X',
-  afdian: 'Afdian',
-  lastfm: 'Last.fm',
-}
-
-const providerLabel = (provider: string) => providerLabels[provider] ?? provider
-
-/** Full-page navigation: the server sets the state and redirects onward. */
+/**
+ * Full-page navigation: the server stores the state and redirects onward. The
+ * device id rides along so the session the provider creates is bound to this
+ * browser rather than an anonymous device row.
+ */
 function providerUrl(provider: string): string {
-  const query = new URLSearchParams({ flow: 'login', returnUrl: nextPath() })
-  return `/api/auth/login/${provider}?${query.toString()}`
+  const query = new URLSearchParams({
+    flow: 'login',
+    returnUrl: nextPath(),
+    deviceId: deviceIdentity().id,
+  })
+  return `/api/auth/login/${encodeURIComponent(provider)}?${query.toString()}`
 }
-
 async function loadProviders() {
+  if (!socialServed.value) {
+    providers.value = []
+    return
+  }
   try {
     providers.value = await authApi.providers()
   } catch {
@@ -63,9 +71,46 @@ async function loadProviders() {
   }
 }
 
+/** A QR sign-in is approved on a phone, so it needs no account or factor. */
+async function qrApproved(challengeId: string) {
+  if (busy.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    await signInApi.exchange(challengeId)
+    await session.load()
+    signIn.reset()
+    notice.ok(t('signIn.noticeSignedIn'))
+    await router.replace(nextPath())
+  } catch (caught) {
+    error.value = messageOf(caught)
+    mode.value = 'identify'
+  } finally {
+    busy.value = false
+  }
+}
+
 const needsCode = (factor: AuthFactor) => codeRequestFactorTypes[factor.type] === true
 const canUsePasskey = computed(() => passkeySupported && passkeyFactor.value !== null)
 const passkeySupported = passkeysSupported()
+
+/**
+ * QR sign-in is served by the auth module's challenge surface. An unloaded
+ * module read fails open, matching `hasAll`: a transient failure must not hide
+ * a way the deployment actually offers.
+ */
+const qrServed = computed(
+  () => !modules.loaded || modules.capabilities.includes('auth.qr-login'),
+)
+
+/** Every non-password way this deployment offers: passkey, QR, then providers. */
+const alternativeWays = computed(() => {
+  const ways: string[] = []
+  if (passkeySupported) ways.push('passkey')
+  if (qrServed.value) ways.push('qr')
+  if (socialServed.value) ways.push(...providers.value)
+  return ways
+})
 
 /** Passkeys have their own assertion endpoint, so the list only offers
  *  factors that submit a secret through the challenge. */
@@ -245,6 +290,7 @@ function startPolling() {
 function restart() {
   if (pollTimer !== undefined) window.clearInterval(pollTimer)
   signIn.reset()
+  mode.value = 'identify'
   started.value = false
   passkeyFactor.value = null
   selectedFactorId.value = null
@@ -274,7 +320,9 @@ onBeforeUnmount(() => {
     </div>
 
     <Transition name="step" mode="out-in">
-    <form v-if="!started" key="identify" @submit.prevent="identify">
+    <QrLoginPanel v-if="mode === 'qr'" key="qr" @approved="qrApproved" @back="mode = 'identify'" />
+
+    <form v-else-if="!started" key="identify" @submit.prevent="identify">
       <label for="account" class="field-label">{{ t('signIn.accountLabel') }}</label>
       <input
         id="account"
@@ -290,28 +338,32 @@ onBeforeUnmount(() => {
         {{ busy ? t('signIn.checking') : t('common.continue') }}
       </button>
 
-      <div v-if="passkeySupported" class="mt-5 pt-1">
-        <button
-          type="button"
-          class="btn btn-outline w-full"
-          :disabled="busy"
-          @click="passkeyDiscoverable"
-        >
-          <FingerprintRecognition16 aria-hidden="true" />
-          {{ t('signIn.passkeySignIn') }}
-        </button>
-      </div>
-
-      <div v-if="providers.length" class="mt-5 pt-1">
+      <div v-if="alternativeWays.length" class="mt-5 pt-1">
         <p class="field-label">{{ t('signIn.orContinueWith') }}</p>
-        <div class="space-y-2">
+        <div class="grid grid-cols-2 gap-2">
+          <button
+            v-if="passkeySupported"
+            type="button"
+            class="btn btn-outline"
+            :disabled="busy"
+            @click="passkeyDiscoverable"
+          >
+            <FingerprintRecognition16 aria-hidden="true" />
+            {{ t('signIn.passkeyTile') }}
+          </button>
+          <button type="button" class="btn btn-outline" :disabled="busy" @click="mode = 'qr'">
+            <QrCode16 aria-hidden="true" />
+            {{ t('signIn.qrTile') }}
+          </button>
           <a
             v-for="provider in providers"
             :key="provider"
             :href="providerUrl(provider)"
-            class="btn btn-outline w-full"
+            class="btn btn-outline"
+            :aria-label="t('signIn.continueWith', { provider: providerLabel(provider) })"
           >
-            {{ t('signIn.continueWith', { provider: providerLabel(provider) }) }}
+            <ProviderMark :provider="provider" />
+            {{ providerLabel(provider) }}
           </a>
         </div>
       </div>

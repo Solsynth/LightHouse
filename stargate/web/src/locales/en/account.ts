@@ -130,6 +130,12 @@ export default {
     errorLoad: 'Linked identities could not be loaded.',
     errorVisibility: 'Visibility could not be changed.',
     errorRemove: 'The connection could not be removed.',
+    noticeLinked: '{provider} is now connected to this account.',
+    availableTitle: 'Available Providers',
+    availableNote: '{n} can be connected',
+    availableIntro:
+      'Connect an account from another service to sign in with it here, or to let this account use that service.',
+    establish: 'Connect {provider}',
   },
   passkeys: {
     title: 'Passkeys',

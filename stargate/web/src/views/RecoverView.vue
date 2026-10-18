@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { useNoticeStore } from '@/stores/notice'
 import { authApi, signInApi } from '@/lib/api'
@@ -10,6 +10,7 @@ import type { CaptchaConfig } from '@/lib/api/types'
 
 const { t } = useI18n()
 const route = useRoute()
+const router = useRouter()
 const notice = useNoticeStore()
 
 const captcha = ref<CaptchaConfig | null>(null)
@@ -54,6 +55,15 @@ async function applySpell() {
 }
 
 onMounted(async () => {
+  // The deployment's standalone verification page hands its token back through
+  // the address. It is single-use at the provider, so it goes straight into the
+  // reset request — that request is the check.
+  if (typeof route.query.captcha_tk === 'string') {
+    captchaToken.value = route.query.captcha_tk
+    const rest = { ...route.query }
+    delete rest.captcha_tk
+    await router.replace({ name: 'recover', query: rest })
+  }
   try {
     captcha.value = await authApi.captchaConfig()
   } catch {

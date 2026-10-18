@@ -139,8 +139,13 @@ The console ships English and Simplified Chinese, and a light and dark theme.
 Both follow the browser/OS on first visit, then remember the reader's choice in
 `localStorage`; the footer carries the theme toggle and language dropdown.
 The sign-in screen lists a social provider only when its credentials are
-complete in `[oidc]`, so no button leads to an unavailable provider. The
-visual system — tokens, type, layout tiers, and component rules — is
+complete in `[oidc]`, so no button leads to an unavailable provider. It also
+offers sign-in by passkey and by QR code: the browser starts a challenge, a
+signed-in device scans and approves it, and the browser redeems the result.
+Linking a provider from **Settings → Linked Identities** uses the same login
+endpoint with `flow=connect`, which attaches the identity to the signed-in
+account and returns to the console.
+The visual system — tokens, type, layout tiers, and component rules — is
 documented in [`docs/design-system.md`](docs/design-system.md).
 
 Routes resolve as follows:
