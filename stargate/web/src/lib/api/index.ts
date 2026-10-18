@@ -33,7 +33,9 @@ import type {
   QrChallengeCreated,
   QrChallengeStatus,
   Punishment,
+  FriendOverview,
   ModulesState,
+  Relationship,
   RelationshipSummary,
 } from './types'
 
@@ -54,6 +56,56 @@ export const accountApi = {
   /** Public social-graph summary; mutual_friends needs a session on the call. */
   relationshipSummary: (name: string) =>
     request<RelationshipSummary>(`/accounts/${encodeURIComponent(name)}/relationships`),
+}
+
+// ── Relationships ──
+
+/**
+ * The social graph: friends, pending requests, blocks, mutes, close friends.
+ * Every write answers with the row it changed, so callers reload rather than
+ * patch their copy.
+ */
+export const relationshipApi = {
+  /**
+   * Every non-pending outgoing row, newest first. The server also reports the
+   * full count in X-Total, which can exceed the rows returned.
+   */
+  list: (query: { take?: number; offset?: number } = {}) =>
+    requestPage<Relationship>('/relationships', query),
+  /** Pending rows in both directions: incoming requests and the ones sent. */
+  requests: () => request<Relationship[]>('/relationships/requests'),
+  closeFriends: () => request<Account[]>('/relationships/close-friends'),
+  /** Friends with a last-seen presence label; activities stay empty. */
+  overview: () => request<FriendOverview[]>('/friends/overview'),
+  sendRequest: (accountId: string) =>
+    request<Relationship>(`/relationships/${accountId}/friends`, { method: 'POST' }),
+  cancelRequest: (accountId: string) =>
+    request<void>(`/relationships/${accountId}/friends`, { method: 'DELETE' }),
+  acceptRequest: (accountId: string) =>
+    request<Relationship>(`/relationships/${accountId}/friends/accept`, { method: 'POST' }),
+  declineRequest: (accountId: string) =>
+    request<Relationship>(`/relationships/${accountId}/friends/decline`, { method: 'POST' }),
+  /** Soft-deletes the outgoing row; the other side keeps its own. */
+  removeFriend: (accountId: string) =>
+    request<Relationship>(`/relationships/${accountId}`, { method: 'DELETE' }),
+  block: (accountId: string) =>
+    request<Relationship>(`/relationships/${accountId}/block`, { method: 'POST' }),
+  unblock: (accountId: string) =>
+    request<Relationship>(`/relationships/${accountId}/block`, { method: 'DELETE' }),
+  mute: (accountId: string) =>
+    request<Relationship>(`/relationships/${accountId}/mute`, { method: 'POST' }),
+  unmute: (accountId: string) =>
+    request<Relationship>(`/relationships/${accountId}/mute`, { method: 'DELETE' }),
+  addCloseFriend: (accountId: string) =>
+    request<Relationship>(`/relationships/${accountId}/close-friend`, { method: 'POST' }),
+  removeCloseFriend: (accountId: string) =>
+    request<Relationship>(`/relationships/${accountId}/close-friend`, { method: 'DELETE' }),
+  /** An empty alias clears it; only the owner ever sees it. */
+  updateAlias: (accountId: string, alias: string | null) =>
+    request<Relationship>(`/relationships/${accountId}/alias`, {
+      method: 'PATCH',
+      body: { alias },
+    }),
 }
 
 // ── Modules ──

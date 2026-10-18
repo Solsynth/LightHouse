@@ -13,9 +13,14 @@ declare module '@carbon/icons-vue' {
   export const Devices16: DefineComponent
   export const Edit16: DefineComponent
   export const Favorite16: DefineComponent
+  export const FavoriteFilled16: DefineComponent
   export const FingerprintRecognition16: DefineComponent
+  export const Friendship16: DefineComponent
   export const Launch16: DefineComponent
+  export const Locked16: DefineComponent
   export const Moon16: DefineComponent
+  export const Notification16: DefineComponent
+  export const NotificationOff16: DefineComponent
   export const Power16: DefineComponent
   export const QrCode16: DefineComponent
   export const Renew16: DefineComponent
@@ -24,9 +29,11 @@ declare module '@carbon/icons-vue' {
   export const Tools16: DefineComponent
   export const TrashCan16: DefineComponent
   export const Unlink16: DefineComponent
+  export const Unlocked16: DefineComponent
   export const User16: DefineComponent
   export const UserAvatar16: DefineComponent
   export const UserAvatar32: DefineComponent
+  export const UserFollow16: DefineComponent
   export const UserMinus16: DefineComponent
   export const View16: DefineComponent
   export const ViewOff16: DefineComponent

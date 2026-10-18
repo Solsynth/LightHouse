@@ -102,6 +102,15 @@ const router = createRouter({
       meta: { titleKey: 'app.titles.profile', modules: [MODULES.profiles] },
     },
     {
+      // The social graph. The path matches the action URI Stargate attaches to
+      // friend-request pushes and the deep link the fleet's app links declare,
+      // so a notification opens this page rather than the not-found route.
+      path: '/account/relationships',
+      name: 'relationships',
+      component: () => import('@/views/RelationshipsView.vue'),
+      meta: { titleKey: 'app.titles.relationships', wide: true, modules: [MODULES.relationships] },
+    },
+    {
       path: '/security',
       redirect: '/security/sessions',
     },

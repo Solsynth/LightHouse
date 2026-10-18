@@ -121,7 +121,7 @@ Width tiers are decided by route metadata in `web/src/router/index.ts`:
 | --- | --- | --- |
 | flow | 460 px | sign-in, create account, recovery, captcha, provider callback, authorize, sudo, magic spell |
 | account | 880 px | profile, factors, passkeys, contacts, linked identities, security mode, public profiles |
-| wide | 1120 px | sessions, developers, activity |
+| wide | 1120 px | sessions, friends, developers, activity |
 | full | viewport (full bleed) | all admin pages |
 
 Admin routes set `meta.fullBleed`. The shell then drops its 16 px gutter and
@@ -185,6 +185,34 @@ Identities, and Security Mode.
 `SecurityNav` is a contained tab box: 1 px border, hairline dividers between
 tabs, active tab filled with `base-300`, inactive tabs faint with a hover tint.
 It uses `aria-current="page"`. Do not use underlined tabs.
+
+`TabBox` carries that strip as a component, so a page whose tabs switch state
+instead of routes uses one control and not a second style. A tab with `to` is a
+`RouterLink` and keeps `aria-current="page"`; one without is a button carrying
+`aria-pressed`.
+
+### Friends
+
+`/account/relationships` (SPA route `relationships`, wide card) is the signed-in
+social graph: Friends, Requests, Close Friends, Blocked, and Muted in one
+`TabBox`, a search panel that sends requests, and the sent-request list. The
+path is the one Stargate puts in friend-request pushes and the fleet declares
+as an app link, so a notification lands here.
+
+The list endpoint pages over every non-pending row, so the tabs filter what has
+been loaded rather than asking for a per-tab page; a footer button appends the
+next page. Requests are split by direction: incoming ones are actionable in the
+tab, sent ones sit in the sidebar with a cancel action.
+
+The alias is the name in these lists, with the account's own display name
+underneath; the other side never sees it. Removal, blocking, and declining
+confirm first — declining blocks the sender as part of the decline, so the
+dialog says so.
+
+Presence comes from `GET /api/friends/overview` and is a last-seen heuristic
+(online within five minutes). The server sends an English label; the console
+reads the booleans and translates them, so a Chinese catalog never prints an
+English word.
 
 ### Public profile
 

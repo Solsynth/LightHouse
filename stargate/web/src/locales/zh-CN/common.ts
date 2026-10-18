@@ -93,6 +93,7 @@ export default {
       resetPassword: '重置密码',
       spell: '魔法咒语',
       profile: '个人资料',
+      relationships: '好友',
       sessions: '会话',
       signInFactors: '登录验证方式',
       passkeys: '通行密钥',
@@ -112,6 +113,7 @@ export default {
     },
     nav: {
       profile: '个人资料',
+      friends: '好友',
       settings: '设置',
       developers: '开发者',
       activity: '活动',

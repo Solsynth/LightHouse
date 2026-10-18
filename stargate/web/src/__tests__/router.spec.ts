@@ -29,3 +29,24 @@ describe('magic-spell link', () => {
 })
 
 
+
+/**
+ * Friend-request pushes carry this action URI, and the fleet declares the same
+ * path as an app link. A route rename would send every notification to the
+ * not-found page, which no test of the view itself would catch.
+ */
+describe('friend request deep link', () => {
+  const match = router.resolve('/account/relationships')
+
+  it('resolves the path pushes and app links use', () => {
+    expect(match.name).toBe('relationships')
+  })
+
+  it('is gated on the relationships module', () => {
+    expect(match.meta.modules).toContain('app.solian.id.relationships')
+  })
+
+  it('requires a session', () => {
+    expect(match.meta.public).toBeUndefined()
+  })
+})

@@ -21,6 +21,19 @@ export function securityModeCopy(mode: string): string {
 }
 
 /**
+ * The wire values of `RelationshipStatus` (Shared Account.cs). A friendship is
+ * two rows, one in each direction; `friends` also covers `closeFriend` rows
+ * wherever the API lists the friends family.
+ */
+export const RELATIONSHIP_STATUS = {
+  blocked: -100,
+  muted: -50,
+  pending: 0,
+  friends: 100,
+  closeFriend: 200,
+} as const
+
+/**
  * Factors a person can pick to satisfy a sign-in challenge. Passkeys use the
  * dedicated assertion endpoints; in-app and QR approval never appear here.
  */

@@ -4,6 +4,7 @@ import type { Component } from 'vue'
 import {
   Activity16,
   Api16,
+  Friendship16,
   Moon16,
   SettingsAdjust16,
   Sun16,
@@ -49,6 +50,14 @@ const nav: NavItem[] = [
     scope: 'account',
     match: '/account',
     modules: [MODULES.profiles],
+  },
+  {
+    to: '/account/relationships',
+    labelKey: 'app.nav.friends',
+    icon: Friendship16,
+    scope: 'account',
+    match: '/account/relationships',
+    modules: [MODULES.relationships],
   },
   {
     to: '/security/sessions',
@@ -97,6 +106,7 @@ const visibleNav = computed(() =>
 
 const activeSection = computed(() => {
   const path = route.path
+  if (path.startsWith('/account/relationships')) return '/account/relationships'
   if (path.startsWith('/admin')) return '/admin'
   if (path.startsWith('/developers')) return '/developers'
   if (path.startsWith('/activity')) return '/activity'

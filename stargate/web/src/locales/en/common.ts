@@ -93,6 +93,7 @@ export default {
       resetPassword: 'Reset Password',
       spell: 'Magic Spell',
       profile: 'Profile',
+      relationships: 'Friends',
       sessions: 'Sessions',
       signInFactors: 'Sign-In Factors',
       passkeys: 'Passkeys',
@@ -112,6 +113,7 @@ export default {
     },
     nav: {
       profile: 'Profile',
+      friends: 'Friends',
       settings: 'Settings',
       developers: 'Developers',
       activity: 'Activity',

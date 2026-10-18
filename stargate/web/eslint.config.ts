@@ -22,6 +22,15 @@ export default defineConfigWithVueTs(
   vueTsConfigs.recommended,
 
   {
+    // A component used in a template but never imported renders as an inert
+    // custom element with a dev-only warning the build drops, so the page
+    // silently loses that piece. RouterLink/RouterView are registered
+    // globally by app.use(router) and are the only exceptions.
+    rules: {
+      'vue/no-undef-components': ['error', { ignorePatterns: ['^Router(Link|View)$'] }],
+    },
+  },
+  {
     ...pluginVitest.configs.recommended,
     files: ['src/**/__tests__/*'],
   },

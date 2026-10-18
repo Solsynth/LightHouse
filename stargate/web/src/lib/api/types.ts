@@ -52,6 +52,43 @@ export interface RelationshipSummary {
   mutual_friends?: number
 }
 
+/**
+ * One directed row of the social graph (`account_relationships`). A friendship
+ * is two rows, one in each direction, written on accept. `status` is the wire
+ * enum: -100 blocked, -50 muted, 0 pending, 100 friends, 200 close friend.
+ */
+export interface Relationship {
+  account_id: string
+  account?: Account
+  related_id: string
+  related?: Account
+  status: number
+  alias?: string
+  expired_at?: string
+  degrade_to_status?: number
+  created_at?: string
+  updated_at?: string
+  deleted_at?: string
+}
+
+/**
+ * A friend as `GET /api/friends/overview` reports it. Presence is a
+ * last-seen heuristic (online within five minutes), and activities are always
+ * empty until the presence service gains a batch read.
+ */
+export interface FriendOverview {
+  account: Account
+  status: {
+    account_id: string
+    is_online: boolean
+    is_idle: boolean
+    label: string
+    created_at?: string
+    updated_at?: string
+  }
+  activities: unknown[]
+}
+
 export interface Profile {
   id: string
   first_name?: string
