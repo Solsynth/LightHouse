@@ -20,6 +20,7 @@ import type {
   Connection,
   Contact,
   Device,
+  DeviceCodeStatus,
   GeographyBucket,
   MagicSpell,
   Passkey,
@@ -30,6 +31,10 @@ import type {
   PermissionMember,
   PermissionNode,
   Profile,
+  OAuthApp,
+  OAuthAppConfig,
+  OAuthAppLinks,
+  OAuthAppSecret,
   QrChallengeCreated,
   QrChallengeStatus,
   Punishment,
@@ -128,6 +133,22 @@ export const authApi = {
     request<AuthorizeClientInfo>('/auth/open/authorize', { query }),
   authorizeDecision: (form: URLSearchParams) =>
     requestForm<AuthorizeDecision>('/auth/open/authorize', form),
+  /**
+   * The device flow's two anonymous calls: the status the approval page polls
+   * by user code, and the approve/decline it submits. The user code is the
+   * secret here, so both stay unauthenticated; approving is what binds the
+   * code to this session.
+   */
+  deviceCodeStatus: (userCode: string) =>
+    request<DeviceCodeStatus>(`/auth/open/device/code/${encodeURIComponent(userCode)}`),
+  deviceCodeApprove: (userCode: string) =>
+    request<void>(`/auth/open/device/code/${encodeURIComponent(userCode)}/approve`, {
+      method: 'POST',
+    }),
+  deviceCodeDecline: (userCode: string) =>
+    request<void>(`/auth/open/device/code/${encodeURIComponent(userCode)}/decline`, {
+      method: 'POST',
+    }),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
   pendingChallenges: () => request<AuthChallenge[]>('/auth/challenge/pending'),
   approveChallenge: (id: string) =>
@@ -309,6 +330,61 @@ export const appApi = {
       method: 'POST',
       body: { is_public: isPublic },
     }),
+}
+
+// ── OAuth apps ──
+
+/**
+ * Stargate's own OAuth/OIDC client registry: the registrations the provider
+ * authorizes against. Distinct from `appApi`, which lists the apps that
+ * already hold access to this account. Creating an app needs no elevated
+ * session; creating, rotating or deleting a secret does, and so does deleting
+ * the app.
+ */
+export const oauthAppApi = {
+  list: () => request<OAuthApp[]>('/oauth-apps'),
+  get: (appId: string) => request<OAuthApp>(`/oauth-apps/${encodeURIComponent(appId)}`),
+  create: (body: OAuthAppWrite) => request<OAuthApp>('/oauth-apps', { method: 'POST', body }),
+  update: (appId: string, body: OAuthAppWrite) =>
+    request<OAuthApp>(`/oauth-apps/${encodeURIComponent(appId)}`, { method: 'PATCH', body }),
+  remove: (appId: string) =>
+    request<void>(`/oauth-apps/${encodeURIComponent(appId)}`, { method: 'DELETE' }),
+  secrets: (appId: string) =>
+    request<OAuthAppSecret[]>(`/oauth-apps/${encodeURIComponent(appId)}/secrets`),
+  createSecret: (
+    appId: string,
+    body: { description?: string; expires_in?: string; type?: 'oidc' | 'api_key' },
+  ) =>
+    request<OAuthAppSecret>(`/oauth-apps/${encodeURIComponent(appId)}/secrets`, {
+      method: 'POST',
+      body,
+    }),
+  rotateSecret: (appId: string, secretId: string, body: { description?: string } = {}) =>
+    request<OAuthAppSecret>(
+      `/oauth-apps/${encodeURIComponent(appId)}/secrets/${encodeURIComponent(secretId)}/rotate`,
+      { method: 'POST', body },
+    ),
+  removeSecret: (appId: string, secretId: string) =>
+    request<void>(
+      `/oauth-apps/${encodeURIComponent(appId)}/secrets/${encodeURIComponent(secretId)}`,
+      { method: 'DELETE' },
+    ),
+}
+
+/**
+ * The create/update body. Every field is optional because the server merges a
+ * patch into the stored app; `picture_id` and `background_id` carry a Drive
+ * file id, where nil leaves the art untouched and the empty string clears it.
+ */
+export interface OAuthAppWrite {
+  slug?: string
+  name?: string
+  description?: string
+  status?: number
+  picture_id?: string
+  background_id?: string
+  oauth_config?: Partial<OAuthAppConfig>
+  links?: OAuthAppLinks
 }
 
 // ── Activity ──

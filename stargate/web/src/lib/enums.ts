@@ -13,6 +13,7 @@ export const platformLabel = (type: number) => enumLabel('platform', type)
 export const sessionTypeLabel = (type: number) => enumLabel('sessionType', type)
 export const contactTypeLabel = (type: number) => enumLabel('contactType', type)
 export const punishmentTypeLabel = (type: number) => enumLabel('punishmentType', type)
+export const oauthAppStatusLabel = (status: number) => enumLabel('oauthAppStatus', status)
 export const actorTypeLabel = (type: number) => enumLabel('actorType', type)
 
 export function securityModeCopy(mode: string): string {

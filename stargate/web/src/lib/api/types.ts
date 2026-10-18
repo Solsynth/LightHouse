@@ -219,6 +219,59 @@ export interface AuthorizedApp {
   last_used_at?: string
 }
 
+/**
+ * An OAuth app registration owned by the caller (Stargate's own registry,
+ * not Develop). `status` follows the fleet's CustomAppStatus ordinal.
+ */
+export interface OAuthApp {
+  id: string
+  slug: string
+  name: string
+  description: string
+  status: number
+  project_id?: string
+  account_id?: string
+  oauth_config: OAuthAppConfig
+  links: OAuthAppLinks
+  /** Resolved Drive references; absent when the app has no art. */
+  picture?: CloudFileRef
+  background?: CloudFileRef
+  created_at?: string
+  updated_at?: string
+}
+
+export interface OAuthAppConfig {
+  client_uri?: string
+  redirect_uris: string[]
+  post_logout_redirect_uris?: string[]
+  allowed_scopes: string[]
+  allowed_grant_types: string[]
+  require_pkce: boolean
+  allow_offline_access: boolean
+  is_public_client: boolean
+}
+
+export interface OAuthAppLinks {
+  home_page?: string
+  privacy_policy?: string
+  terms_of_service?: string
+}
+
+/**
+ * One client secret or API key of an app. The plaintext `secret` is present
+ * only in the create and rotate replies; every other read omits it.
+ */
+export interface OAuthAppSecret {
+  id: string
+  app_id: string
+  secret?: string
+  description: string
+  expired_at?: string
+  is_oidc: boolean
+  created_at?: string
+  updated_at?: string
+}
+
 export interface ApiKey {
   id: string
   label: string
@@ -442,12 +495,28 @@ export interface PasskeyRegistrationStart {
   timeout: number
 }
 
+/**
+ * A Drive file reference as the API serializes it. `url` addresses the file
+ * directly; every other field is render metadata.
+ */
+export interface CloudFileRef {
+  id: string
+  name?: string
+  url?: string
+  mime_type?: string
+  size?: number
+  hash?: string
+  blurhash?: string
+  width?: number
+  height?: number
+}
+
 /** Client metadata returned by GET /api/auth/open/authorize. */
 export interface AuthorizeClientInfo {
   client_id: string
   client_name?: string
-  picture?: unknown
-  background?: unknown
+  picture?: CloudFileRef
+  background?: CloudFileRef
   home_uri?: string
   policy_uri?: string
   terms_of_service_uri?: string
@@ -462,6 +531,25 @@ export interface AuthorizeClientInfo {
 /** The reply to an approve/deny decision. */
 export interface AuthorizeDecision {
   redirect_uri?: string
+}
+
+/**
+ * GET /api/auth/open/device/code/{userCode}. `status` is the device status the
+ * provider already resolved to a word: pending, approved, declined, expired.
+ */
+export interface DeviceCodeStatus {
+  user_code: string
+  client_id: string
+  client_name: string
+  client_slug: string
+  picture?: CloudFileRef
+  background?: CloudFileRef
+  scopes: string[]
+  status: 'pending' | 'approved' | 'declined' | 'expired'
+  expires_at?: string
+  expires_in: number
+  interval: number
+  verification_uri: string
 }
 
 /** POST /api/auth/qr/generate reply: the payload a phone scans, plus the

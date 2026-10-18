@@ -469,6 +469,11 @@ type OAuthAppEntity struct {
 
 	OauthConfig OAuthAppOauthConfigEntity `gorm:"column:oauth_config;type:jsonb;serializer:json"`
 	Links       OAuthAppLinksEntity       `gorm:"column:links;type:jsonb;serializer:json"`
+	// Picture and Background are nullable jsonb file references, exactly as
+	// account_profiles stores them: a nil pointer is SQL NULL (no art), so a
+	// cleared reference is distinguishable from a stored object.
+	Picture    *datatypes.JSON `gorm:"column:picture;type:jsonb"`
+	Background *datatypes.JSON `gorm:"column:background;type:jsonb"`
 }
 
 func (OAuthAppEntity) TableName() string { return "oauth_apps" }

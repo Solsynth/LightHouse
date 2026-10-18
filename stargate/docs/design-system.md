@@ -119,9 +119,10 @@ Width tiers are decided by route metadata in `web/src/router/index.ts`:
 
 | Tier | Width | Routes |
 | --- | --- | --- |
-| flow | 460 px | sign-in, create account, recovery, captcha, provider callback, authorize, sudo, magic spell |
+| flow | 460 px | sign-in, create account, recovery, captcha, provider callback, sudo, magic spell, device authorization |
+| consent | 880 px | OAuth authorize (the app rail beside its request) |
 | account | 880 px | profile, factors, passkeys, contacts, linked identities, security mode, public profiles |
-| wide | 1120 px | sessions, friends, developers, activity |
+| wide | 1120 px | sessions, friends, developers, OAuth app, activity |
 | full | viewport (full bleed) | all admin pages |
 
 Admin routes set `meta.fullBleed`. The shell then drops its 16 px gutter and
@@ -150,6 +151,11 @@ When the signed-in account has a profile background, it is painted as a fixed
 backdrop behind the shell: cover-scaled, blurred 64 px, at 30% opacity under a
 70% base scrim. It is never fetched when the profile has no background, and a
 failed load falls back to the plain base surface.
+On the consent screen the backdrop belongs to the app being authorized instead:
+that view publishes the client's own background to `ui.appBackdrop` and clears
+it on unmount, and the shell prefers it over the account's. A page that lends a
+backdrop owns its lifetime; leaving one set would paint a third-party app
+behind every later page.
 
 **Never nest a bordered card inside the page card.** Content sits directly on
 the page surface; panels use `bg-base-200/30` to group a region, and the
@@ -311,6 +317,66 @@ declined, expired — with a countdown beside it. Approval is the only state tha
 redeems the challenge, and the watcher stops before the exchange so a second
 poll can never spend the same code twice.
 
+### OAuth consent
+
+`/auth/authorize` is the provider's consent screen. It reads the request from
+`GET /api/auth/open/authorize` and is a request, not a settings page: the app
+introduces itself in a left rail (mark, name, client id, policy and terms
+links) while its scopes and the approve/deny decision sit opposite, so the two
+halves read as one question. That two-column request is why the route takes the
+880 px card instead of the flow width.
+
+The app's mark comes from `AppMark`, which renders the stored Drive picture and
+falls back to a monogram of the app name, then to a neutral glyph. A client
+whose picture has been deleted therefore never leaves a hole; the failure latch
+is keyed on the file id, so a replaced picture gets a fresh chance to load.
+
+The scopes are listed verbatim (the wire value in mono, the explanation in the
+voice face) rather than folded into a sentence: a consent decision is a list of
+capabilities, and `*` must be legible as full access. The page also lends the
+client's background to the shell backdrop (see §4).
+
+### Device authorization
+
+`/auth/device` is the verification URI the device flow mints
+(`{siteUrl}/auth/device?code=XXXX-XXXX`). The user code is the entire state, so
+the page opens on it when the address carries one and otherwise asks for it;
+looking it up moves the code into the address, which keeps the page
+reload-safe and shareable within its short lifetime.
+
+`GET /api/auth/open/device/code/{code}` answers `pending`, `approved`,
+`declined`, or `expired`, and only `pending` can be acted on. The page renders
+exactly one of four things — the code form, the device request with
+approve/deny, the terminal state, or nothing found — and never offers a button
+for a code that is no longer pending, because the server would refuse it.
+Approval binds the code to the signed-in session, so the page requires a
+session while the status lookup does not.
+
+### OAuth apps
+
+`/developers` carries the registrations this account owns; `/developers/apps/:appId`
+is one of them. The two halves of the developer surface are deliberately
+separate panels: authorized apps are who holds access to you, OAuth apps are who
+you are the identity provider for.
+
+Creating a registration asks only for a name, a slug, and a description, then
+opens the app with the standard scope set so the client works immediately.
+Everything else lives on the app: redirect URIs (one per line, since a client
+has several), scopes and grant types as checkboxes over a known vocabulary plus
+a free-form field for a deployment's own scopes, the three client flags, links,
+and the client secrets.
+
+A secret's plaintext is shown once, in a warning-toned block above the list,
+and the list itself is metadata only. Creating, rotating, or deleting a
+secret — and deleting the app — need an elevated session, which the console
+raises through the elevation sheet like any other gated call.
+
+Art is a Drive file id per app (`picture_id`, `background_id`), resolved by the
+server so the stored reference carries the file's own url and dimensions.
+Those two fields and the redirect list are the only ones with a validation
+warning on the page: an empty picture is a monogram, an empty redirect list on
+a production client cannot be saved.
+
 ### Linked identities
 
 The Connections panel lists what is already attached. A second panel,
@@ -461,6 +527,9 @@ same verb through the flow, and state outcomes plainly.
    tooltips.
 5. Add copy to both locale modules with identical key shapes; run the
    formatters instead of hand-formatting values.
-6. Give tables a periodic pager (icon buttons) when the API supports
+6. Gate a route on the module that serves it (`meta.modules`) and hide its nav
+   entry with the same list, so a deployment without that module never offers
+   the link.
+7. Give tables a periodic pager (icon buttons) when the API supports
    `take`/`offset`; show the page count and live total.
-7. Run `make -C web check` (type check, lint, tests, production build).
+8. Run `make -C web check` (type check, lint, tests, production build).

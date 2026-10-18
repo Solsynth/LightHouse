@@ -6,6 +6,7 @@ package oauthappctl
 import (
 	"context"
 	"crypto/rand"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -18,6 +19,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
+	"src.solsynth.dev/sosys/stargate/internal/ports"
 	"src.solsynth.dev/sosys/stargate/internal/store"
 )
 
@@ -26,6 +28,9 @@ type Deps struct {
 	Store *store.Store
 	Perm  *permission.Service
 	Log   *slog.Logger
+	// Ports resolves app art through the Drive file port. An unavailable
+	// Files provider (or a nil set) means art cannot be set here.
+	Ports *ports.Set
 	// Invalidate drops the OIDC provider's cached view of a client. An app
 	// edit must be visible to the provider immediately, not after its TTL.
 	Invalidate func(ctx context.Context, appID string, slugs ...string)
@@ -102,6 +107,10 @@ type appRequest struct {
 	ProjectId   *string             `json:"project_id"`
 	OauthConfig *oauthConfigRequest `json:"oauth_config"`
 	Links       *oauthLinksRequest  `json:"links"`
+	// PictureId/BackgroundId select the Drive file for the app's art. nil
+	// leaves the current art unchanged; "" clears it.
+	PictureId    *string `json:"picture_id"`
+	BackgroundId *string `json:"background_id"`
 }
 
 type secretRequest struct {
@@ -341,6 +350,16 @@ func (c *controller) applyRequest(ctx context.Context, request *appRequest, app 
 			app.Links.TermsOfService = *request.Links.TermsOfService
 		}
 	}
+	picture, err := c.resolveArt(ctx, request.PictureId, app.Picture)
+	if err != nil {
+		return err
+	}
+	app.Picture = picture
+	background, err := c.resolveArt(ctx, request.BackgroundId, app.Background)
+	if err != nil {
+		return err
+	}
+	app.Background = background
 	return validateApp(app)
 }
 
@@ -388,6 +407,37 @@ func applyOauthConfig(request *oauthConfigRequest, app *model.OAuthApp) {
 	if request.IsPublicClient != nil {
 		app.OauthConfig.IsPublicClient = *request.IsPublicClient
 	}
+}
+
+// resolveArt maps a picture_id/background_id request field onto the stored
+// reference. A nil ID leaves the current art untouched and "" clears it; any
+// other value is resolved through the Drive file port, exactly like
+// profilectl.resolveFile. An unavailable provider is an error, never a
+// silent no-op: the client must learn art cannot be set here.
+func (c *controller) resolveArt(ctx context.Context, fileID *string, current *model.SnCloudFileReferenceObject) (*model.SnCloudFileReferenceObject, error) {
+	if fileID == nil {
+		return current, nil
+	}
+	id := strings.TrimSpace(*fileID)
+	if id == "" {
+		return nil, nil
+	}
+	if c.d.Ports == nil || c.d.Ports.Files == nil || !c.d.Ports.Files.Available() {
+		return nil, errArtUnavailable
+	}
+	resolveCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	file, err := c.d.Ports.Files.Resolve(resolveCtx, id)
+	if err != nil {
+		if c.d.Log != nil {
+			c.d.Log.Warn("resolve oauth app art", "file", id, "error", err)
+		}
+		return nil, fmt.Errorf("%w: %v", errArtUnavailable, err)
+	}
+	if file == nil {
+		return nil, errArtUnavailable
+	}
+	return file, nil
 }
 
 // validateApp enforces the invariants the OIDC provider relies on.

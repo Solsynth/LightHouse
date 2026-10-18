@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -43,6 +44,8 @@ type sourceApp struct {
 	Status      int
 	OauthConfig *string
 	Links       *string
+	Picture     *string
+	Background  *string
 	ProjectID   *uuid.UUID
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
@@ -131,6 +134,7 @@ func importApps(ctx context.Context, source, target *gorm.DB, opts module.Import
 
 	rows, err := source.WithContext(ctx).Raw(`
 		SELECT id, slug, name, description, status, oauth_config, links,
+		       picture, background,
 		       project_id, created_at, updated_at, deleted_at
 		FROM custom_apps`).Rows()
 	if err != nil {
@@ -347,7 +351,14 @@ func buildOAuthApp(app sourceApp) (*store.OAuthAppEntity, error) {
 	if err != nil {
 		return nil, fmt.Errorf("app %s: links: %w", app.ID, err)
 	}
-
+	picture, err := rawJSONColumn(app.Picture)
+	if err != nil {
+		return nil, fmt.Errorf("app %s: picture: %w", app.ID, err)
+	}
+	background, err := rawJSONColumn(app.Background)
+	if err != nil {
+		return nil, fmt.Errorf("app %s: background: %w", app.ID, err)
+	}
 	entity := &store.OAuthAppEntity{
 		ID: app.ID,
 		EntityBase: store.EntityBase{
@@ -365,6 +376,10 @@ func buildOAuthApp(app sourceApp) (*store.OAuthAppEntity, error) {
 			PrivacyPolicy:  links.str("privacy_policy"),
 			TermsOfService: links.str("terms_of_service"),
 		},
+		// Art is copied as the raw jsonb Develop held, exactly like
+		// oauth_config/links: no defaults are invented for an absent column.
+		Picture:    picture,
+		Background: background,
 	}
 	if app.DeletedAt != nil {
 		entity.DeletedAt = gorm.DeletedAt{Time: *app.DeletedAt, Valid: true}
@@ -503,4 +518,22 @@ func derefString(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+// rawJSONColumn copies a nullable source jsonb column verbatim. Nil, empty
+// and the literal "null" all import as SQL NULL, matching the tolerant
+// treatment of oauth_config and links (an absent column invents nothing).
+func rawJSONColumn(value *string) (*datatypes.JSON, error) {
+	if value == nil {
+		return nil, nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" || trimmed == "null" {
+		return nil, nil
+	}
+	if !json.Valid([]byte(trimmed)) {
+		return nil, fmt.Errorf("invalid jsonb")
+	}
+	raw := datatypes.JSON(trimmed)
+	return &raw, nil
 }

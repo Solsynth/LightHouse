@@ -71,9 +71,10 @@ func OIDC(c *core.Services, p *ports.Set) oidcctl.Deps {
 	}
 }
 
-// OAuthApp builds the OAuth app controller dependencies.
-func OAuthApp(c *core.Services) oauthappctl.Deps {
-	deps := oauthappctl.Deps{Store: c.Store, Perm: c.Perm, Log: c.Log}
+// OAuthApp builds the OAuth app controller dependencies. The ports set
+// resolves app art through the Drive file port.
+func OAuthApp(c *core.Services, p *ports.Set) oauthappctl.Deps {
+	deps := oauthappctl.Deps{Store: c.Store, Perm: c.Perm, Log: c.Log, Ports: p}
 	if c.Redis != nil && c.Redis.Cache != nil {
 		cache := c.Redis.Cache
 		deps.Invalidate = func(ctx context.Context, appID string, slugs ...string) {

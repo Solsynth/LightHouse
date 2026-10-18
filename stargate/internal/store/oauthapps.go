@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
@@ -25,7 +26,9 @@ func (s *Store) CreateOAuthApp(ctx context.Context, app *model.OAuthApp) error {
 	return s.DB.WithContext(ctx).Create(entity).Error
 }
 
-// UpdateOAuthApp replaces an app's mutable fields.
+// UpdateOAuthApp replaces an app's mutable fields. The column map is
+// explicit, so it must carry every writable column: picture/background are
+// listed so a PATCH can both set and clear the app's art.
 func (s *Store) UpdateOAuthApp(ctx context.Context, app *model.OAuthApp) error {
 	entity, err := oauthAppToEntity(app)
 	if err != nil {
@@ -40,6 +43,8 @@ func (s *Store) UpdateOAuthApp(ctx context.Context, app *model.OAuthApp) error {
 			"status":       entity.Status,
 			"oauth_config": entity.OauthConfig,
 			"links":        entity.Links,
+			"picture":      entity.Picture,
+			"background":   entity.Background,
 			"updated_at":   entity.UpdatedAt,
 		}).Error
 }
@@ -235,6 +240,20 @@ func (s *Store) DeleteOAuthAppSecret(ctx context.Context, appID, secretID string
 		Delete(&OAuthAppSecretEntity{}).Error
 }
 
+// decodeFileReference maps a nullable jsonb art column onto the model. A nil
+// column is SQL NULL, and the JSON literal null decodes to a nil pointer;
+// both mean the app has no art.
+func decodeFileReference(raw *datatypes.JSON) *model.SnCloudFileReferenceObject {
+	if raw == nil || len(*raw) == 0 {
+		return nil
+	}
+	var ref *model.SnCloudFileReferenceObject
+	if err := decodeJSON(raw, &ref); err != nil {
+		return nil
+	}
+	return ref
+}
+
 // ── Mappers ────────────────────────────────────────────────────────────────
 
 func oauthAppFromEntity(entity *OAuthAppEntity) *model.OAuthApp {
@@ -261,9 +280,13 @@ func oauthAppFromEntity(entity *OAuthAppEntity) *model.OAuthApp {
 			PrivacyPolicy:  entity.Links.PrivacyPolicy,
 			TermsOfService: entity.Links.TermsOfService,
 		},
-		CreatedAt: timePtr(&entity.CreatedAt),
-		UpdatedAt: timePtr(&entity.UpdatedAt),
-		DeletedAt: deletedTime(entity.DeletedAt),
+		// The art columns are nullable jsonb: nil is SQL NULL, so a cleared
+		// reference decodes to a nil Picture/Background.
+		Picture:    decodeFileReference(entity.Picture),
+		Background: decodeFileReference(entity.Background),
+		CreatedAt:  timePtr(&entity.CreatedAt),
+		UpdatedAt:  timePtr(&entity.UpdatedAt),
+		DeletedAt:  deletedTime(entity.DeletedAt),
 	}
 }
 
@@ -290,6 +313,24 @@ func oauthAppToEntity(app *model.OAuthApp) (*OAuthAppEntity, error) {
 			PrivacyPolicy:  app.Links.PrivacyPolicy,
 			TermsOfService: app.Links.TermsOfService,
 		},
+	}
+	// An absent reference must become SQL NULL, not the jsonb literal null,
+	// so a request that clears the art reads back as a nil pointer. The check
+	// is explicit because a typed nil pointer inside `any` is not == nil and
+	// json.Marshal would emit the literal null instead.
+	if app.Picture != nil {
+		encoded, err := encodeJSON(app.Picture)
+		if err != nil {
+			return nil, err
+		}
+		entity.Picture = &encoded
+	}
+	if app.Background != nil {
+		encoded, err := encodeJSON(app.Background)
+		if err != nil {
+			return nil, err
+		}
+		entity.Background = &encoded
 	}
 	now := time.Now().UTC()
 	entity.EntityBase.CreatedAt = now

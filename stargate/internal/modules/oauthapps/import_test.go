@@ -229,6 +229,14 @@ func TestOAuthAppImport(t *testing.T) {
 	if len(client.RedirectURIs) != 1 || client.RedirectURIs[0] != "https://client.example/cb" {
 		t.Fatalf("resolved redirect URIs = %v", client.RedirectURIs)
 	}
+	// Develop's art jsonb is copied verbatim and reaches the port shape, so
+	// a migrated app keeps its consent-screen art.
+	if client.Picture == nil || client.Picture.Id != "art-picture" || client.Picture.Url != "https://cdn.example/alpha.png" {
+		t.Fatalf("resolved picture = %+v", client.Picture)
+	}
+	if client.Background != nil {
+		t.Fatalf("resolved background = %+v; want nil", client.Background)
+	}
 	valid, err := resolver.CheckSecret(ctx, client.ID, "oidc-secret-value")
 	if err != nil {
 		t.Fatalf("verify imported secret: %v", err)
@@ -291,6 +299,8 @@ func seedDevelopSource(t *testing.T, ctx context.Context, db *gorm.DB) {
 			status integer NOT NULL DEFAULT 0,
 			oauth_config jsonb,
 			links jsonb,
+			picture jsonb,
+			background jsonb,
 			project_id uuid,
 			created_at timestamptz NOT NULL DEFAULT now(),
 			updated_at timestamptz NOT NULL DEFAULT now(),
@@ -308,10 +318,12 @@ func seedDevelopSource(t *testing.T, ctx context.Context, db *gorm.DB) {
 			deleted_at timestamptz
 		)`,
 		// Fully specified, snake_case keys.
-		`INSERT INTO custom_apps (id, slug, name, description, status, oauth_config, links, project_id) VALUES (
+		`INSERT INTO custom_apps (id, slug, name, description, status, oauth_config, links, picture, background, project_id) VALUES (
 			'aaaaaaaa-0000-0000-0000-000000000001', 'alpha', 'Alpha', 'first', 2,
 			'{"client_uri":"https://client.example","redirect_uris":["https://client.example/cb"],"allowed_scopes":["openid","profile"],"allowed_grant_types":["authorization_code"],"require_pkce":true}'::jsonb,
 			'{"home_page":"https://client.example","privacy_policy":"https://client.example/privacy","terms_of_service":null}'::jsonb,
+			'{"id":"art-picture","name":"alpha.png","url":"https://cdn.example/alpha.png"}'::jsonb,
+			NULL,
 			'11111111-0000-0000-0000-000000000001')`,
 		// Keys in the casing System.Text.Json may have written.
 		`INSERT INTO custom_apps (id, slug, name, status, oauth_config, project_id) VALUES (

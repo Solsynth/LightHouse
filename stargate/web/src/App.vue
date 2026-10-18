@@ -147,7 +147,14 @@ const backgroundUrl = computed(
 )
 const publicPath = computed(() => `/@${encodeURIComponent(session.account?.name ?? '')}`)
 const avatarFailed = ref(false)
-const backgroundFailed = ref(false)
+
+// The consent screen lends the requesting app's own background to the shell,
+// so that page is painted by the app being authorized rather than by the
+// account authorizing it. Any other page falls back to the account backdrop.
+const backdropUrl = computed(
+  () => ui.appBackdrop || (background.value ? backgroundUrl.value : ''),
+)
+const backdropFailed = ref(false)
 
 const menuOpen = ref(false)
 const menuRoot = ref<HTMLElement | null>(null)
@@ -179,12 +186,12 @@ watch(
   },
 )
 
-watch(
-  () => session.account?.profile?.background?.id,
-  () => {
-    backgroundFailed.value = false
-  },
-)
+// A page that lends a backdrop (the consent screen) can swap it while the
+// shell stays mounted, so the failure latch resets with the URL, not just with
+// the account's own background.
+watch(backdropUrl, () => {
+  backdropFailed.value = false
+})
 
 // The card is the whole page, so a route or notice changing the content should
 // move its edge, not snap it. The region is measured from a real height and
@@ -262,15 +269,15 @@ function changeLocale(event: Event) {
     :class="fullBleed ? '' : 'px-4 py-8 sm:py-12'"
   >
     <div
-      v-if="session.signedIn && background && !backgroundFailed"
+      v-if="session.signedIn && backdropUrl && !backdropFailed"
       class="pointer-events-none fixed inset-0 z-0 overflow-hidden"
       aria-hidden="true"
     >
       <img
-        :src="backgroundUrl"
+        :src="backdropUrl"
         alt=""
         class="h-full w-full scale-110 object-cover opacity-30 blur-3xl"
-        @error="backgroundFailed = true"
+        @error="backdropFailed = true"
       />
       <div class="absolute inset-0 bg-base-100/70" />
     </div>

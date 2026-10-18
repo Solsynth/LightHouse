@@ -90,7 +90,7 @@ func (i *instance) ProvidePorts(_ context.Context, host *module.Host) error {
 }
 
 func (i *instance) Configure(_ context.Context, host *module.Host) error {
-	oauthappctl.Register(host.API, common.OAuthApp(host.Core))
+	oauthappctl.Register(host.API, common.OAuthApp(host.Core, ports.FromRegistry(host.Ports)))
 	// Token validation resolves an OAuth session's client slug. Point it at
 	// this module's registry so a Stargate-owned app validates without the
 	// Develop service.
@@ -314,6 +314,10 @@ func appToPort(app *model.OAuthApp) *ports.OAuthApp {
 		RequirePkce:            app.OauthConfig.RequirePkce,
 		AllowOfflineAccess:     app.OauthConfig.AllowOfflineAccess,
 		IsPublicClient:         app.OauthConfig.IsPublicClient,
+		// The consent screen renders these; clientFromPort already carries
+		// them into the provider's cached client.
+		Picture:    app.Picture,
+		Background: app.Background,
 	}
 	if app.Links.HomePage != "" {
 		value := app.Links.HomePage

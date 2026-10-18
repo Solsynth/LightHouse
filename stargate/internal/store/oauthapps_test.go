@@ -148,6 +148,66 @@ func TestOAuthAppStoreRoundTrip(t *testing.T) {
 	}
 }
 
+// TestOAuthAppArtRoundTrip proves the nullable jsonb art columns survive a
+// create, read, update and clear: an absent value must end up as SQL NULL.
+func TestOAuthAppArtRoundTrip(t *testing.T) {
+	st := oauthAppStore(t)
+	ctx := context.Background()
+	app := sampleApp("aaaaaaaa-1111-1111-1111-111111111111", "art-app", "bbbbbbbb-2222-2222-2222-222222222222")
+
+	if err := st.CreateOAuthApp(ctx, app); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	plain, err := st.GetOAuthAppByID(ctx, app.Id)
+	if err != nil {
+		t.Fatalf("get without art: %v", err)
+	}
+	if plain.Picture != nil || plain.Background != nil {
+		t.Fatalf("new app has art: %+v %+v", plain.Picture, plain.Background)
+	}
+
+	picture := &model.SnCloudFileReferenceObject{Id: "file-picture", Name: "avatar.png", Url: "https://cdn.example/avatar.png"}
+	background := &model.SnCloudFileReferenceObject{Id: "file-background", Name: "banner.png", Url: "https://cdn.example/banner.png"}
+	plain.Picture = picture
+	plain.Background = background
+	if err := st.UpdateOAuthApp(ctx, plain); err != nil {
+		t.Fatalf("set art: %v", err)
+	}
+
+	withArt, err := st.GetOAuthAppByID(ctx, app.Id)
+	if err != nil {
+		t.Fatalf("get with art: %v", err)
+	}
+	if withArt.Picture == nil || withArt.Picture.Id != picture.Id || withArt.Picture.Url != picture.Url {
+		t.Fatalf("picture = %+v", withArt.Picture)
+	}
+	if withArt.Background == nil || withArt.Background.Id != background.Id {
+		t.Fatalf("background = %+v", withArt.Background)
+	}
+
+	// Clearing writes SQL NULL, not the jsonb literal null.
+	withArt.Picture = nil
+	withArt.Background = nil
+	if err := st.UpdateOAuthApp(ctx, withArt); err != nil {
+		t.Fatalf("clear art: %v", err)
+	}
+	cleared, err := st.GetOAuthAppByID(ctx, app.Id)
+	if err != nil {
+		t.Fatalf("get after clear: %v", err)
+	}
+	if cleared.Picture != nil || cleared.Background != nil {
+		t.Fatalf("art after clear = %+v %+v", cleared.Picture, cleared.Background)
+	}
+	var nullColumns int
+	if err := st.DB.Raw(`SELECT count(*) FROM oauth_apps WHERE id = ? AND picture IS NULL AND background IS NULL`,
+		app.Id).Row().Scan(&nullColumns); err != nil {
+		t.Fatalf("read art columns: %v", err)
+	}
+	if nullColumns != 1 {
+		t.Fatal("cleared art was stored as jsonb null instead of SQL NULL")
+	}
+}
+
 func TestOAuthAppSecretLifecycle(t *testing.T) {
 	st := oauthAppStore(t)
 	ctx := context.Background()

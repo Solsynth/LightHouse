@@ -52,6 +52,13 @@ export default {
       0: 'account',
       1: 'group',
     },
+    // CustomAppStatus: only a production client enforces its redirect list.
+    oauthAppStatus: {
+      0: 'developing',
+      1: 'staging',
+      2: 'production',
+      3: 'suspended',
+    },
     securityMode: {
       default: 'Risk-based. The service asks for extra factors when a sign-in looks unfamiliar.',
       lockdown: 'Always ask for every enabled factor.',

@@ -4,6 +4,11 @@ declare module '@carbon/icons-vue' {
   import type { DefineComponent } from 'vue'
 
   export const Activity16: DefineComponent
+  export const Add16: DefineComponent
+  export const Certificate16: DefineComponent
+  export const CloudUpload16: DefineComponent
+  export const Key16: DefineComponent
+  export const Plug16: DefineComponent
   export const Api16: DefineComponent
   export const Checkmark16: DefineComponent
   export const ChevronLeft16: DefineComponent

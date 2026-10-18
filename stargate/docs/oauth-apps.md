@@ -72,10 +72,11 @@ Request shape:
   "description": "optional",
   "status": 2,
   "project_id": "optional-develop-project-id",
+  "picture_id": "optional-drive-file-id",
+  "background_id": "optional-drive-file-id",
   "oauth_config": {
     "client_uri": "https://client.example",
     "redirect_uris": ["https://client.example/oauth/callback"],
-    "post_logout_redirect_uris": ["https://client.example/logout"],
     "allowed_scopes": ["openid", "profile", "email"],
     "allowed_grant_types": ["authorization_code", "refresh_token"],
     "require_pkce": true,
@@ -93,6 +94,16 @@ Request shape:
 `status` follows Develop's `CustomAppStatus`: `0` developing, `1` staging,
 `2` production, `3` suspended. Only a production client enforces its redirect
 URI list, matching the provider's authorize-time behaviour.
+
+`picture_id` and `background_id` name Drive files and are the only fields a
+request resolves rather than stores verbatim: the server asks the `files` port
+for the file and stores the resulting `SnCloudFileReferenceObject`, so a read
+carries the url and dimensions the consent screen needs. Omitting a field
+leaves the stored art alone; sending `""` clears it. A deployment with no Files
+provider refuses the field with `OAUTH_APP_ART_UNAVAILABLE` rather than
+dropping it silently. Reads include `picture`/`background` when set, and the
+provider serves them on the consent (`GET /api/auth/open/authorize`) and device
+status (`GET /api/auth/open/device/code/{userCode}`) responses.
 
 Secrets accept `{"description": "...", "expires_in": "720h", "type": "oidc"}`.
 `type` defaults to `oidc`; `api_key` marks a non-OIDC key. `expires_in`
@@ -115,7 +126,7 @@ The module owns two tables, migrated only while it is enabled:
 
 | Table | Contents |
 |---|---|
-| `oauth_apps` | Client registration plus its `oauth_config` and `links` jsonb. |
+| `oauth_apps` | Client registration plus its `oauth_config` and `links` jsonb, and the `picture`/`background` file references. |
 | `oauth_app_secrets` | Client secrets and API keys (`is_oidc` distinguishes them). |
 
 Secrets are stored in plaintext, as Develop stores them: verification compares
@@ -156,7 +167,26 @@ Develop's provider reads through a null config and sees no scopes, so the
 import does not grant authorization the client never had. Inside a present
 config, an absent key takes the same default Develop itself uses.
 
+A source app's `picture` and `background` jsonb copy through unchanged, so a
+migrated registration keeps the art its consent screen already showed. Both are
+optional in Develop and stay absent here when the source has none.
+
 Disabling `app.solian.id.oauthapps` unmounts `/api/oauth-apps` and drops this
 module's provider from the port. Existing tables and rows are never dropped.
 With Develop unconfigured, the provider then answers `Client not found`; with
 Develop configured, its custom apps keep working.
+
+## Console surface
+
+`/developers` adds an **OAuth Apps** panel above the authorized-app list: every
+registration this account owns, each opening at `/developers/apps/{appId}`.
+Creating one asks for a name, a slug, and a description and starts it developing
+with `openid`, `profile`, `email` and the `authorization_code`/`refresh_token`
+grants, so the client is usable before any further setup.
+
+The app page edits identity, OAuth configuration, links, and the client
+secrets. Creating, rotating, or deleting a secret — and deleting the app — are
+elevation-gated, and the console raises its own elevation sheet. A secret's
+plaintext is displayed exactly once, above the metadata-only list. Art is
+entered as Drive file ids and resolved by the server, so the page only has to
+say that a deployment without Drive cannot store art at all.

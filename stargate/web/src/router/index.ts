@@ -69,10 +69,23 @@ const router = createRouter({
       meta: { public: true, titleKey: 'app.titles.verification' },
     },
     {
+      // The consent screen is a two-column request — the app on one side, its
+      // scopes and the decision on the other — so it takes the account card
+      // rather than the single-column flow width.
       path: '/auth/authorize',
       name: 'authorize',
       component: () => import('@/views/AuthorizeView.vue'),
-      meta: { titleKey: 'app.titles.authorizeApp', narrow: true },
+      meta: { titleKey: 'app.titles.authorizeApp' },
+    },
+    {
+      // The device flow's verification URI: Stargate mints
+      // `{siteUrl}/auth/device?code=XXXX-XXXX` and ships it in the device-code
+      // response, so this is the path a person is told to open. Approving
+      // needs a session; the user code is what identifies the request.
+      path: '/auth/device',
+      name: 'device',
+      component: () => import('@/views/DeviceView.vue'),
+      meta: { titleKey: 'app.titles.device' },
     },
     {
       path: '/auth/sudo',
@@ -155,6 +168,19 @@ const router = createRouter({
       name: 'developers',
       component: () => import('@/views/DevelopersView.vue'),
       meta: { titleKey: 'app.titles.developers', wide: true, modules: [MODULES.accounts] },
+    },
+    {
+      // One registration: its identity, OAuth configuration, and client
+      // secrets. `appId` accepts the id or the slug on the server, but links
+      // carry the id so a rename never strands an open tab.
+      path: '/developers/apps/:appId',
+      name: 'oauth-app',
+      component: () => import('@/views/OAuthAppView.vue'),
+      meta: {
+        titleKey: 'app.titles.oauthApp',
+        wide: true,
+        modules: [MODULES.accounts, MODULES.oauthapps],
+      },
     },
     {
       path: '/activity',

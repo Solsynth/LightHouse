@@ -121,6 +121,9 @@ type deviceCodeStatusResponse struct {
 	ExpiresIn       int         `json:"expires_in"`
 	Interval        int         `json:"interval"`
 	VerificationUri string      `json:"verification_uri"`
+	// Same art the consent screen renders; omitted when the client has none.
+	Picture    *model.SnCloudFileReferenceObject `json:"picture,omitempty"`
+	Background *model.SnCloudFileReferenceObject `json:"background,omitempty"`
 }
 
 func (s *service) badRequest(c *gin.Context, code, description string) {
@@ -567,10 +570,13 @@ func (s *service) handleDeviceCodeStatus(c *gin.Context) {
 	clientId := info.ClientId
 	clientSlug := ""
 	clientName := info.ClientId
+	var clientPicture, clientBackground *model.SnCloudFileReferenceObject
 	if client != nil {
 		clientId = client.Slug
 		clientName = client.Name
 		clientSlug = client.Slug
+		clientPicture = client.Picture
+		clientBackground = client.Background
 	}
 	statusText := []string{"pending", "approved", "declined", "expired"}[info.Status]
 	c.JSON(http.StatusOK, deviceCodeStatusResponse{
@@ -584,6 +590,8 @@ func (s *service) handleDeviceCodeStatus(c *gin.Context) {
 		ExpiresIn:       max(0, int(info.ExpiresAt.Sub(now).Seconds())),
 		Interval:        info.PollingIntervalSeconds,
 		VerificationUri: s.deviceVerificationUri(),
+		Picture:         clientPicture,
+		Background:      clientBackground,
 	})
 }
 

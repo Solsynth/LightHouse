@@ -20,9 +20,14 @@ type OAuthApp struct {
 	AccountId   *string             `json:"account_id,omitempty"`
 	OauthConfig OAuthAppOauthConfig `json:"oauth_config"`
 	Links       OAuthAppLinks       `json:"links"`
-	CreatedAt   *Time               `json:"created_at,omitempty"`
-	UpdatedAt   *Time               `json:"updated_at,omitempty"`
-	DeletedAt   *Time               `json:"deleted_at,omitempty"`
+	// Picture and Background are the art the consent screen renders,
+	// resolved through the Drive file port and stored as jsonb references
+	// (nil when the app has none).
+	Picture    *SnCloudFileReferenceObject `json:"picture,omitempty"`
+	Background *SnCloudFileReferenceObject `json:"background,omitempty"`
+	CreatedAt  *Time                       `json:"created_at,omitempty"`
+	UpdatedAt  *Time                       `json:"updated_at,omitempty"`
+	DeletedAt  *Time                       `json:"deleted_at,omitempty"`
 }
 
 // OAuthAppOauthConfig mirrors SnCustomAppOauthConfig.

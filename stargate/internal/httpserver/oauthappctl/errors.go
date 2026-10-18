@@ -26,8 +26,11 @@ var (
 	errOwnerRequired   = errors.New("an app needs an owner")
 	errOwnerAmbiguous  = errors.New("ownership cannot be changed after creation")
 	errRequestInvalid  = errors.New("invalid request")
-	errForbidden       = errors.New("you do not have permission to manage this app")
-	errUnauthorized    = errors.New("authentication is required")
+	// errArtUnavailable covers both a deployment without a Files provider
+	// and a failed file lookup: either way the requested art cannot be set.
+	errArtUnavailable = errors.New("app art is unavailable")
+	errForbidden      = errors.New("you do not have permission to manage this app")
+	errUnauthorized   = errors.New("authentication is required")
 )
 
 func respondError(c *gin.Context, err error) {
@@ -46,6 +49,8 @@ func respondError(c *gin.Context, err error) {
 		jsonError(c, http.StatusBadRequest, "OAUTH_APP_REDIRECT_URIS_REQUIRED", "Redirect URIs are required for a production client.")
 	case errors.Is(err, errOwnerRequired), errors.Is(err, errOwnerAmbiguous):
 		jsonError(c, http.StatusBadRequest, "OAUTH_APP_OWNER_INVALID", "An app is owned by a project or by an account, and ownership cannot be changed.")
+	case errors.Is(err, errArtUnavailable):
+		jsonError(c, http.StatusBadRequest, "OAUTH_APP_ART_UNAVAILABLE", "App art cannot be resolved in this deployment.")
 	case errors.Is(err, errForbidden):
 		jsonError(c, http.StatusForbidden, "OAUTH_APP_FORBIDDEN", "You do not have permission to manage this app.")
 	case errors.Is(err, errUnauthorized):
