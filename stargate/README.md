@@ -153,6 +153,13 @@ Other apps on the cookie domain reuse that page instead of building their own:
 signed in. The session cookie is scoped by `[auth] cookieDomain`, and only a
 host that cookie reaches is accepted as a landing target, so a shared link
 cannot turn the page into an open redirect.
+An app on another registrable domain cannot share that cookie — a cookie has
+one `Domain` attribute and the browser refuses one that does not match the
+request host — so it is handed a single-use code instead: the console mints one
+for the app's host (`[auth.handoffClients]`), the app's own server trades it at
+`POST /api/auth/handoff/redeem` for tokens it stores in its own cookie, and
+`POST /api/auth/handoff/renew` keeps that session alive past the access token's
+lifetime. See [`docs/design-system.md`](docs/design-system.md) for the flow.
 Linking a provider from **Settings → Linked Identities** uses the same login
 endpoint with `flow=connect`, which attaches the identity to the signed-in
 account and returns to the console.

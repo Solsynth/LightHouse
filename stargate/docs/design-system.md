@@ -340,23 +340,48 @@ mounted. The console therefore never offers a button that ends in an error.
 
 ### Shared sign-in and the hand-off target
 
-Any other app on the same cookie domain reuses this page instead of shipping
-its own login form: it opens `{siteUrl}/sign-in?redirectUri={its callback}`
-(a page of this console uses `?next={path}`). The session cookie is scoped by
-`[auth] cookieDomain`, so a subdomain shares it and the person arrives signed
-in; `POST /api/auth/callback/{provider}` also accepts the return URL, which is
-how a provider round-trip started from the shared page gets back to the app.
+Any other app reuses this page instead of shipping its own login form: it opens
+`{siteUrl}/sign-in?redirectUri={its callback}` (a page of this console uses
+`?next={path}`). It gets the session back one of two ways, decided by where it
+lives.
+
+An app on the cookie domain shares it directly: `[auth] cookieDomain` scopes
+the session cookie, so a subdomain has it before the page even renders.
+`POST /api/auth/callback/{provider}` also accepts the return URL, which is how
+a provider round-trip started from the shared page gets back to the app.
+
+An app on another registrable domain cannot, because a cookie carries one
+Domain attribute and a browser refuses one that does not match the request
+host (RFC 6265 §4.1.2.3). It is handed a single-use code instead:
+
+| Step | Who | What |
+| --- | --- | --- |
+| 1 | console | `POST /api/auth/handoff/session {redirect_uri}` — mints a code bound to the session, the app, and the validated target |
+| 2 | browser | navigates to `{redirect_uri}?code=…` |
+| 3 | app's server | `POST /api/auth/handoff/redeem {client_id, code, client_secret}` — trades it for a token pair |
+| 4 | app's server | sets its own session cookie on its own domain |
+
+The console never names a client id: the issuer resolves the app from the
+target host, so only a host a client is registered for (`[auth.handoffClients]`)
+earns a code. The code is single-use, expires in 60s, and is redeemable only by
+the app it was issued to — a secret for a confidential client, PKCE for a
+public one. The app's refresh token is traded at `POST /api/auth/handoff/renew`
+so the session outlives the short access-token lifetime, and it stays bound to
+the same session: revoking that session revokes the app's too.
 
 The address is written by the caller — and therefore by anyone who can write a
 link — so it is a policy decision, made on the server:
 
-- `GET /api/auth/sign-in/config` publishes `redirect_hosts` (the cookie domain
-  plus the site host) and `require_https` (the Secure flag on the cookie). The
-  console refuses a target those rules refuse before navigating away.
+- `GET /api/auth/sign-in/config` publishes `redirect_hosts` (the cookie domain,
+  the site host, and every registered hand-off host) and `require_https` (the
+  Secure flag on the cookie). The console refuses a target those rules refuse
+  before navigating away.
 - `GET /api/auth/login/{provider}?flow=login&returnUrl=…` drops a return URL
   that names anything else and falls back to `{siteUrl}/auth/success`.
 - A refused target never blocks the sign-in: the console says once that the
-  link points somewhere it cannot sign you in, and continues to `/account`.
+  link points somewhere it cannot sign you in, and continues to `/account`. A
+  refused hand-off is treated the same way, rather than navigating away to
+  arrive signed out.
 
 The create-account and reset-password links carry the same parameters through,
 so a person who arrives without an account still lands back in the app that
