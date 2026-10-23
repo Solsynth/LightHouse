@@ -12,6 +12,7 @@
  * profile art should not pay for it.
  */
 
+import { SNFS_ORIGIN } from './media'
 import type { PickerFile } from './picker-types'
 
 export type { PickerFile }
@@ -41,15 +42,10 @@ declare global {
 }
 
 /**
- * Where the drive lives. `VITE_SNFS_URL` points a dev or self-hosted console at
- * its own drive (the picker must be same-site with the drive for the session
- * cookie to survive the frame).
+ * Where the picker page lives. `VITE_SNFS_URL` points a dev or self-hosted
+ * console at its own drive; the file reads go to `DRIVE_API` instead, because
+ * the fleet serves the page and the API from different hosts.
  */
-export const SNFS_ORIGIN = (import.meta.env.VITE_SNFS_URL || 'https://fs.solian.app').replace(
-  /\/+$/,
-  '',
-)
-
 export const PICKER_FRAME_URL = `${SNFS_ORIGIN}/picker`
 
 let loading: Promise<PickerSdk> | null = null

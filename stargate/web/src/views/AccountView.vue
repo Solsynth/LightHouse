@@ -10,9 +10,13 @@ import { accountApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
 import type { Profile } from '@/lib/api/types'
 import { age, utcStamp } from '@/lib/format'
+import { installMediaElements } from '@/lib/media'
 import { pickImage } from '@/lib/picker'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
+
+// Register the shared element library before the first render.
+installMediaElements()
 
 const { t } = useI18n()
 const session = useSessionStore()
@@ -204,12 +208,14 @@ onMounted(loadForm)
               <div
                 class="grid h-[104px] w-[104px] place-items-center overflow-hidden rounded-[2px] border border-line bg-base-300"
               >
-                <img
-                  v-if="profile?.picture"
-                  :src="`/api/accounts/${encodeURIComponent(session.account?.name ?? '')}/picture`"
-                  alt=""
-                  class="h-full w-full object-cover"
-                />
+                <!-- The picture is a Drive file id: sk-media resolves it and
+                     draws an image, so this panel and every other art surface
+                     share one renderer. -->
+                <sk-media
+                  v-if="profile?.picture?.id"
+                  :file="profile.picture.id"
+                  class="block h-full w-full"
+                ></sk-media>
                 <span v-else class="text-2xs text-faint">{{ t('account.noPicture') }}</span>
               </div>
               <div class="flex flex-wrap gap-1.5">
@@ -237,12 +243,11 @@ onMounted(loadForm)
               <div
                 class="grid h-[104px] place-items-center overflow-hidden rounded-[2px] border border-line bg-base-300"
               >
-                <img
-                  v-if="profile?.background"
-                  :src="`/api/accounts/${encodeURIComponent(session.account?.name ?? '')}/background`"
-                  alt=""
-                  class="h-full w-full object-cover"
-                />
+                <sk-media
+                  v-if="profile?.background?.id"
+                  :file="profile.background.id"
+                  class="block h-full w-full"
+                ></sk-media>
                 <span v-else class="text-2xs text-faint">{{ t('account.noBackground') }}</span>
               </div>
               <div class="flex flex-wrap gap-1.5">

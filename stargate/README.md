@@ -135,6 +135,19 @@ so the console uses same-origin URLs in both modes). `make web-check` runs the
 type checker, linter, unit tests, and a production build. `web/Makefile` has
 the same targets scoped to the frontend.
 
+Profile art and every other Drive-backed picture are drawn by `sk-media` from
+`@solsynth/sunkenland` (GitHub Packages). That registry authenticates every
+install, so `web/.npmrc` reads `NODE_AUTH_TOKEN` from the environment — an
+install needs a token with `read:packages`:
+
+```sh
+NODE_AUTH_TOKEN=$(gh auth token) bun install
+```
+
+`VITE_SNFS_API_URL` points the elements at the origin that answers
+`/drive/files/{id}` (default `https://api.solian.app`), and `VITE_SNFS_URL` at
+the origin serving the picker page (default `https://fs.solian.app`).
+
 The console ships English and Simplified Chinese, and a light and dark theme.
 Both follow the browser/OS on first visit, then remember the reader's choice in
 `localStorage`; the footer carries the theme toggle and language dropdown.
