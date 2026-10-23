@@ -78,6 +78,13 @@ type Config struct {
 		RefreshGracePeriod   string   `toml:"refreshGracePeriod"`
 		CookieDomain         string   `toml:"cookieDomain"`
 		CookieSecure         bool     `toml:"cookieSecure"`
+		// HandoffClients are the apps this deployment hands a session to with a
+		// single-use code. They exist because a cookie cannot cross registrable
+		// domains: an app on one of their hosts is signed in by the code flow
+		// instead. See internal/httpserver/authctl/handoff.go.
+		HandoffClients []HandoffClient `toml:"handoffClients"`
+		HandoffCodeTTL string          `toml:"handoffCodeTTL"`
+
 		// Provider selects the credential source: "database" (default) or
 		// "single-user" (stateless config identity, no account row).
 		Provider   string             `toml:"provider"`
@@ -169,6 +176,56 @@ type Config struct {
 	// module provides the same port. Example:
 	//   nfcTokens = "app.solian.id.nfc"
 	Ports map[string]string `toml:"ports"`
+}
+
+// HandoffClient is a first-party app this deployment will hand a session to.
+//
+// Hand-offs exist for apps Stargate cannot share a cookie with: a cookie has
+// one Domain attribute and a browser refuses one that does not match the
+// request host, so an app on another registrable domain (dx.solsynth.dev
+// against id.solian.app) is signed in by a single-use code instead. An app on
+// the same cookie domain needs no entry here — it just shares the session.
+type HandoffClient struct {
+	// Id identifies the app on the wire and binds a code to it.
+	Id string `toml:"id"`
+	// Secret is the shared secret a confidential client proves itself with at
+	// redeem time. Empty makes it a public client, which must use PKCE.
+	Secret string `toml:"secret"`
+	// RedirectHosts are the hosts this app may receive a session on. Each
+	// entry also covers its subdomains, so "solsynth.dev" admits
+	// dx.solsynth.dev without listing it.
+	RedirectHosts []string `toml:"redirectHosts"`
+}
+
+// IsPublic reports whether the client has no secret and must use PKCE.
+func (c HandoffClient) IsPublic() bool {
+	return strings.TrimSpace(c.Secret) == ""
+}
+
+// FindHandoffClient finds a configured hand-off client by its ID.
+func (c *Config) FindHandoffClient(id string) *HandoffClient {
+	if c == nil || id == "" {
+		return nil
+	}
+	for i := range c.Auth.HandoffClients {
+		if c.Auth.HandoffClients[i].Id == id {
+			return &c.Auth.HandoffClients[i]
+		}
+	}
+	return nil
+}
+
+// HandoffCodeLifetime parses the configured code lifetime. Zero means the
+// SDK's default one-minute window.
+func (c *Config) HandoffCodeLifetime() time.Duration {
+	if c == nil || strings.TrimSpace(c.Auth.HandoffCodeTTL) == "" {
+		return 0
+	}
+	parsed, err := time.ParseDuration(c.Auth.HandoffCodeTTL)
+	if err != nil {
+		return 0
+	}
+	return parsed
 }
 
 // DefaultSecurityContact is the vulnerability-disclosure contact used when
@@ -497,6 +554,7 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("STARGATE_AUTH_ACCESS_TOKEN_LIFETIME", &cfg.Auth.AccessTokenLifetime)
 	setStr("STARGATE_AUTH_REFRESH_TOKEN_LIFETIME", &cfg.Auth.RefreshTokenLifetime)
 	setStr("STARGATE_AUTH_REFRESH_GRACE_PERIOD", &cfg.Auth.RefreshGracePeriod)
+	setStr("STARGATE_AUTH_HANDOFF_CODE_TTL", &cfg.Auth.HandoffCodeTTL)
 	setStr("STARGATE_OIDC_PROVIDER_ISSUER", &cfg.OidcProvider.IssuerUri)
 	setStr("STARGATE_OIDC_TWITTER_CLIENT_ID", &cfg.Oidc.Twitter.ClientId)
 	setStr("STARGATE_OIDC_TWITTER_CLIENT_SECRET", &cfg.Oidc.Twitter.ClientSecret)
@@ -652,6 +710,31 @@ func (c *Config) Validate() error {
 		}
 		if strings.TrimSpace(c.Auth.SingleUser.PasswordHash) == "" {
 			return fmt.Errorf("[auth] provider = single-user requires auth.singleUser.passwordHash (generate it with stargate-hash-password)")
+		}
+	}
+	// A hand-off client with no hosts could never be handed anything, and a
+	// duplicate id would make binding a code ambiguous; both are configuration
+	// mistakes that must not survive startup.
+	seenHandoffIDs := map[string]bool{}
+	for _, client := range c.Auth.HandoffClients {
+		if strings.TrimSpace(client.Id) == "" {
+			return fmt.Errorf("[auth.handoffClients] every client needs a non-empty id")
+		}
+		if seenHandoffIDs[client.Id] {
+			return fmt.Errorf("[auth.handoffClients] duplicate client id %q", client.Id)
+		}
+		seenHandoffIDs[client.Id] = true
+		if len(client.RedirectHosts) == 0 {
+			return fmt.Errorf("[auth.handoffClients] client %q has no redirectHosts, so it can never be handed a session", client.Id)
+		}
+	}
+	if raw := strings.TrimSpace(c.Auth.HandoffCodeTTL); raw != "" {
+		ttl, err := time.ParseDuration(raw)
+		if err != nil {
+			return fmt.Errorf("[auth] handoffCodeTTL %q is not a duration", raw)
+		}
+		if ttl <= 0 {
+			return fmt.Errorf("[auth] handoffCodeTTL must be positive")
 		}
 	}
 	return nil

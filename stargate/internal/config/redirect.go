@@ -23,15 +23,18 @@ import (
 // (or a page of this deployment's own site origin); anything else would turn
 // the login page into an open redirector for an attacker's link.
 
-// SignInRedirectHosts lists the hosts a finished sign-in may be handed off to:
-// the cookie domain and this deployment's own site host. The console fetches
-// this list so it can refuse a hand-off the server would refuse anyway instead
-// of navigating away and losing the session.
+// SignInRedirectHosts lists the hosts a finished sign-in may be handed to:
+// the cookie domain, this deployment's own site host, and every host a
+// hand-off client is registered for. The cookie hosts can complete a shared
+// sign-in with no further step; the hand-off hosts need one, because no cookie
+// can reach them (see internal/httpserver/authctl/handoff.go). The console
+// fetches this list so it can refuse a hand-off the server would refuse anyway
+// instead of navigating away and losing the session.
 func (c *Config) SignInRedirectHosts() []string {
 	if c == nil {
 		return nil
 	}
-	hosts := make([]string, 0, 2)
+	hosts := make([]string, 0, 4)
 	seen := map[string]struct{}{}
 	add := func(host string) {
 		host = normalizeHost(host)
@@ -47,6 +50,11 @@ func (c *Config) SignInRedirectHosts() []string {
 	add(c.Auth.CookieDomain)
 	if site, err := url.Parse(strings.TrimRight(c.SiteUrl, "/")); err == nil {
 		add(site.Host)
+	}
+	for _, client := range c.Auth.HandoffClients {
+		for _, host := range client.RedirectHosts {
+			add(host)
+		}
 	}
 	return hosts
 }

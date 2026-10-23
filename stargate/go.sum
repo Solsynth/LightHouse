@@ -204,3 +204,13 @@ nullprogram.com/x/optparse v1.0.0/go.mod h1:KdyPE+Igbe0jQUrVfMqDMeJQIJZEuyV7pjYm
 rsc.io/pdf v0.1.1/go.mod h1:n8OzWcQ6Sp37PL01nO98y4iUCRdTGarVfzxY20ICaU4=
 src.solsynth.dev/sosys/go v0.2.1-0.20261010123951-fa1c5aff0de4 h1:7rNtfr32x1eUMxDmfCqmFGwkgAgQHFxAdMjXINXBV6g=
 src.solsynth.dev/sosys/go v0.2.1-0.20261010123951-fa1c5aff0de4/go.mod h1:0Z0jNGBJNBDzN6ZkWGdXRCm01nn08b5aMZKNFLLDwXc=
+src.solsynth.dev/sosys/go v0.2.1-0.20261023143546-3b3867118525 h1:lpTHQD4P4OLPotxXrwnQP0yt0Wj8SO8UFfW0WSl2MrY=
+src.solsynth.dev/sosys/go v0.2.1-0.20261023143546-3b3867118525/go.mod h1:0Z0jNGBJNBDzN6ZkWGdXRCm01nn08b5aMZKNFLLDwXc=
+src.solsynth.dev/sosys/go v0.2.1-0.20261023144047-bc5cc4aa01ed h1:LJztdwh9bRRAry0P4mJ+uV7E/OrlcpUnTNp9TGP6rZ0=
+src.solsynth.dev/sosys/go v0.2.1-0.20261023144047-bc5cc4aa01ed/go.mod h1:0Z0jNGBJNBDzN6ZkWGdXRCm01nn08b5aMZKNFLLDwXc=
+src.solsynth.dev/sosys/go v0.2.1-0.20261023144807-bc830ffb89a5 h1:2sqbVD6nEk9FINUNiul67nHpBj4aoej7AfgaOB1Q9u0=
+src.solsynth.dev/sosys/go v0.2.1-0.20261023144807-bc830ffb89a5/go.mod h1:0Z0jNGBJNBDzN6ZkWGdXRCm01nn08b5aMZKNFLLDwXc=
+src.solsynth.dev/sosys/go v0.2.1-0.20261023145038-da4acd3d7102 h1:SVsP8Ph4BhhTpccwMp2q8TNcQZ7vB2Zr73PIG7w4lLQ=
+src.solsynth.dev/sosys/go v0.2.1-0.20261023145038-da4acd3d7102/go.mod h1:0Z0jNGBJNBDzN6ZkWGdXRCm01nn08b5aMZKNFLLDwXc=
+src.solsynth.dev/sosys/go v0.2.1-0.20261023145601-258ce5581a28 h1:wUhiJW/gsii4zEojQpIoh9Y6EoEQipn6Em0Mi2Yg/mQ=
+src.solsynth.dev/sosys/go v0.2.1-0.20261023145601-258ce5581a28/go.mod h1:0Z0jNGBJNBDzN6ZkWGdXRCm01nn08b5aMZKNFLLDwXc=

@@ -96,3 +96,71 @@ func TestSignInRedirectHosts(t *testing.T) {
 		t.Fatalf("SignInRedirectHosts() = %v, want [localhost]", got)
 	}
 }
+
+// A hand-off client's hosts are legitimate landing targets even though no
+// cookie reaches them: the sign-in finishes there by code exchange. A host no
+// client registered for is not, or the policy would advertise a destination
+// the issuer would then refuse to mint a code for.
+func TestSignInRedirectHostsIncludeHandoffClients(t *testing.T) {
+	cfg := Default()
+	cfg.SiteUrl = "https://id.solian.app"
+	cfg.Auth.CookieDomain = ".solian.app"
+	cfg.Auth.CookieSecure = true
+	cfg.Auth.HandoffClients = []HandoffClient{{
+		Id:            "app.solian.express",
+		Secret:        "s3cr3t",
+		RedirectHosts: []string{"solsynth.dev"},
+	}}
+
+	hosts := cfg.SignInRedirectHosts()
+	if !reflect.DeepEqual(hosts, []string{"solian.app", "id.solian.app", "solsynth.dev"}) {
+		t.Fatalf("SignInRedirectHosts() = %v", hosts)
+	}
+	if !cfg.AllowsSignInTarget("https://dx.solsynth.dev/releases") {
+		t.Error("a registered hand-off host was refused as a landing target")
+	}
+	if cfg.AllowsSignInTarget("https://evil.example/") {
+		t.Error("an unregistered host was accepted as a landing target")
+	}
+}
+
+// A hand-off client that could never be handed anything, and a duplicate id
+// that would make binding a code ambiguous, are configuration errors.
+func TestValidateRejectsBrokenHandoffClients(t *testing.T) {
+	broken := func() *Config {
+		cfg := Default()
+		cfg.Auth.CookieDomain = "localhost"
+		// Validate checks the captcha opt-out first on purpose; these cases are
+		// about the hand-off rules, so satisfy it.
+		cfg.Captcha.AllowDisabled = true
+		return cfg
+	}
+
+	noHosts := broken()
+	noHosts.Auth.HandoffClients = []HandoffClient{{Id: "a", Secret: "s"}}
+	if err := noHosts.Validate(); err == nil {
+		t.Error("Validate accepted a hand-off client with no redirectHosts")
+	}
+
+	duplicate := broken()
+	duplicate.Auth.HandoffClients = []HandoffClient{
+		{Id: "a", Secret: "s", RedirectHosts: []string{"a.example"}},
+		{Id: "a", Secret: "s", RedirectHosts: []string{"b.example"}},
+	}
+	if err := duplicate.Validate(); err == nil {
+		t.Error("Validate accepted a duplicate hand-off client id")
+	}
+
+	badTTL := broken()
+	badTTL.Auth.HandoffCodeTTL = "not-a-duration"
+	if err := badTTL.Validate(); err == nil {
+		t.Error("Validate accepted an unparsable handoffCodeTTL")
+	}
+
+	ok := broken()
+	ok.Auth.HandoffClients = []HandoffClient{{Id: "a", Secret: "s", RedirectHosts: []string{"a.example"}}}
+	ok.Auth.HandoffCodeTTL = "45s"
+	if err := ok.Validate(); err != nil {
+		t.Errorf("Validate rejected a valid hand-off client: %v", err)
+	}
+}

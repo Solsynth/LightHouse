@@ -91,6 +91,27 @@ refreshGracePeriod = "60s"
 cookieDomain = "localhost"
 cookieSecure = false
 
+# Cross-domain session hand-off. A session cookie carries one Domain attribute,
+# so an app on another registrable domain (dx.solsynth.dev against
+# id.solian.app) can never receive the session by cookie, first-party or not.
+# Such an app is handed a single-use code instead: the console redirects to it
+# with ?code=…, and its own server redeems that code for a token pair it stores
+# in its own cookie. Clients registered here also join the sign-in redirect
+# policy published at GET /api/auth/sign-in/config.
+#
+# Leave handoffClients empty (the default) to mount no hand-off surface at all.
+# handoffCodeTTL = "60s"
+#
+# [[auth.handoffClients]]
+# id = "app.solian.express"
+# # A secret makes the client confidential: only a server that knows it may
+# # redeem a code issued to this id. Omit it (public client) and PKCE becomes
+# # mandatory instead — a public client cannot prove the code is its own.
+# secret = "{{SECRET_replace_with_a_secret}}"
+# # Hosts this app may receive a session on. Each entry also covers its
+# # subdomains, so one entry serves every deployment of the app.
+# redirectHosts = ["solsynth.dev"]
+
 [oidcProvider]
 issuerUri = "https://nt.solian.app"
 publicKeyPath = "Keys/PublicKey.pem"

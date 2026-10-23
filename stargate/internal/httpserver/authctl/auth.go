@@ -106,6 +106,9 @@ func Register(api *gin.RouterGroup, d Deps) {
 		authGroup.GET("/me", middleware.RequireAuth(), h.getCurrentAuthIdentity)
 		authGroup.POST("/sudo", middleware.RequireAuth(), middleware.RequireInteractive(), h.createSudoChallenge)
 	}
+	// Cross-domain hand-off (single-use code exchange) for apps on other
+	// registrable domains; mounted only when clients are configured.
+	registerHandoff(authGroup, h)
 
 	qr := api.Group("/auth/qr")
 	{
