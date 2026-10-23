@@ -53,8 +53,17 @@ export const accountApi = {
   me: () => request<Account>('/accounts/me'),
   updateBasicInfo: (body: { nick?: string; language?: string; region?: string }) =>
     request<Account>('/accounts/me', { method: 'PATCH', body }),
-  updateProfile: (body: Partial<Record<keyof Profile, unknown>>) =>
-    request<Profile>('/accounts/me/profile', { method: 'PATCH', body }),
+  /**
+   * The profile patch. `picture_id`/`background_id` carry a Drive file id: an
+   * id stores it, and the empty string clears the art. They are write-only —
+   * reads come back as resolved `picture`/`background` references.
+   */
+  updateProfile: (
+    body: Partial<Record<keyof Profile, unknown>> & {
+      picture_id?: string
+      background_id?: string
+    },
+  ) => request<Profile>('/accounts/me/profile', { method: 'PATCH', body }),
   requestDeletion: () => request<void>('/accounts/me', { method: 'DELETE' }),
   search: (query: string, take = 20) =>
     request<Account[]>('/accounts/search', { query: { query, take } }),

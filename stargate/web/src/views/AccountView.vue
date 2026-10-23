@@ -10,6 +10,7 @@ import { accountApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
 import type { Profile } from '@/lib/api/types'
 import { age, utcStamp } from '@/lib/format'
+import { pickImage } from '@/lib/picker'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 
@@ -30,6 +31,8 @@ const form = ref({
 const saving = ref(false)
 const error = ref('')
 const editing = ref(false)
+const artBusy = ref<'picture' | 'background' | null>(null)
+const artError = ref('')
 const deleteOpen = ref(false)
 const deleteConfirm = ref('')
 const deleting = ref(false)
@@ -89,8 +92,7 @@ async function save() {
     editing.value = false
     notice.ok(t('account.noticeSaved'))
   } catch (caught) {
-    error.value =
-      caught instanceof StargateError ? caught.message : t('account.errorSave')
+    error.value = caught instanceof StargateError ? caught.message : t('account.errorSave')
   } finally {
     saving.value = false
   }
@@ -100,6 +102,50 @@ function cancel() {
   loadForm()
   editing.value = false
   error.value = ''
+}
+
+/**
+ * Profile art is a Drive reference, not an upload: the picker hands back a
+ * file id and the profile patch stores it. Saving immediately rather than
+ * through the form is deliberate — the picture is one visible object, and a
+ * deferred id would let the form's Cancel silently discard it.
+ */
+async function chooseArt(kind: 'picture' | 'background') {
+  artBusy.value = kind
+  artError.value = ''
+  try {
+    const file = await pickImage({
+      title: t(kind === 'picture' ? 'account.choosePicture' : 'account.chooseBackground'),
+      description: t('account.chooseArtHint'),
+      height: kind === 'background' ? 600 : 560,
+    })
+    if (!file) return
+    await accountApi.updateProfile(
+      kind === 'picture' ? { picture_id: file.id } : { background_id: file.id },
+    )
+    await session.refreshAccount()
+    notice.ok(t(kind === 'picture' ? 'account.pictureUpdated' : 'account.backgroundUpdated'))
+  } catch (caught) {
+    artError.value = caught instanceof StargateError ? caught.message : t('account.errorArt')
+    notice.fail(artError.value)
+  } finally {
+    artBusy.value = null
+  }
+}
+
+async function clearArt(kind: 'picture' | 'background') {
+  artBusy.value = kind
+  artError.value = ''
+  try {
+    await accountApi.updateProfile(kind === 'picture' ? { picture_id: '' } : { background_id: '' })
+    await session.refreshAccount()
+    notice.ok(t(kind === 'picture' ? 'account.pictureCleared' : 'account.backgroundCleared'))
+  } catch (caught) {
+    artError.value = caught instanceof StargateError ? caught.message : t('account.errorArt')
+    notice.fail(artError.value)
+  } finally {
+    artBusy.value = null
+  }
 }
 
 function openDelete() {
@@ -124,8 +170,7 @@ async function deleteAccount() {
     notice.ok(t('account.deleted'))
     await router.replace('/sign-in')
   } catch (caught) {
-    deleteError.value =
-      caught instanceof StargateError ? caught.message : t('account.deleteError')
+    deleteError.value = caught instanceof StargateError ? caught.message : t('account.deleteError')
   } finally {
     deleting.value = false
   }
@@ -136,12 +181,14 @@ onMounted(loadForm)
 
 <template>
   <div>
-    <PageHeader
-      :title="t('account.title')"
-      :description="t('account.description')"
-    >
+    <PageHeader :title="t('account.title')" :description="t('account.description')">
       <template #actions>
-        <button v-if="!editing" type="button" class="btn btn-primary btn-sm" @click="editing = true">
+        <button
+          v-if="!editing"
+          type="button"
+          class="btn btn-primary btn-sm"
+          @click="editing = true"
+        >
           {{ t('account.editProfile') }}
         </button>
       </template>
@@ -149,29 +196,122 @@ onMounted(loadForm)
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div class="space-y-6">
-        <ConsolePanel :title="t('account.identity')" :note="t('account.updated', { time: age(profile?.updated_at) })">
+        <!-- Profile art is a Drive reference: the picker chooses the file,
+             the profile patch stores its id. -->
+        <ConsolePanel :title="t('account.art')">
+          <div class="grid gap-5 sm:grid-cols-[104px_minmax(0,1fr)]">
+            <div class="space-y-3">
+              <div
+                class="grid h-[104px] w-[104px] place-items-center overflow-hidden rounded-[2px] border border-line bg-base-300"
+              >
+                <img
+                  v-if="profile?.picture"
+                  :src="`/api/accounts/${encodeURIComponent(session.account?.name ?? '')}/picture`"
+                  alt=""
+                  class="h-full w-full object-cover"
+                />
+                <span v-else class="text-2xs text-faint">{{ t('account.noPicture') }}</span>
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-xs"
+                  :disabled="artBusy !== null"
+                  @click="chooseArt('picture')"
+                >
+                  {{ artBusy === 'picture' ? t('account.choosing') : t('account.choosePicture') }}
+                </button>
+                <button
+                  v-if="profile?.picture"
+                  type="button"
+                  class="btn btn-ghost btn-xs text-dim hover:text-error"
+                  :disabled="artBusy !== null"
+                  @click="clearArt('picture')"
+                >
+                  {{ t('common.remove') }}
+                </button>
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <div
+                class="grid h-[104px] place-items-center overflow-hidden rounded-[2px] border border-line bg-base-300"
+              >
+                <img
+                  v-if="profile?.background"
+                  :src="`/api/accounts/${encodeURIComponent(session.account?.name ?? '')}/background`"
+                  alt=""
+                  class="h-full w-full object-cover"
+                />
+                <span v-else class="text-2xs text-faint">{{ t('account.noBackground') }}</span>
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-xs"
+                  :disabled="artBusy !== null"
+                  @click="chooseArt('background')"
+                >
+                  {{
+                    artBusy === 'background' ? t('account.choosing') : t('account.chooseBackground')
+                  }}
+                </button>
+                <button
+                  v-if="profile?.background"
+                  type="button"
+                  class="btn btn-ghost btn-xs text-dim hover:text-error"
+                  :disabled="artBusy !== null"
+                  @click="clearArt('background')"
+                >
+                  {{ t('common.remove') }}
+                </button>
+              </div>
+            </div>
+          </div>
+          <p class="mt-4 voice text-[12px] text-faint">{{ t('account.artHint') }}</p>
+          <p v-if="artError" class="mt-2 border-l border-error pl-3 text-xs text-error">
+            {{ artError }}
+          </p>
+        </ConsolePanel>
+
+        <ConsolePanel
+          :title="t('account.identity')"
+          :note="t('account.updated', { time: age(profile?.updated_at) })"
+        >
           <dl>
             <div class="grid grid-cols-[132px_minmax(0,1fr)] gap-4 py-2.5 first:pt-0">
-              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">{{ t('account.name') }}</dt>
+              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">
+                {{ t('account.name') }}
+              </dt>
               <dd class="text-xs text-base-content">{{ session.account?.name }}</dd>
             </div>
             <div class="grid grid-cols-[132px_minmax(0,1fr)] gap-4 py-2.5">
-              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">{{ t('account.displayName') }}</dt>
+              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">
+                {{ t('account.displayName') }}
+              </dt>
               <dd class="text-xs text-base-content">{{ displayName }}</dd>
             </div>
             <div class="grid grid-cols-[132px_minmax(0,1fr)] gap-4 py-2.5">
-              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">{{ t('account.accountId') }}</dt>
+              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">
+                {{ t('account.accountId') }}
+              </dt>
               <dd class="break-all text-xs text-dim">{{ session.account?.id }}</dd>
             </div>
             <div class="grid grid-cols-[132px_minmax(0,1fr)] gap-4 py-2.5">
-              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">{{ t('account.status') }}</dt>
+              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">
+                {{ t('account.status') }}
+              </dt>
               <dd class="flex flex-wrap items-center gap-2 text-xs">
                 <span class="chip">
                   <span
                     class="dot"
                     :class="session.account?.activated_at ? 'bg-success' : 'bg-warning'"
                   />
-                  {{ session.account?.activated_at ? t('account.activated') : t('account.pendingActivation') }}
+                  {{
+                    session.account?.activated_at
+                      ? t('account.activated')
+                      : t('account.pendingActivation')
+                  }}
                 </span>
                 <span v-if="session.account?.is_superuser" class="chip text-accent">
                   {{ t('account.platformAdmin') }}
@@ -179,13 +319,17 @@ onMounted(loadForm)
               </dd>
             </div>
             <div class="grid grid-cols-[132px_minmax(0,1fr)] gap-4 py-2.5">
-              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">{{ t('account.locale') }}</dt>
+              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">
+                {{ t('account.locale') }}
+              </dt>
               <dd class="text-xs text-dim">
                 {{ session.account?.language }} · {{ session.account?.region }}
               </dd>
             </div>
             <div class="grid grid-cols-[132px_minmax(0,1fr)] gap-4 py-2.5">
-              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">{{ t('account.memberSince') }}</dt>
+              <dt class="text-2xs uppercase tracking-[0.12em] text-faint">
+                {{ t('account.memberSince') }}
+              </dt>
               <dd class="text-xs text-dim">{{ utcStamp(session.account?.created_at) }}</dd>
             </div>
           </dl>
@@ -218,7 +362,12 @@ onMounted(loadForm)
               </div>
               <div>
                 <label for="time_zone" class="field-label">{{ t('account.timeZone') }}</label>
-                <input id="time_zone" v-model="form.time_zone" class="input input-sm" placeholder="UTC" />
+                <input
+                  id="time_zone"
+                  v-model="form.time_zone"
+                  class="input input-sm"
+                  placeholder="UTC"
+                />
               </div>
             </div>
             <div>
@@ -257,7 +406,9 @@ onMounted(loadForm)
               </div>
               <div class="flex justify-between pb-2 text-xs">
                 <dt class="text-faint">{{ t('account.birthday') }}</dt>
-                <dd class="text-dim">{{ profile?.birthday ? utcStamp(profile.birthday).slice(0, 10) : '—' }}</dd>
+                <dd class="text-dim">
+                  {{ profile?.birthday ? utcStamp(profile.birthday).slice(0, 10) : '—' }}
+                </dd>
               </div>
             </dl>
           </div>
@@ -300,7 +451,9 @@ onMounted(loadForm)
         </ConsolePanel>
 
         <ConsolePanel :title="t('account.lastSeen')">
-          <p class="text-xs text-dim">{{ t('account.lastSeenAgo', { time: age(profile?.last_seen_at) }) }}</p>
+          <p class="text-xs text-dim">
+            {{ t('account.lastSeenAgo', { time: age(profile?.last_seen_at) }) }}
+          </p>
           <p class="mt-1 text-2xs text-faint">
             {{ t('account.lastSeenHint') }}
           </p>
