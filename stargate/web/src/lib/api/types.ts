@@ -477,6 +477,17 @@ export interface SignInConfig {
   require_https: boolean
 }
 
+/**
+ * A single-use cross-domain hand-off code from POST /api/auth/handoff/session.
+ * The console appends `code` to `redirect_uri` and navigates: the app's own
+ * server redeems it, because the session cookie cannot reach that origin.
+ */
+export interface HandoffIssue {
+  code: string
+  redirect_uri: string
+  expires_in: number
+}
+
 export interface PasskeyLoginStart {
   challenge: string
   rp_id: string

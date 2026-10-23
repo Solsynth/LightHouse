@@ -22,6 +22,7 @@ import type {
   Device,
   DeviceCodeStatus,
   GeographyBucket,
+  HandoffIssue,
   MagicSpell,
   Passkey,
   PasskeyLoginStart,
@@ -141,6 +142,13 @@ export const authApi = {
   /** The shared login page's hand-off policy (cookie hosts + https rule). */
   signInConfig: () => request<SignInConfig>('/auth/sign-in/config'),
   providers: () => request<string[]>('/auth/providers'),
+  /**
+   * Mints a single-use code handing this session to the app at `redirect_uri`.
+   * The console only names where the browser should land; the issuer resolves
+   * which registered app that is.
+   */
+  handoffSession: (body: { redirect_uri: string }) =>
+    request<HandoffIssue>('/auth/handoff/session', { method: 'POST', body }),
   authorizeInfo: (query: Record<string, string>) =>
     request<AuthorizeClientInfo>('/auth/open/authorize', { query }),
   authorizeDecision: (form: URLSearchParams) =>

@@ -16,7 +16,7 @@ import { getAssertion, passkeyFailure, passkeysSupported } from '@/lib/webauthn'
 import { deviceIdentity } from '@/lib/device'
 import { MODULES } from '@/lib/modules'
 import { useModulesStore } from '@/stores/modules'
-import { landingQuery, requestedLanding, resolveLanding, type Landing } from '@/lib/signInTarget'
+import { handoffTargetUrl, landingQuery, requestedLanding, resolveLanding, type Landing } from '@/lib/signInTarget'
 import ProviderMark from '@/components/ProviderMark.vue'
 import { providerLabel } from '@/lib/providers'
 import FactorRow from '@/components/FactorRow.vue'
@@ -279,14 +279,24 @@ async function submit(factor: AuthFactor | null, secret: string) {
 }
 
 /**
- * Leaves for wherever this sign-in ends. A hand-off to another app is a
- * full-page navigation: that app owns its own router, and the session is
- * already in the cookie both origins share.
+ * Leaves for wherever this sign-in ends.
+ *
+ * A target on another origin is a full-page navigation to an app that owns its
+ * own router. It cannot have the session cookie (one Domain attribute, and the
+ * browser refuses a Domain that does not match the request host), so it is
+ * handed a single-use code instead: its own server redeems that for tokens and
+ * sets its own cookie. A target the issuer will not mint a code for is treated
+ * as a failed hand-off rather than a silent navigation that lands signed out.
  */
 async function leave() {
   const target = (await landingResolved).target
   if (landing.value?.external) {
-    window.location.assign(target)
+    try {
+      window.location.assign(await handoffTargetUrl(target))
+    } catch {
+      notice.fail(t('signIn.errorRedirectRefused'))
+      await router.replace('/account')
+    }
     return
   }
   await router.replace(target)

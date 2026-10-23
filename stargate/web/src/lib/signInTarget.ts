@@ -125,3 +125,28 @@ export async function resolveLanding(raw: string): Promise<Landing | null> {
   if (isAllowedRedirect(raw, config)) return { target: raw, external: true }
   return null
 }
+
+/**
+ * The address to send the browser to for a hand-off that leaves this console.
+ *
+ * A target on another origin cannot receive the session cookie — a cookie
+ * carries one Domain attribute and a browser refuses one that does not match
+ * the request host — so it receives a single-use code instead, which its own
+ * server trades for a token pair on its own domain.
+ *
+ * The code is requested here, after the person is signed in, so it is minted
+ * for a live session and never sits in the address bar longer than one
+ * navigation. It is short-lived (60s by default), so a page left open on the
+ * sign-in screen cannot be replayed later.
+ */
+export async function handoffTargetUrl(target: string): Promise<string> {
+  const response = await authApi.handoffSession({ redirect_uri: target })
+  return appendCode(response.redirect_uri, response.code)
+}
+
+/** Appends the code as a query parameter, preserving any query already there. */
+function appendCode(target: string, code: string): string {
+  const url = new URL(target)
+  url.searchParams.set('code', code)
+  return url.toString()
+}

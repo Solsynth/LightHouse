@@ -103,3 +103,53 @@ describe('resolveLanding', () => {
     await expect(resolve('https://evil.example/cb')).resolves.toBeNull()
   })
 })
+
+/**
+ * A hand-off that leaves this console gets a single-use code rather than the
+ * session cookie, and the address the browser is sent to is the one the issuer
+ * validated — not whatever the link asked for. The console must therefore use
+ * the server's `redirect_uri` and append the code to it.
+ */
+describe('handoffTargetUrl', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.resetModules()
+  })
+
+  it('lands on the issuer-validated target with the code appended', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            code: 'single-use-code',
+            redirect_uri: 'https://dx.solsynth.dev/releases?page=2',
+            expires_in: 60,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    )
+    const { handoffTargetUrl } = await import('@/lib/signInTarget')
+    const url = new URL(await handoffTargetUrl('https://dx.solsynth.dev/releases?page=2'))
+    expect(url.origin + url.pathname).toBe('https://dx.solsynth.dev/releases')
+    expect(url.searchParams.get('code')).toBe('single-use-code')
+    // The target's own query survives; only the code is added.
+    expect(url.searchParams.get('page')).toBe('2')
+  })
+
+  it('fails when the issuer refuses, rather than navigating signed out', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: 'invalid_target' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+      ),
+    )
+    const { handoffTargetUrl } = await import('@/lib/signInTarget')
+    await expect(handoffTargetUrl('https://evil.example/')).rejects.toThrow()
+  })
+})
