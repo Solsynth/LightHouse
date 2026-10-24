@@ -125,7 +125,7 @@ onMounted(load)
 
     <SecurityNav />
 
-    <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
+    <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <ConsolePanel :title="t('contacts.contacts')" :note="loading ? undefined : t('contacts.totalNote', { n: contacts.length })">

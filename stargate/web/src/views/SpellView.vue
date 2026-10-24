@@ -163,7 +163,10 @@ onMounted(load)
 
     <!-- Only an expired link has an action left. Every other dead end is fully
          described by the header, so a panel there would just repeat it. -->
-    <div v-else-if="canRequestNew" class="border border-warning/40 bg-base-200/40 p-5">
+    <div
+      v-else-if="canRequestNew"
+      class="rounded-card border border-warning/40 bg-base-200/40 p-5"
+    >
       <RouterLink to="/recover" class="btn btn-primary btn-sm">
         {{ t('spell.requestNew') }}
       </RouterLink>
@@ -174,7 +177,7 @@ onMounted(load)
          would offer a submit that can only fail. -->
     <form
       v-else-if="state === 'ready' && !done"
-      class="border border-line bg-base-200/40 p-5"
+      class="well p-5"
       @submit.prevent="apply"
     >
       <p v-if="recipient" class="voice mb-4 text-[12px]">
@@ -208,10 +211,10 @@ onMounted(load)
         {{ busy ? t('spell.applying') : isReset ? t('spell.submitReset') : t('spell.submitVerify') }}
       </button>
 
-      <p v-if="error" class="mt-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
+      <p v-if="error" class="note note-error mt-4">{{ error }}</p>
     </form>
 
-    <p v-if="done" class="border-l border-success pl-3 text-xs text-success">
+    <p v-if="done" class="note note-success">
       {{ isReset ? t('spell.noticeReset') : t('spell.noticeVerified') }}
     </p>
 

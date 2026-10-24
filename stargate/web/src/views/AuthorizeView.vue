@@ -110,8 +110,7 @@ onMounted(load)
       >{{ t('authorize.introSuffix') }}
     </p>
 
-    <div v-if="loading" class="mt-6 border border-line" aria-hidden="true">
-      <span class="skeleton mx-4 my-2.5 h-2 w-24" />
+    <div v-if="loading" class="mt-6 overflow-hidden rounded-card border border-line" aria-hidden="true">
       <div class="space-y-3 border-t border-line px-4 py-3">
         <span class="skeleton h-3 w-2/3" />
         <span class="skeleton h-3 w-1/2" />
@@ -121,7 +120,9 @@ onMounted(load)
     <template v-else-if="info">
       <!-- The app introduces itself in the rail; the scopes it wants and the
            decision sit opposite it, so the request reads as a request. -->
-      <div class="mt-6 border border-line sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+      <div
+        class="mt-6 overflow-hidden rounded-card border border-line sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]"
+      >
         <section class="border-b border-line bg-base-200/40 p-4 sm:border-b-0 sm:border-r">
           <div class="flex items-start gap-3">
             <AppMark :picture="info.picture" :name="name" :size="40" />
@@ -195,6 +196,6 @@ onMounted(load)
       </div>
     </template>
 
-    <p v-if="error" class="mt-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
+    <p v-if="error" class="note note-error mt-4">{{ error }}</p>
   </div>
 </template>

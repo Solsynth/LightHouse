@@ -60,14 +60,14 @@ onBeforeUnmount(() => resize.disconnect())
 <template>
   <nav
     ref="root"
-    class="mb-6 flex w-fit max-w-full overflow-x-auto border border-line bg-base-200/30"
+    class="mb-6 flex w-fit max-w-full gap-0.5 overflow-x-auto rounded-full border border-line bg-base-200/30 p-1"
     :aria-label="label"
   >
     <template v-for="tab in tabs" :key="tab.key">
       <RouterLink
         v-if="tab.to"
         :to="tab.to"
-        class="whitespace-nowrap border-r border-line px-3 py-1.5 text-2xs tracking-[0.02em] transition-colors last:border-r-0"
+        class="whitespace-nowrap rounded-full px-3 py-1.5 text-2xs tracking-[0.02em] transition-colors"
         :class="tabClass(active === tab.key)"
         :aria-current="active === tab.key ? 'page' : undefined"
       >
@@ -76,7 +76,7 @@ onBeforeUnmount(() => resize.disconnect())
       <button
         v-else
         type="button"
-        class="whitespace-nowrap border-r border-line px-3 py-1.5 text-2xs tracking-[0.02em] transition-colors last:border-r-0"
+        class="whitespace-nowrap rounded-full px-3 py-1.5 text-2xs tracking-[0.02em] transition-colors"
         :class="tabClass(active === tab.key)"
         :aria-pressed="active === tab.key"
         @click="emit('select', tab.key)"

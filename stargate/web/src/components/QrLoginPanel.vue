@@ -134,7 +134,7 @@ async function start() {
       margin: 1,
       width: 200,
       errorCorrectionLevel: 'M',
-      color: { dark: '#0a0d16', light: '#ffffff' },
+      color: { dark: '#0d0b09', light: '#ffffff' },
     })
     if (attempt !== run) return
     image.value = drawn
@@ -175,8 +175,11 @@ void start()
     <h2 class="title text-sm text-base-content">{{ t('qrLogin.title') }}</h2>
     <p class="voice mt-1 text-center text-[12px]">{{ t('qrLogin.intro') }}</p>
 
+    <!-- The plate is white in both themes because a camera reads the code, and
+         the padding is its quiet zone: the tile used to sit flush against the
+         modules, so a rounded corner would have clipped a finder pattern. -->
     <div
-      class="mt-4 flex h-[200px] w-[200px] items-center justify-center border border-line bg-white"
+      class="mt-4 flex items-center justify-center rounded-card border border-line bg-white p-3"
     >
       <img
         v-if="image && status !== 'declined' && status !== 'expired'"

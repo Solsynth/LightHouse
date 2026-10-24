@@ -34,7 +34,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     aria-labelledby="elevation-title"
     aria-modal="true"
   >
-    <div class="modal-box max-w-md rounded-[2px] border border-line bg-base-100 p-0 shadow-none">
+    <div
+      class="modal-box max-w-md overflow-hidden rounded-sheet border border-line bg-base-100 p-0 shadow-[0_30px_80px_-40px_rgb(0_0_0/0.7)]"
+    >
       <header class="border-b border-line px-5 py-4">
         <p class="eyebrow">{{ t('elevation.required') }}</p>
         <h2 id="elevation-title" class="mt-1 text-sm text-base-content">{{ t('elevation.title') }}</h2>

@@ -119,7 +119,7 @@ onMounted(load)
           </button>
         </form>
 
-        <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
+        <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
         <ConsolePanel
           :title="t('admin.permissions.panelTitle')"

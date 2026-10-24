@@ -288,7 +288,7 @@ onMounted(() => {
       </template>
     </PageHeader>
 
-    <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
+    <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
     <LoadingSkeleton v-if="loading" :rows="5" :columns="[2, 4, 3]" />
 
@@ -503,7 +503,7 @@ onMounted(() => {
           >
             <p class="voice mb-3 text-[12px]">{{ t('oauthApps.secretsHint') }}</p>
 
-            <div v-if="issued" class="mb-4 border border-warning/50 bg-warning/5 p-3">
+            <div v-if="issued" class="mb-4 rounded-input border border-warning/40 bg-warning/10 p-3">
               <div class="flex items-center justify-between gap-2">
                 <p class="text-2xs uppercase tracking-[0.12em] text-warning">{{ t('oauthApps.secretIssued') }}</p>
                 <CopyButton v-if="issued.secret" :value="issued.secret" :label="t('oauthApps.secretSecret')" />
@@ -512,7 +512,7 @@ onMounted(() => {
               <p class="voice mt-2 text-[12px] text-faint">{{ t('oauthApps.secretIssuedHint') }}</p>
             </div>
 
-            <div class="space-y-2 border border-line p-3">
+            <div class="well space-y-2 p-3">
               <div>
                 <label for="secret-description" class="field-label">{{ t('oauthApps.secretDescription') }}</label>
                 <input

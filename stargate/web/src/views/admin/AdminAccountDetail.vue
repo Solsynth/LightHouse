@@ -163,7 +163,7 @@ onMounted(load)
       </template>
     </PageHeader>
 
-    <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
+    <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
     <LoadingSkeleton v-if="loading" compact :rows="5" :columns="[3, 3, 2, 1]" header />
 
@@ -356,7 +356,9 @@ onMounted(load)
     />
 
     <dialog v-if="suspendOpen" class="modal modal-open" aria-modal="true" aria-labelledby="suspend-title">
-      <div class="modal-box max-w-md rounded-[2px] border border-line bg-base-100 p-0 shadow-none">
+      <div
+        class="modal-box max-w-md overflow-hidden rounded-sheet border border-line bg-base-100 p-0 shadow-[0_30px_80px_-40px_rgb(0_0_0/0.7)]"
+      >
         <div class="border-b border-line px-5 py-4">
           <h2 id="suspend-title" class="text-sm text-base-content">
             {{ t('admin.accountDetail.suspendTitle') }}

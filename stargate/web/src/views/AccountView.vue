@@ -206,7 +206,7 @@ onMounted(loadForm)
           <div class="grid gap-5 sm:grid-cols-[104px_minmax(0,1fr)]">
             <div class="space-y-3">
               <div
-                class="grid h-[104px] w-[104px] place-items-center overflow-hidden rounded-[2px] border border-line bg-base-300"
+                class="grid h-[104px] w-[104px] place-items-center overflow-hidden rounded-card border border-line bg-base-300"
               >
                 <!-- The picture is a Drive file id: sk-media resolves it and
                      draws an image, so this panel and every other art surface
@@ -241,7 +241,7 @@ onMounted(loadForm)
 
             <div class="space-y-3">
               <div
-                class="grid h-[104px] place-items-center overflow-hidden rounded-[2px] border border-line bg-base-300"
+                class="grid h-[104px] place-items-center overflow-hidden rounded-card border border-line bg-base-300"
               >
                 <sk-media
                   v-if="profile?.background?.id"
@@ -274,7 +274,7 @@ onMounted(loadForm)
             </div>
           </div>
           <p class="mt-4 voice text-[12px] text-faint">{{ t('account.artHint') }}</p>
-          <p v-if="artError" class="mt-2 border-l border-error pl-3 text-xs text-error">
+          <p v-if="artError" class="note note-error mt-2">
             {{ artError }}
           </p>
         </ConsolePanel>
@@ -380,7 +380,7 @@ onMounted(loadForm)
               <textarea id="bio" v-model="form.bio" class="textarea textarea-sm" rows="4" />
             </div>
 
-            <p v-if="error" class="border-l border-error pl-3 text-xs text-error">{{ error }}</p>
+            <p v-if="error" class="note note-error">{{ error }}</p>
 
             <div class="mt-4 flex items-center gap-2">
               <button type="submit" class="btn btn-primary btn-sm" :disabled="saving">
@@ -482,7 +482,9 @@ onMounted(loadForm)
       aria-modal="true"
       aria-labelledby="delete-account-title"
     >
-      <div class="modal-box max-w-md rounded-[2px] border border-line bg-base-100 p-0 shadow-none">
+      <div
+        class="modal-box max-w-md overflow-hidden rounded-sheet border border-line bg-base-100 p-0 shadow-[0_30px_80px_-40px_rgb(0_0_0/0.7)]"
+      >
         <div class="border-b border-line px-5 py-4">
           <h2 id="delete-account-title" class="flex items-center gap-1.5 text-sm text-base-content">
             <WarningAlt16 class="shrink-0 text-error" aria-hidden="true" />

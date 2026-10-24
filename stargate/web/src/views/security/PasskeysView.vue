@@ -147,12 +147,12 @@ onMounted(load)
 
     <SecurityNav />
 
-    <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
+    <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
-    <div v-if="!supported" class="mb-5 border-l border-warning pl-3 text-xs text-warning">
+    <div v-if="!supported" class="note note-warning mb-5">
       {{ t('passkeys.unsupported') }}
     </div>
-    <div v-else-if="!factorEnabled" class="mb-5 border-l border-warning pl-3 text-xs text-warning">
+    <div v-else-if="!factorEnabled" class="note note-warning mb-5">
       <p>{{ t('passkeys.factorDisabled') }}</p>
       <RouterLink to="/security/factors" class="link-quiet mt-1 inline-block">
         {{ t('passkeys.enableFactor') }}
@@ -220,7 +220,9 @@ onMounted(load)
       aria-modal="true"
       aria-labelledby="rename-passkey-title"
     >
-      <div class="modal-box max-w-sm rounded-[2px] border border-line bg-base-100 p-0 shadow-none">
+      <div
+        class="modal-box max-w-sm overflow-hidden rounded-sheet border border-line bg-base-100 p-0 shadow-[0_30px_80px_-40px_rgb(0_0_0/0.7)]"
+      >
         <div class="border-b border-line px-5 py-4">
           <h2 id="rename-passkey-title" class="text-sm text-base-content">
             {{ t('passkeys.renameTitle') }}

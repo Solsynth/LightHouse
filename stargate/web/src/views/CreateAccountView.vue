@@ -113,7 +113,7 @@ onMounted(async () => {
       </p>
     </div>
 
-    <form class="border border-line bg-base-200/40 p-5" @submit.prevent="submit">
+    <form class="well p-5" @submit.prevent="submit">
       <div class="grid gap-4">
         <div>
           <label for="name" class="field-label">{{ t('createAccount.username') }}</label>
@@ -179,7 +179,7 @@ onMounted(async () => {
         />
       </div>
 
-      <p v-if="error" class="mt-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
+      <p v-if="error" class="note note-error mt-4">{{ error }}</p>
 
       <button type="submit" class="btn btn-primary mt-5 w-full" :disabled="busy || !valid">
         {{ busy ? t('createAccount.creating') : t('createAccount.submit') }}

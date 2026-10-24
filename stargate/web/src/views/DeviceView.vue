@@ -144,7 +144,7 @@ onMounted(() => {
 
     <!-- The code itself is the only state the page needs, so it is the first
          thing on the page whenever the address did not carry one. -->
-    <form v-if="!status" class="mt-6 border border-line p-4" @submit.prevent="lookup(entered)">
+    <form v-if="!status" class="well mt-6 p-4" @submit.prevent="lookup(entered)">
       <label for="device-code" class="field-label">{{ t('device.codeLabel') }}</label>
       <div class="flex flex-wrap gap-2">
         <input
@@ -163,7 +163,7 @@ onMounted(() => {
       <p class="voice mt-2 text-[12px] text-faint">{{ t('device.codeHint') }}</p>
     </form>
 
-    <div v-if="loading" class="mt-6 border border-line" aria-hidden="true">
+    <div v-if="loading" class="mt-6 overflow-hidden rounded-card border border-line" aria-hidden="true">
       <span class="skeleton mx-4 my-2.5 h-2 w-24" />
       <div class="space-y-3 border-t border-line px-4 py-3">
         <span class="skeleton h-3 w-2/3" />
@@ -172,7 +172,9 @@ onMounted(() => {
     </div>
 
     <template v-else-if="status && phase === 'pending'">
-      <div class="mt-6 border border-line sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+      <div
+        class="mt-6 overflow-hidden rounded-card border border-line sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]"
+      >
         <section class="border-b border-line bg-base-200/40 p-4 sm:border-b-0 sm:border-r">
           <div class="flex items-start gap-3">
             <AppMark :picture="status.picture" :name="name" :size="40" />
@@ -226,13 +228,13 @@ onMounted(() => {
 
     <!-- Approved, declined, expired, or already closed: nothing is left to
          decide, and the device reports the outcome on its own. -->
-    <div v-else-if="status" class="mt-6 border border-line p-4">
+    <div v-else-if="status" class="mt-6 rounded-card border border-line p-4">
       <p class="eyebrow" :class="`text-${terminal.tone}`">{{ status.user_code }}</p>
       <p class="voice mt-1">
         {{ status.client_name || status.client_slug || status.client_id }}
       </p>
     </div>
 
-    <p v-if="error" class="mt-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
+    <p v-if="error" class="note note-error mt-4">{{ error }}</p>
   </div>
 </template>

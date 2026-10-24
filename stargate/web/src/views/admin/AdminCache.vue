@@ -113,9 +113,12 @@ onMounted(load)
       </template>
     </PageHeader>
 
-    <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
+    <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
-    <div v-if="stats" class="grid gap-px border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
+    <div
+      v-if="stats"
+      class="grid overflow-hidden rounded-card gap-px border border-line bg-line sm:grid-cols-2 lg:grid-cols-4"
+    >
       <div class="bg-base-100 px-4 py-4">
         <p class="text-2xs uppercase tracking-[0.14em] text-faint">
           {{ t('admin.cache.statHitRatio') }}

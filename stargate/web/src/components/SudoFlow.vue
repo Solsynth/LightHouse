@@ -166,6 +166,6 @@ onMounted(begin)
       </li>
     </ul>
 
-    <p v-if="error" class="mt-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
+    <p v-if="error" class="note note-error mt-4">{{ error }}</p>
   </div>
 </template>

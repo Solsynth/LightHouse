@@ -136,7 +136,7 @@ onMounted(load)
 
     <SecurityNav />
 
-    <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
+    <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <ConsolePanel :title="t('factors.configured')" :note="loading ? undefined : t('factors.totalNote', { n: factors.length })">
@@ -201,7 +201,7 @@ onMounted(load)
 
       <div class="space-y-6">
         <ConsolePanel :title="t('factors.addFactor')">
-          <p v-if="!hasRecovery" class="mb-4 border-l border-warning pl-3 text-2xs leading-relaxed text-warning">
+          <p v-if="!hasRecovery" class="note note-warning mb-4 leading-relaxed text-2xs">
             {{ t('factors.recoveryFirst') }}
           </p>
 

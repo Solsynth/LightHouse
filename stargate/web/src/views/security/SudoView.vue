@@ -40,7 +40,7 @@ function finish() {
   <div>
     <PageHeader :title="t('sudo.title')" :description="t('sudo.description')" />
 
-    <div v-if="done" class="bg-base-200/30 p-5">
+    <div v-if="done" class="rounded-card border border-line bg-base-200/30 p-5">
       <p class="text-sm text-base-content">{{ t('sudo.verified') }}</p>
       <p class="voice mt-2">{{ t('sudo.verifiedHint') }}</p>
       <button type="button" class="btn btn-primary btn-sm mt-4" @click="finish">
@@ -48,7 +48,7 @@ function finish() {
       </button>
     </div>
 
-    <div v-else class="bg-base-200/30 p-5">
+    <div v-else class="rounded-card border border-line bg-base-200/30 p-5">
       <SudoFlow @done="onDone" />
       <button
         type="button"

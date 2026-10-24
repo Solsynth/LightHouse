@@ -276,10 +276,10 @@ function changeLocale(event: Event) {
       <img
         :src="backdropUrl"
         alt=""
-        class="h-full w-full scale-110 object-cover opacity-30 blur-3xl"
+        class="h-full w-full scale-110 object-cover opacity-40 blur-2xl"
         @error="backdropFailed = true"
       />
-      <div class="absolute inset-0 bg-base-100/70" />
+      <div class="absolute inset-0 bg-base-100/55" />
     </div>
 
     <a
@@ -300,7 +300,9 @@ function changeLocale(event: Event) {
         <main
           id="main"
           :class="
-            fullBleed ? 'flex flex-1 flex-col bg-base-100/40' : 'border border-line bg-base-200/40'
+            fullBleed
+              ? 'flex flex-1 flex-col bg-base-100/40'
+              : 'overflow-hidden rounded-sheet border border-line bg-base-200 shadow-[0_24px_60px_-40px_rgb(0_0_0/0.55)]'
           "
         >
           <div
@@ -340,19 +342,19 @@ function changeLocale(event: Event) {
                     v-if="picture && !avatarFailed"
                     :src="pictureUrl"
                     alt=""
-                    class="h-6 w-6 rounded-[2px] object-cover"
+                    class="h-6 w-6 rounded-full object-cover"
                     @error="avatarFailed = true"
                   />
                   <span
                     v-else
-                    class="flex h-6 w-6 items-center justify-center rounded-[2px] text-faint"
+                    class="flex h-6 w-6 items-center justify-center rounded-full bg-base-300/60 text-faint"
                   >
                     <UserAvatar16 aria-hidden="true" />
                   </span>
                 </button>
                 <ul
                   v-if="menuOpen"
-                  class="menu dropdown-content z-50 mt-2 w-44 border border-line bg-base-200 p-1 shadow-none"
+                  class="menu dropdown-content z-50 mt-2 w-44 rounded-card border border-line bg-base-200 p-1.5 shadow-[0_16px_40px_-24px_rgb(0_0_0/0.6)]"
                 >
                   <li>
                     <RouterLink :to="publicPath" @click="menuOpen = false">

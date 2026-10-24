@@ -228,7 +228,7 @@ onMounted(load)
 
     <SecurityNav />
 
-    <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
+    <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
     <ConsolePanel
       :title="t('devices.panelTitle')"
@@ -436,7 +436,9 @@ onMounted(load)
       aria-modal="true"
       aria-labelledby="rename-device-title"
     >
-      <div class="modal-box max-w-sm rounded-[2px] border border-line bg-base-100 p-0 shadow-none">
+      <div
+        class="modal-box max-w-sm overflow-hidden rounded-sheet border border-line bg-base-100 p-0 shadow-[0_30px_80px_-40px_rgb(0_0_0/0.7)]"
+      >
         <div class="border-b border-line px-5 py-4">
           <h2 id="rename-device-title" class="text-sm text-base-content">
             {{ t('devices.renameTitle') }}

@@ -28,7 +28,7 @@ const showImage = computed(() => Boolean(src.value) && failedSrc.value !== src.v
 
 <template>
   <span
-    class="grid size-6 shrink-0 place-items-center overflow-hidden rounded-[2px] bg-base-300"
+    class="grid size-6 shrink-0 place-items-center overflow-hidden rounded-full bg-base-300"
     :class="showImage ? '' : 'text-faint'"
   >
     <img

@@ -139,7 +139,7 @@ onMounted(load)
       </template>
     </PageHeader>
 
-    <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
+    <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
     <LoadingSkeleton v-if="loading" compact :rows="6" :columns="[4, 3, 2, 1]" header />
 

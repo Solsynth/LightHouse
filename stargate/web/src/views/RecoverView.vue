@@ -67,7 +67,7 @@ onMounted(async () => {
       </p>
     </div>
 
-    <form class="border border-line bg-base-200/40 p-5" @submit.prevent="requestReset">
+    <form class="well p-5" @submit.prevent="requestReset">
       <label for="recover-account" class="field-label">{{ t('signIn.accountLabel') }}</label>
       <input
         id="recover-account"
@@ -88,8 +88,8 @@ onMounted(async () => {
         />
       </div>
 
-      <p v-if="error" class="mt-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
-      <p v-if="sent" class="mt-4 border-l border-success pl-3 text-xs text-success">
+      <p v-if="error" class="note note-error mt-4">{{ error }}</p>
+      <p v-if="sent" class="note note-success mt-4">
         {{ t('recover.accepted') }}
       </p>
 

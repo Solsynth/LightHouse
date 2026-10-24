@@ -74,7 +74,7 @@ onMounted(load)
 
     <SecurityNav />
 
-    <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
+    <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <ConsolePanel :title="t('preferences.mode')">
@@ -85,7 +85,7 @@ onMounted(load)
           <label
             v-for="option in modes"
             :key="option"
-            class="flex cursor-pointer items-start gap-3 border border-line px-3 py-3 transition-colors"
+            class="flex cursor-pointer items-start gap-3 rounded-input border border-line px-3 py-3 transition-colors"
             :class="mode === option ? 'border-primary/60 bg-base-300/40' : 'hover:bg-base-300/30'"
           >
             <input

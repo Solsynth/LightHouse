@@ -57,14 +57,14 @@ const box = computed(() => ({ width: `${props.size}px`, height: `${props.size}px
     alt=""
     :style="box"
     class="shrink-0 border border-line object-cover"
-    :class="flat ? 'rounded-[2px]' : 'rounded-[3px]'"
+    :class="flat ? 'rounded-mark' : 'rounded-chip'"
     @error="failed = true"
   />
   <span
     v-else
     :style="box"
     class="flex shrink-0 items-center justify-center border border-line bg-base-300/40 select-none"
-    :class="[flat ? 'rounded-[2px]' : 'rounded-[3px]', monogram ? 'text-base-content' : 'text-faint']"
+    :class="[flat ? 'rounded-mark' : 'rounded-chip', monogram ? 'text-base-content' : 'text-faint']"
     aria-hidden="true"
   >
     <span v-if="monogram" class="font-sans font-semibold" :style="{ fontSize: `${Math.round(props.size * 0.36)}px` }">

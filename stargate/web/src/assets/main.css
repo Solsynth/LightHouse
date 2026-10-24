@@ -4,45 +4,46 @@
   themes: false;
 }
 
-/* Solarpass console — a blue-shifted instrument palette.
-   Ink-blue ground, cool paper text, periwinkle as the signal the interface
-   spends by default. Semantic color appears only when state needs it. */
+/* Solarpass console — a warm-shifted instrument palette, kept in step with
+   Solian's sun-warmed paper. Warm dark ground, warm paper text, periwinkle
+   as the signal the interface spends by default. Semantic color appears only
+   when state needs it. */
 @plugin 'daisyui/theme' {
   name: 'stargate';
   default: true;
   color-scheme: dark;
 
-  --color-base-100: #0a0d16;
-  --color-base-200: #10141f;
-  --color-base-300: #171c2b;
-  --color-base-content: #ccd2e2;
+  --color-base-100: #0d0b09;
+  --color-base-200: #15110e;
+  --color-base-300: #1d1815;
+  --color-base-content: #ded7cf;
 
-  --console-line: #232a3c;
-  --console-line-soft: #1a2030;
-  --console-faint: #7d86a0;
-  --console-dim: #9aa3b8;
+  --console-line: #2c2621;
+  --console-line-soft: #211c18;
+  --console-faint: #8b8177;
+  --console-dim: #a89e93;
 
-  --color-primary: #7577ba;
-  --color-primary-content: #0a0d16;
-  --color-secondary: #8f97b5;
-  --color-secondary-content: #0a0d16;
+  --color-primary: #8b83b8;
+  --color-primary-content: #0d0b09;
+  --color-secondary: #a29a8c;
+  --color-secondary-content: #0d0b09;
   --color-accent: #c7b08a;
-  --color-accent-content: #0a0d16;
-  --color-neutral: #1c2233;
-  --color-neutral-content: #a8b0c7;
+  --color-accent-content: #0d0b09;
+  --color-neutral: #241d18;
+  --color-neutral-content: #b3a99c;
 
-  --color-info: #8fa6c9;
-  --color-info-content: #0a0d16;
-  --color-success: #8db39a;
-  --color-success-content: #0a0d16;
+  --color-info: #94a8c4;
+  --color-info-content: #0d0b09;
+  --color-success: #8fb59b;
+  --color-success-content: #0d0b09;
   --color-warning: #c7b08a;
-  --color-warning-content: #0a0d16;
-  --color-error: #c08579;
-  --color-error-content: #0a0d16;
+  --color-warning-content: #0d0b09;
+  --color-error: #c98d7f;
+  --color-error-content: #0d0b09;
 
-  --radius-selector: 0.125rem;
-  --radius-field: 0.125rem;
-  --radius-box: 0.25rem;
+  --radius-selector: 6px;
+  --radius-field: 16px;
+  --radius-box: 20px;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
   --border: 1px;
@@ -50,7 +51,7 @@
   --noise: 0;
 }
 
-/* Daylight console: cool paper, ink-blue text, the same periwinkle signal.
+/* Daylight console: warm paper, warm-ink text, the same periwinkle signal.
    The palette is re-derived for a light field rather than inverted, so the
    brass accent and semantic colors keep their contrast against paper. */
 @plugin 'daisyui/theme' {
@@ -58,37 +59,37 @@
   default: false;
   color-scheme: light;
 
-  --color-base-100: #f3f5fa;
-  --color-base-200: #eaeef6;
-  --color-base-300: #dee3ee;
-  --color-base-content: #1c2334;
+  --color-base-100: #f5f1e9;
+  --color-base-200: #ece7dd;
+  --color-base-300: #e1dbd0;
+  --color-base-content: #2b2620;
 
-  --console-line: #ccd3e1;
-  --console-line-soft: #dee3ed;
-  --console-faint: #646e86;
-  --console-dim: #4d5770;
+  --console-line: #d5cec2;
+  --console-line-soft: #e3ddd2;
+  --console-faint: #6f675c;
+  --console-dim: #544d44;
 
-  --color-primary: #54589f;
-  --color-primary-content: #f7f8fd;
-  --color-secondary: #5a6378;
-  --color-secondary-content: #f7f8fd;
-  --color-accent: #8a6a3b;
+  --color-primary: #5a5a9c;
+  --color-primary-content: #f7f5f0;
+  --color-secondary: #5a5348;
+  --color-secondary-content: #f7f5f0;
+  --color-accent: #846335;
   --color-accent-content: #fdfbf6;
-  --color-neutral: #dbe0ea;
-  --color-neutral-content: #2a3145;
+  --color-neutral: #e2dbcf;
+  --color-neutral-content: #2f2820;
 
-  --color-info: #3f678c;
-  --color-info-content: #f7fafd;
-  --color-success: #3d6d4f;
+  --color-info: #4d6b85;
+  --color-info-content: #f7f5f0;
+  --color-success: #41704f;
   --color-success-content: #f6fbf7;
-  --color-warning: #8a6a3b;
+  --color-warning: #846335;
   --color-warning-content: #fdfbf6;
   --color-error: #a4554a;
   --color-error-content: #fdf8f7;
 
-  --radius-selector: 0.125rem;
-  --radius-field: 0.125rem;
-  --radius-box: 0.25rem;
+  --radius-selector: 6px;
+  --radius-field: 16px;
+  --radius-box: 20px;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
   --border: 1px;
@@ -108,6 +109,20 @@
   --color-faint: var(--console-faint);
   --color-dim: var(--console-dim);
   --text-2xs: 0.6875rem;
+
+  /* Corner radius: Solian's scale, adopted so the console and the Flutter app
+     share one geometry. A card or menu is 20, a field 16, a chip 12, an inline
+     mark 8, a sheet or dialog 28.
+
+     Controls are the exception: they are a capsule, not a 24 px corner. 24 px
+     against a 40 px control leaves a 4 px flat edge, so the button rule below
+     clamps to a pill instead of a token, which is also what Solian's
+     `controlRadius` resolves to at these heights. */
+  --radius-mark: 8px;
+  --radius-chip: 12px;
+  --radius-input: 16px;
+  --radius-card: 20px;
+  --radius-sheet: 28px;
 }
 
 @layer base {
@@ -131,7 +146,7 @@
   }
 
   :focus-visible {
-    outline: 1px solid var(--color-primary);
+    outline: 2px solid var(--color-primary);
     outline-offset: 2px;
   }
 
@@ -201,7 +216,9 @@
   }
 
   /* Full-bleed ledger: cancels the panel body's horizontal padding so row
-     hairlines meet the card edge, while cell text keeps the panel rhythm. */
+     hairlines meet the card edge, while cell text keeps the panel rhythm. The
+     rows also drop their bottom rule, because the panel's rounded corner now
+     closes the table instead of a hard edge. */
   .table-bleed {
     margin-inline: -1rem;
   }
@@ -237,7 +254,7 @@
   select.select,
   textarea.textarea {
     width: 100%;
-    border-radius: 2px;
+    border-radius: var(--radius-input);
     border-color: var(--color-line);
     background-color: var(--color-base-200);
     color: var(--color-base-content);
@@ -248,7 +265,7 @@
   input.input:focus,
   select.select:focus,
   textarea.textarea:focus {
-    outline: 1px solid var(--color-primary);
+    outline: 2px solid var(--color-primary);
     outline-offset: 0;
     border-color: var(--color-primary);
   }
@@ -278,7 +295,7 @@
   }
 
   .btn {
-    @apply rounded-[2px] border-line font-mono text-xs font-medium tracking-[0.02em];
+    @apply border-line font-mono text-xs font-medium tracking-[0.02em];
     box-shadow: none;
   }
 
@@ -305,8 +322,34 @@
     @apply text-base-content decoration-faint;
   }
 
-  .chip {
-    @apply inline-flex items-center gap-1.5 rounded-[2px] border border-line px-1.5 py-0.5 text-2xs tracking-wide text-dim;
+  /* Status note: the one shape for an inline error, confirmation, or warning.
+     A tinted pill carries the tone, so a message reads as an object rather
+     than as a stray sentence with a bar beside it. */
+  .note {
+    @apply rounded-chip border px-3 py-2 text-xs;
+  }
+
+  .note-error {
+    @apply border-error/40 bg-error/10 text-error;
+  }
+
+  .note-success {
+    @apply border-success/40 bg-success/10 text-success;
+  }
+
+  .note-warning {
+    @apply border-warning/40 bg-warning/10 text-warning;
+  }
+
+  /* Grouping surface: the page card sits on `base-100`, and every region
+     inside it is a tonal plate with the same corner as the panel token. */
+  .plate {
+    @apply rounded-card border border-line bg-base-200/30;
+  }
+
+  /* A field or option block nested inside a plate, one step tighter. */
+  .well {
+    @apply rounded-input border border-line bg-base-200/40;
   }
 
   .dot {
@@ -317,7 +360,7 @@
      surface that has not resolved yet still shows its layout. It carries no
      information and must never be announced as content. */
   .skeleton {
-    @apply block rounded-[2px] bg-base-300/70;
+    @apply block rounded-chip bg-base-300/70;
     animation: skeleton-sweep 1.4s ease-in-out infinite;
   }
 
@@ -439,4 +482,12 @@ select.select.footer-locale {
   min-height: 1.75rem;
   padding-block: 0;
   font-size: 0.6875rem;
+}
+
+/* Capsule controls. Solian's control token is 24 px against a 48 px button, so
+   the console's shorter buttons clamp to a pill; a square button becomes a
+   circle. Unlayered for the same reason as the field width below: daisyUI
+   writes the logical radii in a layer that outranks `components`. */
+.btn {
+  border-radius: 9999px;
 }

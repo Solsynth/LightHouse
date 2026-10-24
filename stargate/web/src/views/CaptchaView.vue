@@ -44,16 +44,16 @@ function accept(token: string) {
       {{ t('captcha.intro') }}
     </p>
 
-    <div class="mt-6 flex justify-center border border-line bg-base-200/40 px-4 py-5">
+    <div class="well mt-6 flex justify-center px-4 py-5">
       <CaptchaWidget @verified="accept" />
     </div>
 
-    <p v-if="verified" class="mt-4 border-l border-success pl-3 text-xs text-success">
+    <p v-if="verified" class="note note-success mt-4">
       {{ t('captcha.verified') }}
     </p>
     <p v-if="!redirectUri" class="voice mt-4 text-[12px]">
       {{ t('captcha.tokenNote') }}
     </p>
-    <p v-if="error" class="mt-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
+    <p v-if="error" class="note note-error mt-4">{{ error }}</p>
   </div>
 </template>

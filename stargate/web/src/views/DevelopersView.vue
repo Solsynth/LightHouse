@@ -172,7 +172,7 @@ onMounted(load)
       :description="t('developers.description')"
     />
 
-    <p v-if="error" class="mb-4 border-l border-error pl-3 text-xs text-error">{{ error }}</p>
+    <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
     <div class="space-y-6">
       <ConsolePanel
@@ -193,7 +193,7 @@ onMounted(load)
 
         <!-- Registration starts with the three fields the provider needs to
              resolve a client at all; everything else is edited on the app. -->
-        <form v-if="createOpen" class="mb-4 space-y-2 border border-line bg-base-200/40 p-3" @submit.prevent="createApp">
+        <form v-if="createOpen" class="well mb-4 space-y-2 p-3" @submit.prevent="createApp">
           <div class="grid gap-2 sm:grid-cols-2">
             <div>
               <label for="app-name" class="field-label">{{ t('oauthApps.name') }}</label>

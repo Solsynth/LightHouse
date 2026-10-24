@@ -478,7 +478,7 @@ onBeforeUnmount(() => {
                   v-for="factor in choiceFactors"
                   :key="factor.id"
                   type="button"
-                  class="flex w-full flex-col border border-line-soft px-3 py-2.5 text-left transition-colors hover:border-line hover:bg-base-300/60"
+                  class="flex w-full flex-col rounded-chip border border-line-soft px-3 py-2.5 text-left transition-colors hover:border-line hover:bg-base-300/60"
                   :disabled="busy"
                   @click="chooseFactor(factor)"
                 >
@@ -515,7 +515,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <p v-if="error || signIn.error" class="mt-3 text-xs text-error">
+      <p v-if="error || signIn.error" class="note note-error mt-3">
         {{ error || signIn.error }}
       </p>
     </div>

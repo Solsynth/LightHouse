@@ -23,9 +23,12 @@ choices already encoded in `web/src/assets/main.css`,
 4. **Blocks, not rules.** Content areas are separated by surface color and
    spacing. Horizontal hairlines survive only where they encode structure:
    the shell's chrome bands, ledger rows, table headers, modal sections, and
-   the boxed tab strip.
-5. **Boldness in one place.** The centered card, the blue-shifted palette, and
-   the terminal typography carry the identity. Everything else stays quiet.
+   the capsule tab rail.
+5. **Boldness in one place.** The centered card, the warm palette, and the
+   terminal typography carry the identity. Everything else stays quiet.
+6. **Shared geometry with the Flutter app.** Corner radii come from Solian's
+   `SolRadius` scale, so a console surface and a Solian screen of the same
+   role have the same shape. Roundness is a family, not a per-page choice.
 
 ## 2. Color
 
@@ -40,14 +43,14 @@ daisyUI themes are declared in `web/src/assets/main.css`:
 
 | Role | Token | Dark | Light |
 | --- | --- | --- | --- |
-| Page | `--color-base-100` | `#0a0d16` | `#f3f5fa` |
-| Panel | `--color-base-200` | `#10141f` | `#eaeef6` |
-| Raised | `--color-base-300` | `#171c2b` | `#dee3ee` |
-| Text | `--color-base-content` | `#ccd2e2` | `#1c2334` |
-| Hairline | `--console-line` | `#232a3c` | `#ccd3e1` |
-| Soft hairline | `--console-line-soft` | `#1a2030` | `#dee3ed` |
-| Secondary text | `--console-dim` | `#9aa3b8` | `#4d5770` |
-| Faint text | `--console-faint` | `#7d86a0` | `#646e86` |
+| Page | `--color-base-100` | `#0d0b09` | `#f5f1e9` |
+| Panel | `--color-base-200` | `#15110e` | `#ece7dd` |
+| Raised | `--color-base-300` | `#1d1815` | `#e1dbd0` |
+| Text | `--color-base-content` | `#ded7cf` | `#2b2620` |
+| Hairline | `--console-line` | `#2c2621` | `#d5cec2` |
+| Soft hairline | `--console-line-soft` | `#211c18` | `#e3ddd2` |
+| Secondary text | `--console-dim` | `#a89e93` | `#544d44` |
+| Faint text | `--console-faint` | `#8b8177` | `#6f675c` |
 
 `line`, `line-soft`, `faint`, and `dim` are exposed to Tailwind as
 `border-line`, `border-line-soft`, `text-faint`, and `text-dim`. They resolve
@@ -57,16 +60,23 @@ through the active theme, so shared components never hardcode a theme color.
 
 | Role | Dark | Light | Use |
 | --- | --- | --- | --- |
-| `primary` | `#7577ba` | `#54589f` | primary action, current tab, focus ring |
-| `accent` | `#c7b08a` | `#8a6a3b` | elevated sessions, trusted state |
-| `success` | `#8db39a` | `#3d6d4f` | `OK` status, verified state |
-| `warning` | `#c7b08a` | `#8a6a3b` | pending or expiring state |
-| `error` | `#c08579` | `#a4554a` | destructive action, `ERROR` status |
-| `info` | `#8fa6c9` | `#3f678c` | neutral live indicator |
+| `primary` | `#8b83b8` | `#5a5a9c` | primary action, current tab, focus ring |
+| `accent` | `#c7b08a` | `#846335` | elevated sessions, trusted state |
+| `success` | `#8fb59b` | `#41704f` | `OK` status, verified state |
+| `warning` | `#c7b08a` | `#846335` | pending or expiring state |
+| `error` | `#c98d7f` | `#a4554a` | destructive action, `ERROR` status |
+| `info` | `#94a8c4` | `#4d6b85` | neutral live indicator |
 
-Contrast (measured in the browser on the light theme): body `14.37:1`, dim
-`6.61:1`, faint `4.68:1`, primary button text `6.05:1`. Faint is the floor for
-small text; do not lighten it further.
+The palette is warm on both themes — the ground is warm-tinted rather than
+blue-gray, so the console sits in the same light as Solian's sun-warmed
+paper. Periwinkle stays the one cool signal, which is what keeps it legible
+against the warm ground.
+
+Contrast (WCAG 2.1 on each theme, dark first): body `13.78:1` / `13.31:1`,
+dim `7.46:1` / `7.39:1`, faint `5.15:1` / `4.94:1`, primary button text
+`5.65:1` / `5.71:1`. Faint is the floor for small text and measures at least
+`4.5:1` on every surface it sits on; do not darken the ground or lighten it
+without re-measuring.
 
 Theme choice follows the OS on first visit, then persists in
 `localStorage['solarpass.theme']`. The toggle lives in the header on every
@@ -92,6 +102,40 @@ Labels use uppercase, `0.14em` tracking, faint color. Table headers use
 uppercase `10 px` with `0.14em` tracking. Numeric columns use
 `tabular-nums`. Identifiers are truncated in dense tables and expose the full
 value through `title`.
+
+## 3.1 Geometry and corner radius
+
+Radii are a scale, not a per-page choice. The tokens in
+`web/src/assets/main.css` mirror Solian's `SolRadius`
+(`Solian/lib/core/theme.dart`) so the console and the Flutter app agree on
+shape. Use the token; never write a raw `rounded-[Npx]` in a view.
+
+| Token | Value | Tailwind | Use |
+| --- | --- | --- | --- |
+| `--radius-mark` | 8 px | `rounded-mark` | app marks, small inline art |
+| `--radius-chip` | 12 px | `rounded-chip` | chips, status notes, skeletons |
+| `--radius-field` | 16 px | `rounded-input` / `--radius-field` | inputs, selects, textareas, wells |
+| `--radius-card` | 20 px | `rounded-card` / `--radius-box` | panels, menus, option blocks |
+| `--radius-sheet` | 28 px | `rounded-sheet` | the page card, dialogs |
+
+Controls are the one exception: they are a **capsule**, not a 24 px corner.
+Solian's `controlRadius` is 24 px against a 48 px button; the console's
+buttons are 40 px, where 24 px would leave a 4 px flat edge, so `.btn` clamps
+to a pill instead. A square button becomes a circle. There is deliberately no
+`--radius-control` token — a value nothing consumes would be dead weight.
+The capsule is what makes the console read as the same family as the app.
+
+Two shared surfaces are available so views do not re-implement them:
+
+| Class | Shape | Use |
+| --- | --- | --- |
+| `.well` | 16 px, hairline, `base-200/40` | a form or block inset inside a panel |
+| `.note` + `.note-error` / `-success` / `-warning` | 12 px tinted pill | the one inline status message |
+
+Status notes replaced the left-rule `border-l` paragraphs. The tinted pill
+carries the tone, so a message reads as an object instead of a stray sentence
+with a bar beside it. Keep the spacing utility (`mt-4`, `mb-5`) and drop the
+duplicate `text-*`: the `.note-*` class supplies size and color.
 
 ## 4. Layout
 
@@ -148,18 +192,25 @@ avatar, while the name and panels keep the normal 20 px inset. The site keeps
 the card shell everywhere except admin pages.
 
 When the signed-in account has a profile background, it is painted as a fixed
-backdrop behind the shell: cover-scaled, blurred 64 px, at 30% opacity under a
-70% base scrim. It is never fetched when the profile has no background, and a
-failed load falls back to the plain base surface.
+backdrop behind the shell: cover-scaled, blurred 40 px, at 40% opacity under a
+55% base scrim. It is never fetched when the profile has no background, and a
+failed load falls back to the plain base surface. The blur is deliberately
+shallow: the backdrop is atmosphere, and past ~40 px it stops reading as the
+person's own art and starts reading as a gradient.
 On the consent screen the backdrop belongs to the app being authorized instead:
 that view publishes the client's own background to `ui.appBackdrop` and clears
 it on unmount, and the shell prefers it over the account's. A page that lends a
 backdrop owns its lifetime; leaving one set would paint a third-party app
 behind every later page.
 
+**The page card is opaque** (`bg-base-200`, radius 28 px). It is the reading
+surface, so text never sits over a blurred image; the backdrop is only visible
+in the gutter around the card. Do not reintroduce a translucent card.
+
 **Never nest a bordered card inside the page card.** Content sits directly on
-the page surface; panels use `bg-base-200/30` to group a region, and the
-status bar and table footers are separated by spacing, not rules.
+the page surface; panels use `bg-base-200/30` at radius 20 px to group a
+region, and the status bar and table footers are separated by spacing, not
+rules.
 
 ## 5. Components
 
@@ -188,9 +239,10 @@ account-settings entry is labelled **Settings** with the sliders icon; its
 contained tabs are Sessions, Devices, Sign-In Factors, Passkeys, Contacts,
 Linked Identities, and Security Mode.
 
-`SecurityNav` is a contained tab box: 1 px border, hairline dividers between
-tabs, active tab filled with `base-300`, inactive tabs faint with a hover tint.
-It uses `aria-current="page"`. Do not use underlined tabs.
+`SecurityNav` is a capsule tab rail: a pill-shaped container with the active
+tab filled `base-300` and inactive tabs faint with a hover tint. Tabs are
+separated by padding rather than dividers, so the rail carries no internal
+rules. It uses `aria-current="page"`. Do not use underlined tabs.
 
 `TabBox` carries that strip as a component, so a page whose tabs switch state
 instead of routes uses one control and not a second style. A tab with `to` is a
@@ -272,8 +324,8 @@ printing `0 total` or `Page 1 of 1`.
 ### Forms
 
 Labels sit above the field (`.field-label`, uppercase 11 px). Inputs, selects,
-and textareas are full width, 40 px high, 2 px radius, `base-200` fill, hairline
-border, and periwinkle focus outline. Placeholders are only for examples
+and textareas are full width, 40 px high, 16 px radius, `base-200` fill, hairline
+border, and a 2 px periwinkle focus outline. Placeholders are only for examples
 (`name@example.com`) or format hints (`6-digit code`); do not repeat the label.
 
 ### Factors and passkeys
@@ -493,8 +545,9 @@ sentence.
 | `btn btn-ghost` | secondary/cancel |
 | `btn btn-error` | destructive confirmation |
 
-All buttons are 2 px radius, mono, 12 px, no shadow. One primary action per
-view.
+All buttons are capsule-shaped (Solian's 24 px control token against a 40 px
+control clamps to a pill), mono, 12 px, no shadow. A square button becomes a
+circle. One primary action per view.
 
 ### IconButton
 
@@ -519,7 +572,9 @@ Never lowercase the marker.
 
 `ConfirmAction` and `ElevationSheet` are the only surfaces that keep internal
 horizontal rules: a header block, body, and an action footer. They are modal,
-so their boundaries are functional.
+so their boundaries are functional. Both are 28 px radius (Solian's
+`dialog`/`sheet` token) with `overflow-hidden`, so a header or footer rule
+meets the rounded edge instead of running past it.
 
 ## 6. Motion
 

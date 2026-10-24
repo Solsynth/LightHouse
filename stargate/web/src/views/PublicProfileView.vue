@@ -112,11 +112,11 @@ watch([locale, () => account.value?.name], updateTitle)
 
 <template>
   <div>
-    <div v-if="loading" class="bg-base-200/30" aria-hidden="true">
-      <div class="skeleton h-36 rounded-none" />
+    <div v-if="loading" aria-hidden="true">
+      <div class="h-36 bg-base-300/50" />
       <div class="px-5 pb-6">
         <div class="relative z-10 flex flex-wrap items-end gap-4">
-          <span class="skeleton -mt-8 h-[72px] w-[72px] rounded-[2px]" />
+          <span class="skeleton -mt-8 h-[72px] w-[72px] rounded-full" />
           <div class="min-w-0 space-y-2 pb-1">
             <span class="skeleton h-4 w-40" />
             <span class="skeleton h-2 w-24" />
@@ -156,7 +156,9 @@ watch([locale, () => account.value?.name], updateTitle)
 
         <div class="relative px-5 pb-6">
           <div class="relative z-10 flex flex-wrap items-end gap-4">
-            <div class="-mt-8 h-[72px] w-[72px] shrink-0 overflow-hidden rounded-[2px] bg-base-300">
+            <div
+              class="-mt-8 h-[72px] w-[72px] shrink-0 overflow-hidden rounded-full border-2 border-base-100 bg-base-300"
+            >
               <img
                 v-if="hasPicture && !avatarFailed"
                 :src="pictureUrl"
