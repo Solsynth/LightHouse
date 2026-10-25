@@ -14,21 +14,23 @@ choices already encoded in `web/src/assets/main.css`,
 1. **A calm instrument, not a dashboard.** The interface reports state and
    gets out of the way. No hero metrics, no decorative gradients, no chrome
    that does not carry information.
-2. **One signal color.** Periwinkle (`primary`) marks the action or current
-   location. Semantic colors appear only when state needs them; brass
-   (`accent`) marks privilege and secondary emphasis.
-3. **Machine data and human explanation are typeset differently.** Monospace
-   is for identifiers, values, tables, labels, and chrome. Sans is the voice:
-   guidance, descriptions, and empty states.
+2. **One signal color.** Indigo (`primary`) marks the action or current
+   location. Semantic colors appear only when state needs them; the seed's
+   tertiary (`accent`) marks privilege and secondary emphasis.
+3. **Machine data and human explanation are typeset differently.** Nunito is
+   the interface and the voice — labels, guidance, titles, buttons. Monospace
+   is reserved for strings whose characters are checked one at a time:
+   secrets, slugs, tokens, one-time codes.
 4. **Blocks, not rules.** Content areas are separated by surface color and
    spacing. Horizontal hairlines survive only where they encode structure:
    the shell's chrome bands, ledger rows, table headers, modal sections, and
    the capsule tab rail.
-5. **Boldness in one place.** The centered card, the warm palette, and the
-   terminal typography carry the identity. Everything else stays quiet.
+5. **Boldness in one place.** The centered card, the shared neutral ramp, and
+   the Nunito typography carry the identity. Everything else stays quiet.
 6. **Shared geometry with the Flutter app.** Corner radii come from Solian's
-   `SolRadius` scale, so a console surface and a Solian screen of the same
-   role have the same shape. Roundness is a family, not a per-page choice.
+   `SolRadius` scale, and the palette from Solian's own seed-derived ramp, so
+   a console surface and a Solian screen of the same role have the same shape
+   and the same light. Roundness is a family, not a per-page choice.
 
 ## 2. Color
 
@@ -43,14 +45,14 @@ daisyUI themes are declared in `web/src/assets/main.css`:
 
 | Role | Token | Dark | Light |
 | --- | --- | --- | --- |
-| Page | `--color-base-100` | `#0d0b09` | `#f5f1e9` |
-| Panel | `--color-base-200` | `#15110e` | `#ece7dd` |
-| Raised | `--color-base-300` | `#1d1815` | `#e1dbd0` |
-| Text | `--color-base-content` | `#ded7cf` | `#2b2620` |
-| Hairline | `--console-line` | `#2c2621` | `#d5cec2` |
-| Soft hairline | `--console-line-soft` | `#211c18` | `#e3ddd2` |
-| Secondary text | `--console-dim` | `#a89e93` | `#544d44` |
-| Faint text | `--console-faint` | `#8b8177` | `#6f675c` |
+| Page | `--color-base-100` | `#171618` | `#faf7f9` |
+| Panel | `--color-base-200` | `#1d1d20` | `#f6f2f6` |
+| Raised | `--color-base-300` | `#2e2e31` | `#e4e1e5` |
+| Text | `--color-base-content` | `#edeaee` | `#1f1f22` |
+| Hairline | `--console-line` | `#4b4b4f` | `#d3d1d5` |
+| Soft hairline | `--console-line-soft` | `#2a2a2d` | `#e9e6ea` |
+| Secondary text | `--console-dim` | `#c8c5ca` | `#4b4b4f` |
+| Faint text | `--console-faint` | `#97959b` | `#636367` |
 
 `line`, `line-soft`, `faint`, and `dim` are exposed to Tailwind as
 `border-line`, `border-line-soft`, `text-faint`, and `text-dim`. They resolve
@@ -60,48 +62,67 @@ through the active theme, so shared components never hardcode a theme color.
 
 | Role | Dark | Light | Use |
 | --- | --- | --- | --- |
-| `primary` | `#8b83b8` | `#5a5a9c` | primary action, current tab, focus ring |
-| `accent` | `#c7b08a` | `#846335` | elevated sessions, trusted state |
-| `success` | `#8fb59b` | `#41704f` | `OK` status, verified state |
-| `warning` | `#c7b08a` | `#846335` | pending or expiring state |
-| `error` | `#c98d7f` | `#a4554a` | destructive action, `ERROR` status |
-| `info` | `#94a8c4` | `#4d6b85` | neutral live indicator |
+| `primary` | `#bac3ff` | `#515b92` | primary action, current tab, focus ring |
+| `accent` | `#d9bfcf` | `#6d5966` | elevated sessions, trusted state |
+| `success` | `#a8d1a8` | `#315936` | `OK` status, verified state |
+| `warning` | `#fdba55` | `#6f4800` | pending or expiring state |
+| `error` | `#ffb4ab` | `#9f352d` | destructive action, `ERROR` status |
+| `info` | `#a1cce8` | `#2d5f79` | neutral live indicator |
 
-The palette is warm on both themes — the ground is warm-tinted rather than
-blue-gray, so the console sits in the same light as Solian's sun-warmed
-paper. Periwinkle stays the one cool signal, which is what keeps it legible
-against the warm ground.
+The ramp is Solian's, not an invented one. Solian seeds a Material color
+scheme from `Colors.indigo` and then replaces the neutrals with `_seedPaper`,
+which keeps the seed's hue at a chroma of about 3.5 — a near-neutral
+lavender-gray, neither blue-gray nor warm. The console uses the tones that
+function produces at each end: `surface` for the page, `surfaceContainerLow`
+for panels, `surfaceContainerHigh` for raised regions. Because the hue comes
+from the seed, the ground moves with the accent instead of sitting on a fixed
+beige. Accent is the seed's tertiary rather than a warm brass, so state color
+stays in the same family as the ground.
 
-Contrast (WCAG 2.1 on each theme, dark first): body `13.78:1` / `13.31:1`,
-dim `7.46:1` / `7.39:1`, faint `5.15:1` / `4.94:1`, primary button text
-`5.65:1` / `5.71:1`. Faint is the floor for small text and measures at least
-`4.5:1` on every surface it sits on; do not darken the ground or lighten it
-without re-measuring.
+Contrast (WCAG 2.1, dark / light): body `15.12:1` / `15.45:1`, dim
+`10.56:1` / `8.16:1`, faint `6.09:1` / `5.62:1`, primary button text
+`7.71:1` / `6.44:1`. Every one is measured against `base-300` as well, the
+highest surface text can sit on: faint `4.57:1` / `4.61:1`. Faint is the floor
+for small text — Solian's own outline tone lands at `3.94:1` on light
+`base-300`, so the console's light faint is one tone darker than the app's.
 
 Theme choice follows the OS on first visit, then persists in
 `localStorage['solarpass.theme']`. The toggle lives in the header on every
-page.
+page. `theme-color` and `color-scheme` are declared for both schemes, so
+browser chrome and native form controls follow the chosen theme rather than
+staying dark.
 
 ## 3. Typography
 
 | Face | Weights | Role |
 | --- | --- | --- |
-| IBM Plex Mono | 400, 500 | interface chrome, labels, data, tables, buttons |
-| IBM Plex Sans | 400, 500, 600 | page titles, prose (`.voice`), display headings |
+| Nunito | 400, 600, 700 | everything: interface, labels, prose, titles, buttons |
+| IBM Plex Mono | 400, 500 | machine-printed data only — secrets, slugs, tokens, one-time codes |
+
+Nunito is Solian's default face: `inUseFonts` in `core/theme.dart` falls back
+to it when the user has set no custom font. The console therefore speaks in
+the app's voice instead of the terminal one it used before.
 
 | Token | Size | Use |
 | --- | --- | --- |
-| page title | 24 px (20 px on mobile) | one per route, `h1.title` |
+| page title | 24 px (20 px on mobile), 700 | one per route, `h1.title` |
 | title | 13 px / 600 | modal and header names |
-| body | 13 px mono | default |
-| voice | 13.5 px sans | descriptions, hints, empty states |
+| body | 13.5 px / 1.55 | default |
+| voice | 14 px | descriptions, hints, empty states |
 | small | 12 px | dense prose in footers |
 | `text-2xs` | 11 px | labels, chips, metadata, table headers |
 
-Labels use uppercase, `0.14em` tracking, faint color. Table headers use
-uppercase `10 px` with `0.14em` tracking. Numeric columns use
-`tabular-nums`. Identifiers are truncated in dense tables and expose the full
+Labels use uppercase, `0.1em` tracking, faint color, and semibold. Table
+headers use uppercase `10.5 px` at `0.1em` tracking. Nunito ships
+proportional figures, which suit prose; columns that are read as numbers opt
+into `tabular-nums` — the `.numeric` utility, and ledger cells, which get it
+by default. Identifiers are truncated in dense tables and expose the full
 value through `title`.
+
+Mono is no longer the default face. It is reserved for strings whose
+characters are checked one at a time — an API secret, an app slug, a device
+code — where a fixed width is what makes the value readable. Everything a
+person reads as language is set in Nunito.
 
 ## 3.1 Geometry and corner radius
 
@@ -325,7 +346,7 @@ printing `0 total` or `Page 1 of 1`.
 
 Labels sit above the field (`.field-label`, uppercase 11 px). Inputs, selects,
 and textareas are full width, 40 px high, 16 px radius, `base-200` fill, hairline
-border, and a 2 px periwinkle focus outline. Placeholders are only for examples
+border, and a 2 px indigo focus outline. Placeholders are only for examples
 (`name@example.com`) or format hints (`6-digit code`); do not repeat the label.
 
 ### Factors and passkeys

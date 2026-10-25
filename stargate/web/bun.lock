@@ -7,7 +7,7 @@
       "dependencies": {
         "@carbon/icons-vue": "^10.139.0",
         "@fontsource/ibm-plex-mono": "^5.3.0",
-        "@fontsource/ibm-plex-sans": "^5.3.0",
+        "@fontsource/nunito": "^5.3.0",
         "@solsynth/sunkenland": "^0.1.4",
         "@tailwindcss/vite": "^4.3.3",
         "daisyui": "^5.7.50",
@@ -155,7 +155,7 @@
 
     "@fontsource/ibm-plex-mono": ["@fontsource/ibm-plex-mono@5.3.0", "", {}, "sha512-eTgnZjZEGk1QtD3ZstF+Vclo2HLAni8YMy34/DxllwZvyz1lR/1RF/xTiAquOBO7MvqBx8D2Ig2WCPMVfdZu7Q=="],
 
-    "@fontsource/ibm-plex-sans": ["@fontsource/ibm-plex-sans@5.3.0", "", {}, "sha512-CbE4CbbEEZJX860XyUiRpsksXIQR8Rp2XDva2VO53NJox9tVNtusrysd2x5YkUEY3ErQ66W1IiiQL8/wihhw5w=="],
+    "@fontsource/nunito": ["@fontsource/nunito@5.3.0", "", {}, "sha512-vw9TaTQJ/zpEpKrsODuPmOvaVjXgdda6B+xXA4YqjrdeJ62MLgVoDerdRXFQHyBnSCt2yQ2nHKCHPP/Pv7Xq4Q=="],
 
     "@humanfs/core": ["@humanfs/core@0.19.2", "", { "dependencies": { "@humanfs/types": "^0.15.0" } }, "sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA=="],
 

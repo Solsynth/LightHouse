@@ -423,7 +423,7 @@ onMounted(loadForm)
       <div class="space-y-6">
         <ConsolePanel :title="t('account.completenessTitle')">
           <div class="flex items-baseline gap-2">
-            <span class="text-3xl font-light tabular-nums text-base-content">{{ completion }}</span>
+            <span class="text-3xl font-normal numeric text-base-content">{{ completion }}</span>
             <span class="text-2xs text-faint">{{ t('account.percent') }}</span>
           </div>
           <div class="mt-3 h-px w-full bg-line">

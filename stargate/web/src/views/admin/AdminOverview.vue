@@ -84,7 +84,7 @@ onMounted(load)
         <p class="text-2xs uppercase tracking-[0.14em] text-faint">
           {{ t('admin.overview.statAccounts') }}
         </p>
-        <p class="mt-2 text-2xl font-light tabular-nums text-base-content">
+        <p class="mt-2 text-2xl font-normal numeric text-base-content">
           <span v-if="loading" class="skeleton h-6 w-16" aria-hidden="true" />
           <template v-else>{{ compactNumber(accounts) }}</template>
         </p>
@@ -94,7 +94,7 @@ onMounted(load)
         <p class="text-2xs uppercase tracking-[0.14em] text-faint">
           {{ t('admin.overview.statRestricted') }}
         </p>
-        <p class="mt-2 text-2xl font-light tabular-nums text-base-content">
+        <p class="mt-2 text-2xl font-normal numeric text-base-content">
           <span v-if="loading" class="skeleton h-6 w-16" aria-hidden="true" />
           <template v-else>{{ compactNumber(suspended) }}</template>
         </p>
@@ -104,7 +104,7 @@ onMounted(load)
         <p class="text-2xs uppercase tracking-[0.14em] text-faint">
           {{ t('admin.overview.statHitRatio') }}
         </p>
-        <p class="mt-2 text-2xl font-light tabular-nums text-base-content">
+        <p class="mt-2 text-2xl font-normal numeric text-base-content">
           {{ cacheAvailable ? `${(stats!.hit_ratio * 100).toFixed(1)}%` : t('admin.overview.statOffline') }}
         </p>
         <p class="mt-1 text-2xs text-faint">
@@ -119,7 +119,7 @@ onMounted(load)
         <p class="text-2xs uppercase tracking-[0.14em] text-faint">
           {{ t('admin.overview.statMemory') }}
         </p>
-        <p class="mt-2 text-2xl font-light tabular-nums text-base-content">
+        <p class="mt-2 text-2xl font-normal numeric text-base-content">
           {{ cacheAvailable ? bytes(stats!.used_memory_bytes) : '—' }}
         </p>
         <p class="mt-1 text-2xs text-faint">

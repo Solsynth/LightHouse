@@ -134,7 +134,7 @@ async function start() {
       margin: 1,
       width: 200,
       errorCorrectionLevel: 'M',
-      color: { dark: '#0d0b09', light: '#ffffff' },
+      color: { dark: '#171618', light: '#ffffff' },
     })
     if (attempt !== run) return
     image.value = drawn

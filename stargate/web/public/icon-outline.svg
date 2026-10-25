@@ -2,7 +2,7 @@
     <style>
         /* Browser chrome decides the favicon backdrop, so follow the OS. */
         @media (prefers-color-scheme: light) {
-            path, circle { stroke: #2b2620; }
+            path, circle { stroke: #1f1f22; }
         }
     </style>
     <path stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="12"

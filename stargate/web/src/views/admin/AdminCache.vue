@@ -123,13 +123,13 @@ onMounted(load)
         <p class="text-2xs uppercase tracking-[0.14em] text-faint">
           {{ t('admin.cache.statHitRatio') }}
         </p>
-        <p class="mt-2 text-xl font-light tabular-nums text-base-content">{{ ratio }}%</p>
+        <p class="mt-2 text-xl font-normal numeric text-base-content">{{ ratio }}%</p>
       </div>
       <div class="bg-base-100 px-4 py-4">
         <p class="text-2xs uppercase tracking-[0.14em] text-faint">
           {{ t('admin.cache.statMemory') }}
         </p>
-        <p class="mt-2 text-xl font-light tabular-nums text-base-content">
+        <p class="mt-2 text-xl font-normal numeric text-base-content">
           {{ bytes(stats.used_memory_bytes) }}
         </p>
       </div>
@@ -137,7 +137,7 @@ onMounted(load)
         <p class="text-2xs uppercase tracking-[0.14em] text-faint">
           {{ t('admin.cache.statClients') }}
         </p>
-        <p class="mt-2 text-xl font-light tabular-nums text-base-content">
+        <p class="mt-2 text-xl font-normal numeric text-base-content">
           {{ stats.connected_clients }}
         </p>
       </div>
@@ -145,7 +145,7 @@ onMounted(load)
         <p class="text-2xs uppercase tracking-[0.14em] text-faint">
           {{ t('admin.cache.statCommands') }}
         </p>
-        <p class="mt-2 text-xl font-light tabular-nums text-base-content">
+        <p class="mt-2 text-xl font-normal numeric text-base-content">
           {{ compactNumber(stats.total_commands_processed) }}
         </p>
       </div>
