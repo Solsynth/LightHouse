@@ -169,8 +169,20 @@ func (s *Store) ListDevices(ctx context.Context, accountID string, take, offset 
 	return devices, int(total), nil
 }
 
+// DeviceSession is the session slice device presence needs: identity plus
+// expiry and last grant. Presence only reports session ids, so loading whole
+// rows would drag the jsonb audiences/scopes/location blobs of every historic
+// session of every online device along.
+type DeviceSession struct {
+	ID            uuid.UUID
+	ClientID      uuid.UUID
+	ExpiredAt     *time.Time
+	LastGrantedAt *time.Time
+}
+
 // ListSessionsByClientIDs loads sessions grouped by client id for the given
-// devices (the sessions attached to SnAuthClientWithSessions).
+// devices (the sessions attached to SnAuthClientWithSessions). Unscoped: the
+// legacy join had no deleted_at filter.
 func (s *Store) ListSessionsByClientIDs(ctx context.Context, clientIDs []uuid.UUID) (map[string][]model.AuthSession, error) {
 	if len(clientIDs) == 0 {
 		return map[string][]model.AuthSession{}, nil
@@ -192,25 +204,58 @@ func (s *Store) ListSessionsByClientIDs(ctx context.Context, clientIDs []uuid.UU
 	return grouped, nil
 }
 
-// ListClientsByAccountIDs loads every non-deleted auth client for the given
-// accounts, grouped by account id (device presence).
-func (s *Store) ListClientsByAccountIDs(ctx context.Context, accountIDs []uuid.UUID) (map[string][]model.AuthClient, error) {
-	if len(accountIDs) == 0 {
-		return map[string][]model.AuthClient{}, nil
+// ListDeviceSessionsByClientIDs is ListSessionsByClientIDs narrowed to the
+// four columns device presence reads. Expiry is left to the caller: "live" is
+// a wall-clock decision, not a query one.
+func (s *Store) ListDeviceSessionsByClientIDs(ctx context.Context, clientIDs []uuid.UUID) (map[string][]DeviceSession, error) {
+	grouped := map[string][]DeviceSession{}
+	if len(clientIDs) == 0 {
+		return grouped, nil
+	}
+	rows := make([]struct {
+		ID            uuid.UUID  `gorm:"column:id"`
+		ClientID      *uuid.UUID `gorm:"column:client_id"`
+		ExpiredAt     *time.Time `gorm:"column:expired_at"`
+		LastGrantedAt *time.Time `gorm:"column:last_granted_at"`
+	}, 0, len(clientIDs)*2)
+	if err := s.DB.WithContext(ctx).Unscoped().Model(&AuthSessionEntity{}).
+		Select("id", "client_id", "expired_at", "last_granted_at").
+		Where("client_id IN ?", clientIDs).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		if rows[i].ClientID == nil {
+			continue
+		}
+		key := rows[i].ClientID.String()
+		grouped[key] = append(grouped[key], DeviceSession{
+			ID: rows[i].ID, ClientID: *rows[i].ClientID,
+			ExpiredAt: rows[i].ExpiredAt, LastGrantedAt: rows[i].LastGrantedAt,
+		})
+	}
+	return grouped, nil
+}
+
+// GetClientsByIDs loads the given auth clients keyed by client id (device
+// presence resolves live device ids to clients by primary key). Unknown ids
+// are absent from the map.
+func (s *Store) GetClientsByIDs(ctx context.Context, clientIDs []uuid.UUID) (map[string]model.AuthClient, error) {
+	clients := map[string]model.AuthClient{}
+	if len(clientIDs) == 0 {
+		return clients, nil
 	}
 	var entities []AuthClientEntity
 	if err := s.DB.WithContext(ctx).
-		Where("account_id IN ?", accountIDs).
-		Order("created_at DESC").
+		Where("id IN ?", clientIDs).
 		Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	grouped := map[string][]model.AuthClient{}
 	for i := range entities {
 		client := authClientFromEntity(&entities[i])
-		grouped[client.AccountId] = append(grouped[client.AccountId], client)
+		clients[client.Id] = client
 	}
-	return grouped, nil
+	return clients, nil
 }
 
 // GetClientByDeviceID loads a device by (account_id, device_id).

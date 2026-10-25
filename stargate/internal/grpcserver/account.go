@@ -45,19 +45,16 @@ func (s *dyAccountService) hydrateProfiles(ctx context.Context, accounts []model
 	for i := range accounts {
 		ids = append(ids, uuid.MustParse(accounts[i].Id))
 	}
-	profiles, err := s.d.Store.GetProfilesByAccountIDs(ctx, ids)
+	// One batched read plus batched create-on-missing: the previous
+	// per-account GetOrCreateAccountProfile fallback made a 128-account batch
+	// (the fleet's friend-overview path) issue hundreds of round trips, and
+	// the shared read healed bare rows one write at a time.
+	profiles, err := s.d.Store.EnsureProfilesByAccountIDs(ctx, ids)
 	if err != nil {
 		return err
 	}
 	for i := range accounts {
-		profile, ok := profiles[accounts[i].Id]
-		if !ok {
-			profile, err = s.d.Store.GetOrCreateAccountProfile(ctx, uuid.MustParse(accounts[i].Id))
-			if err != nil {
-				return err
-			}
-		}
-		accounts[i].Profile = profile
+		accounts[i].Profile = profiles[accounts[i].Id]
 	}
 	return nil
 }

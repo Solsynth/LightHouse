@@ -121,15 +121,17 @@ func (d Deps) getFriendsOverview(c *gin.Context) {
 		internalError(c, err)
 		return
 	}
-	// Hydrate profiles. solar_network_sdk parses account.profile as non-null,
-	// so one unhydrated friend fails the whole list client-side; surface it.
+	// Hydrate profiles in one batch. solar_network_sdk parses account.profile
+	// as non-null, so one unhydrated friend fails the whole list client-side;
+	// surface it. A per-friend GetOrCreateAccountProfile made this list issue
+	// two round trips per friend.
+	profiles, err := d.Store.EnsureProfilesByAccountIDs(ctx, uuids)
+	if err != nil {
+		internalError(c, err)
+		return
+	}
 	for i := range accounts {
-		p, err := d.Store.GetOrCreateAccountProfile(ctx, uuid.MustParse(accounts[i].Id))
-		if err != nil {
-			internalError(c, err)
-			return
-		}
-		accounts[i].Profile = p
+		accounts[i].Profile = profiles[accounts[i].Id]
 	}
 
 	now := time.Now()
@@ -1422,10 +1424,20 @@ func (d Deps) accountsForIDs(ctx context.Context, ids []string) []model.Account 
 		d.Log.Warn("load accounts by ids", "error", err)
 		return []model.Account{}
 	}
+	if len(accounts) == 0 {
+		return accounts
+	}
+	accountIDs := make([]uuid.UUID, 0, len(accounts))
 	for i := range accounts {
-		if profile, err := d.Store.GetOrCreateAccountProfile(ctx, mustUUID(accounts[i].Id)); err == nil {
-			accounts[i].Profile = profile
-		}
+		accountIDs = append(accountIDs, mustUUID(accounts[i].Id))
+	}
+	profiles, err := d.Store.EnsureProfilesByAccountIDs(ctx, accountIDs)
+	if err != nil {
+		d.Log.Warn("load account profiles", "error", err)
+		return accounts
+	}
+	for i := range accounts {
+		accounts[i].Profile = profiles[accounts[i].Id]
 	}
 	return accounts
 }

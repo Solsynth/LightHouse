@@ -181,49 +181,126 @@ func (s *Store) HydrateAccountProfile(ctx context.Context, account *model.Accoun
 	return nil
 }
 
-// HealBareProfile copies accounts.name into first_name for profile rows that
-// carry no profile data at all (empty first/last name, no bio, no picture).
-// Such rows are what migrated accounts that never edited their profile end up
-// with — and what the old Passport created on demand — so reads otherwise
-// emit data-less profiles for perfectly real accounts.
-func (s *Store) HealBareProfile(ctx context.Context, accountID uuid.UUID) error {
+// HealBareProfiles copies accounts.name into first_name for every profile row
+// among accountIDs that carries no profile data at all (empty first/last
+// name, no bio, no picture). Such rows are what migrated accounts that never
+// edited their profile end up with — and what the old Passport created on
+// demand — so reads otherwise emit data-less profiles for perfectly real
+// accounts.
+//
+// One statement for the whole batch: the single-account form used to run once
+// per bare row read, which turned a 128-account batch hydrate into a write
+// storm (each heal re-read the row through GetOrCreateAccountProfile).
+func (s *Store) HealBareProfiles(ctx context.Context, accountIDs []uuid.UUID) error {
+	if len(accountIDs) == 0 {
+		return nil
+	}
 	return s.DB.WithContext(ctx).Model(&ProfileEntity{}).
-		Where(`account_id = ?
+		Where(`account_id IN ?
 			AND (first_name IS NULL OR btrim(first_name) = '')
 			AND (last_name IS NULL OR btrim(last_name) = '')
 			AND (bio IS NULL OR btrim(bio) = '')
 			AND picture IS NULL
-			AND EXISTS (SELECT 1 FROM accounts a WHERE a.id = account_profiles.account_id AND a.deleted_at IS NULL)`, accountID).
+			AND EXISTS (SELECT 1 FROM accounts a WHERE a.id = account_profiles.account_id AND a.deleted_at IS NULL)`, accountIDs).
 		Updates(map[string]any{
 			"first_name": gorm.Expr("(SELECT a.name FROM accounts a WHERE a.id = account_profiles.account_id AND a.deleted_at IS NULL)"),
 			"updated_at": gorm.Expr("now()"),
 		}).Error
 }
 
+// HealBareProfile heals one account's bare profile row (see HealBareProfiles).
+func (s *Store) HealBareProfile(ctx context.Context, accountID uuid.UUID) error {
+	return s.HealBareProfiles(ctx, []uuid.UUID{accountID})
+}
+
 // GetProfilesByAccountIDs loads the 1:1 profile rows for the given accounts
 // (missing accounts are absent from the map). Bare rows are healed
-// (backfilled with the account name) so no profile shell is surfaced.
+// (backfilled with the account name) so no profile shell is surfaced. Healing
+// is one batched UPDATE plus one re-read of the healed rows, never a write
+// per row.
 func (s *Store) GetProfilesByAccountIDs(ctx context.Context, ids []uuid.UUID) (map[string]*model.Profile, error) {
 	profiles := map[string]*model.Profile{}
 	if len(ids) == 0 {
 		return profiles, nil
 	}
+	if err := s.loadProfilesByAccountIDs(ctx, ids, profiles); err != nil {
+		return nil, err
+	}
+	bare := make([]uuid.UUID, 0, len(profiles))
+	for _, profile := range profiles {
+		if isBareProfile(profile) {
+			bare = append(bare, uuid.MustParse(profile.AccountId))
+		}
+	}
+	if len(bare) == 0 {
+		return profiles, nil
+	}
+	if err := s.HealBareProfiles(ctx, bare); err != nil {
+		return nil, err
+	}
+	if err := s.loadProfilesByAccountIDs(ctx, bare, profiles); err != nil {
+		return nil, err
+	}
+	return profiles, nil
+}
+
+// EnsureProfilesByAccountIDs is GetProfilesByAccountIDs plus create-on-missing
+// for the given accounts, in batches: account reads must never issue a
+// per-account profile round trip. Missing rows are created with one
+// conflict-tolerant bulk insert, then loaded and healed through the same
+// batched read as existing ones — a freshly created row is bare too, so it
+// needs the name backfill exactly like a migrated one. Accounts whose row is a
+// soft-deleted tombstone (which still occupies the unfiltered unique index, so
+// the bulk insert is a no-op) fall back to GetOrCreateAccountProfile, which
+// revives it.
+func (s *Store) EnsureProfilesByAccountIDs(ctx context.Context, ids []uuid.UUID) (map[string]*model.Profile, error) {
+	if len(ids) == 0 {
+		return map[string]*model.Profile{}, nil
+	}
+	now := time.Now().UTC()
+	pending := make([]ProfileEntity, 0, len(ids))
+	for _, id := range ids {
+		pending = append(pending, ProfileEntity{
+			ID:            uuid.New(),
+			EntityBase:    EntityBase{CreatedAt: now, UpdatedAt: now},
+			AccountID:     id,
+			Experience:    0,
+			SocialCredits: 100,
+		})
+	}
+	if err := s.DB.WithContext(ctx).
+		Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "account_id"}}, DoNothing: true}).
+		CreateInBatches(pending, 200).Error; err != nil {
+		return nil, err
+	}
+	profiles, err := s.GetProfilesByAccountIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		if _, ok := profiles[id.String()]; ok {
+			continue
+		}
+		revived, err := s.GetOrCreateAccountProfile(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		profiles[revived.AccountId] = revived
+	}
+	return profiles, nil
+}
+
+// loadProfilesByAccountIDs fills result with the live profile rows of ids.
+func (s *Store) loadProfilesByAccountIDs(ctx context.Context, ids []uuid.UUID, result map[string]*model.Profile) error {
 	var entities []ProfileEntity
 	if err := s.DB.WithContext(ctx).Where("account_id IN ?", ids).Find(&entities).Error; err != nil {
-		return nil, err
+		return err
 	}
 	for i := range entities {
 		profile := profileFromEntity(&entities[i])
-		if isBareProfile(profile) {
-			healed, err := s.GetOrCreateAccountProfile(ctx, entities[i].AccountID)
-			if err != nil {
-				return nil, err
-			}
-			profile = healed
-		}
-		profiles[profile.AccountId] = profile
+		result[profile.AccountId] = profile
 	}
-	return profiles, nil
+	return nil
 }
 
 // ProfileFieldPatch carries the fields Passport features publish on

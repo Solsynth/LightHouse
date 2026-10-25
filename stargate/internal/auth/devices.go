@@ -13,6 +13,7 @@ import (
 	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/stargate/internal/model"
+	"src.solsynth.dev/sosys/stargate/internal/store"
 )
 
 // ErrOnlineDevicesUnavailable marks a failed live-connection lookup against
@@ -23,9 +24,15 @@ var ErrOnlineDevicesUnavailable = errors.New("resolve online devices")
 // deviceStore is the read surface device presence needs; *store.Store
 // satisfies it. Narrowed to an interface so the join can be tested without
 // Postgres.
+//
+// Presence never lists devices per account: a 128-account batch used to load
+// every device of every account (730 rows for one observed call) plus every
+// session ever attached to them, only to discard all but the handful Blade
+// reported online. It resolves the online client ids (which ARE auth_clients
+// ids) by primary key instead.
 type deviceStore interface {
-	ListClientsByAccountIDs(ctx context.Context, accountIDs []uuid.UUID) (map[string][]model.AuthClient, error)
-	ListSessionsByClientIDs(ctx context.Context, clientIDs []uuid.UUID) (map[string][]model.AuthSession, error)
+	GetClientsByIDs(ctx context.Context, clientIDs []uuid.UUID) (map[string]model.AuthClient, error)
+	ListDeviceSessionsByClientIDs(ctx context.Context, clientIDs []uuid.UUID) (map[string][]store.DeviceSession, error)
 }
 
 // OnlineDevice is a device of an account that currently has a live wsgateway
@@ -63,7 +70,6 @@ func NewDevicePresence(st deviceStore, blade gen.WebSocketServiceClient, log *sl
 func (p *DevicePresence) ForAccounts(ctx context.Context, accountIDs []string, namespace string) (map[string][]OnlineDevice, error) {
 	result := make(map[string][]OnlineDevice, len(accountIDs))
 	requested := make([]string, 0, len(accountIDs))
-	parsed := make([]uuid.UUID, 0, len(accountIDs))
 	seen := make(map[string]bool, len(accountIDs))
 	for _, raw := range accountIDs {
 		accountID := strings.TrimSpace(raw)
@@ -73,20 +79,12 @@ func (p *DevicePresence) ForAccounts(ctx context.Context, accountIDs []string, n
 		seen[accountID] = true
 		requested = append(requested, accountID)
 		result[accountID] = []OnlineDevice{}
-		if id, err := uuid.Parse(accountID); err == nil {
-			parsed = append(parsed, id)
-		}
 	}
-	if p.Store == nil || len(parsed) == 0 {
+	if p.Store == nil || len(requested) == 0 {
 		return result, nil
 	}
 
-	clientsByAccount, err := p.Store.ListClientsByAccountIDs(ctx, parsed)
-	if err != nil {
-		return nil, fmt.Errorf("list clients by account ids: %w", err)
-	}
-
-	deviceIDsByAccount := map[string][]string{}
+	var deviceIDsByAccount map[string][]string
 	if p.Blade != nil {
 		resp, err := p.Blade.GetUsersConnectedWebsocketDeviceIds(ctx, &gen.DyGetUsersConnectedWebsocketDeviceIdsRequest{
 			UserIds:   requested,
@@ -95,6 +93,7 @@ func (p *DevicePresence) ForAccounts(ctx context.Context, accountIDs []string, n
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrOnlineDevicesUnavailable, err)
 		}
+		deviceIDsByAccount = make(map[string][]string, len(resp.GetDevices()))
 		for accountID, list := range resp.GetDevices() {
 			if list != nil {
 				deviceIDsByAccount[accountID] = list.GetDeviceIds()
@@ -102,16 +101,39 @@ func (p *DevicePresence) ForAccounts(ctx context.Context, accountIDs []string, n
 		}
 	}
 
-	matchedClientIDs := make([]uuid.UUID, 0, len(requested))
+	// Blade reports the online device ids (auth client ids). Resolve just
+	// those rows: everything else about the accounts is irrelevant here.
+	onlineClientIDs := make([]uuid.UUID, 0, len(requested))
 	seenClient := map[string]bool{}
 	for _, accountID := range requested {
-		devices := matchOnlineDevices(clientsByAccount[accountID], deviceIDsByAccount[accountID])
-		result[accountID] = devices
-		for _, device := range devices {
-			if seenClient[device.Client.Id] {
+		for _, raw := range deviceIDsByAccount[accountID] {
+			id := strings.TrimSpace(raw)
+			if id == "" || seenClient[id] {
 				continue
 			}
-			seenClient[device.Client.Id] = true
+			parsed, err := uuid.Parse(id)
+			if err != nil {
+				continue
+			}
+			seenClient[id] = true
+			onlineClientIDs = append(onlineClientIDs, parsed)
+		}
+	}
+	if len(onlineClientIDs) == 0 {
+		return result, nil
+	}
+	clients, err := p.Store.GetClientsByIDs(ctx, onlineClientIDs)
+	if err != nil {
+		return nil, fmt.Errorf("load online clients: %w", err)
+	}
+
+	// A client is reported under its own account; ids Blade invented (its
+	// fallback device ids) have no auth_client row and drop out here.
+	matchedClientIDs := make([]uuid.UUID, 0, len(clients))
+	for _, accountID := range requested {
+		devices := matchOnlineDevices(clients, deviceIDsByAccount[accountID])
+		result[accountID] = devices
+		for _, device := range devices {
 			if id, err := uuid.Parse(device.Client.Id); err == nil {
 				matchedClientIDs = append(matchedClientIDs, id)
 			}
@@ -123,7 +145,7 @@ func (p *DevicePresence) ForAccounts(ctx context.Context, accountIDs []string, n
 
 	// Sessions attach per client: all non-expired sessions of a live client
 	// count as online (there is no session-scoped presence key).
-	sessionsByClient, err := p.Store.ListSessionsByClientIDs(ctx, matchedClientIDs)
+	sessionsByClient, err := p.Store.ListDeviceSessionsByClientIDs(ctx, matchedClientIDs)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions by client ids: %w", err)
 	}
@@ -136,22 +158,23 @@ func (p *DevicePresence) ForAccounts(ctx context.Context, accountIDs []string, n
 	return result, nil
 }
 
-// matchOnlineDevices joins wsgateway device ids onto auth clients: the device
-// id IS the auth client id, so only clients whose id was reported online are
-// returned. Ids with no matching client (e.g. Blade's generated fallback
-// device ids) are dropped. Deterministic: sorted by client id.
-func matchOnlineDevices(clients []model.AuthClient, deviceIDs []string) []OnlineDevice {
-	online := make(map[string]bool, len(deviceIDs))
+// matchOnlineDevices joins wsgateway device ids onto the resolved clients: the
+// device id IS the auth client id, so only clients whose id was reported
+// online are returned. Ids with no matching client (e.g. Blade's generated
+// fallback device ids) are dropped. Deterministic: sorted by client id.
+func matchOnlineDevices(clients map[string]model.AuthClient, deviceIDs []string) []OnlineDevice {
+	devices := make([]OnlineDevice, 0, len(deviceIDs))
+	seen := make(map[string]bool, len(deviceIDs))
 	for _, raw := range deviceIDs {
-		if id := strings.TrimSpace(raw); id != "" {
-			online[id] = true
-		}
-	}
-	devices := make([]OnlineDevice, 0, len(online))
-	for _, client := range clients {
-		if !online[client.Id] {
+		id := strings.TrimSpace(raw)
+		if id == "" || seen[id] {
 			continue
 		}
+		client, ok := clients[id]
+		if !ok {
+			continue
+		}
+		seen[id] = true
 		devices = append(devices, OnlineDevice{Client: client, DeviceKey: client.Id})
 	}
 	sort.Slice(devices, func(i, j int) bool { return devices[i].Client.Id < devices[j].Client.Id })
@@ -161,10 +184,10 @@ func matchOnlineDevices(clients []model.AuthClient, deviceIDs []string) []Online
 // liveSessions filters a device's sessions down to the non-expired ones and
 // orders them newest last_granted_at first (nil timestamps last, id as the
 // tie-break so the order is stable).
-func liveSessions(sessions []model.AuthSession, now time.Time) ([]string, *model.Time) {
-	kept := make([]model.AuthSession, 0, len(sessions))
+func liveSessions(sessions []store.DeviceSession, now time.Time) ([]string, *model.Time) {
+	kept := make([]store.DeviceSession, 0, len(sessions))
 	for _, session := range sessions {
-		if session.ExpiredAt != nil && !session.ExpiredAt.Time().After(now) {
+		if session.ExpiredAt != nil && !session.ExpiredAt.After(now) {
 			continue
 		}
 		kept = append(kept, session)
@@ -173,21 +196,21 @@ func liveSessions(sessions []model.AuthSession, now time.Time) ([]string, *model
 		a, b := kept[i].LastGrantedAt, kept[j].LastGrantedAt
 		if a == nil || b == nil {
 			if a == nil && b == nil {
-				return kept[i].Id < kept[j].Id
+				return kept[i].ID.String() < kept[j].ID.String()
 			}
 			return b == nil
 		}
-		if a.Time().Equal(b.Time()) {
-			return kept[i].Id < kept[j].Id
+		if a.Equal(*b) {
+			return kept[i].ID.String() < kept[j].ID.String()
 		}
-		return a.Time().After(b.Time())
+		return a.After(*b)
 	})
 	ids := make([]string, 0, len(kept))
 	var newest *model.Time
 	for _, session := range kept {
-		ids = append(ids, session.Id)
+		ids = append(ids, session.ID.String())
 		if newest == nil && session.LastGrantedAt != nil {
-			newest = session.LastGrantedAt
+			newest = model.NewTime(*session.LastGrantedAt)
 		}
 	}
 	return ids, newest

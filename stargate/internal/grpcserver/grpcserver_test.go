@@ -17,6 +17,7 @@ import (
 
 	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/model"
+	"src.solsynth.dev/sosys/stargate/internal/store"
 )
 
 // --- DyCapabilitiesService ---
@@ -341,39 +342,54 @@ type testDeviceStore struct {
 	err error
 }
 
-func (s testDeviceStore) ListClientsByAccountIDs(context.Context, []uuid.UUID) (map[string][]model.AuthClient, error) {
+func (s testDeviceStore) GetClientsByIDs(context.Context, []uuid.UUID) (map[string]model.AuthClient, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
-	return map[string][]model.AuthClient{}, nil
+	return map[string]model.AuthClient{}, nil
 }
 
-func (s testDeviceStore) ListSessionsByClientIDs(context.Context, []uuid.UUID) (map[string][]model.AuthSession, error) {
-	return map[string][]model.AuthSession{}, nil
+func (s testDeviceStore) ListDeviceSessionsByClientIDs(context.Context, []uuid.UUID) (map[string][]store.DeviceSession, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return map[string][]store.DeviceSession{}, nil
 }
 
 type failingBlade struct {
 	gen.WebSocketServiceClient
-	err error
+	devices map[string][]string
+	err     error
 }
 
-func (b failingBlade) GetUsersConnectedWebsocketDeviceIds(context.Context, *gen.DyGetUsersConnectedWebsocketDeviceIdsRequest, ...grpc.CallOption) (*gen.DyGetUsersConnectedWebsocketDeviceIdsResponse, error) {
-	return nil, b.err
+func (b failingBlade) GetUsersConnectedWebsocketDeviceIds(_ context.Context, _ *gen.DyGetUsersConnectedWebsocketDeviceIdsRequest, _ ...grpc.CallOption) (*gen.DyGetUsersConnectedWebsocketDeviceIdsResponse, error) {
+	if b.err != nil {
+		return nil, b.err
+	}
+	resp := &gen.DyGetUsersConnectedWebsocketDeviceIdsResponse{Devices: map[string]*gen.DyWebsocketDeviceIdList{}}
+	for accountID, ids := range b.devices {
+		resp.Devices[accountID] = &gen.DyWebsocketDeviceIdList{DeviceIds: ids}
+	}
+	return resp, nil
 }
 
 // A failing wsgateway lookup degrades to Unavailable; a local (store) failure
 // is an Internal error. Callers distinguish the two.
 func TestGetOnlineDevicesErrorMapping(t *testing.T) {
 	accountID := uuid.NewString()
+	// The store is only reached once Blade reports a live device id, and
+	// presence is not configured without Blade at all.
+	online := map[string][]string{accountID: {uuid.NewString()}}
+
 	bladeDown := &dyAuthService{d: Deps{Presence: auth.NewDevicePresence(
-		testDeviceStore{}, failingBlade{err: errors.New("blade down")}, nil)}}
+		testDeviceStore{}, failingBlade{devices: online, err: errors.New("blade down")}, nil)}}
 	_, err := bladeDown.GetOnlineDevices(context.Background(), &gen.DyGetOnlineDevicesRequest{AccountId: accountID})
 	if status.Code(err) != codes.Unavailable {
 		t.Errorf("wsgateway failure: code = %v, want Unavailable", status.Code(err))
 	}
 
 	storeDown := &dyAuthService{d: Deps{Presence: auth.NewDevicePresence(
-		testDeviceStore{err: errors.New("boom")}, failingBlade{}, nil)}}
+		testDeviceStore{err: errors.New("boom")}, failingBlade{devices: online}, nil)}}
 	_, err = storeDown.GetOnlineDevices(context.Background(), &gen.DyGetOnlineDevicesRequest{AccountId: accountID})
 	if status.Code(err) != codes.Internal {
 		t.Errorf("store failure: code = %v, want Internal", status.Code(err))
