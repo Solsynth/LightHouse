@@ -52,7 +52,9 @@ target = ""
 sessionEventsStream = "auth_session_events"
 sessionEventsSubject = "auth.session.revoked"
 websocketPushStream = "websocket_push"
-websocketPushSubject = "websocket.push"
+# Must stay the subject Blade's gateway subscribes to (websocket_<suffix>);
+# the C# fleet and Metoer publish here too.
+websocketPushSubject = "websocket_push"
 
 [auth]
 issuer = "solar-network"

@@ -7,12 +7,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	eb "src.solsynth.dev/sosys/go/pkg/eventbus"
+	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/config"
@@ -94,23 +98,69 @@ func (c *Client) PublishSessionRevoked(ctx context.Context, events []auth.Sessio
 	return nil
 }
 
-// wsPushPayload is the websocket.push envelope.
+// wsPushPayload is the websocket_push envelope Blade's gateway consumes
+// (wsgateway.natsPushEvent). Field names and the base64 `packet` byte[] are
+// the wire contract shared with the C# RemoteWebSocketService and Metoer.
 type wsPushPayload struct {
-	Target  string `json:"target"`
-	Event   string `json:"event"`
-	Payload any    `json:"payload"`
+	Namespace         string   `json:"namespace"`
+	Target            string   `json:"target"`
+	IDs               []string `json:"ids"`
+	ExcludedDeviceIDs []string `json:"excluded_device_ids"`
+	Packet            []byte   `json:"packet"`
 }
 
-// PublishWS publishes a websocket push envelope to the websocket_push stream.
+// wsDefaultNamespace is WebSocketNamespaces.Solian: an unmatched namespace
+// delivers nowhere, so an empty one resolves to the first-party tenant.
+const wsDefaultNamespace = "dev.solsynth.solian"
+
+// resolveWSNamespace mirrors WebSocketNamespaces.Resolve (empty → Solian).
+func resolveWSNamespace(namespace string) string {
+	if strings.TrimSpace(namespace) == "" {
+		return wsDefaultNamespace
+	}
+	return strings.TrimSpace(namespace)
+}
+
+// PublishWS publishes an account-targeted websocket push on the subject
+// Blade's gateway subscribes to.
+//
+// The envelope is not the flat {target,event,payload} shape this used to
+// send: Blade decodes `packet` as a protojson DyWebSocketPacket and reads
+// `ids` to pick recipients, so a mismatched subject or shape is dropped
+// without an error on either side.
 func (c *Client) PublishWS(ctx context.Context, target string, event string, payload any) error {
+	return c.PublishWSNamespace(ctx, target, event, payload, "")
+}
+
+// PublishWSNamespace is PublishWS with an explicit tenant namespace.
+func (c *Client) PublishWSNamespace(ctx context.Context, target, event string, payload any, namespace string) error {
 	if c == nil || c.Conn == nil {
 		return nil
 	}
-	data, err := json.Marshal(wsPushPayload{Target: target, Event: event, Payload: payload})
+	data, err := json.Marshal(payload)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal websocket payload: %w", err)
 	}
-	_, err = c.JS.Publish(ctx, c.cfg.NATS.WebsocketPushSubject, data)
+	packet, err := protojson.Marshal(&gen.DyWebSocketPacket{
+		Type:         event,
+		Data:         data,
+		ErrorMessage: wrapperspb.String(""),
+	})
+	if err != nil {
+		return fmt.Errorf("marshal websocket packet: %w", err)
+	}
+	// json.Marshal base64-encodes this []byte, which is the layer Blade undoes.
+	body, err := json.Marshal(wsPushPayload{
+		Namespace:         resolveWSNamespace(namespace),
+		Target:            "account",
+		IDs:               []string{strings.TrimSpace(target)},
+		ExcludedDeviceIDs: []string{},
+		Packet:            packet,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal websocket push envelope: %w", err)
+	}
+	_, err = c.JS.Publish(ctx, c.cfg.NATS.WebsocketPushSubject, body)
 	return err
 }
 

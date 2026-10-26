@@ -4,6 +4,10 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/wrapperspb"
+	gen "src.solsynth.dev/sosys/go/proto"
 )
 
 // TestAccountActivatedEventPayload pins the C# wire contract: Passport
@@ -130,5 +134,64 @@ func TestShouldPublishActionLog(t *testing.T) {
 	}
 	if len(trackedActionLogs) != 38 {
 		t.Fatalf("trackedActionLogs has %d entries, want 38 (match C# ProgressionActionLogRegistry.TrackedActions)", len(trackedActionLogs))
+	}
+}
+
+// TestPublishWSEnvelopeMatchesBladeContract pins the envelope Blade's gateway
+// decodes (wsgateway.natsPushEvent + protojson). `packet` is a []byte, so
+// json.Marshal supplies the base64 layer the gateway undoes; the recipient
+// list lives in `ids`, and `event`/`payload` are not part of the contract.
+func TestPublishWSEnvelopeMatchesBladeContract(t *testing.T) {
+	data, err := json.Marshal(map[string]any{"id": "n1"})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	packetBytes, err := protojson.Marshal(&gen.DyWebSocketPacket{
+		Type:         "auth.qr.approved",
+		Data:         data,
+		ErrorMessage: wrapperspb.String(""),
+	})
+	if err != nil {
+		t.Fatalf("marshal packet: %v", err)
+	}
+	body, err := json.Marshal(wsPushPayload{
+		Namespace:         resolveWSNamespace(""),
+		Target:            "account",
+		IDs:               []string{"u1"},
+		ExcludedDeviceIDs: []string{},
+		Packet:            packetBytes,
+	})
+	if err != nil {
+		t.Fatalf("marshal envelope: %v", err)
+	}
+
+	var envelope struct {
+		Namespace string   `json:"namespace"`
+		Target    string   `json:"target"`
+		IDs       []string `json:"ids"`
+		Packet    []byte   `json:"packet"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		t.Fatalf("unmarshal envelope: %v", err)
+	}
+	if envelope.Namespace != "dev.solsynth.solian" {
+		t.Fatalf("namespace = %q, want the Solian tenant", envelope.Namespace)
+	}
+	if envelope.Target != "account" {
+		t.Fatalf("target = %q, want account", envelope.Target)
+	}
+	if len(envelope.IDs) != 1 || envelope.IDs[0] != "u1" {
+		t.Fatalf("ids = %v", envelope.IDs)
+	}
+
+	var decoded gen.DyWebSocketPacket
+	if err := protojson.Unmarshal(envelope.Packet, &decoded); err != nil {
+		t.Fatalf("Blade cannot decode the packet: %v", err)
+	}
+	if decoded.GetType() != "auth.qr.approved" {
+		t.Fatalf("packet type = %q", decoded.GetType())
+	}
+	if string(decoded.GetData()) != `{"id":"n1"}` {
+		t.Fatalf("packet data = %s", string(decoded.GetData()))
 	}
 }

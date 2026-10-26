@@ -215,3 +215,22 @@ func TestSingleUserValidation(t *testing.T) {
 		t.Fatalf("valid single-user config rejected: %v", err)
 	}
 }
+
+// TestPushSubjectMatchesGatewaySubscription pins the websocket push subject
+// against Blade's `<prefix><suffix>` construction. Blade's gateway subscribes
+// to TrimSpace(nats.websocketSubjectPrefix) + "push"; a dotted subject
+// ("websocket.push") is a different token space, so pushes published there
+// were never delivered and failed silently on both sides.
+func TestPushSubjectMatchesGatewaySubscription(t *testing.T) {
+	cfg, err := Load(filepath.Join("..", "..", "config.example.toml"))
+	if err != nil {
+		t.Fatalf("load example config: %v", err)
+	}
+
+	const bladeSubject = "websocket_" + "push" // prefix default + suffix
+	if cfg.NATS.WebsocketPushSubject != bladeSubject {
+		t.Fatalf("websocketPushSubject = %q, want %q (the C# fleet and Metoer "+
+			"publish to the same subject Blade subscribes to)",
+			cfg.NATS.WebsocketPushSubject, bladeSubject)
+	}
+}

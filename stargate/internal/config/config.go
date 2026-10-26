@@ -484,7 +484,10 @@ func Default() *Config {
 	cfg.NATS.SessionEventsStream = "auth_session_events"
 	cfg.NATS.SessionEventsSubject = "auth.session.revoked"
 	cfg.NATS.WebsocketPushStream = "websocket_push"
-	cfg.NATS.WebsocketPushSubject = "websocket.push"
+	// The C# RemoteWebSocketService, Metoer and Blade's gateway all use the
+	// underscore subject. A dotted one ("websocket.push") lives in a different
+	// token space, so the gateway never saw Stargate's pushes.
+	cfg.NATS.WebsocketPushSubject = "websocket_push"
 	cfg.Discovery.Service = "stargate"
 	cfg.Discovery.LeaseSeconds = 30
 	cfg.Discovery.Weight = 1
