@@ -85,6 +85,9 @@ func RegisterAccounts(s *grpc.Server, deps Deps) {
 // RegisterProfiles mounts the read-side DyProfileService.
 func RegisterProfiles(s *grpc.Server, deps Deps) {
 	gen.RegisterDyProfileServiceServer(s, &dyProfileService{d: deps})
+	// Presence activities moved here with their tables; Sphere's timeline
+	// reads them through this service.
+	gen.RegisterDyPresenceServiceServer(s, newPresenceService(deps))
 }
 
 // RegisterMls mounts DyMlsService. It is a no-op when the E2EE service is

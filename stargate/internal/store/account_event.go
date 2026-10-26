@@ -782,6 +782,41 @@ func (s *Store) GetActiveActivitiesBatch(ctx context.Context, accountIDs []uuid.
 	return result, nil
 }
 
+// ListRecentPresenceActivities returns activities of the given accounts
+// created at or after `since`, newest-first by update time, optionally older
+// than `cursor`. It backs DyPresenceService.ListFriendsActivities, which pages
+// by updated_at rather than by an offset so a cursor stays stable across
+// inserts.
+func (s *Store) ListRecentPresenceActivities(
+	ctx context.Context,
+	accountIDs []uuid.UUID,
+	since time.Time,
+	cursor *time.Time,
+) ([]model.PresenceActivity, error) {
+	if len(accountIDs) == 0 {
+		return nil, nil
+	}
+	statement := s.DB.WithContext(ctx).
+		Where("account_id IN ? AND created_at >= ?", accountIDs, since)
+	if cursor != nil {
+		statement = statement.Where("updated_at < ?", *cursor)
+	}
+	var entities []PresenceActivityEntity
+	if err := statement.Order("updated_at DESC").Find(&entities).Error; err != nil {
+		return nil, err
+	}
+	tags, err := activityTagsFor(ctx, s.DB, activityIDsOf(entities))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]model.PresenceActivity, 0, len(entities))
+	for i := range entities {
+		entity := &entities[i]
+		out = append(out, activityFromEntity(entity, tags[entity.ID]))
+	}
+	return out, nil
+}
+
 // activityIDsOf collects the ids of the given activity rows.
 func activityIDsOf(entities []PresenceActivityEntity) []uuid.UUID {
 	ids := make([]uuid.UUID, 0, len(entities))
