@@ -12,6 +12,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/modules/integrations"
 	"src.solsynth.dev/sosys/stargate/internal/modules/oauthapps"
 	"src.solsynth.dev/sosys/stargate/internal/modules/oidc"
+	"src.solsynth.dev/sosys/stargate/internal/modules/presences"
 	"src.solsynth.dev/sosys/stargate/internal/modules/profiles"
 	"src.solsynth.dev/sosys/stargate/internal/modules/relationships"
 	"src.solsynth.dev/sosys/stargate/internal/modules/social"
@@ -26,6 +27,7 @@ func Modules() []module.Factory {
 		auth.Factory(),
 		accounts.Factory(),
 		profiles.Factory(),
+		presences.Factory(),
 		relationships.Factory(),
 		spells.Factory(),
 		social.Factory(),

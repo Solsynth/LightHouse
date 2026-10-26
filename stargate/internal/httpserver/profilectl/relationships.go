@@ -60,9 +60,8 @@ func registerRelationships(api *gin.RouterGroup, d Deps) {
 	r.DELETE("/:accountId/close-friend", middleware.AskPermission(d.Perm, permission.RelationshipsCloseFriendsManage), d.removeCloseFriend)
 	r.PATCH("/:accountId/alias", middleware.AskPermission(d.Perm, permission.RelationshipsAliasManage), d.updateAlias)
 	r.GET("/:accountId/mutual-friends", d.getMutualFriends)
-	// friends/overview mirrors Passport's FriendsController.GetOverview.
-	// Account/status data is from Stargate; activities require a proto
-	// batch-read RPC and are omitted until that is added.
+	// friends/overview mirrors Passport's FriendsController.GetOverview:
+	// accounts, their status shape and their live presence activities.
 	friends := api.Group("/friends")
 	friends.Use(middleware.RequireAuth())
 	friends.GET("/overview", d.getFriendsOverview)
@@ -79,17 +78,15 @@ type relationshipSummaryResponse struct {
 }
 
 // friendOverviewItem mirrors Passport's FriendsController.FriendOverviewItem.
-// activities are omitted until the proto gains a batch presence read RPC.
 type friendOverviewItem struct {
-	Account    *model.Account `json:"account"`
-	Status     any            `json:"status"`
-	Activities []any          `json:"activities"`
+	Account    *model.Account           `json:"account"`
+	Status     any                      `json:"status"`
+	Activities []model.PresenceActivity `json:"activities"`
 }
 
 // getFriendsOverview serves GET /api/friends/overview, ported from
 // Passport's FriendsController.GetOverview. It mirrors the C# response
-// shape (online-first friends with SnAccountStatus). Activities are
-// omitted (empty array) until DyPresenceService gains a batch read RPC.
+// shape (friends with SnAccountStatus and their live activities).
 func (d Deps) getFriendsOverview(c *gin.Context) {
 	user := requireCurrentUser(c)
 	if user == nil {
@@ -134,15 +131,28 @@ func (d Deps) getFriendsOverview(c *gin.Context) {
 		accounts[i].Profile = profiles[accounts[i].Id]
 	}
 
+	// Live activities, one batch query for every friend (C#
+	// GetActiveActivitiesBatch). A friend with none gets an empty array.
+	activitiesByAccount, err := d.Store.GetActiveActivitiesBatch(ctx, uuids)
+	if err != nil {
+		internalError(c, err)
+		return
+	}
+
 	now := time.Now()
 	items := make([]friendOverviewItem, 0, len(accounts))
 	for _, account := range accounts {
 		a := account          // copy for pointer
 		a.IsSuperuser = false // strip admin flag
+		friendID, _ := uuid.Parse(a.Id)
+		activities := activitiesByAccount[friendID]
+		if activities == nil {
+			activities = []model.PresenceActivity{}
+		}
 		items = append(items, friendOverviewItem{
 			Account:    &a,
 			Status:     buildOverviewStatus(a.Id, account.Profile, now),
-			Activities: []any{}, // deferred: needs presence batch-read RPC
+			Activities: activities,
 		})
 	}
 

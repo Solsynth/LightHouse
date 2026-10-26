@@ -20,6 +20,7 @@ import (
 
 	"src.solsynth.dev/sosys/stargate/internal/auth"
 	"src.solsynth.dev/sosys/stargate/internal/config"
+	"src.solsynth.dev/sosys/stargate/internal/model"
 )
 
 // Client bundles the shared event bus connection and service configuration.
@@ -134,12 +135,41 @@ func (c *Client) PublishWS(ctx context.Context, target string, event string, pay
 
 // PublishWSNamespace is PublishWS with an explicit tenant namespace.
 func (c *Client) PublishWSNamespace(ctx context.Context, target, event string, payload any, namespace string) error {
+	return c.publishWSPush(ctx, []string{target}, event, payload, namespace)
+}
+
+// PublishWSToAccounts fans one packet out to several accounts, mirroring the
+// C# RemoteWebSocketService.PushWebSocketPacketToUsers: the same envelope as
+// PublishWSNamespace with the whole recipient list in `ids`. Blank and
+// duplicate ids are dropped, and an empty list publishes nothing.
+func (c *Client) PublishWSToAccounts(ctx context.Context, accountIDs []string, event string, payload any, namespace string) error {
+	return c.publishWSPush(ctx, accountIDs, event, payload, namespace)
+}
+
+func (c *Client) publishWSPush(ctx context.Context, accountIDs []string, event string, payload any, namespace string) error {
 	if c == nil || c.Conn == nil {
 		return nil
 	}
+	ids := normalizeRecipients(accountIDs)
+	if len(ids) == 0 {
+		return nil
+	}
+	body, err := buildWSPushEnvelope(ids, event, payload, namespace)
+	if err != nil {
+		return err
+	}
+	_, err = c.JS.Publish(ctx, c.cfg.NATS.WebsocketPushSubject, body)
+	return err
+}
+
+// buildWSPushEnvelope renders the body published on the `websocket_push`
+// subject. Splitting it out keeps the wire contract testable without a
+// JetStream connection: Blade unmarshals the body, base64-decodes `packet`
+// and protojson-decodes it into a DyWebSocketPacket.
+func buildWSPushEnvelope(ids []string, event string, payload any, namespace string) ([]byte, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("marshal websocket payload: %w", err)
+		return nil, fmt.Errorf("marshal websocket payload: %w", err)
 	}
 	packet, err := protojson.Marshal(&gen.DyWebSocketPacket{
 		Type:         event,
@@ -147,21 +177,39 @@ func (c *Client) PublishWSNamespace(ctx context.Context, target, event string, p
 		ErrorMessage: wrapperspb.String(""),
 	})
 	if err != nil {
-		return fmt.Errorf("marshal websocket packet: %w", err)
+		return nil, fmt.Errorf("marshal websocket packet: %w", err)
 	}
 	// json.Marshal base64-encodes this []byte, which is the layer Blade undoes.
 	body, err := json.Marshal(wsPushPayload{
 		Namespace:         resolveWSNamespace(namespace),
 		Target:            "account",
-		IDs:               []string{strings.TrimSpace(target)},
+		IDs:               ids,
 		ExcludedDeviceIDs: []string{},
 		Packet:            packet,
 	})
 	if err != nil {
-		return fmt.Errorf("marshal websocket push envelope: %w", err)
+		return nil, fmt.Errorf("marshal websocket push envelope: %w", err)
 	}
-	_, err = c.JS.Publish(ctx, c.cfg.NATS.WebsocketPushSubject, body)
-	return err
+	return body, nil
+}
+
+// normalizeRecipients mirrors the C# push helpers: blank ids are dropped and
+// the list is de-duplicated (StringComparer.Ordinal) in first-seen order.
+func normalizeRecipients(accountIDs []string) []string {
+	out := make([]string, 0, len(accountIDs))
+	seen := make(map[string]struct{}, len(accountIDs))
+	for _, id := range accountIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
 
 // actionLogEventsStream is the C# fleet's shared stream for progression
@@ -354,4 +402,43 @@ func (c *Client) ConsumeAccountEvents(ctx context.Context, subject, consumerName
 		return nil
 	}
 	return c.Consume(ctx, accountEventsStream, subject, consumerName, handler)
+}
+
+// AccountPresenceActivitiesUpdatedEvent mirrors the C#
+// AccountPresenceActivitiesUpdatedEvent wire shape. Passport published it on
+// the account_events stream next to the friends-only websocket push, and
+// Messager consumes it to refresh the chat presence of everyone sharing a
+// room with the account.
+type AccountPresenceActivitiesUpdatedEvent struct {
+	eb.Event
+	AccountID  string                   `json:"account_id"`
+	Activities []model.PresenceActivity `json:"activities"`
+}
+
+// PublishPresenceActivitiesUpdated publishes the account's live activities on
+// account.presence.activities.updated (stream account_events). A nil event
+// list is published as an empty array so consumers can clear stale presence.
+func (c *Client) PublishPresenceActivitiesUpdated(ctx context.Context, accountID string, activities []model.PresenceActivity, at time.Time) error {
+	if c == nil || c.Conn == nil {
+		return nil
+	}
+	if activities == nil {
+		activities = []model.PresenceActivity{}
+	}
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	eventType := "account.presence.activities.updated"
+	// account_events is the C# fleet's shared stream; PublishJetStream
+	// ensures it exists (a fresh deployment has no Passport to create it).
+	return c.PublishJetStream(ctx, eventType, accountEventsStream, AccountPresenceActivitiesUpdatedEvent{
+		Event: eb.Event{
+			EventID:    uuid.NewString(),
+			Timestamp:  at.UTC(),
+			StreamName: accountEventsStream,
+			EventType:  eventType,
+		},
+		AccountID:  accountID,
+		Activities: activities,
+	})
 }

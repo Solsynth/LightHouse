@@ -41,6 +41,13 @@ func CurrentUser(ctx context.Context) *model.Account {
 	return nil
 }
 
+// WithCurrentUser returns a context carrying account as the authenticated
+// user. The auth middleware is the production writer; this exists for tests
+// and in-process callers that already resolved the account.
+func WithCurrentUser(ctx context.Context, account *model.Account) context.Context {
+	return context.WithValue(ctx, ctxKeyCurrentUser, account)
+}
+
 // CurrentSession extracts the authenticated session from the context.
 func CurrentSession(ctx context.Context) *model.AuthSession {
 	if v, ok := ctx.Value(ctxKeyCurrentSession).(*model.AuthSession); ok {

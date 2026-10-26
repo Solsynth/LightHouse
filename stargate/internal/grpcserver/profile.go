@@ -74,3 +74,17 @@ func (s *dyProfileService) ListMuted(ctx context.Context, req *gen.DyListRelatio
 func (s *dyProfileService) ListCloseFriends(ctx context.Context, req *gen.DyListRelationshipSimpleRequest) (*gen.DyListRelationshipSimpleResponse, error) {
 	return newRelationshipRPCs(s.d).ListCloseFriends(ctx, req)
 }
+
+// ── account-status RPCs (owned by the presences module) ──────────────────
+//
+// The two status reads live in accountstatus.go and are owned by the presences
+// module: when it is disabled the resolver is nil and both methods report
+// Unimplemented.
+
+func (s *dyProfileService) GetAccountStatus(ctx context.Context, req *gen.DyGetAccountRequest) (*gen.DyAccountStatus, error) {
+	return newAccountStatusRPCs(s.d).GetAccountStatus(ctx, req)
+}
+
+func (s *dyProfileService) GetAccountStatusBatch(ctx context.Context, req *gen.DyGetAccountBatchRequest) (*gen.DyGetAccountStatusBatchResponse, error) {
+	return newAccountStatusRPCs(s.d).GetAccountStatusBatch(ctx, req)
+}

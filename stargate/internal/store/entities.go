@@ -444,6 +444,98 @@ type AffiliationResultEntity struct {
 }
 
 // ---------------------------------------------------------------------------
+// Account statuses and presence activities (moved from Passport).
+// Column names, types and nullability mirror the EF Core snapshot exactly.
+// ---------------------------------------------------------------------------
+
+type AccountStatusEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID     uuid.UUID       `gorm:"column:account_id"`
+	AppIdentifier *string         `gorm:"column:app_identifier"`
+	Attitude      int             `gorm:"column:attitude"`
+	Background    *datatypes.JSON `gorm:"column:background;type:jsonb"`
+	ClearedAt     *time.Time      `gorm:"column:cleared_at"`
+	Icon          *datatypes.JSON `gorm:"column:icon;type:jsonb"`
+	IsAutomated   bool            `gorm:"column:is_automated"`
+	Label         *string         `gorm:"column:label"`
+	Meta          *datatypes.JSON `gorm:"column:meta;type:jsonb"`
+	Symbol        *string         `gorm:"column:symbol"`
+	Type          int             `gorm:"column:type"`
+}
+
+func (AccountStatusEntity) TableName() string { return "account_statuses" }
+
+type PresenceActivityEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID      uuid.UUID       `gorm:"column:account_id"`
+	Caption        *string         `gorm:"column:caption"`
+	CatalogID      *uuid.UUID      `gorm:"column:catalog_id"`
+	EndedAt        *time.Time      `gorm:"column:ended_at"`
+	LargeImage     *string         `gorm:"column:large_image"`
+	LeaseExpiresAt time.Time       `gorm:"column:lease_expires_at"`
+	LeaseMinutes   int             `gorm:"column:lease_minutes"`
+	ManualID       *string         `gorm:"column:manual_id"`
+	Meta           *datatypes.JSON `gorm:"column:meta;type:jsonb"`
+	Provider       *string         `gorm:"column:provider"`
+	QueryableTerms datatypes.JSON  `gorm:"column:queryable_terms;type:jsonb"`
+	ReferenceID    *string         `gorm:"column:reference_id"`
+	SmallImage     *string         `gorm:"column:small_image"`
+	StartedAt      *time.Time      `gorm:"column:started_at"`
+	Subtitle       *string         `gorm:"column:subtitle"`
+	SubtitleURL    *string         `gorm:"column:subtitle_url"`
+	Title          *string         `gorm:"column:title"`
+	TitleURL       *string         `gorm:"column:title_url"`
+	Type           *string         `gorm:"column:type"`
+	Visibility     int             `gorm:"column:visibility"`
+}
+
+func (PresenceActivityEntity) TableName() string { return "presence_activities" }
+
+// PresenceActivityTagEntity is a plain join row: no created_at/updated_at/
+// deleted_at columns, keyed by (activity_id, slug).
+type PresenceActivityTagEntity struct {
+	ActivityID uuid.UUID `gorm:"column:activity_id;primaryKey"`
+	Slug       string    `gorm:"column:slug;primaryKey"`
+	Name       *string   `gorm:"column:name"`
+}
+
+func (PresenceActivityTagEntity) TableName() string { return "presence_activity_tags" }
+
+type PresenceCatalogItemEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID      uuid.UUID      `gorm:"column:account_id"`
+	Caption        *string        `gorm:"column:caption"`
+	CatalogKey     *string        `gorm:"column:catalog_key"`
+	LargeImage     *string        `gorm:"column:large_image"`
+	LastActiveAt   *time.Time     `gorm:"column:last_active_at"`
+	Meta           datatypes.JSON `gorm:"column:meta;type:jsonb"`
+	Name           *string        `gorm:"column:name"`
+	Provider       *string        `gorm:"column:provider"`
+	QueryableTerms datatypes.JSON `gorm:"column:queryable_terms;type:jsonb"`
+	ReferenceID    *string        `gorm:"column:reference_id"`
+	SessionCount   int            `gorm:"column:session_count"`
+	SmallImage     *string        `gorm:"column:small_image"`
+	Subtitle       *string        `gorm:"column:subtitle"`
+	SubtitleURL    *string        `gorm:"column:subtitle_url"`
+	TitleURL       *string        `gorm:"column:title_url"`
+	TotalSeconds   int64          `gorm:"column:total_seconds"`
+	Visibility     int            `gorm:"column:visibility"`
+}
+
+func (PresenceCatalogItemEntity) TableName() string { return "presence_catalog_items" }
+
+type PresenceCatalogTagEntity struct {
+	CatalogID uuid.UUID `gorm:"column:catalog_id;primaryKey"`
+	Slug      string    `gorm:"column:slug;primaryKey"`
+	Name      *string   `gorm:"column:name"`
+}
+
+func (PresenceCatalogTagEntity) TableName() string { return "presence_catalog_tags" }
+
+// ---------------------------------------------------------------------------
 // Module-owned: app.solian.id.oauthapps (OAuth/OIDC client registrations).
 // Migrated only while that module is enabled; core code never queries it.
 // ---------------------------------------------------------------------------
@@ -521,5 +613,5 @@ type SchemaMigrationEntity struct {
 func (SchemaMigrationEntity) TableName() string { return "schema_migrations" }
 
 var allEntityTables = []string{
-	"accounts", "permission_groups", "auth_clients", "auth_sessions", "api_keys", "account_auth_factors", "account_contacts", "account_connections", "account_passkeys", "punishments", "authorized_apps", "action_logs", "auth_challenges", "e2ee_devices", "e2ee_key_bundles", "e2ee_one_time_pre_keys", "e2ee_sessions", "e2ee_envelopes", "mls_key_packages", "mls_group_states", "mls_device_memberships", "permission_group_members", "permission_nodes", "account_profiles", "account_name_history", "magic_spells", "affiliation_spells", "affiliation_results",
+	"accounts", "permission_groups", "auth_clients", "auth_sessions", "api_keys", "account_auth_factors", "account_contacts", "account_connections", "account_passkeys", "punishments", "authorized_apps", "action_logs", "auth_challenges", "e2ee_devices", "e2ee_key_bundles", "e2ee_one_time_pre_keys", "e2ee_sessions", "e2ee_envelopes", "mls_key_packages", "mls_group_states", "mls_device_memberships", "permission_group_members", "permission_nodes", "account_profiles", "account_name_history", "magic_spells", "affiliation_spells", "affiliation_results", "account_statuses", "presence_activities", "presence_activity_tags", "presence_catalog_items", "presence_catalog_tags",
 }

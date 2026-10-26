@@ -35,7 +35,12 @@ board updates indirectly via the profile read-model.
   blade, ring)
 - `internal/nats` — thin wrapper over the shared event bus
   (`src.solsynth.dev/sosys/go/pkg/eventbus`): JetStream events
-  (`auth.session.revoked`, `websocket_push`)
+  (`auth.session.revoked`, `websocket_push`, `account_events`)
+- `internal/broadcast` — friends-only websocket fan-out of account status and
+  presence-activity changes (`account.status.updated`,
+  `account.presence.activities.updated`)
+- `internal/presence` — the computed half of an account status: live devices,
+  idle state and device-presence visibility
 - `internal/webui` — serves the built SPA (`web/dist`) with history fallback
 - `web/` — the Vue 3 + Vite single-page frontend
 

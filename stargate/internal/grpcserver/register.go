@@ -17,6 +17,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/config"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/e2eectl"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
+	"src.solsynth.dev/sosys/stargate/internal/presence"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
 	"src.solsynth.dev/sosys/stargate/internal/relationship"
 	"src.solsynth.dev/sosys/stargate/internal/store"
@@ -42,6 +43,11 @@ type Deps struct {
 	// relationships module is disabled, in which case the six relationship
 	// RPCs stay Unimplemented.
 	Relationships *relationship.Service
+
+	// PresenceResolver computes the read-time half of an account status (live
+	// devices, idle state, viewer visibility) for the DyProfileService status
+	// RPCs; nil leaves those two RPCs Unimplemented.
+	PresenceResolver *presence.Resolver
 
 	// Capabilities is the enabled capability list. Nil keeps the historical
 	// full registry (tests and legacy callers).

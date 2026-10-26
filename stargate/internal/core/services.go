@@ -10,12 +10,14 @@ import (
 
 	"src.solsynth.dev/sosys/stargate/internal/actionlog"
 	"src.solsynth.dev/sosys/stargate/internal/auth"
+	"src.solsynth.dev/sosys/stargate/internal/broadcast"
 	"src.solsynth.dev/sosys/stargate/internal/config"
 	"src.solsynth.dev/sosys/stargate/internal/geo"
 	"src.solsynth.dev/sosys/stargate/internal/grpcclient"
 	"src.solsynth.dev/sosys/stargate/internal/middleware"
 	"src.solsynth.dev/sosys/stargate/internal/nats"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
+	"src.solsynth.dev/sosys/stargate/internal/presence"
 	"src.solsynth.dev/sosys/stargate/internal/redis"
 	"src.solsynth.dev/sosys/stargate/internal/relationship"
 	"src.solsynth.dev/sosys/stargate/internal/spell"
@@ -42,6 +44,13 @@ type Services struct {
 	Toucher    *middleware.LastSeenToucher
 	Clients    *grpcclient.Clients
 	Log        *slog.Logger
+	// PresenceResolver assembles the computed half of an account status
+	// (live devices, idle state, viewer visibility) for the status RPCs and
+	// the websocket broadcasts. Redis and Blade are optional.
+	PresenceResolver *presence.Resolver
+	// Broadcast fans status and presence-activity changes out to friends on
+	// Blade's websocket push subject.
+	Broadcast *broadcast.Broadcaster
 
 	// Relationships is the social-graph read service. It is nil unless the
 	// relationships module is enabled, so gRPC relationship RPCs report

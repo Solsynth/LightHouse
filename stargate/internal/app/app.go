@@ -25,6 +25,7 @@ import (
 
 	"src.solsynth.dev/sosys/stargate/internal/actionlog"
 	"src.solsynth.dev/sosys/stargate/internal/auth"
+	"src.solsynth.dev/sosys/stargate/internal/broadcast"
 	"src.solsynth.dev/sosys/stargate/internal/config"
 	"src.solsynth.dev/sosys/stargate/internal/core"
 	"src.solsynth.dev/sosys/stargate/internal/db"
@@ -38,6 +39,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/module"
 	"src.solsynth.dev/sosys/stargate/internal/nats"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
+	presenceresolver "src.solsynth.dev/sosys/stargate/internal/presence"
 	redisclient "src.solsynth.dev/sosys/stargate/internal/redis"
 	"src.solsynth.dev/sosys/stargate/internal/relationship"
 	"src.solsynth.dev/sosys/stargate/internal/seed"
@@ -199,6 +201,10 @@ func Run(parent context.Context, log *slog.Logger, factories []module.Factory) e
 		Perm: permService, Logs: logs, Spells: spellService, Geo: geoService,
 		Presence: presence, Toucher: toucher, Clients: clients, Log: log,
 	}
+	// Presence resolver: the computed half of an account status (live
+	// devices, idle state, viewer visibility). Independent of the social
+	// graph, so it is built for every deployment; Redis and Blade degrade.
+	services.PresenceResolver = presenceresolver.NewResolver(st, rc, presence)
 
 	// The social graph is a module-owned table. Build its read service only
 	// when the module is enabled: a disabled module leaves it nil, and the
@@ -217,6 +223,16 @@ func Run(parent context.Context, log *slog.Logger, factories []module.Factory) e
 		if nc != nil {
 			go consumeAccountRemoval(ctx, nc, services.Relationships, log)
 		}
+	}
+
+	// Websocket presence: Blade's connection events drive the idle-state
+	// resolver and the friends-only status broadcast, and relayed
+	// `status.idle` packets refine that idle state while connected.
+	services.Broadcast = broadcast.New(nc, st, services.Relationships, services.PresenceResolver, rc, log)
+	if nc != nil {
+		go consumeWebSocketConnected(ctx, nc, services, log)
+		go consumeWebSocketDisconnected(ctx, nc, services, log)
+		go consumeWebSocketPassportPackets(ctx, nc, services, log)
 	}
 	// gRPC server. TLS mirrors DysonFS: when grpc.useTLS is set, certFile and
 	// keyFile are required (self-signed fleet certs; clients skip CA checks).

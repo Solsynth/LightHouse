@@ -17,6 +17,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/securityctl"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/socialctl"
 	"src.solsynth.dev/sosys/stargate/internal/httpserver/spellctl"
+	"src.solsynth.dev/sosys/stargate/internal/httpserver/statusctl"
 	"src.solsynth.dev/sosys/stargate/internal/ports"
 )
 
@@ -31,6 +32,21 @@ func GRPC(c *core.Services) grpcserver.Deps {
 		// Dropping it leaves the field nil and every relationship RPC answers
 		// Unimplemented even though the module is enabled.
 		Relationships: c.Relationships,
+		// The two DyProfileService status RPCs belong to the presences module,
+		// which does not register the service (profiles does): the resolver has
+		// to travel through every GRPC bundle for the same reason.
+		PresenceResolver: c.PresenceResolver,
+	}
+}
+
+// Status builds the account-status/presence-activity controller dependencies.
+// The Drive file port resolves status icons and backgrounds; the broadcaster
+// publishes the post-write presence notifications.
+func Status(c *core.Services, p *ports.Set) statusctl.Deps {
+	return statusctl.Deps{
+		Store: c.Store, Accounts: c.Store, Perm: c.Perm,
+		Presence: c.PresenceResolver, Files: p.Files,
+		Clients: c.Clients, Broadcast: c.Broadcast, Log: c.Log,
 	}
 }
 

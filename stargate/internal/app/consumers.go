@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
+	"src.solsynth.dev/sosys/stargate/internal/core"
 	"src.solsynth.dev/sosys/stargate/internal/model"
 	"src.solsynth.dev/sosys/stargate/internal/nats"
 	"src.solsynth.dev/sosys/stargate/internal/permission"
@@ -196,4 +199,147 @@ func consumeAccountRemoval(ctx context.Context, nc *nats.Client, rel *relationsh
 	}); err != nil {
 		log.Warn("accounts.removal.confirmed consumer stopped", "error", err)
 	}
+}
+
+// websocket connection subjects and consumer names. Blade's gateway publishes
+// `websocket_connected` / `websocket_disconnected` on the websocket_connections
+// JetStream stream; relayed client packets arrive on core NATS
+// `websocket_passport`. The consumer names match the C# listeners so the fleet
+// keeps a single durable position per subject during the cutover.
+const (
+	websocketConnectedSubject    = "websocket_connected"
+	websocketDisconnectedSubject = "websocket_disconnected"
+	websocketPassportSubject     = "websocket_passport"
+
+	websocketConnectedConsumer    = "stargate_websocket_connected_status"
+	websocketDisconnectedConsumer = "stargate_websocket_disconnected_status"
+)
+
+// consumeWebSocketConnected mirrors Passport's WebSocketConnectedEvent
+// listener: mark the device connected with no idle state, then broadcast the
+// account's status if it changed. Malformed events are acked; store errors
+// redeliver.
+func consumeWebSocketConnected(ctx context.Context, nc *nats.Client, services *core.Services, log *slog.Logger) {
+	if err := nc.ConsumeWebSocketConnections(ctx, websocketConnectedSubject, websocketConnectedConsumer, func(payload []byte) error {
+		ev, ok := parseWebSocketConnectionEvent(payload, websocketConnectedSubject, log)
+		if !ok {
+			return nil
+		}
+		connected := true
+		if err := services.PresenceResolver.UpdateWebSocketConnectionState(ctx, ev.accountID, ev.deviceID, &connected, nil, true); err != nil {
+			return err
+		}
+		return broadcastWebSocketStatus(ctx, services, ev, log)
+	}); err != nil {
+		log.Warn("websocket_connected consumer stopped", "error", err)
+	}
+}
+
+// consumeWebSocketDisconnected mirrors Passport's WebSocketDisconnectedEvent
+// listener: an event that did not take the account offline (a device hand-off)
+// is ignored entirely; otherwise the device is dropped from the idle state and
+// the status broadcast runs.
+func consumeWebSocketDisconnected(ctx context.Context, nc *nats.Client, services *core.Services, log *slog.Logger) {
+	if err := nc.ConsumeWebSocketConnections(ctx, websocketDisconnectedSubject, websocketDisconnectedConsumer, func(payload []byte) error {
+		ev, ok := parseWebSocketConnectionEvent(payload, websocketDisconnectedSubject, log)
+		if !ok {
+			return nil
+		}
+		if !ev.isOffline {
+			return nil
+		}
+		disconnected := false
+		if err := services.PresenceResolver.UpdateWebSocketConnectionState(ctx, ev.accountID, ev.deviceID, &disconnected, nil, false); err != nil {
+			return err
+		}
+		return broadcastWebSocketStatus(ctx, services, ev, log)
+	}); err != nil {
+		log.Warn("websocket_disconnected consumer stopped", "error", err)
+	}
+}
+
+// consumeWebSocketPassportPackets mirrors Passport's WebSocketPacketEvent
+// listener on `websocket_passport`: only `status.idle` packets matter, and
+// they refine the device's idle state before the status broadcast runs. The
+// subscription is core NATS, so there is no ack to leave unacked.
+func consumeWebSocketPassportPackets(ctx context.Context, nc *nats.Client, services *core.Services, log *slog.Logger) {
+	if err := nc.SubscribeWebSocketPackets(ctx, websocketPassportSubject, func(payload []byte) {
+		var ev nats.WebSocketPacketEvent
+		if err := json.Unmarshal(payload, &ev); err != nil {
+			log.Warn("malformed websocket_passport event", "error", err)
+			return
+		}
+		packetType, data, err := nats.ParseWebSocketPacket(ev.PacketBytes)
+		if err != nil {
+			log.Warn("malformed websocket_passport packet", "account_id", ev.AccountID, "error", err)
+			return
+		}
+		if packetType != "status.idle" {
+			return
+		}
+		accountID, err := uuid.Parse(ev.AccountID)
+		if err != nil {
+			log.Warn("websocket_passport event has invalid account id",
+				"account_id", ev.AccountID, "payload", string(payload))
+			return
+		}
+		at := ev.Timestamp.UTC()
+		if ev.Timestamp.IsZero() {
+			at = time.Now().UTC()
+		}
+		connected := true
+		idleSince := nats.ResolveIdleSince(data, at)
+		if err := services.PresenceResolver.UpdateWebSocketConnectionState(ctx, accountID, ev.DeviceID, &connected, idleSince, true); err != nil {
+			log.Warn("update idle state from status.idle",
+				"account_id", ev.AccountID, "device_id", ev.DeviceID, "error", err)
+			return
+		}
+		if err := services.Broadcast.WebSocketStatusChanged(ctx, accountID, ev.DeviceID, at); err != nil {
+			log.Warn("broadcast status after status.idle",
+				"account_id", ev.AccountID, "device_id", ev.DeviceID, "error", err)
+		}
+	}); err != nil {
+		log.Warn("websocket_passport subscription stopped", "error", err)
+	}
+}
+
+// websocketConnectionEvent is a parsed connection event with the account id
+// already validated.
+type websocketConnectionEvent struct {
+	accountID uuid.UUID
+	deviceID  string
+	at        time.Time
+	isOffline bool
+}
+
+func parseWebSocketConnectionEvent(payload []byte, subject string, log *slog.Logger) (websocketConnectionEvent, bool) {
+	var ev nats.WebSocketConnectionEvent
+	if err := json.Unmarshal(payload, &ev); err != nil {
+		log.Warn("malformed "+subject+" event", "error", err)
+		return websocketConnectionEvent{}, false
+	}
+	accountID, err := uuid.Parse(ev.AccountID)
+	if err != nil {
+		log.Warn(subject+" event has invalid account id",
+			"account_id", ev.AccountID, "payload", string(payload))
+		return websocketConnectionEvent{}, false
+	}
+	at := ev.Timestamp.UTC()
+	if ev.Timestamp.IsZero() {
+		at = time.Now().UTC()
+	}
+	return websocketConnectionEvent{
+		accountID: accountID,
+		deviceID:  strings.TrimSpace(ev.DeviceID),
+		at:        at,
+		isOffline: ev.IsOffline,
+	}, true
+}
+
+func broadcastWebSocketStatus(ctx context.Context, services *core.Services, ev websocketConnectionEvent, log *slog.Logger) error {
+	if err := services.Broadcast.WebSocketStatusChanged(ctx, ev.accountID, ev.deviceID, ev.at); err != nil {
+		log.Warn("broadcast status after websocket connection change",
+			"account_id", ev.accountID.String(), "device_id", ev.deviceID, "error", err)
+	}
+	return nil
 }
