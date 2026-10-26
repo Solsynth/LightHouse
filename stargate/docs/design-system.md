@@ -445,10 +445,16 @@ the same session: revoking that session revokes the app's too.
 The address is written by the caller — and therefore by anyone who can write a
 link — so it is a policy decision, made on the server:
 
-- `GET /api/auth/sign-in/config` publishes `redirect_hosts` (the cookie domain,
-  the site host, and every registered hand-off host) and `require_https` (the
-  Secure flag on the cookie). The console refuses a target those rules refuse
-  before navigating away.
+- `GET /api/auth/sign-in/config` publishes `cookie_hosts` (the cookie domain and
+  its subdomains, plus the site host), `handoff_hosts` (registered clients whose
+  hosts no cookie can reach), and `require_https` (the Secure flag on the
+  cookie). The console refuses a target those rules refuse before navigating
+  away, and it picks the trip from the list the host is in: a cookie host gets a
+  plain navigation, a hand-off host gets a minted code. The distinction is not
+  cosmetic — an app on the cookie domain, `web.solian.app` under
+  `cookieDomain = ".solian.app"` for instance, is already signed in on arrival,
+  and asking the issuer to mint a code for it fails because no client is
+  registered for that host.
 - `GET /api/auth/login/{provider}?flow=login&returnUrl=…` drops a return URL
   that names anything else and falls back to `{siteUrl}/auth/success`.
 - A refused target never blocks the sign-in: the console says once that the

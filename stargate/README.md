@@ -152,7 +152,10 @@ Other apps on the cookie domain reuse that page instead of building their own:
 `/sign-in?redirectUri={callback}` returns the person to the app once they are
 signed in. The session cookie is scoped by `[auth] cookieDomain`, and only a
 host that cookie reaches is accepted as a landing target, so a shared link
-cannot turn the page into an open redirect.
+cannot turn the page into an open redirect. A target on one of those hosts — any
+subdomain, such as `web.solian.app` under `.solian.app` — is a plain navigation,
+because the browser already carries the session there: nothing is minted, and
+no hand-off client has to be registered for it.
 An app on another registrable domain cannot share that cookie — a cookie has
 one `Domain` attribute and the browser refuses one that does not match the
 request host — so it is handed a single-use code instead: the console mints one

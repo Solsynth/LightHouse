@@ -58,36 +58,61 @@ export function isSameOriginPath(raw: string): boolean {
 }
 
 /**
- * True when a finished sign-in may be handed to `raw`: an http(s) URL whose
- * host is the cookie domain or one of its subdomains, and https when the
- * deployment's session cookie is Secure (an http hand-off would arrive signed
- * out).
+ * The host a URL names, lowercased and without a trailing dot, or an empty
+ * string when it is not an absolute http(s) URL. Credentials are refused here
+ * because a "host" spelled after `@` is the attacker's, not the target's.
  */
-export function isAllowedRedirect(raw: string, config: SignInConfig): boolean {
-  if (/[\r\n\t]/.test(raw)) return false
+function hostOf(raw: string, requireHttps: boolean): string {
+  if (/[\r\n\t]/.test(raw)) return ''
   let url: URL
   try {
     url = new URL(raw)
   } catch {
-    return false
+    return ''
   }
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') return false
-  if (url.username !== '' || url.password !== '') return false
-  if (config.require_https && url.protocol !== 'https:') return false
-  const host = url.hostname.toLowerCase().replace(/\.$/, '')
-  return config.redirect_hosts.some((allowed) => {
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return ''
+  if (url.username !== '' || url.password !== '') return ''
+  if (requireHttps && url.protocol !== 'https:') return ''
+  return url.hostname.toLowerCase().replace(/\.$/, '')
+}
+
+/** True when `host` is one of `hosts` or a subdomain of one. */
+function hostUnder(host: string, hosts: string[]): boolean {
+  return hosts.some((allowed) => {
     const base = allowed.toLowerCase().replace(/^\.+|\.+$/g, '')
     return base !== '' && (host === base || host.endsWith(`.${base}`))
   })
+}
+
+/**
+ * True when a finished sign-in may land on `raw` at all: an http(s) URL with no
+ * credentials, on a cookie host or a hand-off host, and https when the session
+ * cookie is Secure (an http target would arrive signed out).
+ */
+export function isAllowedRedirect(raw: string, config: SignInConfig): boolean {
+  const host = hostOf(raw, config.require_https)
+  if (host === '') return false
+  return hostUnder(host, config.cookie_hosts) || hostUnder(host, config.handoff_hosts)
+}
+
+/**
+ * True when the target shares the session cookie, so a plain navigation lands
+ * there signed in. Asking the issuer for a hand-off code instead would be
+ * refused — no client is registered for a host the cookie already reaches — so
+ * this is the branch that keeps a subdomain app working.
+ */
+export function isCookieHostRedirect(raw: string, config: SignInConfig): boolean {
+  const host = hostOf(raw, config.require_https)
+  return host !== '' && hostUnder(host, config.cookie_hosts)
 }
 
 let policy: SignInConfig | null = null
 let policyRequest: Promise<SignInConfig> | null = null
 
 /**
- * The server's hand-off policy, read once per page load. A failed read is not
- * cached: it yields the empty policy (only same-origin pages may be targets)
- * but the next caller asks again.
+ * The server's landing policy, read once per page load. A failed read is not
+ * cached: it yields the empty policy (no target is accepted) but the next
+ * caller asks again.
  */
 export function signInConfig(): Promise<SignInConfig> {
   if (policy) return Promise.resolve(policy)
@@ -98,7 +123,7 @@ export function signInConfig(): Promise<SignInConfig> {
         policy = config
         return config
       })
-      .catch(() => ({ redirect_hosts: [], require_https: false }))
+      .catch(() => ({ cookie_hosts: [], handoff_hosts: [], require_https: false }))
       .finally(() => {
         policyRequest = null
       })
@@ -106,11 +131,20 @@ export function signInConfig(): Promise<SignInConfig> {
   return policyRequest
 }
 
+/**
+ * How a finished sign-in reaches its target.
+ *
+ * `page` stays in this console, `shared` leaves for a host that already has the
+ * session cookie, and `handoff` leaves for one that cannot have it — those are
+ * three different trips, and using the hand-off for a cookie host is exactly
+ * what turns a working shared sign-in into a refused redirect.
+ */
+export type LandingKind = 'page' | 'shared' | 'handoff'
+
 export interface Landing {
   /** What to navigate to (or hand off to) once the person is signed in. */
   target: string
-  /** True when the target leaves this console for another origin. */
-  external: boolean
+  kind: LandingKind
 }
 
 /**
@@ -120,10 +154,10 @@ export interface Landing {
  */
 export async function resolveLanding(raw: string): Promise<Landing | null> {
   if (!raw) return null
-  if (isSameOriginPath(raw)) return { target: raw, external: false }
+  if (isSameOriginPath(raw)) return { target: raw, kind: 'page' }
   const config = await signInConfig()
-  if (isAllowedRedirect(raw, config)) return { target: raw, external: true }
-  return null
+  if (!isAllowedRedirect(raw, config)) return null
+  return { target: raw, kind: isCookieHostRedirect(raw, config) ? 'shared' : 'handoff' }
 }
 
 /**

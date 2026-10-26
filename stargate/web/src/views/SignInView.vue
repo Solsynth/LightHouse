@@ -43,7 +43,7 @@ const modules = useModulesStore()
 /**
  * Where this sign-in ends. The address may name another Solar Network app
  * (`?redirectUri=`, for a shared login page) or a page of this console
- * (`?next=`); a target the server's hand-off policy refuses is dropped, so the
+ * (`?next=`); a target the server's landing policy refuses is dropped, so the
  * sign-in still completes on the account page.
  */
 const landing = ref<Landing | null>(null)
@@ -55,7 +55,7 @@ const landingResolved = resolveLanding(landingRequested).then((resolved) => {
   landing.value = resolved
   landingPending.value = false
   if (landingRequested && resolved === null) notice.fail(t('signIn.errorRedirectRefused'))
-  return resolved ?? { target: '/account', external: false }
+  return resolved ?? { target: '/account', kind: 'page' as const }
 })
 
 /** The return URL a provider round-trip carries; it must be resolved first. */
@@ -281,25 +281,30 @@ async function submit(factor: AuthFactor | null, secret: string) {
 /**
  * Leaves for wherever this sign-in ends.
  *
- * A target on another origin is a full-page navigation to an app that owns its
- * own router. It cannot have the session cookie (one Domain attribute, and the
- * browser refuses a Domain that does not match the request host), so it is
- * handed a single-use code instead: its own server redeems that for tokens and
- * sets its own cookie. A target the issuer will not mint a code for is treated
- * as a failed hand-off rather than a silent navigation that lands signed out.
+ * A console page is a router push. An origin that shares the session cookie is
+ * a plain full-page navigation: the browser already holds the session there, so
+ * nothing has to be minted. An origin the cookie cannot reach (one Domain
+ * attribute, and the browser refuses a Domain that does not match the request
+ * host) gets a single-use code instead, which its own server redeems for tokens
+ * on its own domain. Only that third case can fail; a refused target never
+ * navigates away to arrive signed out.
  */
 async function leave() {
-  const target = (await landingResolved).target
-  if (landing.value?.external) {
-    try {
-      window.location.assign(await handoffTargetUrl(target))
-    } catch {
-      notice.fail(t('signIn.errorRedirectRefused'))
-      await router.replace('/account')
-    }
+  const { target, kind } = await landingResolved
+  if (kind === 'page') {
+    await router.replace(target)
     return
   }
-  await router.replace(target)
+  if (kind === 'shared') {
+    window.location.assign(target)
+    return
+  }
+  try {
+    window.location.assign(await handoffTargetUrl(target))
+  } catch {
+    notice.fail(t('signIn.errorRedirectRefused'))
+    await router.replace('/account')
+  }
 }
 
 async function finish() {

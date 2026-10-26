@@ -124,6 +124,32 @@ func TestSignInRedirectHostsIncludeHandoffClients(t *testing.T) {
 	}
 }
 
+// The two landing trips are published separately because they are not
+// interchangeable: a subdomain of the cookie domain is already signed in on
+// arrival, so it must be advertised as a cookie host, and it must never appear
+// as a hand-off host even when a client happens to list it — the issuer would
+// refuse to mint a code for a host it did not register as that client's.
+func TestSignInHostsSplitCookieFromHandoff(t *testing.T) {
+	cfg := Default()
+	cfg.SiteUrl = "https://id.solian.app"
+	cfg.Auth.CookieDomain = ".solian.app"
+	cfg.Auth.CookieSecure = true
+	cfg.Auth.HandoffClients = []HandoffClient{
+		{Id: "app.web", Secret: "s", RedirectHosts: []string{"web.solian.app"}},
+		{Id: "app.dx", Secret: "s", RedirectHosts: []string{"solsynth.dev"}},
+	}
+
+	if got := cfg.SignInCookieHosts(); !reflect.DeepEqual(got, []string{"solian.app", "id.solian.app"}) {
+		t.Fatalf("SignInCookieHosts() = %v", got)
+	}
+	if got := cfg.SignInHandoffHosts(); !reflect.DeepEqual(got, []string{"solsynth.dev"}) {
+		t.Fatalf("SignInHandoffHosts() = %v, want the cookie-domain client left out", got)
+	}
+	if !cfg.AllowsSignInTarget("https://web.solian.app/") {
+		t.Error("a cookie subdomain was refused as a landing target")
+	}
+}
+
 // A hand-off client that could never be handed anything, and a duplicate id
 // that would make binding a code ambiguous, are configuration errors.
 func TestValidateRejectsBrokenHandoffClients(t *testing.T) {

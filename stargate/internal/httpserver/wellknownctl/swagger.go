@@ -206,7 +206,7 @@ var padlockSwagger = buildDoc(
 		{path: "/api/auth/captcha/verify", method: "POST", tag: "Captcha", summary: "Verify a captcha token"},
 		{path: "/api/auth/captcha/config", method: "GET", tag: "Captcha", summary: "Get the captcha provider configuration"},
 		{path: "/api/auth/webauthn/config", method: "GET", tag: "Captcha", summary: "Get the WebAuthn relying-party configuration"},
-		{path: "/api/auth/sign-in/config", method: "GET", tag: "Auth", summary: "Get the shared sign-in page's hand-off policy (cookie hosts, https rule)"},
+		{path: "/api/auth/sign-in/config", method: "GET", tag: "Auth", summary: "Get the shared sign-in page's landing policy (cookie hosts, hand-off hosts, https rule)"},
 		{path: "/api/auth/handoff/session", method: "POST", tag: "Auth", summary: "Issue a single-use cross-domain hand-off code for the caller's session"},
 		{path: "/api/auth/handoff/redeem", method: "POST", tag: "Auth", summary: "Redeem a hand-off code for a token pair (server-to-server)"},
 		{path: "/api/auth/handoff/renew", method: "POST", tag: "Auth", summary: "Renew a handed-off session's token pair from its refresh token"},

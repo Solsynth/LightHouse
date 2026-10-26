@@ -22,41 +22,101 @@ import (
 // A target is honoured only when it names one of those cookie-sharing origins
 // (or a page of this deployment's own site origin); anything else would turn
 // the login page into an open redirector for an attacker's link.
+//
+// Landing on a cookie host and landing on a hand-off host are not the same
+// trip, so the policy answers with two lists rather than one. A cookie host is
+// reached by a plain navigation — the browser already has the session there. A
+// hand-off host has no cookie to receive, so the sign-in has to finish by
+// minting a single-use code; asking for one on a host the cookie already covers
+// is refused by the issuer, which is why the split is published rather than
+// left for the caller to infer from one flat list.
 
-// SignInRedirectHosts lists the hosts a finished sign-in may be handed to:
-// the cookie domain, this deployment's own site host, and every host a
-// hand-off client is registered for. The cookie hosts can complete a shared
-// sign-in with no further step; the hand-off hosts need one, because no cookie
-// can reach them (see internal/httpserver/authctl/handoff.go). The console
-// fetches this list so it can refuse a hand-off the server would refuse anyway
-// instead of navigating away and losing the session.
+// SignInCookieHosts lists the hosts this deployment's session cookie reaches:
+// [auth] cookieDomain and its subdomains, plus the [siteUrl] host. A sign-in
+// that lands on one of them needs no further step — a plain navigation arrives
+// signed in.
+func (c *Config) SignInCookieHosts() []string {
+	if c == nil {
+		return nil
+	}
+	hosts := make([]string, 0, 2)
+	addHost(&hosts, c.Auth.CookieDomain)
+	if site, err := url.Parse(strings.TrimRight(c.SiteUrl, "/")); err == nil {
+		addHost(&hosts, site.Host)
+	}
+	return hosts
+}
+
+// SignInHandoffHosts lists the hosts a registered hand-off client claims. No
+// cookie can reach them (see internal/httpserver/authctl/handoff.go), so a
+// sign-in there finishes by code exchange. A host the cookie already covers is
+// left out: the cookie wins, and the issuer would refuse to mint a code for a
+// host it did not register as a hand-off client anyway.
+func (c *Config) SignInHandoffHosts() []string {
+	if c == nil {
+		return nil
+	}
+	cookieHosts := c.SignInCookieHosts()
+	hosts := make([]string, 0, len(c.Auth.HandoffClients))
+	for _, client := range c.Auth.HandoffClients {
+		for _, host := range client.RedirectHosts {
+			if HostUnder(host, cookieHosts) {
+				continue
+			}
+			addHost(&hosts, host)
+		}
+	}
+	return hosts
+}
+
+// SignInRedirectHosts is every host a finished sign-in may land on: the cookie
+// hosts plus the hand-off hosts. Admission uses it; the console uses the split
+// above to decide how the person gets there.
 func (c *Config) SignInRedirectHosts() []string {
 	if c == nil {
 		return nil
 	}
-	hosts := make([]string, 0, 4)
-	seen := map[string]struct{}{}
-	add := func(host string) {
-		host = normalizeHost(host)
-		if host == "" {
-			return
-		}
-		if _, dup := seen[host]; dup {
-			return
-		}
-		seen[host] = struct{}{}
-		hosts = append(hosts, host)
-	}
-	add(c.Auth.CookieDomain)
-	if site, err := url.Parse(strings.TrimRight(c.SiteUrl, "/")); err == nil {
-		add(site.Host)
-	}
-	for _, client := range c.Auth.HandoffClients {
-		for _, host := range client.RedirectHosts {
-			add(host)
-		}
+	hosts := c.SignInCookieHosts()
+	for _, host := range c.SignInHandoffHosts() {
+		addHost(&hosts, host)
 	}
 	return hosts
+}
+
+// addHost appends a host unless it is empty or already listed, so the same host
+// named by the cookie domain and the site URL appears once. Subdomains stay
+// separate entries: the published list is a set of origins, not a suffix tree.
+func addHost(hosts *[]string, host string) {
+	host = normalizeHost(host)
+	if host == "" {
+		return
+	}
+	for _, existing := range *hosts {
+		if existing == host {
+			return
+		}
+	}
+	*hosts = append(*hosts, host)
+}
+
+// HostUnder reports whether host is one of allowed or a subdomain of one. Both
+// sides are normalized first, so a cookie domain's leading dot and a stray port
+// do not change the answer.
+func HostUnder(host string, allowed []string) bool {
+	host = normalizeHost(host)
+	if host == "" {
+		return false
+	}
+	for _, candidate := range allowed {
+		base := normalizeHost(candidate)
+		if base == "" {
+			continue
+		}
+		if host == base || strings.HasSuffix(host, "."+base) {
+			return true
+		}
+	}
+	return false
 }
 
 // SignInRequireHTTPS reports whether a hand-off target must be https. The
@@ -92,13 +152,7 @@ func (c *Config) AllowsSignInTarget(raw string) bool {
 	if scheme == "http" && c.SignInRequireHTTPS() {
 		return false
 	}
-	host := hostnameOf(parsed.Host)
-	for _, allowed := range c.SignInRedirectHosts() {
-		if host == allowed || strings.HasSuffix(host, "."+allowed) {
-			return true
-		}
-	}
-	return false
+	return HostUnder(parsed.Host, c.SignInRedirectHosts())
 }
 
 // IsSiteOriginTarget reports whether raw names a page of this deployment's own

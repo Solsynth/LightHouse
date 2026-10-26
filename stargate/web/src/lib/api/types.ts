@@ -467,13 +467,18 @@ export interface CaptchaConfig {
 }
 
 /**
- * The shared login page's hand-off policy from GET /api/auth/sign-in/config.
- * `redirect_hosts` is the cookie domain plus this deployment's own site host;
- * only those origins can finish a sign-in handed off by another app.
- * `require_https` mirrors the Secure flag on the session cookie.
+ * The shared login page's landing policy from GET /api/auth/sign-in/config.
+ *
+ * `cookie_hosts` are the origins the session cookie reaches ([auth]
+ * cookieDomain and its subdomains, plus the site host) — a sign-in that lands
+ * there is a plain navigation, already signed in. `handoff_hosts` are the
+ * registered hand-off clients whose hosts no cookie can reach; those finish by
+ * a single-use code exchange. `require_https` mirrors the Secure flag on the
+ * session cookie.
  */
 export interface SignInConfig {
-  redirect_hosts: string[]
+  cookie_hosts: string[]
+  handoff_hosts: string[]
   require_https: boolean
 }
 

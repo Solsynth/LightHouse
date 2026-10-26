@@ -99,6 +99,10 @@ cookieSecure = false
 # in its own cookie. Clients registered here also join the sign-in redirect
 # policy published at GET /api/auth/sign-in/config.
 #
+# An app on the cookie domain needs no entry: any subdomain of cookieDomain
+# (web.solian.app under ".solian.app") keeps the session by cookie, and the
+# console hands it a plain navigation rather than a code.
+#
 # Leave handoffClients empty (the default) to mount no hand-off surface at all.
 # handoffCodeTTL = "60s"
 #
