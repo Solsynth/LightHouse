@@ -7,6 +7,7 @@ import { useNoticeStore } from '@/stores/notice'
 import { signInApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
 import type { MagicSpell } from '@/lib/api/types'
+import TextField from '@/components/TextField.vue'
 
 /**
  * The page the emailed magic-spell links land on. Stargate mints
@@ -184,28 +185,28 @@ onMounted(load)
         {{ t('spell.forAccount', { name: recipient }) }}
       </p>
 
-      <div v-if="isReset">
-        <label for="spell-password" class="field-label">{{ t('spell.newPassword') }}</label>
-        <input
-          id="spell-password"
-          v-model="password"
-          class="input"
-          type="password"
-          autocomplete="new-password"
-        />
-      </div>
+      <TextField
+        v-if="isReset"
+        id="spell-password"
+        v-model="password"
+        :label="t('spell.newPassword')"
+        size="md"
+        type="password"
+        autocomplete="new-password"
+      />
 
-      <div v-if="isReset" class="mt-4">
-        <label for="spell-confirm" class="field-label">{{ t('spell.confirmPassword') }}</label>
-        <input
-          id="spell-confirm"
-          v-model="confirm"
-          class="input"
-          type="password"
-          autocomplete="new-password"
-        />
-        <p v-if="passwordProblem" class="mt-1 text-2xs text-error">{{ passwordProblem }}</p>
-      </div>
+      <TextField
+        v-if="isReset"
+        id="spell-confirm"
+        v-model="confirm"
+        root-class="mt-4"
+        :label="t('spell.confirmPassword')"
+        size="md"
+        type="password"
+        autocomplete="new-password"
+        :invalid="Boolean(passwordProblem)"
+        :hint="passwordProblem"
+      />
 
       <button type="submit" class="btn btn-primary mt-5 w-full" :disabled="!canSubmit">
         {{ busy ? t('spell.applying') : isReset ? t('spell.submitReset') : t('spell.submitVerify') }}

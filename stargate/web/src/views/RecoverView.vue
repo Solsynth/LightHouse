@@ -7,6 +7,7 @@ import { useNoticeStore } from '@/stores/notice'
 import { landingQuery } from '@/lib/signInTarget'
 import { authApi, signInApi } from '@/lib/api'
 import CaptchaWidget from '@/components/CaptchaWidget.vue'
+import TextField from '@/components/TextField.vue'
 import type { CaptchaConfig } from '@/lib/api/types'
 
 const { t } = useI18n()
@@ -68,11 +69,11 @@ onMounted(async () => {
     </div>
 
     <form class="well p-5" @submit.prevent="requestReset">
-      <label for="recover-account" class="field-label">{{ t('signIn.accountLabel') }}</label>
-      <input
+      <TextField
         id="recover-account"
         v-model="account"
-        class="input"
+        :label="t('signIn.accountLabel')"
+        size="md"
         autocomplete="username"
         autocapitalize="off"
         spellcheck="false"

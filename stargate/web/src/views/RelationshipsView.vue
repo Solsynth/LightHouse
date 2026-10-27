@@ -31,6 +31,7 @@ import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import IconButton from '@/components/IconButton.vue'
 import TabBox from '@/components/TabBox.vue'
+import TextField from '@/components/TextField.vue'
 import type { Tab } from '@/components/tab'
 
 const { t } = useI18n()
@@ -463,9 +464,11 @@ onMounted(load)
               <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
                   <template v-if="editingId && editingId === counterpart(row)?.id">
-                    <input
+                    <TextField
                       v-model="aliasDraft"
-                      class="input input-xs max-w-[180px]"
+                      root-class="max-w-[180px]"
+                      size="xs"
+                      bare
                       :aria-label="t('relationships.alias')"
                       :placeholder="displayName(counterpart(row))"
                       @keyup.enter="saveAlias(row)"
@@ -631,19 +634,17 @@ onMounted(load)
       <div class="space-y-6">
         <ConsolePanel :title="t('relationships.find')">
           <form @submit.prevent="search">
-            <label for="relationship-query" class="field-label">
-              {{ t('relationships.query') }}
-            </label>
-            <div class="flex gap-2">
-              <input
+            <div class="flex items-start gap-2">
+              <TextField
                 id="relationship-query"
                 v-model="query"
-                class="input input-sm"
+                root-class="min-w-0 flex-1"
+                :label="t('relationships.query')"
                 :placeholder="t('relationships.queryPlaceholder')"
                 autocapitalize="off"
                 @input="searched = false"
               />
-              <button type="submit" class="btn btn-primary btn-sm" :disabled="searching">
+              <button type="submit" class="btn btn-primary shrink-0" :disabled="searching">
                 {{ t('common.search') }}
               </button>
             </div>

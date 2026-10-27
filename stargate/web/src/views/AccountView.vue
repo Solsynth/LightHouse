@@ -14,6 +14,7 @@ import { installMediaElements } from '@/lib/media'
 import { pickImage } from '@/lib/picker'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
+import TextField from '@/components/TextField.vue'
 
 // Register the shared element library before the first render.
 installMediaElements()
@@ -342,43 +343,40 @@ onMounted(loadForm)
 
         <ConsolePanel :title="t('account.profile')">
           <form v-if="editing" class="space-y-4" @submit.prevent="save">
-            <div class="grid gap-4">
-              <div>
-                <label for="first_name" class="field-label">{{ t('account.firstName') }}</label>
-                <input id="first_name" v-model="form.first_name" class="input input-sm" />
-              </div>
-              <div>
-                <label for="middle_name" class="field-label">{{ t('account.middleName') }}</label>
-                <input id="middle_name" v-model="form.middle_name" class="input input-sm" />
-              </div>
-              <div>
-                <label for="last_name" class="field-label">{{ t('account.lastName') }}</label>
-                <input id="last_name" v-model="form.last_name" class="input input-sm" />
-              </div>
+            <div class="grid gap-4 sm:grid-cols-3">
+              <TextField
+                id="first_name"
+                v-model="form.first_name"
+                :label="t('account.firstName')"
+              />
+              <TextField
+                id="middle_name"
+                v-model="form.middle_name"
+                :label="t('account.middleName')"
+              />
+              <TextField
+                id="last_name"
+                v-model="form.last_name"
+                :label="t('account.lastName')"
+              />
             </div>
-            <div class="grid gap-4">
-              <div>
-                <label for="pronouns" class="field-label">{{ t('account.pronouns') }}</label>
-                <input id="pronouns" v-model="form.pronouns" class="input input-sm" />
-              </div>
-              <div>
-                <label for="location" class="field-label">{{ t('account.location') }}</label>
-                <input id="location" v-model="form.location" class="input input-sm" />
-              </div>
-              <div>
-                <label for="time_zone" class="field-label">{{ t('account.timeZone') }}</label>
-                <input
-                  id="time_zone"
-                  v-model="form.time_zone"
-                  class="input input-sm"
-                  placeholder="UTC"
-                />
-              </div>
+            <div class="grid gap-4 sm:grid-cols-3">
+              <TextField id="pronouns" v-model="form.pronouns" :label="t('account.pronouns')" />
+              <TextField id="location" v-model="form.location" :label="t('account.location')" />
+              <TextField
+                id="time_zone"
+                v-model="form.time_zone"
+                :label="t('account.timeZone')"
+                placeholder="UTC"
+              />
             </div>
-            <div>
-              <label for="bio" class="field-label">{{ t('account.bio') }}</label>
-              <textarea id="bio" v-model="form.bio" class="textarea textarea-sm" rows="4" />
-            </div>
+            <TextField
+              id="bio"
+              v-model="form.bio"
+              as="textarea"
+              :label="t('account.bio')"
+              :rows="4"
+            />
 
             <p v-if="error" class="note note-error">{{ error }}</p>
 
@@ -485,26 +483,25 @@ onMounted(loadForm)
       <div
         class="modal-box max-w-md overflow-hidden rounded-sheet border border-line bg-base-100 p-0 shadow-[0_30px_80px_-40px_rgb(0_0_0/0.7)]"
       >
-        <div class="border-b border-line px-5 py-4">
+        <div class="border-b border-line px-6 py-5">
           <h2 id="delete-account-title" class="flex items-center gap-1.5 text-sm text-base-content">
             <WarningAlt16 class="shrink-0 text-error" aria-hidden="true" />
             {{ t('account.deleteTitle') }}
           </h2>
         </div>
-        <div class="px-5 py-4">
+        <div class="px-6 py-5">
           <p class="voice">{{ t('account.deleteBody') }}</p>
-          <label for="delete-confirm" class="field-label mt-4">
-            {{ t('account.deleteConfirmLabel', { name: session.account?.name }) }}
-          </label>
-          <input
+          <TextField
             id="delete-confirm"
             v-model="deleteConfirm"
-            class="input input-sm"
+            root-class="mt-4"
+            :label="t('account.deleteConfirmLabel', { name: session.account?.name })"
             autocomplete="off"
             spellcheck="false"
             :disabled="deleting"
+            :invalid="Boolean(deleteError)"
+            :hint="deleteError"
           />
-          <p v-if="deleteError" class="mt-3 text-xs text-error">{{ deleteError }}</p>
         </div>
         <div class="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
           <button

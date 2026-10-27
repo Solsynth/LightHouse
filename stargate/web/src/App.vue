@@ -23,6 +23,7 @@ import { useUiStore } from '@/stores/ui'
 import { applyRouteTitle } from '@/router'
 import type { Locale } from '@/lib/prefs'
 import ElevationSheet from '@/components/ElevationSheet.vue'
+import TextField from '@/components/TextField.vue'
 
 const session = useSessionStore()
 const notice = useNoticeStore()
@@ -266,7 +267,7 @@ function changeLocale(event: Event) {
 <template>
   <div
     class="relative flex min-h-dvh flex-col items-center"
-    :class="fullBleed ? '' : 'px-4 py-8 sm:py-12'"
+    :class="fullBleed ? '' : 'px-page py-9 sm:py-14'"
   >
     <div
       v-if="session.signedIn && backdropUrl && !backdropFailed"
@@ -306,8 +307,8 @@ function changeLocale(event: Event) {
           "
         >
           <div
-            class="flex items-center justify-between gap-4 border-b border-line py-3"
-            :class="fullBleed ? 'px-5 sm:px-7' : 'px-5'"
+            class="flex items-center justify-between gap-4 border-b border-line py-3.5"
+            :class="fullBleed ? 'px-page sm:px-page-wide' : 'px-page'"
           >
             <RouterLink to="/" class="flex items-center gap-2.5" :aria-label="t('app.home')">
               <span class="brand-mark h-[22px] w-[22px] shrink-0" aria-hidden="true" />
@@ -373,8 +374,8 @@ function changeLocale(event: Event) {
 
           <nav
             v-if="showNav"
-            class="flex items-center gap-4 overflow-x-auto border-b border-line py-2"
-            :class="fullBleed ? 'px-5 sm:px-7' : 'px-5'"
+            class="flex items-center gap-5 overflow-x-auto border-b border-line py-2.5"
+            :class="fullBleed ? 'px-page sm:px-page-wide' : 'px-page'"
             :aria-label="t('app.console')"
           >
             <RouterLink
@@ -393,7 +394,7 @@ function changeLocale(event: Event) {
 
           <div ref="region" class="page-region">
             <div ref="regionInner">
-              <div :class="edgeToEdge ? '' : 'px-5 py-6 sm:px-7 sm:py-8'">
+              <div :class="edgeToEdge ? '' : 'px-page py-7 sm:px-page-wide sm:py-9'">
                 <RouterView v-slot="{ Component }">
                   <component :is="Component" />
                 </RouterView>
@@ -402,7 +403,7 @@ function changeLocale(event: Event) {
               <Transition name="notice">
                 <div
                   v-if="latest"
-                  class="flex items-baseline gap-2 px-5 py-2 text-2xs"
+                  class="flex items-baseline gap-2 px-page py-2.5 text-2xs"
                   role="status"
                   aria-live="polite"
                 >
@@ -420,7 +421,7 @@ function changeLocale(event: Event) {
 
     <footer
       class="relative z-10 flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 text-2xs text-faint"
-      :class="fullBleed ? 'mt-0 border-t border-line px-5 py-3 sm:px-7' : ['mt-6', cardWidth]"
+      :class="fullBleed ? 'mt-0 border-t border-line px-page py-3.5 sm:px-page-wide' : ['mt-8', cardWidth]"
     >
       <span>{{ t('app.copyright', { year }) }}</span>
       <div class="flex items-center gap-3">
@@ -433,15 +434,18 @@ function changeLocale(event: Event) {
         >
           <component :is="ui.isDark ? Sun16 : Moon16" aria-hidden="true" />
         </button>
-        <select
-          class="select select-xs footer-locale"
-          :value="ui.locale"
+        <TextField
+          size="xs"
+          bare
+          root-class="footer-locale"
+          :model-value="ui.locale"
+          as="select"
           :aria-label="t('app.language')"
           @change="changeLocale"
         >
           <option value="en">{{ t('app.languageEnglish') }}</option>
           <option value="zh-CN">{{ t('app.languageChinese') }}</option>
-        </select>
+        </TextField>
       </div>
     </footer>
 

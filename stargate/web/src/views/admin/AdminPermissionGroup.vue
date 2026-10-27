@@ -15,6 +15,7 @@ import ConsolePanel from '@/components/ConsolePanel.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import IconButton from '@/components/IconButton.vue'
+import TextField from '@/components/TextField.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -148,10 +149,12 @@ onMounted(load)
         :title="t('admin.permissionGroup.granted')"
         :note="`${detail.node_total}`"
       >
-        <div class="mb-4 flex gap-2">
-          <input
+        <div class="mb-4 flex items-start gap-2">
+          <TextField
             v-model="permissionKey"
-            class="input input-sm flex-1"
+            root-class="min-w-0 flex-1"
+            :label="t('admin.permissionGroup.permissionKey')"
+            control-class="font-mono"
             placeholder="accounts.view"
             autocapitalize="off"
             spellcheck="false"
@@ -159,7 +162,7 @@ onMounted(load)
           />
           <button
             type="button"
-            class="btn btn-primary btn-sm"
+            class="btn btn-primary shrink-0"
             :disabled="busy || !permissionKey.trim()"
             @click="grant"
           >
@@ -200,10 +203,12 @@ onMounted(load)
         :title="t('admin.permissionGroup.members')"
         :note="`${detail.member_total}`"
       >
-        <div class="mb-4 flex gap-2">
-          <input
+        <div class="mb-4 flex items-start gap-2">
+          <TextField
             v-model="memberActor"
-            class="input input-sm flex-1"
+            root-class="min-w-0 flex-1"
+            :label="t('admin.permissions.member')"
+            control-class="font-mono"
             :placeholder="t('admin.permissionGroup.memberPlaceholder')"
             autocapitalize="off"
             spellcheck="false"
@@ -211,7 +216,7 @@ onMounted(load)
           />
           <button
             type="button"
-            class="btn btn-primary btn-sm"
+            class="btn btn-primary shrink-0"
             :disabled="busy || !memberActor.trim()"
             @click="addMember"
           >

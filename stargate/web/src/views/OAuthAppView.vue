@@ -18,6 +18,7 @@ import ConfirmAction from '@/components/ConfirmAction.vue'
 import IconButton from '@/components/IconButton.vue'
 import CopyButton from '@/components/CopyButton.vue'
 import AppMark from '@/components/AppMark.vue'
+import TextField from '@/components/TextField.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -313,75 +314,102 @@ onMounted(() => {
               </div>
             </div>
 
-            <div class="mt-5 grid gap-3 sm:grid-cols-2">
-              <div>
-                <label for="app-name" class="field-label">{{ t('oauthApps.name') }}</label>
-                <input id="app-name" v-model="form.name" class="input input-sm" />
-              </div>
-              <div>
-                <label for="app-slug-field" class="field-label">{{ t('oauthApps.slug') }}</label>
-                <input id="app-slug-field" v-model="form.slug" class="input input-sm font-mono" />
-                <p class="mt-1 text-2xs text-faint">{{ t('oauthApps.slugHint') }}</p>
-              </div>
+            <div class="mt-5 grid gap-4 sm:grid-cols-2">
+              <TextField id="app-name" v-model="form.name" :label="t('oauthApps.name')" />
+              <TextField
+                id="app-slug-field"
+                v-model="form.slug"
+                :label="t('oauthApps.slug')"
+                control-class="font-mono"
+                :hint="t('oauthApps.slugHint')"
+              />
             </div>
 
-            <div class="mt-3">
-              <label for="app-description-field" class="field-label">{{ t('oauthApps.descriptionLabel') }}</label>
-              <textarea id="app-description-field" v-model="form.description" class="textarea textarea-sm" rows="2" />
-            </div>
+            <TextField
+              id="app-description-field"
+              v-model="form.description"
+              root-class="mt-4"
+              as="textarea"
+              :label="t('oauthApps.descriptionLabel')"
+              :rows="2"
+            />
 
-            <div class="mt-3">
-              <label for="app-status" class="field-label">{{ t('oauthApps.status') }}</label>
-              <select id="app-status" v-model.number="form.status" class="select select-sm max-w-[220px]">
-                <option v-for="value in [0, 1, 2, 3]" :key="value" :value="value">
-                  {{ oauthAppStatusLabel(value) }}
-                </option>
-              </select>
-            </div>
+            <TextField
+              id="app-status"
+              v-model.number="form.status"
+              root-class="mt-4 max-w-[220px]"
+              as="select"
+              :label="t('oauthApps.status')"
+            >
+              <option v-for="value in [0, 1, 2, 3]" :key="value" :value="value">
+                {{ oauthAppStatusLabel(value) }}
+              </option>
+            </TextField>
 
-            <div class="mt-5 grid gap-3 sm:grid-cols-2">
-              <div>
-                <label for="app-picture" class="field-label">{{ t('oauthApps.pictureId') }}</label>
-                <div class="flex gap-2">
-                  <input id="app-picture" v-model="pictureId" class="input input-sm font-mono" />
-                  <button type="button" class="btn btn-ghost btn-sm" @click="pictureId = ''">
-                    {{ t('oauthApps.clearArt') }}
-                  </button>
-                </div>
-                <p class="mt-1 text-2xs text-faint">{{ t('oauthApps.pictureIdHint') }}</p>
+            <div class="mt-5 grid gap-4 sm:grid-cols-2">
+              <div class="flex items-start gap-2">
+                <TextField
+                  id="app-picture"
+                  v-model="pictureId"
+                  root-class="min-w-0 flex-1"
+                  :label="t('oauthApps.pictureId')"
+                  control-class="font-mono"
+                  :hint="t('oauthApps.pictureIdHint')"
+                />
+                <button type="button" class="btn btn-ghost shrink-0" @click="pictureId = ''">
+                  {{ t('oauthApps.clearArt') }}
+                </button>
               </div>
-              <div>
-                <label for="app-background" class="field-label">{{ t('oauthApps.backgroundId') }}</label>
-                <div class="flex gap-2">
-                  <input id="app-background" v-model="backgroundId" class="input input-sm font-mono" />
-                  <button type="button" class="btn btn-ghost btn-sm" @click="backgroundId = ''">
-                    {{ t('oauthApps.clearArt') }}
-                  </button>
-                </div>
-                <p class="mt-1 text-2xs text-faint">{{ t('oauthApps.backgroundIdHint') }}</p>
+              <div class="flex items-start gap-2">
+                <TextField
+                  id="app-background"
+                  v-model="backgroundId"
+                  root-class="min-w-0 flex-1"
+                  :label="t('oauthApps.backgroundId')"
+                  control-class="font-mono"
+                  :hint="t('oauthApps.backgroundIdHint')"
+                />
+                <button type="button" class="btn btn-ghost shrink-0" @click="backgroundId = ''">
+                  {{ t('oauthApps.clearArt') }}
+                </button>
               </div>
             </div>
           </ConsolePanel>
 
           <ConsolePanel :title="t('oauthApps.oauth')" :note="t('oauthApps.oauthHint')">
-            <div>
-              <label for="app-client-uri" class="field-label">{{ t('oauthApps.clientUri') }}</label>
-              <input id="app-client-uri" v-model="form.clientUri" class="input input-sm" placeholder="https://client.example" />
-            </div>
+            <TextField
+              id="app-client-uri"
+              v-model="form.clientUri"
+              :label="t('oauthApps.clientUri')"
+              placeholder="https://client.example"
+            />
 
-            <div class="mt-4 grid gap-3 sm:grid-cols-2">
-              <div>
-                <label for="app-redirects" class="field-label">{{ t('oauthApps.redirectUris') }}</label>
-                <textarea id="app-redirects" v-model="form.redirectUris" class="textarea textarea-sm font-mono" rows="4" placeholder="https://client.example/oauth/callback" />
-                <p class="mt-1 text-2xs" :class="productionWithoutRedirect ? 'text-warning' : 'text-faint'">
-                  {{ productionWithoutRedirect ? t('oauthApps.createRedirectHint') : t('oauthApps.redirectUrisHint') }}
-                </p>
-              </div>
-              <div>
-                <label for="app-logout" class="field-label">{{ t('oauthApps.postLogoutUris') }}</label>
-                <textarea id="app-logout" v-model="form.postLogoutUris" class="textarea textarea-sm font-mono" rows="4" placeholder="https://client.example/logout" />
-                <p class="mt-1 text-2xs text-faint">{{ t('oauthApps.postLogoutUrisHint') }}</p>
-              </div>
+            <div class="mt-4 grid gap-4 sm:grid-cols-2">
+              <TextField
+                id="app-redirects"
+                v-model="form.redirectUris"
+                as="textarea"
+                :label="t('oauthApps.redirectUris')"
+                :rows="4"
+                control-class="font-mono"
+                placeholder="https://client.example/oauth/callback"
+                :hint="
+                  productionWithoutRedirect
+                    ? t('oauthApps.createRedirectHint')
+                    : t('oauthApps.redirectUrisHint')
+                "
+                :hint-tone="productionWithoutRedirect ? 'warning' : undefined"
+              />
+              <TextField
+                id="app-logout"
+                v-model="form.postLogoutUris"
+                as="textarea"
+                :label="t('oauthApps.postLogoutUris')"
+                :rows="4"
+                control-class="font-mono"
+                placeholder="https://client.example/logout"
+                :hint="t('oauthApps.postLogoutUrisHint')"
+              />
             </div>
 
             <div class="mt-5">
@@ -402,18 +430,22 @@ onMounted(() => {
                   </label>
                 </li>
               </ul>
-              <div class="mt-2 flex flex-wrap items-end gap-2">
-                <div class="min-w-[180px] flex-1">
-                  <label for="app-custom-scope" class="field-label">{{ t('oauthApps.customScope') }}</label>
-                  <input
-                    id="app-custom-scope"
-                    v-model="customScope"
-                    class="input input-sm font-mono"
-                    :placeholder="t('oauthApps.customScopePlaceholder')"
-                    @keydown.enter.prevent="addScope"
-                  />
-                </div>
-                <button type="button" class="btn btn-ghost btn-sm" :disabled="!customScope.trim()" @click="addScope">
+              <div class="mt-3 flex flex-wrap items-start gap-2">
+                <TextField
+                  id="app-custom-scope"
+                  v-model="customScope"
+                  root-class="min-w-[180px] flex-1"
+                  :label="t('oauthApps.customScope')"
+                  control-class="font-mono"
+                  :placeholder="t('oauthApps.customScopePlaceholder')"
+                  @keydown.enter.prevent="addScope"
+                />
+                <button
+                  type="button"
+                  class="btn btn-ghost shrink-0"
+                  :disabled="!customScope.trim()"
+                  @click="addScope"
+                >
                   <Add16 aria-hidden="true" />
                   {{ t('oauthApps.addScope') }}
                 </button>
@@ -472,19 +504,23 @@ onMounted(() => {
           </ConsolePanel>
 
           <ConsolePanel :title="t('oauthApps.links')" :note="t('oauthApps.linksHint')">
-            <div class="grid gap-3 sm:grid-cols-3">
-              <div>
-                <label for="app-home" class="field-label">{{ t('oauthApps.homePage') }}</label>
-                <input id="app-home" v-model="form.homePage" class="input input-sm" placeholder="https://client.example" />
-              </div>
-              <div>
-                <label for="app-privacy" class="field-label">{{ t('oauthApps.privacyPolicy') }}</label>
-                <input id="app-privacy" v-model="form.privacyPolicy" class="input input-sm" />
-              </div>
-              <div>
-                <label for="app-terms" class="field-label">{{ t('oauthApps.termsOfService') }}</label>
-                <input id="app-terms" v-model="form.termsOfService" class="input input-sm" />
-              </div>
+            <div class="grid gap-4 sm:grid-cols-3">
+              <TextField
+                id="app-home"
+                v-model="form.homePage"
+                :label="t('oauthApps.homePage')"
+                placeholder="https://client.example"
+              />
+              <TextField
+                id="app-privacy"
+                v-model="form.privacyPolicy"
+                :label="t('oauthApps.privacyPolicy')"
+              />
+              <TextField
+                id="app-terms"
+                v-model="form.termsOfService"
+                :label="t('oauthApps.termsOfService')"
+              />
             </div>
           </ConsolePanel>
 
@@ -512,35 +548,36 @@ onMounted(() => {
               <p class="voice mt-2 text-[12px] text-faint">{{ t('oauthApps.secretIssuedHint') }}</p>
             </div>
 
-            <div class="well space-y-2 p-3">
-              <div>
-                <label for="secret-description" class="field-label">{{ t('oauthApps.secretDescription') }}</label>
-                <input
-                  id="secret-description"
-                  v-model="secretDraft.description"
-                  class="input input-sm"
-                  :placeholder="t('oauthApps.secretDescriptionPlaceholder')"
-                />
+            <div class="well space-y-4 p-4">
+              <TextField
+                id="secret-description"
+                v-model="secretDraft.description"
+                :label="t('oauthApps.secretDescription')"
+                :placeholder="t('oauthApps.secretDescriptionPlaceholder')"
+              />
+              <div class="grid gap-4 sm:grid-cols-2">
+                <TextField
+                  id="secret-expiry"
+                  v-model="secretDraft.expiresIn"
+                  as="select"
+                  :label="t('oauthApps.secretExpiry')"
+                >
+                  <option value="">{{ t('oauthApps.expiryNever') }}</option>
+                  <option value="720h">{{ t('oauthApps.expiry30d') }}</option>
+                  <option value="2160h">{{ t('oauthApps.expiry90d') }}</option>
+                  <option value="8760h">{{ t('oauthApps.expiry1y') }}</option>
+                </TextField>
+                <TextField
+                  id="secret-type"
+                  v-model="secretDraft.type"
+                  as="select"
+                  :label="t('oauthApps.secretType')"
+                >
+                  <option value="oidc">{{ t('oauthApps.typeOidc') }}</option>
+                  <option value="api_key">{{ t('oauthApps.typeApiKey') }}</option>
+                </TextField>
               </div>
-              <div class="grid gap-2 sm:grid-cols-2">
-                <div>
-                  <label for="secret-expiry" class="field-label">{{ t('oauthApps.secretExpiry') }}</label>
-                  <select id="secret-expiry" v-model="secretDraft.expiresIn" class="select select-sm">
-                    <option value="">{{ t('oauthApps.expiryNever') }}</option>
-                    <option value="720h">{{ t('oauthApps.expiry30d') }}</option>
-                    <option value="2160h">{{ t('oauthApps.expiry90d') }}</option>
-                    <option value="8760h">{{ t('oauthApps.expiry1y') }}</option>
-                  </select>
-                </div>
-                <div>
-                  <label for="secret-type" class="field-label">{{ t('oauthApps.secretType') }}</label>
-                  <select id="secret-type" v-model="secretDraft.type" class="select select-sm">
-                    <option value="oidc">{{ t('oauthApps.typeOidc') }}</option>
-                    <option value="api_key">{{ t('oauthApps.typeApiKey') }}</option>
-                  </select>
-                </div>
-              </div>
-              <button type="button" class="btn btn-primary btn-sm w-full" :disabled="busy" @click="issueSecret">
+              <button type="button" class="btn btn-primary w-full" :disabled="busy" @click="issueSecret">
                 {{ busy ? t('oauthApps.issuing') : t('oauthApps.issueSecret') }}
               </button>
             </div>

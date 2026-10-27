@@ -50,10 +50,10 @@ onMounted(load)
       :description="t('admin.geography.description')"
     >
       <template #actions>
-        <div class="flex gap-1 rounded-full border border-line p-0.5">
+        <div class="flex gap-0.5 rounded-control border border-line p-0.5">
           <button
             type="button"
-            class="rounded-full px-2 py-1 text-2xs"
+            class="rounded-control px-2.5 py-1 text-2xs"
             :class="precision === 'country' ? 'bg-base-300 text-base-content' : 'text-faint'"
             @click="setPrecision('country')"
           >
@@ -61,7 +61,7 @@ onMounted(load)
           </button>
           <button
             type="button"
-            class="rounded-full px-2 py-1 text-2xs"
+            class="rounded-control px-2.5 py-1 text-2xs"
             :class="precision === 'city' ? 'bg-base-300 text-base-content' : 'text-faint'"
             @click="setPrecision('city')"
           >

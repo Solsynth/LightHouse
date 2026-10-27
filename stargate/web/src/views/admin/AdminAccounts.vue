@@ -12,6 +12,7 @@ import { relative, shortId } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
+import TextField from '@/components/TextField.vue'
 
 const { t } = useI18n()
 
@@ -63,26 +64,24 @@ onMounted(load)
   <div>
     <PageHeader :title="t('admin.accounts.title')" :description="t('admin.accounts.description')" />
 
-    <form class="mb-5 flex flex-wrap items-end gap-3" @submit.prevent="search">
-      <div class="min-w-[220px] flex-1">
-        <label for="account-query" class="field-label">{{ t('admin.accounts.query') }}</label>
-        <input
-          id="account-query"
-          v-model="query"
-          class="input input-sm"
-          :placeholder="t('admin.accounts.queryPlaceholder')"
-          autocapitalize="off"
-        />
-      </div>
-      <label class="flex cursor-pointer items-center gap-2 pb-2 text-2xs text-dim">
+    <form class="mb-5 flex flex-wrap items-start gap-3" @submit.prevent="search">
+      <TextField
+        id="account-query"
+        v-model="query"
+        root-class="min-w-[220px] flex-1"
+        :label="t('admin.accounts.query')"
+        :placeholder="t('admin.accounts.queryPlaceholder')"
+        autocapitalize="off"
+      />
+      <label class="flex cursor-pointer items-center gap-2 py-2 text-2xs text-dim">
         <input v-model="onlyPunished" class="checkbox checkbox-xs" type="checkbox" @change="search" />
         {{ t('admin.accounts.restrictedOnly') }}
       </label>
-      <label class="flex cursor-pointer items-center gap-2 pb-2 text-2xs text-dim">
+      <label class="flex cursor-pointer items-center gap-2 py-2 text-2xs text-dim">
         <input v-model="onlyActivated" class="checkbox checkbox-xs" type="checkbox" @change="search" />
         {{ t('admin.accounts.activatedOnly') }}
       </label>
-      <button type="submit" class="btn btn-primary btn-sm" :disabled="loading">
+      <button type="submit" class="btn btn-primary shrink-0" :disabled="loading">
         {{ t('common.search') }}
       </button>
     </form>

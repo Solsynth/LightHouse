@@ -43,14 +43,24 @@
   --color-error: #ffb4ab;
   --color-error-content: #171618;
 
-  --radius-selector: 6px;
-  --radius-field: 16px;
-  --radius-box: 20px;
+  --radius-selector: 4px;
+  --radius-field: 8px;
+  --radius-box: 12px;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
   --border: 1px;
   --depth: 0;
   --noise: 0;
+
+  /* Field tones. A field is a tonal well, not an outlined box: the fill alone
+     defines it at rest, the tone steps up under the pointer, and the bottom
+     indicator is the only line. Three explicit steps beat one color with
+     alpha, because a field sits on the page, a panel and a `.well` alike and
+     a translucent fill would read as three different shades. */
+  --field-fill: #232326;
+  --field-fill-hover: #28282c;
+  --field-fill-focus: #2d2d32;
+  --field-line: #3c3c40;
 }
 
 /* Daylight console: the same ramp read at the light end. Solian derives the
@@ -89,14 +99,19 @@
   --color-error: #9f352d;
   --color-error-content: #ffffff;
 
-  --radius-selector: 6px;
-  --radius-field: 16px;
-  --radius-box: 20px;
+  --radius-selector: 4px;
+  --radius-field: 8px;
+  --radius-box: 12px;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
   --border: 1px;
   --depth: 0;
   --noise: 0;
+
+  --field-fill: #efeaf0;
+  --field-fill-hover: #eae4eb;
+  --field-fill-focus: #e4dee6;
+  --field-line: #cbc5cc;
 }
 
 @theme {
@@ -117,19 +132,31 @@
   --color-dim: var(--console-dim);
   --text-2xs: 0.6875rem;
 
-  /* Corner radius: Solian's scale, adopted so the console and the Flutter app
-     share one geometry. A card or menu is 20, a field 16, a chip 12, an inline
-     mark 8, a sheet or dialog 28.
+  /* Corner radius: a tighter reading of Solian's scale. The app's generous
+     corners suit a phone held at arm's length; the console is read on a
+     desktop at a fraction of that distance, where a 20 px corner on a 40 px
+     control reads as a bubble rather than an edge. Every step drops one rank
+     — card 12, field 8, chip 6, inline mark 4, sheet 16 — so the family is
+     preserved and only the amplitude changes.
 
-     Controls are the exception: they are a capsule, not a 24 px corner. 24 px
-     against a 40 px control leaves a 4 px flat edge, so the button rule below
-     clamps to a pill instead of a token, which is also what Solian's
-     `controlRadius` resolves to at these heights. */
-  --radius-mark: 8px;
-  --radius-chip: 12px;
-  --radius-input: 16px;
-  --radius-card: 20px;
-  --radius-sheet: 28px;
+     Controls are a 6 px rounded rectangle, not a capsule: at 40 px tall a
+     capsule removes the corner entirely and the button stops reading as a
+     surface. `--radius-control` is the one value a button uses. */
+  --radius-mark: 4px;
+  --radius-chip: 6px;
+  --radius-input: 8px;
+  --radius-control: 6px;
+  --radius-card: 12px;
+  --radius-sheet: 16px;
+
+  /* Spacing. One 4 px unit, with the named steps the layout actually uses.
+     Solian's scale (`SolSpace`) stops at 40; the console adds `section` for
+     the gap between major regions and `page` for the content gutter. */
+  --spacing-page: 1.25rem;
+  --spacing-page-wide: 2rem;
+  --spacing-section: 1.5rem;
+  --spacing-card: 1.25rem;
+  --spacing-field: 0.75rem;
 }
 
 @layer base {
@@ -235,21 +262,21 @@
   }
 
   /* Full-bleed ledger: cancels the panel body's horizontal padding so row
-     hairlines meet the card edge, while cell text keeps the panel rhythm. The
-     rows also drop their bottom rule, because the panel's rounded corner now
-     closes the table instead of a hard edge. */
+     hairlines meet the card edge, while cell text keeps the panel rhythm.
+     The offsets mirror `ConsolePanel`'s 24 px (`px-6`) body inset — keep the
+     two in step, or the table stops short of the edge it is meant to reach. */
   .table-bleed {
-    margin-inline: -1rem;
+    margin-inline: -1.5rem;
   }
 
   .table-bleed .ledger th:first-child,
   .table-bleed .ledger td:first-child {
-    padding-left: 1rem;
+    padding-left: 1.5rem;
   }
 
   .table-bleed .ledger th:last-child,
   .table-bleed .ledger td:last-child {
-    padding-right: 1rem;
+    padding-right: 1.5rem;
   }
 
   .ledger td:first-child,
@@ -263,35 +290,263 @@
     text-align: right;
   }
 
-  .field-label {
-    @apply mb-1.5 block text-2xs font-semibold uppercase tracking-[0.1em] text-faint;
+  /* ── Fields ────────────────────────────────────────────────────────────
+     One shape for every control, after Material's filled text field: a tonal
+     fill with a radius on the top corners and a single indicator along the
+     bottom. The fill defines the resting shape, so there is no border to
+     compete with the panel around it; the indicator is the only line, and it
+     grows from the centre when the field takes focus.
+
+     The label is animated rather than static: at rest it sits where the value
+     will be, so an empty form still reads as a list of questions; on focus or
+     a value it rises into a caption. That is why the control carries a top
+     padding and why its placeholder is transparent until the label has
+     moved — otherwise the label and the example would print on top of each
+     other.
+
+     Sizes are named after the buttons they sit beside, so a row of field and
+     button lines up without a per-row height override:
+       md 44 px (btn)   sm 40 px (btn-sm)   xs 32 px (btn-xs) */
+  .field {
+    display: block;
+    min-inline-size: 0;
   }
 
-  /* daisyUI ships its own field colors at equal specificity, so the console's
-     field skin is element-qualified to win without !important. */
-  input.input,
-  select.select,
-  textarea.textarea {
+  /* The box is the positioned ancestor: the caption and the indicator belong
+     to the control's edge, not to the field plus its helper text. */
+  .field-box {
+    position: relative;
+  }
+
+  .field-control {
+    display: block;
+    inline-size: 100%;
     width: 100%;
-    border-radius: var(--radius-input);
-    border-color: var(--color-line);
-    background-color: var(--color-base-200);
+    border: 0;
+    border-radius: var(--radius-input) var(--radius-input) 0 0;
+    background-color: var(--field-fill);
+    box-shadow: inset 0 -1px 0 var(--field-line);
     color: var(--color-base-content);
+    font-family: var(--font-sans);
     font-size: 13.5px;
-    box-shadow: none;
+    line-height: 1.35;
+    transition:
+      background-color 150ms ease,
+      box-shadow 150ms ease;
   }
 
-  input.input:focus,
-  select.select:focus,
-  textarea.textarea:focus {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 0;
+  .field-control:hover:not(:disabled) {
+    background-color: var(--field-fill-hover);
+  }
+
+  /* The indicator carries the focus state, so the global 2 px outline would
+     draw a second, competing edge around the same control. */
+  .field-control:focus,
+  .field-control:focus-visible {
+    outline: none;
+    background-color: var(--field-fill-focus);
+  }
+
+  .field-control:disabled {
+    cursor: not-allowed;
+    color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
+    background-color: color-mix(in oklab, var(--field-fill) 60%, var(--color-base-100));
+  }
+
+  .field-control::placeholder {
+    color: transparent;
+  }
+
+  .field:focus-within .field-control::placeholder,
+  .field-bare .field-control::placeholder {
+    color: color-mix(in oklab, var(--color-faint) 80%, transparent);
+  }
+
+  /* Sizes: height, horizontal inset, and the two label positions. */
+  .field-md {
+    --field-height: 44px;
+    --field-inset: 14px;
+    --field-label-rest: 13.5px;
+    --field-label-float: 10px;
+    --field-label-top: 7px;
+    --field-text-top: 19px;
+  }
+
+  .field-sm {
+    --field-height: 40px;
+    --field-inset: 12px;
+    --field-label-rest: 13px;
+    --field-label-float: 9.5px;
+    --field-label-top: 6px;
+    --field-text-top: 17px;
+  }
+
+  .field-xs {
+    --field-height: 32px;
+    --field-inset: 10px;
+    --field-label-rest: 12px;
+    --field-label-float: 9.5px;
+    --field-label-top: 5px;
+    --field-text-top: 14px;
+  }
+
+  .field-control {
+    block-size: var(--field-height);
+    min-block-size: var(--field-height);
+    padding: 0 var(--field-inset);
+  }
+
+  /* A labelled field reserves the caption line, so the value sits low enough
+     for the risen label to have its own room. */
+  .field:not(.field-bare) .field-control {
+    block-size: auto;
+    padding: var(--field-text-top) var(--field-inset) 5px;
+  }
+
+  .field textarea.field-control {
+    min-block-size: calc(var(--field-height) * 2);
+    padding-block: var(--field-text-top) 10px;
+    line-height: 1.5;
+    resize: vertical;
+  }
+
+  /* A select keeps its own arrow, drawn here because the native control is
+     reset. The extra right inset keeps the text clear of it. */
+  .field select.field-control {
+    appearance: none;
+    padding-inline-end: calc(var(--field-inset) + 20px);
+    background-image:
+      linear-gradient(45deg, transparent 50%, currentColor 50%),
+      linear-gradient(135deg, currentColor 50%, transparent 50%);
+    /* The arrow is positioned from the box's own bottom-right corner, so it
+       follows the field's height instead of the fill's centre. */
+    background-position:
+      calc(100% - 15px) calc(50% + 1px),
+      calc(100% - 10px) calc(50% + 1px);
+    background-size:
+      5px 5px,
+      5px 5px;
+    background-repeat: no-repeat;
+  }
+
+  .field-label-float {
+    position: absolute;
+    z-index: 1;
+    inset-inline-start: var(--field-inset);
+    inset-block-start: 50%;
+    translate: 0 -50%;
+    color: var(--color-faint);
+    font-size: var(--field-label-rest);
+    font-weight: 500;
+    line-height: 1.2;
+    pointer-events: none;
+    transform-origin: left center;
+    transition:
+      inset-block-start 160ms cubic-bezier(0.2, 0.7, 0.2, 1),
+      translate 160ms cubic-bezier(0.2, 0.7, 0.2, 1),
+      font-size 160ms cubic-bezier(0.2, 0.7, 0.2, 1),
+      letter-spacing 160ms ease,
+      color 160ms ease;
+  }
+
+  /* The caption rises for a value, and also for focus: an empty focused field
+     shows its placeholder, so leaving the caption on the value line would
+     print the two on top of each other. */
+  .field.is-floated .field-label-float,
+  .field:focus-within .field-label-float {
+    inset-block-start: var(--field-label-top);
+    translate: 0 0;
+    font-size: var(--field-label-float);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+
+  .field:focus-within .field-label-float {
+    color: var(--color-primary);
+  }
+
+  .field.is-invalid .field-label-float,
+  .field.is-invalid:focus-within .field-label-float {
+    color: var(--color-error);
+  }
+
+  /* The indicator is the focus state: a 2 px rule that grows out from the
+     centre. Invalid fields keep it drawn and tint it, so the error is visible
+     without focus. */
+  .field-indicator {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: 0;
+    block-size: 2px;
+    background-color: var(--color-primary);
+    pointer-events: none;
+    transform: scaleX(0);
+    transition: transform 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+
+  .field:focus-within .field-indicator {
+    transform: scaleX(1);
+  }
+
+  .field.is-invalid .field-indicator {
+    background-color: var(--color-error);
+    transform: scaleX(1);
+  }
+
+  .field-hint {
+    margin-block-start: 6px;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--color-faint);
+  }
+
+  .field-hint-error {
+    color: var(--color-error);
+  }
+
+  .field-hint-warning {
+    color: var(--color-warning);
+  }
+
+  /* A trailing control inside the field, e.g. the password reveal. */
+  .field-action {
+    position: absolute;
+    inset-inline-end: 6px;
+    inset-block-start: 50%;
+    translate: 0 -50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    block-size: 28px;
+    inline-size: 28px;
+    border-radius: var(--radius-chip);
+    color: var(--color-faint);
+    transition:
+      color 150ms ease,
+      background-color 150ms ease;
+  }
+
+  .field-action:hover {
+    color: var(--color-base-content);
+    background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+  }
+
+  .field:has(.field-action) .field-control {
+    padding-inline-end: calc(var(--field-inset) + 30px);
+  }
+
+  /* Checkbox and radio: Material's square mark, on the same 4 px unit as the
+     rest of the geometry. */
+  .checkbox,
+  .radio {
+    border-color: var(--field-line);
+  }
+
+  .checkbox:checked,
+  .radio:checked {
     border-color: var(--color-primary);
-  }
-
-  input.input::placeholder,
-  textarea.textarea::placeholder {
-    color: color-mix(in oklab, var(--color-faint) 75%, transparent);
+    background-color: var(--color-primary);
+    color: var(--color-primary-content);
   }
 
   /* Display: page titles only. Nunito's bold is heavy enough to carry a
@@ -309,14 +564,22 @@
     mask: url('/icon-outline.svg') center / contain no-repeat;
   }
 
-  .input::placeholder,
-  .textarea::placeholder {
-    color: color-mix(in oklab, var(--color-faint) 75%, transparent);
-  }
-
   .btn {
     @apply border-line font-sans text-[13px] font-semibold tracking-[0.005em];
+    border-radius: var(--radius-control);
     box-shadow: none;
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease,
+      color 150ms ease;
+  }
+
+  /* Square buttons follow the same corner rather than becoming circles: a
+     circle is a different shape language, and at 6 px the icon tiles read as
+     part of the same family as the fields. */
+  .btn-square,
+  .btn-circle {
+    border-radius: var(--radius-control);
   }
 
   .btn-ghost {
@@ -343,10 +606,10 @@
   }
 
   /* Status note: the one shape for an inline error, confirmation, or warning.
-     A tinted pill carries the tone, so a message reads as an object rather
+     A tinted block carries the tone, so a message reads as an object rather
      than as a stray sentence with a bar beside it. */
   .note {
-    @apply rounded-chip border px-3 py-2 text-xs;
+    @apply rounded-chip border px-3.5 py-2.5 text-xs leading-relaxed;
   }
 
   .note-error {
@@ -369,7 +632,7 @@
 
   /* A field or option block nested inside a plate, one step tighter. */
   .well {
-    @apply rounded-input border border-line bg-base-200/40;
+    @apply rounded-card border border-line bg-base-200/40;
   }
 
   .dot {
@@ -482,32 +745,19 @@
   }
 }
 
-/* daisyUI registers its component styles in a layer that comes after
-   `components`, so the console's field skin loses to `.input`'s
-   `width: clamp(3rem, 20rem, 100%)` (320px) and fields end up narrower than a
-   `w-full` button. Unlayered rules outrank every layer, which is the only way
-   to win without `!important`. */
-input.input,
-select.select,
-textarea.textarea {
-  inline-size: 100%;
-  width: 100%;
-}
-
-/* The footer language picker is inline, not a full-width form field. */
-select.select.footer-locale {
+/* The footer language picker is inline, not a full-width form field, and it
+   is the one field that sits in the page chrome rather than a form. */
+.footer-locale {
   inline-size: auto;
   width: auto;
-  height: 1.75rem;
-  min-height: 1.75rem;
-  padding-block: 0;
-  font-size: 0.6875rem;
 }
 
-/* Capsule controls. Solian's control token is 24 px against a 48 px button, so
-   the console's shorter buttons clamp to a pill; a square button becomes a
-   circle. Unlayered for the same reason as the field width below: daisyUI
-   writes the logical radii in a layer that outranks `components`. */
-.btn {
-  border-radius: 9999px;
+.footer-locale .field-control {
+  block-size: 1.75rem;
+  min-block-size: 1.75rem;
+  padding: 0 1.5rem 0 0.5rem;
+  font-size: 0.6875rem;
+  background-position:
+    calc(100% - 11px) calc(50% + 1px),
+    calc(100% - 7px) calc(50% + 1px);
 }

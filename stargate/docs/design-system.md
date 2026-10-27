@@ -24,13 +24,18 @@ choices already encoded in `web/src/assets/main.css`,
 4. **Blocks, not rules.** Content areas are separated by surface color and
    spacing. Horizontal hairlines survive only where they encode structure:
    the shell's chrome bands, ledger rows, table headers, modal sections, and
-   the capsule tab rail.
+   the segmented tab rail.
 5. **Boldness in one place.** The centered card, the shared neutral ramp, and
    the Nunito typography carry the identity. Everything else stays quiet.
 6. **Shared geometry with the Flutter app.** Corner radii come from Solian's
-   `SolRadius` scale, and the palette from Solian's own seed-derived ramp, so
-   a console surface and a Solian screen of the same role have the same shape
-   and the same light. Roundness is a family, not a per-page choice.
+   `SolRadius` scale read one rank tighter for a desktop viewing distance, and
+   the palette from Solian's own seed-derived ramp, so a console surface and a
+   Solian screen of the same role belong to the same family without pretending
+   to be the same size. Roundness is a family, not a per-page choice.
+7. **A field is a surface, not a box.** Every control is a filled tonal shape
+   with one indicator, after Material's filled text field: the fill defines it
+   at rest, the caption moves to name it, and a line appears only where the
+   state needs to be read.
 
 ## 2. Color
 
@@ -128,32 +133,35 @@ person reads as language is set in Nunito.
 
 Radii are a scale, not a per-page choice. The tokens in
 `web/src/assets/main.css` mirror Solian's `SolRadius`
-(`Solian/lib/core/theme.dart`) so the console and the Flutter app agree on
-shape. Use the token; never write a raw `rounded-[Npx]` in a view.
+(`Solian/lib/core/theme.dart`) but read one rank tighter: the app's generous
+corners suit a phone held at arm's length, while the console is read on a
+desktop at a fraction of that distance, where a 20 px corner on a 40 px
+control reads as a bubble instead of an edge. The family is the same; only the
+amplitude changes. Use the token; never write a raw `rounded-[Npx]` in a view.
 
 | Token | Value | Tailwind | Use |
 | --- | --- | --- | --- |
-| `--radius-mark` | 8 px | `rounded-mark` | app marks, small inline art |
-| `--radius-chip` | 12 px | `rounded-chip` | chips, status notes, skeletons |
-| `--radius-field` | 16 px | `rounded-input` / `--radius-field` | inputs, selects, textareas, wells |
-| `--radius-card` | 20 px | `rounded-card` / `--radius-box` | panels, menus, option blocks |
-| `--radius-sheet` | 28 px | `rounded-sheet` | the page card, dialogs |
+| `--radius-mark` | 4 px | `rounded-mark` | app marks, small inline art |
+| `--radius-chip` | 6 px | `rounded-chip` | chips, status notes, skeletons |
+| `--radius-input` | 8 px | `rounded-input` / `--radius-field` | inputs, selects, textareas |
+| `--radius-control` | 6 px | `rounded-control` | buttons, tab rail, segmented controls |
+| `--radius-card` | 12 px | `rounded-card` / `--radius-box` | panels, menus, wells, option blocks |
+| `--radius-sheet` | 16 px | `rounded-sheet` | the page card, dialogs |
 
-Controls are the one exception: they are a **capsule**, not a 24 px corner.
-Solian's `controlRadius` is 24 px against a 48 px button; the console's
-buttons are 40 px, where 24 px would leave a 4 px flat edge, so `.btn` clamps
-to a pill instead. A square button becomes a circle. There is deliberately no
-`--radius-control` token — a value nothing consumes would be dead weight.
-The capsule is what makes the console read as the same family as the app.
+Controls are a **6 px rounded rectangle**, not a capsule. At 40 px tall a
+capsule removes the corner entirely and the button stops reading as a surface;
+`--radius-control` is the one value a button, a tab, and a segmented control
+share. A square button keeps that corner rather than becoming a circle, so
+icon tiles stay in the same shape family as the fields beside them.
 
 Two shared surfaces are available so views do not re-implement them:
 
 | Class | Shape | Use |
 | --- | --- | --- |
-| `.well` | 16 px, hairline, `base-200/40` | a form or block inset inside a panel |
-| `.note` + `.note-error` / `-success` / `-warning` | 12 px tinted pill | the one inline status message |
+| `.well` | 12 px, hairline, `base-200/40` | a form or block inset inside a panel |
+| `.note` + `.note-error` / `-success` / `-warning` | 6 px tinted block | the one inline status message |
 
-Status notes replaced the left-rule `border-l` paragraphs. The tinted pill
+Status notes replaced the left-rule `border-l` paragraphs. The tinted block
 carries the tone, so a message reads as an object instead of a stray sentence
 with a bar beside it. Keep the spacing utility (`mt-4`, `mb-5`) and drop the
 duplicate `text-*`: the `.note-*` class supplies size and color.
@@ -190,7 +198,7 @@ Width tiers are decided by route metadata in `web/src/router/index.ts`:
 | wide | 1120 px | sessions, devices, friends, developers, OAuth app, activity |
 | full | viewport (full bleed) | all admin pages |
 
-Admin routes set `meta.fullBleed`. The shell then drops its 16 px gutter and
+Admin routes set `meta.fullBleed`. The shell then drops its 20 px gutter and
 card border so the admin surface reaches the viewport edges, while the header,
 page padding, and footer keep their normal spacing.
 
@@ -203,9 +211,13 @@ client can open it in a browser or popup, elevate the session, and return.
 It accepts only same-origin `next` paths and posts `solarpass:sudo` to the
 opener on success.
 
-The card floats in a 16 px viewport gutter; content padding is 20 px, 28 px
-from the `sm` breakpoint, and panel padding is 16 px. The 4 px spacing unit is
-used throughout; prefer gaps over nested borders.
+The card floats in a 20 px viewport gutter (`px-page`), widening to 32 px
+(`px-page-wide`) from the `sm` breakpoint. Content padding is 20 px, 32 px from
+`sm`, and panel padding is 24 px horizontally and 20 px vertically. The 4 px
+spacing unit is used throughout; prefer gaps over nested borders. The named
+steps are exposed as `--spacing-page`, `--spacing-page-wide`,
+`--spacing-section`, `--spacing-card`, and `--spacing-field`, so a view writes
+`px-page` / `gap-section` instead of repeating a pixel value.
 
 Public profiles (`/@name`) stay on the 880 px card and hide the nav tabs; the
 profile background is a banner that runs to the card's inner edges above the
@@ -224,12 +236,12 @@ it on unmount, and the shell prefers it over the account's. A page that lends a
 backdrop owns its lifetime; leaving one set would paint a third-party app
 behind every later page.
 
-**The page card is opaque** (`bg-base-200`, radius 28 px). It is the reading
+**The page card is opaque** (`bg-base-200`, radius 16 px). It is the reading
 surface, so text never sits over a blurred image; the backdrop is only visible
 in the gutter around the card. Do not reintroduce a translucent card.
 
 **Never nest a bordered card inside the page card.** Content sits directly on
-the page surface; panels use `bg-base-200/30` at radius 20 px to group a
+the page surface; panels use `bg-base-200/30` at radius 12 px to group a
 region, and the status bar and table footers are separated by spacing, not
 rules.
 
@@ -260,10 +272,10 @@ account-settings entry is labelled **Settings** with the sliders icon; its
 contained tabs are Sessions, Devices, Sign-In Factors, Passkeys, Contacts,
 Linked Identities, and Security Mode.
 
-`SecurityNav` is a capsule tab rail: a pill-shaped container with the active
-tab filled `base-300` and inactive tabs faint with a hover tint. Tabs are
-separated by padding rather than dividers, so the rail carries no internal
-rules. It uses `aria-current="page"`. Do not use underlined tabs.
+`SecurityNav` is a segmented tab rail: a 12 px container holding 6 px tabs,
+the active tab filled `base-300` and inactive tabs faint with a hover tint.
+Tabs are separated by padding rather than dividers, so the rail carries no
+internal rules. It uses `aria-current="page"`. Do not use underlined tabs.
 
 `TabBox` carries that strip as a component, so a page whose tabs switch state
 instead of routes uses one control and not a second style. A tab with `to` is a
@@ -311,8 +323,8 @@ the content.
 ### ConsolePanel
 
 `section` with `border border-line bg-base-200/30`, a title/note header, a
-body, and an optional footer for pagination or notes. Header and footer have
-no horizontal rules. Use it for every grouped region; do not re-implement its
+body, and an optional footer for pagination or notes. Header, body, and footer
+share a 24 px horizontal inset; header and footer have no horizontal rules. Use it for every grouped region; do not re-implement its
 shell inline.
 
 ### Ledger
@@ -321,7 +333,7 @@ shell inline.
 header rule, no zebra striping, hover tinting the row, right-aligned last
 column. First and last cells carry 8 px outer padding by default. Wrap tables
 in `.table-bleed` inside a panel to let row rules meet the panel edge; cell
-text then keeps 16 px to match the panel header. Every table inside a
+text then keeps 20 px to match the panel body. Every table inside a
 `ConsolePanel` is bled — a table whose rules stop short of the panel edge
 reads as a nested card, which the layout does not allow.
 
@@ -344,10 +356,46 @@ printing `0 total` or `Page 1 of 1`.
 
 ### Forms
 
-Labels sit above the field (`.field-label`, uppercase 11 px). Inputs, selects,
-and textareas are full width, 40 px high, 16 px radius, `base-200` fill, hairline
-border, and a 2 px indigo focus outline. Placeholders are only for examples
-(`name@example.com`) or format hints (`6-digit code`); do not repeat the label.
+Every field is `TextField`. It renders a Material-style **filled** control: a
+tonal fill with 8 px top corners, a single indicator along the bottom edge, and
+a caption that animates between two positions. At rest the caption sits on the
+value line, so an empty form still reads as a list of questions; on focus or a
+value it rises into a small caption above the value and stays there. The
+indicator grows from the centre on focus, and is painted permanently in the
+error tone when the field is invalid.
+
+Do not hand-write `<input class="input">`, `<select class="select">`, or
+`<label class="field-label">` in a view. The one exception is a section heading
+above a group of controls (a captcha, a scope list); that is a `<p
+class="field-label">`, not a field label.
+
+| Prop | Meaning |
+| --- | --- |
+| `label` | the visible caption; required unless `bare` |
+| `as` | `input` (default), `textarea`, `select` |
+| `size` | `md` (44 px), `sm` (40 px, default), `xs` (32 px) — matches the button beside it |
+| `bare` | no caption and no reserved caption line, for chrome-level controls; name it with `aria-label` |
+| `invalid` / `hint` | error tone on the indicator and caption, helper text below |
+| `hintTone` | `warning` tints a hint without marking the field invalid |
+| `controlClass` | classes for the control itself, e.g. `font-mono` |
+| `rootClass` | classes for the wrapper, for layout spacing at the call site |
+
+Attributes fall through to the control, not the wrapper: `id`, `type`,
+`inputmode`, `autocomplete`, `pattern`, `required`, `@keydown`, and `aria-*`
+behave exactly as written. A caller's `id` is kept, so an existing `<label
+for>` keeps pointing at the control. `v-model.number` works on a select,
+because the component re-applies the modifier it would otherwise lose.
+
+Labels sit inside the field. Placeholders are only for examples
+(`name@example.com`) or format hints (`6-digit code`); they appear once the
+caption has risen, so a placeholder never repeats the label. A labelled field
+reserves the caption line and is therefore taller than its `size` value
+suggests — a `sm` field with a caption is about 40 px of control plus the
+caption inside it.
+
+When a field sits in a row with a button, wrap both in `flex items-start gap-2`
+and give the field `root-class="min-w-0 flex-1"`; do not stretch the field with
+a bare `class`, which lands on the control instead of the wrapper.
 
 ### Factors and passkeys
 
@@ -572,9 +620,9 @@ sentence.
 | `btn btn-ghost` | secondary/cancel |
 | `btn btn-error` | destructive confirmation |
 
-All buttons are capsule-shaped (Solian's 24 px control token against a 40 px
-control clamps to a pill), mono, 12 px, no shadow. A square button becomes a
-circle. One primary action per view.
+All buttons are 6 px rounded rectangles (`--radius-control`), sans, 13 px, no
+shadow. A square button keeps the same corner rather than becoming a circle.
+One primary action per view.
 
 ### IconButton
 
@@ -599,9 +647,10 @@ Never lowercase the marker.
 
 `ConfirmAction` and `ElevationSheet` are the only surfaces that keep internal
 horizontal rules: a header block, body, and an action footer. They are modal,
-so their boundaries are functional. Both are 28 px radius (Solian's
-`dialog`/`sheet` token) with `overflow-hidden`, so a header or footer rule
-meets the rounded edge instead of running past it.
+so their boundaries are functional. Both are 16 px radius (Solian's
+`dialog`/`sheet` token, read one rank tighter) with `overflow-hidden`, so a
+header or footer rule meets the rounded edge instead of running past it. Body
+and header padding is 24 px horizontally, 20 px vertically.
 
 ## 6. Motion
 
@@ -680,6 +729,7 @@ same verb through the flow, and state outcomes plainly.
 | shell and status bar | `web/src/App.vue` |
 | width tiers and titles | `web/src/router/index.ts` |
 | shared surfaces | `web/src/components/` |
+| every form control | `web/src/components/TextField.vue` |
 
 ## 11. Adding a screen
 
@@ -688,8 +738,8 @@ same verb through the flow, and state outcomes plainly.
 2. Build the page from `PageHeader` and `ConsolePanel`; do not add a nested
    bordered card.
 3. Use the ledger for tabular data and `.table-bleed` inside panels.
-4. Use `IconButton` with a label for row actions; use native `title` for
-   tooltips.
+4. Use `TextField` for every field, and `IconButton` with a label for row
+   actions; use native `title` for tooltips.
 5. Add copy to both locale modules with identical key shapes; run the
    formatters instead of hand-formatting values.
 6. Gate a route on the module that serves it (`meta.modules`) and hide its nav

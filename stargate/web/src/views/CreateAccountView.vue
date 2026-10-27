@@ -8,6 +8,7 @@ import { landingQuery } from '@/lib/signInTarget'
 import { authApi, signInApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
 import CaptchaWidget from '@/components/CaptchaWidget.vue'
+import TextField from '@/components/TextField.vue'
 import type { CaptchaConfig } from '@/lib/api/types'
 
 const { t } = useI18n()
@@ -115,59 +116,55 @@ onMounted(async () => {
 
     <form class="well p-5" @submit.prevent="submit">
       <div class="grid gap-4">
-        <div>
-          <label for="name" class="field-label">{{ t('createAccount.username') }}</label>
-          <input
-            id="name"
-            v-model="form.name"
-            class="input"
-            autocomplete="username"
-            autocapitalize="off"
-            spellcheck="false"
-            placeholder="littlesheep"
-          />
-          <p v-if="nameProblem" class="mt-1 text-2xs text-error">{{ nameProblem }}</p>
-          <p v-else-if="fieldErrors.name" class="mt-1 text-2xs text-error">
-            {{ fieldErrors.name[0] }}
-          </p>
-        </div>
-        <div>
-          <label for="nick" class="field-label">{{ t('createAccount.displayName') }}</label>
-          <input id="nick" v-model="form.nick" class="input" autocomplete="nickname" />
-          <p v-if="fieldErrors.nick" class="mt-1 text-2xs text-error">{{ fieldErrors.nick[0] }}</p>
-        </div>
+        <TextField
+          id="name"
+          v-model="form.name"
+          :label="t('createAccount.username')"
+          size="md"
+          autocomplete="username"
+          autocapitalize="off"
+          spellcheck="false"
+          placeholder="littlesheep"
+          :invalid="Boolean(nameProblem || fieldErrors.name)"
+          :hint="nameProblem || fieldErrors.name?.[0]"
+        />
+        <TextField
+          id="nick"
+          v-model="form.nick"
+          :label="t('createAccount.displayName')"
+          size="md"
+          autocomplete="nickname"
+          :invalid="Boolean(fieldErrors.nick)"
+          :hint="fieldErrors.nick?.[0]"
+        />
       </div>
 
       <div class="mt-4">
-        <label for="email" class="field-label">{{ t('createAccount.email') }}</label>
-        <input
+        <TextField
           id="email"
           v-model="form.email"
-          class="input"
+          :label="t('createAccount.email')"
+          size="md"
           type="email"
           autocomplete="email"
           autocapitalize="off"
           spellcheck="false"
+          :invalid="Boolean(emailProblem || fieldErrors.email)"
+          :hint="emailProblem || fieldErrors.email?.[0]"
         />
-        <p v-if="emailProblem" class="mt-1 text-2xs text-error">{{ emailProblem }}</p>
-        <p v-else-if="fieldErrors.email" class="mt-1 text-2xs text-error">
-          {{ fieldErrors.email[0] }}
-        </p>
       </div>
 
       <div class="mt-4">
-        <label for="password" class="field-label">{{ t('createAccount.password') }}</label>
-        <input
+        <TextField
           id="password"
           v-model="form.password"
-          class="input"
+          :label="t('createAccount.password')"
+          size="md"
           type="password"
           autocomplete="new-password"
+          :invalid="Boolean(passwordProblem || fieldErrors.password)"
+          :hint="passwordProblem || fieldErrors.password?.[0]"
         />
-        <p v-if="passwordProblem" class="mt-1 text-2xs text-error">{{ passwordProblem }}</p>
-        <p v-else-if="fieldErrors.password" class="mt-1 text-2xs text-error">
-          {{ fieldErrors.password[0] }}
-        </p>
       </div>
 
       <div v-if="captcha" class="mt-4">

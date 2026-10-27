@@ -15,6 +15,7 @@ import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import IconButton from '@/components/IconButton.vue'
 import SecurityNav from '@/components/SecurityNav.vue'
+import TextField from '@/components/TextField.vue'
 
 const { t } = useI18n()
 const notice = useNoticeStore()
@@ -200,18 +201,22 @@ onMounted(load)
       </ConsolePanel>
 
       <ConsolePanel :title="t('contacts.addContact')">
-        <label for="contact-type" class="field-label">{{ t('contacts.type') }}</label>
-        <select id="contact-type" v-model="type" class="select select-sm">
+        <TextField
+          id="contact-type"
+          v-model.number="type"
+          as="select"
+          :label="t('contacts.type')"
+        >
           <option :value="0">{{ contactTypeLabel(0) }}</option>
           <option :value="1">{{ contactTypeLabel(1) }}</option>
           <option :value="2">{{ contactTypeLabel(2) }}</option>
-        </select>
+        </TextField>
 
-        <label for="contact-content" class="field-label mt-4">{{ t('contacts.value') }}</label>
-        <input
+        <TextField
           id="contact-content"
           v-model="content"
-          class="input input-sm"
+          root-class="mt-4"
+          :label="t('contacts.value')"
           :placeholder="type === 0 ? t('contacts.emailPlaceholder') : t('contacts.valuePlaceholder')"
           autocapitalize="off"
           spellcheck="false"

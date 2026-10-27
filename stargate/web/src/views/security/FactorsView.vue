@@ -15,6 +15,7 @@ import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import IconButton from '@/components/IconButton.vue'
 import SecurityNav from '@/components/SecurityNav.vue'
+import TextField from '@/components/TextField.vue'
 
 const { t } = useI18n()
 const notice = useNoticeStore()
@@ -206,26 +207,27 @@ onMounted(load)
           </p>
 
           <template v-if="addable.length">
-            <label for="factor-type" class="field-label">{{ t('factors.factor') }}</label>
-            <select id="factor-type" v-model="chosenType" class="select select-sm">
+            <TextField
+              id="factor-type"
+              v-model.number="chosenType"
+              as="select"
+              :label="t('factors.factor')"
+              :hint="addable.find((item) => item.type === chosenType)?.note"
+            >
               <option v-for="option in addable" :key="option.type" :value="option.type">
                 {{ option.label }}
               </option>
-            </select>
-            <p class="mt-2 voice text-[12px] text-faint">
-              {{ addable.find((item) => item.type === chosenType)?.note }}
-            </p>
+            </TextField>
 
-            <template v-if="chosenType === 0 || chosenType === 4">
-              <label for="factor-secret" class="field-label mt-4">{{ t('factors.secret') }}</label>
-              <input
-                id="factor-secret"
-                v-model="secret"
-                class="input input-sm"
-                type="password"
-                autocomplete="new-password"
-              />
-            </template>
+            <TextField
+              v-if="chosenType === 0 || chosenType === 4"
+              id="factor-secret"
+              v-model="secret"
+              root-class="mt-4"
+              :label="t('factors.secret')"
+              type="password"
+              autocomplete="new-password"
+            />
 
             <button
               type="button"

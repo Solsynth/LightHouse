@@ -21,6 +21,7 @@ import ProviderMark from '@/components/ProviderMark.vue'
 import { providerLabel } from '@/lib/providers'
 import FactorRow from '@/components/FactorRow.vue'
 import QrLoginPanel from '@/components/QrLoginPanel.vue'
+import TextField from '@/components/TextField.vue'
 
 const { t } = useI18n()
 const signIn = useSignInStore()
@@ -377,15 +378,14 @@ onBeforeUnmount(() => {
     <QrLoginPanel v-if="mode === 'qr'" key="qr" @approved="qrApproved" @back="mode = 'identify'" />
 
     <form v-else-if="!started" key="identify" @submit.prevent="identify">
-      <label for="account" class="field-label">{{ t('signIn.accountLabel') }}</label>
-      <input
+      <TextField
         id="account"
         v-model="account"
-        class="input"
+        :label="t('signIn.accountLabel')"
+        :placeholder="t('signIn.accountPlaceholder')"
         autocomplete="username"
         autocapitalize="off"
         spellcheck="false"
-        :placeholder="t('signIn.accountPlaceholder')"
         :disabled="busy"
       />
       <button type="submit" class="btn btn-primary mt-4 w-full" :disabled="busy || !account.trim()">

@@ -34,6 +34,7 @@ import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import IconButton from '@/components/IconButton.vue'
 import SecurityNav from '@/components/SecurityNav.vue'
+import TextField from '@/components/TextField.vue'
 
 const { t } = useI18n()
 const notice = useNoticeStore()
@@ -439,17 +440,16 @@ onMounted(load)
       <div
         class="modal-box max-w-sm overflow-hidden rounded-sheet border border-line bg-base-100 p-0 shadow-[0_30px_80px_-40px_rgb(0_0_0/0.7)]"
       >
-        <div class="border-b border-line px-5 py-4">
+        <div class="border-b border-line px-6 py-5">
           <h2 id="rename-device-title" class="text-sm text-base-content">
             {{ t('devices.renameTitle') }}
           </h2>
         </div>
-        <div class="px-5 py-4">
-          <label for="device-label" class="field-label">{{ t('devices.label') }}</label>
-          <input
+        <div class="px-6 py-5">
+          <TextField
             id="device-label"
             v-model="renameLabel"
-            class="input input-sm"
+            :label="t('devices.label')"
             autocomplete="off"
             :placeholder="t('devices.labelPlaceholder')"
             :disabled="busy"

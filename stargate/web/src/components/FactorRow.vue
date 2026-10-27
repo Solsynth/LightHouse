@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 
 import type { AuthFactor } from '@/lib/api/types'
 import { factorTypeDescription, factorTypeLabel } from '@/lib/enums'
+import TextField from '@/components/TextField.vue'
 
 const props = defineProps<{
   factor: AuthFactor
@@ -49,11 +50,11 @@ function submit() {
       </button>
     </div>
 
-    <div class="mt-2.5 flex gap-2">
-      <input
+    <div class="mt-2.5 flex items-start gap-2">
+      <TextField
         :id="`f-${props.factor.id}`"
         v-model="secret"
-        class="input input-sm flex-1"
+        root-class="min-w-0 flex-1"
         :type="props.needsCode ? 'text' : 'password'"
         :inputmode="props.needsCode ? 'numeric' : undefined"
         :autocomplete="props.needsCode ? 'one-time-code' : 'current-password'"
@@ -63,7 +64,7 @@ function submit() {
       />
       <button
         type="button"
-        class="btn btn-primary btn-sm"
+        class="btn btn-primary shrink-0"
         :disabled="props.busy || !secret"
         @click="submit"
       >

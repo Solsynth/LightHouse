@@ -9,6 +9,7 @@ import { request } from '@/lib/api/client'
 import type { AuthChallenge, AuthFactor } from '@/lib/api/types'
 import { codeRequestFactorTypes, factorTypeLabel, pickableFactorTypes } from '@/lib/enums'
 import { remaining } from '@/lib/format'
+import TextField from '@/components/TextField.vue'
 
 const emit = defineEmits<{ done: [challenge: AuthChallenge] }>()
 
@@ -140,11 +141,11 @@ onMounted(begin)
             {{ codeSentFor === factor.id ? t('elevation.resendCode') : t('elevation.sendCode') }}
           </button>
         </div>
-        <div class="mt-2 flex gap-2">
-          <input
+        <div class="mt-2 flex items-start gap-2">
+          <TextField
             :id="`factor-${factor.id}`"
             v-model="secrets[factor.id]"
-            class="input input-sm flex-1"
+            root-class="min-w-0 flex-1"
             type="password"
             autocomplete="current-password"
             :placeholder="
@@ -156,7 +157,7 @@ onMounted(begin)
           />
           <button
             type="button"
-            class="btn btn-primary btn-sm"
+            class="btn btn-primary shrink-0"
             :disabled="!secrets[factor.id] || busy"
             @click="submit(factor)"
           >

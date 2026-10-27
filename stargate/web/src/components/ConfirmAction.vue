@@ -20,7 +20,7 @@ const emit = defineEmits<{ confirm: []; cancel: [] }>()
     <div
       class="modal-box max-w-sm overflow-hidden rounded-sheet border border-line bg-base-100 p-0 shadow-[0_30px_80px_-40px_rgb(0_0_0/0.7)]"
     >
-      <div class="px-5 py-4">
+      <div class="px-6 py-5">
         <h2 class="flex items-center gap-1.5 text-sm text-base-content">
           <WarningAlt16 v-if="tone === 'error'" class="shrink-0 text-error" aria-hidden="true" />
           {{ title }}

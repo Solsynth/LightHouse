@@ -13,6 +13,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
+import TextField from '@/components/TextField.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -359,7 +360,7 @@ onMounted(load)
       <div
         class="modal-box max-w-md overflow-hidden rounded-sheet border border-line bg-base-100 p-0 shadow-[0_30px_80px_-40px_rgb(0_0_0/0.7)]"
       >
-        <div class="border-b border-line px-5 py-4">
+        <div class="border-b border-line px-6 py-5">
           <h2 id="suspend-title" class="text-sm text-base-content">
             {{ t('admin.accountDetail.suspendTitle') }}
           </h2>
@@ -367,32 +368,35 @@ onMounted(load)
             {{ t('admin.accountDetail.suspendIntro') }}
           </p>
         </div>
-        <div class="px-5 py-4">
-          <label for="suspend-type" class="field-label">{{ t('common.type') }}</label>
-          <select id="suspend-type" v-model="suspendType" class="select select-sm">
+        <div class="px-6 py-5">
+          <TextField
+            id="suspend-type"
+            v-model.number="suspendType"
+            as="select"
+            :label="t('common.type')"
+          >
             <option :value="1">{{ t('admin.accountDetail.blockSignIn') }}</option>
             <option :value="2">{{ t('admin.accountDetail.disableAccount') }}</option>
-          </select>
+          </TextField>
 
-          <label for="suspend-reason" class="field-label mt-4">
-            {{ t('admin.accountDetail.reason') }}
-          </label>
-          <textarea
+          <TextField
             id="suspend-reason"
             v-model="suspendReason"
-            class="textarea textarea-sm"
-            rows="3"
+            root-class="mt-4"
+            as="textarea"
+            :label="t('admin.accountDetail.reason')"
+            :rows="3"
             :placeholder="t('admin.accountDetail.reasonPlaceholder')"
           />
 
-          <label for="suspend-until" class="field-label mt-4">{{ t('common.expires') }}</label>
-          <input
+          <TextField
             id="suspend-until"
             v-model="suspendUntil"
-            class="input input-sm"
+            root-class="mt-4"
             type="datetime-local"
+            :label="t('common.expires')"
+            :hint="t('admin.accountDetail.expiresHint')"
           />
-          <p class="mt-1 text-2xs text-faint">{{ t('admin.accountDetail.expiresHint') }}</p>
         </div>
         <div class="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
           <button type="button" class="btn btn-ghost btn-xs" @click="suspendOpen = false">

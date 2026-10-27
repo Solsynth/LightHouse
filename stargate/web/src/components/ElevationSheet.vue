@@ -37,7 +37,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     <div
       class="modal-box max-w-md overflow-hidden rounded-sheet border border-line bg-base-100 p-0 shadow-[0_30px_80px_-40px_rgb(0_0_0/0.7)]"
     >
-      <header class="border-b border-line px-5 py-4">
+      <header class="border-b border-line px-6 py-5">
         <p class="eyebrow">{{ t('elevation.required') }}</p>
         <h2 id="elevation-title" class="mt-1 text-sm text-base-content">{{ t('elevation.title') }}</h2>
         <p class="voice mt-2">
@@ -45,7 +45,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         </p>
       </header>
 
-      <div class="px-5 py-4">
+      <div class="px-6 py-5">
         <SudoFlow @done="done" />
       </div>
 

@@ -12,6 +12,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import IconButton from '@/components/IconButton.vue'
+import TextField from '@/components/TextField.vue'
 
 const { t } = useI18n()
 const notice = useNoticeStore()
@@ -178,12 +179,13 @@ onMounted(load)
       </ConsolePanel>
 
       <ConsolePanel :title="t('admin.cache.invalidation')">
-        <label for="cache-key" class="field-label">{{ t('admin.cache.clearOneKey') }}</label>
-        <div class="flex gap-2">
-          <input
+        <div class="flex items-start gap-2">
+          <TextField
             id="cache-key"
             v-model="keyToClear"
-            class="input input-sm flex-1"
+            root-class="min-w-0 flex-1"
+            :label="t('admin.cache.clearOneKey')"
+            control-class="font-mono"
             placeholder="auth:session:…"
             autocapitalize="off"
             spellcheck="false"
@@ -191,7 +193,7 @@ onMounted(load)
           />
           <button
             type="button"
-            class="btn btn-ghost btn-sm"
+            class="btn btn-ghost shrink-0"
             :disabled="busy || !keyToClear.trim()"
             @click="clearKey"
           >
@@ -218,10 +220,12 @@ onMounted(load)
       class="mt-6"
       :note="t('admin.cache.inspectNote')"
     >
-      <div class="flex flex-wrap gap-2">
-        <input
+      <div class="flex flex-wrap items-start gap-2">
+        <TextField
           v-model="groupName"
-          class="input input-sm min-w-[200px] flex-1"
+          root-class="min-w-[200px] flex-1"
+          :label="t('admin.cache.groupLabel')"
+          control-class="font-mono"
           placeholder="auth:session"
           autocapitalize="off"
           spellcheck="false"

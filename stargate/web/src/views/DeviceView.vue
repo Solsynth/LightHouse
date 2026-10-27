@@ -11,6 +11,7 @@ import { StargateError } from '@/lib/api/client'
 import type { CloudFileRef, DeviceCodeStatus } from '@/lib/api/types'
 import { remaining } from '@/lib/format'
 import AppMark from '@/components/AppMark.vue'
+import TextField from '@/components/TextField.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -145,22 +146,24 @@ onMounted(() => {
     <!-- The code itself is the only state the page needs, so it is the first
          thing on the page whenever the address did not carry one. -->
     <form v-if="!status" class="well mt-6 p-4" @submit.prevent="lookup(entered)">
-      <label for="device-code" class="field-label">{{ t('device.codeLabel') }}</label>
-      <div class="flex flex-wrap gap-2">
-        <input
-          id="device-code"
-          v-model="entered"
-          class="input input-sm max-w-[220px] font-mono tracking-[0.12em] uppercase"
-          :placeholder="t('device.codePlaceholder')"
-          autocomplete="one-time-code"
-          autocapitalize="characters"
-          spellcheck="false"
-        />
-        <button type="submit" class="btn btn-primary btn-sm" :disabled="loading || !entered.trim()">
-          {{ loading ? t('device.checking') : t('device.continue') }}
-        </button>
-      </div>
-      <p class="voice mt-2 text-[12px] text-faint">{{ t('device.codeHint') }}</p>
+      <TextField
+        id="device-code"
+        v-model="entered"
+        :label="t('device.codeLabel')"
+        :hint="t('device.codeHint')"
+        control-class="font-mono uppercase tracking-[0.12em]"
+        :placeholder="t('device.codePlaceholder')"
+        autocomplete="one-time-code"
+        autocapitalize="characters"
+        spellcheck="false"
+      />
+      <button
+        type="submit"
+        class="btn btn-primary mt-3 w-full"
+        :disabled="loading || !entered.trim()"
+      >
+        {{ loading ? t('device.checking') : t('device.continue') }}
+      </button>
     </form>
 
     <div v-if="loading" class="mt-6 overflow-hidden rounded-card border border-line" aria-hidden="true">

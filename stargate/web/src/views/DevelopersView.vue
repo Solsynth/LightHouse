@@ -17,6 +17,7 @@ import ConfirmAction from '@/components/ConfirmAction.vue'
 import IconButton from '@/components/IconButton.vue'
 import CopyButton from '@/components/CopyButton.vue'
 import AppMark from '@/components/AppMark.vue'
+import TextField from '@/components/TextField.vue'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -193,39 +194,31 @@ onMounted(load)
 
         <!-- Registration starts with the three fields the provider needs to
              resolve a client at all; everything else is edited on the app. -->
-        <form v-if="createOpen" class="well mb-4 space-y-2 p-3" @submit.prevent="createApp">
-          <div class="grid gap-2 sm:grid-cols-2">
-            <div>
-              <label for="app-name" class="field-label">{{ t('oauthApps.name') }}</label>
-              <input
-                id="app-name"
-                v-model="draft.name"
-                class="input input-sm"
-                :placeholder="t('oauthApps.namePlaceholder')"
-                required
-              />
-            </div>
-            <div>
-              <label for="app-slug" class="field-label">{{ t('oauthApps.slug') }}</label>
-              <input
-                id="app-slug"
-                v-model="draft.slug"
-                class="input input-sm font-mono"
-                :placeholder="t('oauthApps.slugPlaceholder')"
-                pattern="[A-Za-z0-9._-]+"
-                required
-              />
-            </div>
-          </div>
-          <div>
-            <label for="app-description" class="field-label">{{ t('oauthApps.descriptionLabel') }}</label>
-            <input
-              id="app-description"
-              v-model="draft.description"
-              class="input input-sm"
-              :placeholder="t('oauthApps.descriptionPlaceholder')"
+        <form v-if="createOpen" class="well mb-4 space-y-4 p-4" @submit.prevent="createApp">
+          <div class="grid gap-4 sm:grid-cols-2">
+            <TextField
+              id="app-name"
+              v-model="draft.name"
+              :label="t('oauthApps.name')"
+              :placeholder="t('oauthApps.namePlaceholder')"
+              required
+            />
+            <TextField
+              id="app-slug"
+              v-model="draft.slug"
+              :label="t('oauthApps.slug')"
+              :placeholder="t('oauthApps.slugPlaceholder')"
+              control-class="font-mono"
+              pattern="[A-Za-z0-9._-]+"
+              required
             />
           </div>
+          <TextField
+            id="app-description"
+            v-model="draft.description"
+            :label="t('oauthApps.descriptionLabel')"
+            :placeholder="t('oauthApps.descriptionPlaceholder')"
+          />
           <div class="flex flex-wrap items-center justify-between gap-2">
             <p class="voice max-w-md text-[12px] text-faint">{{ t('oauthApps.createHint') }}</p>
             <button
@@ -347,20 +340,18 @@ onMounted(load)
       </ConsolePanel>
 
       <ConsolePanel :title="t('developers.apiKeys')" :note="loading ? undefined : t('developers.keysNote', { n: keys.length })">
-        <div class="mb-4 flex flex-wrap items-end gap-2">
-          <div class="min-w-[200px] flex-1">
-            <label for="key-label" class="field-label">{{ t('developers.label') }}</label>
-            <input
-              id="key-label"
-              v-model="keyLabel"
-              class="input input-sm"
-              :placeholder="t('developers.labelPlaceholder')"
-              @keydown.enter="createKey"
-            />
-          </div>
+        <div class="mb-4 flex flex-wrap items-start gap-2">
+          <TextField
+            id="key-label"
+            v-model="keyLabel"
+            root-class="min-w-[200px] flex-1"
+            :label="t('developers.label')"
+            :placeholder="t('developers.labelPlaceholder')"
+            @keydown.enter="createKey"
+          />
           <button
             type="button"
-            class="btn btn-primary btn-sm"
+            class="btn btn-primary shrink-0"
             :disabled="busy || !keyLabel.trim()"
             @click="createKey"
           >

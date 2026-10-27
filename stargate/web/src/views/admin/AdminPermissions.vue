@@ -14,6 +14,7 @@ import ConsolePanel from '@/components/ConsolePanel.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import IconButton from '@/components/IconButton.vue'
+import TextField from '@/components/TextField.vue'
 
 const { t } = useI18n()
 const notice = useNoticeStore()
@@ -103,18 +104,16 @@ onMounted(load)
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div>
-        <form class="mb-5 flex flex-wrap items-end gap-3" @submit.prevent="search">
-          <div class="min-w-[200px] flex-1">
-            <label for="group-query" class="field-label">{{ t('admin.permissions.filter') }}</label>
-            <input
-              id="group-query"
-              v-model="query"
-              class="input input-sm"
-              :placeholder="t('admin.permissions.filterPlaceholder')"
-              autocapitalize="off"
-            />
-          </div>
-          <button type="submit" class="btn btn-ghost btn-sm" :disabled="loading">
+        <form class="mb-5 flex flex-wrap items-start gap-3" @submit.prevent="search">
+          <TextField
+            id="group-query"
+            v-model="query"
+            root-class="min-w-[200px] flex-1"
+            :label="t('admin.permissions.filter')"
+            :placeholder="t('admin.permissions.filterPlaceholder')"
+            autocapitalize="off"
+          />
+          <button type="submit" class="btn btn-ghost shrink-0" :disabled="loading">
             {{ t('admin.permissions.filter') }}
           </button>
         </form>
@@ -208,11 +207,11 @@ onMounted(load)
       </div>
 
       <ConsolePanel :title="t('admin.permissions.newGroup')">
-        <label for="new-group-key" class="field-label">{{ t('admin.permissions.key') }}</label>
-        <input
+        <TextField
           id="new-group-key"
           v-model="newKey"
-          class="input input-sm"
+          :label="t('admin.permissions.key')"
+          control-class="font-mono"
           placeholder="moderator"
           autocapitalize="off"
           @keydown.enter="create"
