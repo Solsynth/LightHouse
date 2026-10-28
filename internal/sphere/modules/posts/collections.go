@@ -68,22 +68,22 @@ func (h *handler) registerCollectionRoutes(host *module.Host[core.Services]) {
 	manage := host.Core.Auth.RequirePermission("post.collections.posts.manage")
 
 	api.GET("/collections", h.listAllCollections)
-	api.GET("/publishers/:publisherName/collections", h.listCollections)
-	api.POST("/publishers/:publisherName/collections", authn.RequireAuth(), h.createCollection)
-	api.GET("/publishers/:publisherName/collections/:slug", h.getCollection)
-	api.PATCH("/publishers/:publisherName/collections/:slug", authn.RequireAuth(), h.updateCollection)
-	api.DELETE("/publishers/:publisherName/collections/:slug", authn.RequireAuth(), h.deleteCollection)
-	api.POST("/publishers/:publisherName/collections/:slug/subscribe", authn.RequireAuth(), manage, h.subscribeCollection)
-	api.POST("/publishers/:publisherName/collections/:slug/unsubscribe", authn.RequireAuth(), manage, h.unsubscribeCollection)
-	api.GET("/publishers/:publisherName/collections/:slug/subscription", authn.RequireAuth(), h.getCollectionSubscription)
-	api.GET("/publishers/:publisherName/collections/:slug/posts", h.listCollectionPosts)
-	api.POST("/publishers/:publisherName/collections/:slug/posts", authn.RequireAuth(), manage, h.addCollectionPost)
-	api.POST("/publishers/:publisherName/collections/:slug/posts/batch", authn.RequireAuth(), manage, h.batchAddCollectionPosts)
-	api.POST("/publishers/:publisherName/collections/:slug/posts/batch/remove", authn.RequireAuth(), manage, h.batchRemoveCollectionPosts)
-	api.DELETE("/publishers/:publisherName/collections/:slug/posts/:postId", authn.RequireAuth(), manage, h.removeCollectionPost)
-	api.PUT("/publishers/:publisherName/collections/:slug/posts/reorder", authn.RequireAuth(), manage, h.reorderCollectionPosts)
-	api.GET("/publishers/:publisherName/collections/:slug/posts/:postId/prev", h.prevCollectionPost)
-	api.GET("/publishers/:publisherName/collections/:slug/posts/:postId/next", h.nextCollectionPost)
+	api.GET("/publishers/:name/collections", h.listCollections)
+	api.POST("/publishers/:name/collections", authn.RequireAuth(), h.createCollection)
+	api.GET("/publishers/:name/collections/:slug", h.getCollection)
+	api.PATCH("/publishers/:name/collections/:slug", authn.RequireAuth(), h.updateCollection)
+	api.DELETE("/publishers/:name/collections/:slug", authn.RequireAuth(), h.deleteCollection)
+	api.POST("/publishers/:name/collections/:slug/subscribe", authn.RequireAuth(), manage, h.subscribeCollection)
+	api.POST("/publishers/:name/collections/:slug/unsubscribe", authn.RequireAuth(), manage, h.unsubscribeCollection)
+	api.GET("/publishers/:name/collections/:slug/subscription", authn.RequireAuth(), h.getCollectionSubscription)
+	api.GET("/publishers/:name/collections/:slug/posts", h.listCollectionPosts)
+	api.POST("/publishers/:name/collections/:slug/posts", authn.RequireAuth(), manage, h.addCollectionPost)
+	api.POST("/publishers/:name/collections/:slug/posts/batch", authn.RequireAuth(), manage, h.batchAddCollectionPosts)
+	api.POST("/publishers/:name/collections/:slug/posts/batch/remove", authn.RequireAuth(), manage, h.batchRemoveCollectionPosts)
+	api.DELETE("/publishers/:name/collections/:slug/posts/:postId", authn.RequireAuth(), manage, h.removeCollectionPost)
+	api.PUT("/publishers/:name/collections/:slug/posts/reorder", authn.RequireAuth(), manage, h.reorderCollectionPosts)
+	api.GET("/publishers/:name/collections/:slug/posts/:postId/prev", h.prevCollectionPost)
+	api.GET("/publishers/:name/collections/:slug/posts/:postId/next", h.nextCollectionPost)
 
 	api.GET("/admin/collections", authn.RequireAuth(), auth.RequirePermission("posts.moderate"), h.adminListCollections)
 	api.GET("/admin/collections/:id", authn.RequireAuth(), auth.RequirePermission("posts.moderate"), h.adminGetCollection)
@@ -154,7 +154,7 @@ func (h *handler) listCollections(c *gin.Context) {
 	ctx := c.Request.Context()
 	var rows []store.PostCollectionEntity
 	if err := h.db.WithContext(ctx).
-		Where("publisher_id IN (SELECT id FROM publishers WHERE lower(name) = ?)", strings.ToLower(c.Param("publisherName"))).
+		Where("publisher_id IN (SELECT id FROM publishers WHERE lower(name) = ?)", strings.ToLower(c.Param("name"))).
 		Order("COALESCE(name, slug) ASC").Order("slug ASC").Find(&rows).Error; err != nil {
 		httpx.Internal(c)
 		return
@@ -168,7 +168,7 @@ func (h *handler) listCollections(c *gin.Context) {
 
 func (h *handler) createCollection(c *gin.Context) {
 	ctx := c.Request.Context()
-	publisher, ok := h.requirePublisherEditor(c, c.Param("publisherName"))
+	publisher, ok := h.requirePublisherEditor(c, c.Param("name"))
 	if !ok {
 		return
 	}
@@ -223,7 +223,7 @@ func (h *handler) fileReferenceJSON(ctx context.Context, id *string) datatypes.J
 }
 
 func (h *handler) getCollection(c *gin.Context) {
-	collection, err := h.getCollectionBySlug(c.Request.Context(), c.Param("publisherName"), c.Param("slug"))
+	collection, err := h.getCollectionBySlug(c.Request.Context(), c.Param("name"), c.Param("slug"))
 	if err != nil {
 		httpx.NotFound(c, "Collection not found.")
 		return
@@ -233,12 +233,12 @@ func (h *handler) getCollection(c *gin.Context) {
 
 func (h *handler) updateCollection(c *gin.Context) {
 	ctx := c.Request.Context()
-	collection, err := h.getCollectionBySlug(ctx, c.Param("publisherName"), c.Param("slug"))
+	collection, err := h.getCollectionBySlug(ctx, c.Param("name"), c.Param("slug"))
 	if err != nil {
 		httpx.NotFound(c, "Collection not found.")
 		return
 	}
-	if _, ok := h.requirePublisherEditor(c, c.Param("publisherName")); !ok {
+	if _, ok := h.requirePublisherEditor(c, c.Param("name")); !ok {
 		return
 	}
 	var request updateCollectionRequest
@@ -262,12 +262,12 @@ func (h *handler) updateCollection(c *gin.Context) {
 
 func (h *handler) deleteCollection(c *gin.Context) {
 	ctx := c.Request.Context()
-	collection, err := h.getCollectionBySlug(ctx, c.Param("publisherName"), c.Param("slug"))
+	collection, err := h.getCollectionBySlug(ctx, c.Param("name"), c.Param("slug"))
 	if err != nil {
 		httpx.NotFound(c, "Collection not found.")
 		return
 	}
-	if _, ok := h.requirePublisherEditor(c, c.Param("publisherName")); !ok {
+	if _, ok := h.requirePublisherEditor(c, c.Param("name")); !ok {
 		return
 	}
 	if err := h.db.WithContext(ctx).Delete(&store.PostCollectionEntity{}, "id = ?", collection.ID).Error; err != nil {
@@ -307,7 +307,7 @@ func (h *handler) subscribeCollection(c *gin.Context) {
 		httpx.Unauthorized(c)
 		return
 	}
-	collection, err := h.getCollectionBySlug(ctx, c.Param("publisherName"), c.Param("slug"))
+	collection, err := h.getCollectionBySlug(ctx, c.Param("name"), c.Param("slug"))
 	if err != nil {
 		httpx.Fail(c, errs.New("COLLECTION_NOT_FOUND", "Collection not found.", 404))
 		return
@@ -337,7 +337,7 @@ func (h *handler) unsubscribeCollection(c *gin.Context) {
 		httpx.Unauthorized(c)
 		return
 	}
-	collection, err := h.getCollectionBySlug(ctx, c.Param("publisherName"), c.Param("slug"))
+	collection, err := h.getCollectionBySlug(ctx, c.Param("name"), c.Param("slug"))
 	if err != nil {
 		httpx.Fail(c, errs.New("COLLECTION_NOT_FOUND", "Collection not found.", 404))
 		return
@@ -359,7 +359,7 @@ func (h *handler) getCollectionSubscription(c *gin.Context) {
 		httpx.Unauthorized(c)
 		return
 	}
-	collection, err := h.getCollectionBySlug(ctx, c.Param("publisherName"), c.Param("slug"))
+	collection, err := h.getCollectionBySlug(ctx, c.Param("name"), c.Param("slug"))
 	if err != nil {
 		httpx.Fail(c, errs.New("COLLECTION_NOT_FOUND", "Collection not found.", 404))
 		return
@@ -379,7 +379,7 @@ func (h *handler) getCollectionSubscription(c *gin.Context) {
 
 func (h *handler) listCollectionPosts(c *gin.Context) {
 	ctx := c.Request.Context()
-	collection, err := h.getCollectionBySlug(ctx, c.Param("publisherName"), c.Param("slug"))
+	collection, err := h.getCollectionBySlug(ctx, c.Param("name"), c.Param("slug"))
 	if err != nil {
 		httpx.NotFound(c, "Collection not found.")
 		return
@@ -464,12 +464,12 @@ func (h *handler) addPostToCollection(ctx context.Context, collection *store.Pos
 
 func (h *handler) addCollectionPost(c *gin.Context) {
 	ctx := c.Request.Context()
-	collection, err := h.getCollectionBySlug(ctx, c.Param("publisherName"), c.Param("slug"))
+	collection, err := h.getCollectionBySlug(ctx, c.Param("name"), c.Param("slug"))
 	if err != nil {
 		httpx.NotFound(c, "Collection not found.")
 		return
 	}
-	if _, ok := h.requirePublisherEditor(c, c.Param("publisherName")); !ok {
+	if _, ok := h.requirePublisherEditor(c, c.Param("name")); !ok {
 		return
 	}
 	var request addCollectionPostRequest
@@ -489,12 +489,12 @@ func (h *handler) addCollectionPost(c *gin.Context) {
 
 func (h *handler) batchAddCollectionPosts(c *gin.Context) {
 	ctx := c.Request.Context()
-	collection, err := h.getCollectionBySlug(ctx, c.Param("publisherName"), c.Param("slug"))
+	collection, err := h.getCollectionBySlug(ctx, c.Param("name"), c.Param("slug"))
 	if err != nil {
 		httpx.NotFound(c, "Collection not found.")
 		return
 	}
-	if _, ok := h.requirePublisherEditor(c, c.Param("publisherName")); !ok {
+	if _, ok := h.requirePublisherEditor(c, c.Param("name")); !ok {
 		return
 	}
 	var request batchCollectionPostsRequest
@@ -561,12 +561,12 @@ func (h *handler) batchAddCollectionPosts(c *gin.Context) {
 
 func (h *handler) removeCollectionPost(c *gin.Context) {
 	ctx := c.Request.Context()
-	collection, err := h.getCollectionBySlug(ctx, c.Param("publisherName"), c.Param("slug"))
+	collection, err := h.getCollectionBySlug(ctx, c.Param("name"), c.Param("slug"))
 	if err != nil {
 		httpx.NotFound(c, "Collection not found.")
 		return
 	}
-	if _, ok := h.requirePublisherEditor(c, c.Param("publisherName")); !ok {
+	if _, ok := h.requirePublisherEditor(c, c.Param("name")); !ok {
 		return
 	}
 	postID, ok := parseUUID(c.Param("postId"))
@@ -580,12 +580,12 @@ func (h *handler) removeCollectionPost(c *gin.Context) {
 
 func (h *handler) batchRemoveCollectionPosts(c *gin.Context) {
 	ctx := c.Request.Context()
-	collection, err := h.getCollectionBySlug(ctx, c.Param("publisherName"), c.Param("slug"))
+	collection, err := h.getCollectionBySlug(ctx, c.Param("name"), c.Param("slug"))
 	if err != nil {
 		httpx.NotFound(c, "Collection not found.")
 		return
 	}
-	if _, ok := h.requirePublisherEditor(c, c.Param("publisherName")); !ok {
+	if _, ok := h.requirePublisherEditor(c, c.Param("name")); !ok {
 		return
 	}
 	var request batchCollectionPostsRequest
@@ -612,12 +612,12 @@ func (h *handler) removePostFromCollection(ctx context.Context, collection *stor
 }
 
 func (h *handler) reorderCollectionPosts(c *gin.Context) {
-	collection, err := h.getCollectionBySlug(c.Request.Context(), c.Param("publisherName"), c.Param("slug"))
+	collection, err := h.getCollectionBySlug(c.Request.Context(), c.Param("name"), c.Param("slug"))
 	if err != nil {
 		httpx.NotFound(c, "Collection not found.")
 		return
 	}
-	if _, ok := h.requirePublisherEditor(c, c.Param("publisherName")); !ok {
+	if _, ok := h.requirePublisherEditor(c, c.Param("name")); !ok {
 		return
 	}
 	httpx.BadRequest(c, "COLLECTION_REORDER_NOT_SUPPORTED", "Manual reordering is not supported. Collection posts are sorted automatically by published date descending.")
@@ -629,7 +629,7 @@ func (h *handler) nextCollectionPost(c *gin.Context) { h.adjacentCollectionPost(
 
 func (h *handler) adjacentCollectionPost(c *gin.Context, next bool) {
 	ctx := c.Request.Context()
-	collection, err := h.getCollectionBySlug(ctx, c.Param("publisherName"), c.Param("slug"))
+	collection, err := h.getCollectionBySlug(ctx, c.Param("name"), c.Param("slug"))
 	if err != nil {
 		httpx.NotFound(c, "Collection not found.")
 		return

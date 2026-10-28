@@ -63,8 +63,6 @@ var Tables = []string{
 	"sticker_packs",
 	"sticker_pack_ownerships",
 	"realm_post_moderation_logs",
-	"sn_realm_role_permission",
-	"sn_realm_user_permission",
 	"fediverse_instances",
 	"fediverse_moderation_rules",
 	"fediverse_keys",

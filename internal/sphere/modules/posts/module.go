@@ -86,6 +86,23 @@ func (i *instance) Stop(context.Context) error { return nil }
 func schemaHook(ctx context.Context, db *gorm.DB) error {
 	statements := []string{
 		`CREATE EXTENSION IF NOT EXISTS pg_trgm`,
+		`CREATE EXTENSION IF NOT EXISTS vector`,
+		// post_indices is created with a raw statement because its embedding
+		// column is pgvector, which AutoMigrate cannot express.
+		`CREATE TABLE IF NOT EXISTS post_indices (
+			id uuid NOT NULL,
+			post_id uuid NOT NULL,
+			source_hash character varying(64) NOT NULL,
+			source_text text NOT NULL,
+			embedding vector(1024),
+			indexed_at timestamptz NOT NULL,
+			CONSTRAINT pk_post_indices PRIMARY KEY (id),
+			CONSTRAINT ix_post_indices_post_id UNIQUE (post_id),
+			CONSTRAINT fk_post_indices_posts_post_id FOREIGN KEY (post_id)
+				REFERENCES posts (id) ON DELETE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS ix_post_indices_embedding ON post_indices
+			USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)`,
 		`CREATE INDEX IF NOT EXISTS ix_posts_published_at ON posts (published_at)`,
 		`CREATE INDEX IF NOT EXISTS ix_posts_publisher_published ON posts (publisher_id, published_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS ix_posts_replied_post ON posts (replied_post_id)`,

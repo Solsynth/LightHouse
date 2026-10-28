@@ -41,8 +41,8 @@ func (s *Store) PublisherNamesTaken(ctx context.Context, name string, except uui
 // PublisherMemberRow is a membership row including the ModelBase timestamps the
 // legacy table carries but PublisherMemberEntity does not map.
 type PublisherMemberRow struct {
-	PublisherID uuid.UUID      `gorm:"column:publisher_id"`
-	AccountID   uuid.UUID      `gorm:"column:account_id"`
+	PublisherID uuid.UUID      `gorm:"column:publisher_id;type:uuid"`
+	AccountID   uuid.UUID      `gorm:"column:account_id;type:uuid"`
 	Role        int            `gorm:"column:role"`
 	JoinedAt    *time.Time     `gorm:"column:joined_at"`
 	CreatedAt   time.Time      `gorm:"column:created_at"`
@@ -247,7 +247,7 @@ func (s *Store) LatestContentAt(ctx context.Context, ids []uuid.UUID) (map[uuid.
 	db := s.DB.WithContext(ctx)
 
 	var posts []struct {
-		PublisherID uuid.UUID `gorm:"column:publisher_id"`
+		PublisherID uuid.UUID `gorm:"column:publisher_id;type:uuid"`
 		Latest      time.Time `gorm:"column:latest"`
 	}
 	if err := db.Model(&PostEntity{}).
@@ -264,7 +264,7 @@ func (s *Store) LatestContentAt(ctx context.Context, ids []uuid.UUID) (map[uuid.
 	}
 
 	var streams []struct {
-		PublisherID uuid.UUID `gorm:"column:publisher_id"`
+		PublisherID uuid.UUID `gorm:"column:publisher_id;type:uuid"`
 		Latest      time.Time `gorm:"column:latest"`
 	}
 	if err := db.Model(&LiveStreamEntity{}).
@@ -300,7 +300,7 @@ func (s *Store) ActiveLivePublisherIDs(ctx context.Context, ids []uuid.UUID) ([]
 
 // PublisherLeaderboardRow is one leaderboard candidate.
 type PublisherLeaderboardRow struct {
-	ID      uuid.UUID      `gorm:"column:id"`
+	ID      uuid.UUID      `gorm:"column:id;type:uuid"`
 	Name    string         `gorm:"column:name"`
 	Nick    string         `gorm:"column:nick"`
 	Picture datatypes.JSON `gorm:"column:picture"`
@@ -346,7 +346,7 @@ func (s *Store) SetPublisherRating(ctx context.Context, publisherID uuid.UUID, r
 
 // AdvertisingPostStatsRow mirrors the sponsor service's advertising payload.
 type AdvertisingPostStatsRow struct {
-	PostID            uuid.UUID  `gorm:"column:post_id"`
+	PostID            uuid.UUID  `gorm:"column:post_id;type:uuid"`
 	Title             *string    `gorm:"column:title"`
 	Slug              *string    `gorm:"column:slug"`
 	ActiveBidTotal    float64    `gorm:"column:active_bid_total"`
@@ -381,8 +381,8 @@ func (s *Store) AdvertisingPostStats(ctx context.Context, publisherID uuid.UUID)
 
 // PublisherPostStat is the per-post input to the reward calculation.
 type PublisherPostStat struct {
-	ID           uuid.UUID `gorm:"column:id"`
-	PublisherID  uuid.UUID `gorm:"column:publisher_id"`
+	ID           uuid.UUID `gorm:"column:id;type:uuid"`
+	PublisherID  uuid.UUID `gorm:"column:publisher_id;type:uuid"`
 	AwardedScore float64   `gorm:"column:awarded_score"`
 }
 
@@ -401,7 +401,7 @@ func (s *Store) PostsCreatedBetween(ctx context.Context, from, to time.Time, pub
 
 // ReactionCount is the number of reactions of one attitude on a post.
 type ReactionCount struct {
-	PostID   uuid.UUID `gorm:"column:post_id"`
+	PostID   uuid.UUID `gorm:"column:post_id;type:uuid"`
 	Attitude int       `gorm:"column:attitude"`
 	Total    int       `gorm:"column:total"`
 }
@@ -422,10 +422,10 @@ func (s *Store) ReactionCountsForPosts(ctx context.Context, postIDs []uuid.UUID)
 
 // PostAwardWithPublisher is an unsettled positive award with its publisher.
 type PostAwardWithPublisher struct {
-	ID          uuid.UUID `gorm:"column:id"`
+	ID          uuid.UUID `gorm:"column:id;type:uuid"`
 	Amount      float64   `gorm:"column:amount"`
-	PostID      uuid.UUID `gorm:"column:post_id"`
-	PublisherID uuid.UUID `gorm:"column:publisher_id"`
+	PostID      uuid.UUID `gorm:"column:post_id;type:uuid"`
+	PublisherID uuid.UUID `gorm:"column:publisher_id;type:uuid"`
 }
 
 // UnsettledPositiveAwards lists awards Wallet has not settled yet.
