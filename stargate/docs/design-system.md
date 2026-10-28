@@ -32,10 +32,10 @@ choices already encoded in `web/src/assets/main.css`,
    the palette from Solian's own seed-derived ramp, so a console surface and a
    Solian screen of the same role belong to the same family without pretending
    to be the same size. Roundness is a family, not a per-page choice.
-7. **A field is a surface, not a box.** Every control is a filled tonal shape
-   with one indicator, after Material's filled text field: the fill defines it
-   at rest, the caption moves to name it, and a line appears only where the
-   state needs to be read.
+7. **A field is one rounded outline.** Every control is a filled, fully
+   rounded shape drawn by a single border on all four sides — never an
+   underline or a bar beneath it. Focus is that same border thickening and
+   taking the signal colour; an error is that border in the error tone.
 
 ## 2. Color
 
@@ -143,10 +143,15 @@ amplitude changes. Use the token; never write a raw `rounded-[Npx]` in a view.
 | --- | --- | --- | --- |
 | `--radius-mark` | 4 px | `rounded-mark` | app marks, small inline art |
 | `--radius-chip` | 6 px | `rounded-chip` | chips, status notes, skeletons |
-| `--radius-input` | 8 px | `rounded-input` / `--radius-field` | inputs, selects, textareas |
+| `--radius-input` | 20 px | `rounded-input` / `--radius-field` | inputs, selects, textareas |
 | `--radius-control` | 6 px | `rounded-control` | buttons, tab rail, segmented controls |
 | `--radius-card` | 12 px | `rounded-card` / `--radius-box` | panels, menus, wells, option blocks |
 | `--radius-sheet` | 16 px | `rounded-sheet` | the page card, dialogs |
+
+Fields are the exception to the tight scale: they keep Solian's
+`SolRadius.input` (20 px), which at the console's 40–44 px control height
+resolves to a capsule. That is what the app's own fields look like, and a
+field is a different object from the surfaces around it.
 
 Controls are a **6 px rounded rectangle**, not a capsule. At 40 px tall a
 capsule removes the corner entirely and the button stops reading as a surface;
@@ -356,13 +361,16 @@ printing `0 total` or `Page 1 of 1`.
 
 ### Forms
 
-Every field is `TextField`. It renders a Material-style **filled** control: a
-tonal fill with 8 px top corners, a single indicator along the bottom edge, and
-a caption that animates between two positions. At rest the caption sits on the
-value line, so an empty form still reads as a list of questions; on focus or a
-value it rises into a small caption above the value and stays there. The
-indicator grows from the centre on focus, and is painted permanently in the
-error tone when the field is invalid.
+Every field is `TextField`. It renders a filled, fully rounded control in the
+style of Solian's input theme: one 1 px outline on all four sides, a 20 px
+radius (a capsule at control height), and a caption that animates between two
+positions. At rest the caption sits on the value line, so an empty form still
+reads as a list of questions; on focus or a value it rises into a small
+caption above the value and stays there. Focus thickens the outline to 2 px in
+the signal colour using an inset ring, so the box never shifts by a pixel. An
+invalid field keeps that outline in the error tone, with or without focus.
+
+There is no underline and no accent bar. Do not add one.
 
 Do not hand-write `<input class="input">`, `<select class="select">`, or
 `<label class="field-label">` in a view. The one exception is a section heading
@@ -371,14 +379,19 @@ class="field-label">`, not a field label.
 
 | Prop | Meaning |
 | --- | --- |
-| `label` | the visible caption; required unless `bare` |
+| `label` | the visible caption; omit for a label-less row |
 | `as` | `input` (default), `textarea`, `select` |
 | `size` | `md` (44 px), `sm` (40 px, default), `xs` (32 px) — matches the button beside it |
 | `bare` | no caption and no reserved caption line, for chrome-level controls; name it with `aria-label` |
-| `invalid` / `hint` | error tone on the indicator and caption, helper text below |
+| `invalid` / `hint` | error tone on the outline and caption, helper text below |
 | `hintTone` | `warning` tints a hint without marking the field invalid |
 | `controlClass` | classes for the control itself, e.g. `font-mono` |
 | `rootClass` | classes for the wrapper, for layout spacing at the call site |
+
+A field without a `label` reserves no caption line and is exactly `size` tall,
+the same height as the button beside it — that is why the inline verify rows
+work without a height override. A labelled field reserves the caption line
+inside the same height, so labelled and label-less controls still line up.
 
 Attributes fall through to the control, not the wrapper: `id`, `type`,
 `inputmode`, `autocomplete`, `pattern`, `required`, `@keydown`, and `aria-*`
@@ -386,12 +399,9 @@ behave exactly as written. A caller's `id` is kept, so an existing `<label
 for>` keeps pointing at the control. `v-model.number` works on a select,
 because the component re-applies the modifier it would otherwise lose.
 
-Labels sit inside the field. Placeholders are only for examples
-(`name@example.com`) or format hints (`6-digit code`); they appear once the
-caption has risen, so a placeholder never repeats the label. A labelled field
-reserves the caption line and is therefore taller than its `size` value
-suggests — a `sm` field with a caption is about 40 px of control plus the
-caption inside it.
+Placeholders are only for examples (`name@example.com`) or format hints
+(`6-digit code`); they appear once the caption has risen, so a placeholder
+never repeats the label.
 
 When a field sits in a row with a button, wrap both in `flex items-start gap-2`
 and give the field `root-class="min-w-0 flex-1"`; do not stretch the field with

@@ -44,7 +44,7 @@
   --color-error-content: #171618;
 
   --radius-selector: 4px;
-  --radius-field: 8px;
+  --radius-field: 20px;
   --radius-box: 12px;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
@@ -100,7 +100,7 @@
   --color-error-content: #ffffff;
 
   --radius-selector: 4px;
-  --radius-field: 8px;
+  --radius-field: 20px;
   --radius-box: 12px;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
@@ -144,7 +144,7 @@
      surface. `--radius-control` is the one value a button uses. */
   --radius-mark: 4px;
   --radius-chip: 6px;
-  --radius-input: 8px;
+  --radius-input: 20px;
   --radius-control: 6px;
   --radius-card: 12px;
   --radius-sheet: 16px;
@@ -291,18 +291,21 @@
   }
 
   /* ── Fields ────────────────────────────────────────────────────────────
-     One shape for every control, after Material's filled text field: a tonal
-     fill with a radius on the top corners and a single indicator along the
-     bottom. The fill defines the resting shape, so there is no border to
-     compete with the panel around it; the indicator is the only line, and it
-     grows from the centre when the field takes focus.
+     One shape for every control, matching Solian's input theme: a filled,
+     fully rounded outline. The outline is the whole edge — there is no
+     underline and no accent bar — so focus is read as the border thickening
+     to 2 px and taking the signal colour, and an error keeps that same edge
+     in the error tone.
+
+     The radius is Solian's `SolRadius.input` (20 px). At the console's 40–44 px
+     control height that resolves to a capsule, which is what the app's own
+     fields look like; a textarea keeps the same corner and reads as a soft
+     rounded box.
 
      The label is animated rather than static: at rest it sits where the value
      will be, so an empty form still reads as a list of questions; on focus or
-     a value it rises into a caption. That is why the control carries a top
-     padding and why its placeholder is transparent until the label has
-     moved — otherwise the label and the example would print on top of each
-     other.
+     a value it rises into a caption. A control with no caption reserves no
+     caption line, so a label-less row keeps its natural height.
 
      Sizes are named after the buttons they sit beside, so a row of field and
      button lines up without a per-row height override:
@@ -322,29 +325,44 @@
     display: block;
     inline-size: 100%;
     width: 100%;
-    border: 0;
-    border-radius: var(--radius-input) var(--radius-input) 0 0;
+    border: 1px solid var(--field-line);
+    border-radius: var(--radius-input);
     background-color: var(--field-fill);
-    box-shadow: inset 0 -1px 0 var(--field-line);
     color: var(--color-base-content);
     font-family: var(--font-sans);
     font-size: 13.5px;
     line-height: 1.35;
     transition:
       background-color 150ms ease,
+      border-color 150ms ease,
       box-shadow 150ms ease;
   }
 
-  .field-control:hover:not(:disabled) {
+  .field-control:hover:not(:disabled):not(:focus) {
     background-color: var(--field-fill-hover);
+    border-color: color-mix(in oklab, var(--field-line) 65%, var(--color-base-content));
   }
 
-  /* The indicator carries the focus state, so the global 2 px outline would
-     draw a second, competing edge around the same control. */
+  /* Focus is the border itself, thickened to 2 px with an inset ring so the
+     box does not move by a pixel the way a real border-width change would.
+     The global focus outline is suppressed for the same reason: it would draw
+     a second edge a few pixels outside this one. */
   .field-control:focus,
   .field-control:focus-visible {
     outline: none;
+    border-color: var(--color-primary);
+    box-shadow: inset 0 0 0 1px var(--color-primary);
     background-color: var(--field-fill-focus);
+  }
+
+  /* Invalid fields keep the error edge whether or not they hold focus. */
+  .field.is-invalid .field-control {
+    border-color: var(--color-error);
+  }
+
+  .field.is-invalid .field-control:focus,
+  .field.is-invalid .field-control:focus-visible {
+    box-shadow: inset 0 0 0 1px var(--color-error);
   }
 
   .field-control:disabled {
@@ -365,29 +383,29 @@
   /* Sizes: height, horizontal inset, and the two label positions. */
   .field-md {
     --field-height: 44px;
-    --field-inset: 14px;
+    --field-inset: 16px;
     --field-label-rest: 13.5px;
     --field-label-float: 10px;
-    --field-label-top: 7px;
-    --field-text-top: 19px;
+    --field-label-top: 5px;
+    --field-text-top: 18px;
   }
 
   .field-sm {
     --field-height: 40px;
-    --field-inset: 12px;
+    --field-inset: 15px;
     --field-label-rest: 13px;
     --field-label-float: 9.5px;
-    --field-label-top: 6px;
-    --field-text-top: 17px;
+    --field-label-top: 4px;
+    --field-text-top: 15px;
   }
 
   .field-xs {
     --field-height: 32px;
-    --field-inset: 10px;
+    --field-inset: 12px;
     --field-label-rest: 12px;
-    --field-label-float: 9.5px;
-    --field-label-top: 5px;
-    --field-text-top: 14px;
+    --field-label-float: 9px;
+    --field-label-top: 4px;
+    --field-text-top: 12px;
   }
 
   .field-control {
@@ -397,10 +415,12 @@
   }
 
   /* A labelled field reserves the caption line, so the value sits low enough
-     for the risen label to have its own room. */
+     for the risen label to have its own room. The paddings are tuned so the
+     natural height meets `--field-height`: a field and the button beside it
+     then line up without a per-row override. */
   .field:not(.field-bare) .field-control {
     block-size: auto;
-    padding: var(--field-text-top) var(--field-inset) 5px;
+    padding: var(--field-text-top) var(--field-inset) 4px;
   }
 
   .field textarea.field-control {
@@ -438,7 +458,7 @@
     color: var(--color-faint);
     font-size: var(--field-label-rest);
     font-weight: 500;
-    line-height: 1.2;
+    line-height: 1.1;
     pointer-events: none;
     transform-origin: left center;
     transition:
@@ -468,29 +488,6 @@
   .field.is-invalid .field-label-float,
   .field.is-invalid:focus-within .field-label-float {
     color: var(--color-error);
-  }
-
-  /* The indicator is the focus state: a 2 px rule that grows out from the
-     centre. Invalid fields keep it drawn and tint it, so the error is visible
-     without focus. */
-  .field-indicator {
-    position: absolute;
-    inset-inline: 0;
-    inset-block-end: 0;
-    block-size: 2px;
-    background-color: var(--color-primary);
-    pointer-events: none;
-    transform: scaleX(0);
-    transition: transform 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
-  }
-
-  .field:focus-within .field-indicator {
-    transform: scaleX(1);
-  }
-
-  .field.is-invalid .field-indicator {
-    background-color: var(--color-error);
-    transform: scaleX(1);
   }
 
   .field-hint {

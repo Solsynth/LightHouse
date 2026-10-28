@@ -107,6 +107,16 @@ describe('TextField', () => {
     expect(wrapper.get('.field-hint').text()).toBe('Not an address')
   })
 
+  it('reserves no caption line when it has no label', () => {
+    // A label-less row (the inline verify fields) must keep the bare control
+    // height: reserving the caption line would push its value below the button
+    // beside it.
+    const wrapper = mount(TextField, { props: { modelValue: '' } })
+
+    expect(wrapper.find('label').exists()).toBe(false)
+    expect(wrapper.get('.field').classes()).toContain('field-bare')
+  })
+
   it('renders no caption in bare mode', async () => {
     const wrapper = mount(TextField, {
       props: { label: 'Search', modelValue: '', bare: true },

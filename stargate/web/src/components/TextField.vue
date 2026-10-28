@@ -85,7 +85,14 @@ const filled = computed(() => {
   return value !== '' && value !== null && value !== undefined
 })
 
-const floated = computed(() => filled.value || props.bare)
+/**
+ * A caption exists only when the field has one and is not `bare`. Everything
+ * that reserves space for the caption keys off this, so a label-less row keeps
+ * its natural height instead of carrying an empty line above the value.
+ */
+const hasLabel = computed(() => Boolean(props.label) && !props.bare)
+
+const floated = computed(() => filled.value || !hasLabel.value)
 
 /**
  * Writes the control's value back through `v-model`. A select with `.number`
@@ -111,11 +118,11 @@ defineExpose({
       'field',
       `field-${props.size}`,
       props.rootClass,
-      { 'field-bare': props.bare, 'is-floated': floated, 'is-invalid': props.invalid },
+      { 'field-bare': !hasLabel, 'is-floated': floated, 'is-invalid': props.invalid },
     ]"
   >
     <div class="field-box">
-      <label v-if="props.label && !props.bare" :for="controlId" class="field-label-float">
+      <label v-if="hasLabel" :for="controlId" class="field-label-float">
         {{ props.label }}
       </label>
 
@@ -161,7 +168,6 @@ defineExpose({
         @input="commit"
       />
 
-      <span class="field-indicator" aria-hidden="true" />
       <slot name="action" />
     </div>
 

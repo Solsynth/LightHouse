@@ -539,7 +539,7 @@ onMounted(() => {
           >
             <p class="voice mb-3 text-[12px]">{{ t('oauthApps.secretsHint') }}</p>
 
-            <div v-if="issued" class="mb-4 rounded-input border border-warning/40 bg-warning/10 p-3">
+            <div v-if="issued" class="mb-4 rounded-card border border-warning/40 bg-warning/10 p-3.5">
               <div class="flex items-center justify-between gap-2">
                 <p class="text-2xs uppercase tracking-[0.12em] text-warning">{{ t('oauthApps.secretIssued') }}</p>
                 <CopyButton v-if="issued.secret" :value="issued.secret" :label="t('oauthApps.secretSecret')" />

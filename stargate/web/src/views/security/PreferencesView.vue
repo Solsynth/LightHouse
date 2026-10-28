@@ -85,7 +85,7 @@ onMounted(load)
           <label
             v-for="option in modes"
             :key="option"
-            class="flex cursor-pointer items-start gap-3 rounded-input border border-line px-3 py-3 transition-colors"
+            class="flex cursor-pointer items-start gap-3 rounded-card border border-line px-4 py-3.5 transition-colors"
             :class="mode === option ? 'border-primary/60 bg-base-300/40' : 'hover:bg-base-300/30'"
           >
             <input
