@@ -53,7 +53,7 @@ func (i *instance) createChatRoom(c *gin.Context) {
 		Type:           int(model.ChatRoomGroup),
 		AccountID:      &accountUUID,
 		EncryptionMode: mode,
-		E2eePolicy:     store.ToJSON(map[string]any{}),
+		E2eePolicy:     nil,
 		Picture:        store.ToJSON(nil),
 		Background:     store.ToJSON(nil),
 	}
@@ -788,24 +788,6 @@ func (i *instance) listInvites(c *gin.Context) {
 	var members []*store.ChatMemberEntity
 	_ = i.db.WithContext(ctx).Where("account_id = ? AND joined_at IS NULL", accountUUID).Find(&members).Error
 	models := i.memberModels(ctx, members)
-	roomIDs := make([]uuid.UUID, 0, len(members))
-	for _, member := range members {
-		roomIDs = append(roomIDs, member.ChatRoomID)
-	}
-	var roomEntities []*store.ChatRoomEntity
-	if len(roomIDs) > 0 {
-		_ = i.db.WithContext(ctx).Where("id IN ?", roomIDs).Find(&roomEntities).Error
-	}
-	rooms := map[string]model.ChatRoom{}
-	for _, room := range i.hydrateRooms(ctx, roomEntities, accountID) {
-		rooms[room.ID] = room
-	}
-	for idx := range models {
-		if room, ok := rooms[models[idx].ChatRoomID]; ok {
-			roomCopy := room
-			_ = roomCopy
-		}
-	}
 	httpx.OK(c, models)
 }
 

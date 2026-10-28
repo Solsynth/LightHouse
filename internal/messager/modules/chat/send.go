@@ -19,6 +19,8 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/httpx"
 )
 
+const mlsEncryptionScheme = "chat.mls.v2"
+
 func parseOptionalUUID(value *string) (*uuid.UUID, bool) {
 	if value == nil || strings.TrimSpace(*value) == "" {
 		return nil, true
@@ -226,7 +228,6 @@ func (i *instance) resolveRepliedAndThread(ctx context.Context, c *gin.Context, 
 			return false
 		}
 		entity.ThreadID = &root.ID
-		entity.IsThreadRoot = false
 		if request.RepliedMessageID != nil && *request.RepliedMessageID != "" {
 			parentID, err := uuid.Parse(*request.RepliedMessageID)
 			if err != nil {
@@ -238,7 +239,7 @@ func (i *instance) resolveRepliedAndThread(ctx context.Context, c *gin.Context, 
 				failBadRequest(c, "CHAT_REPLY_MESSAGE_NOT_FOUND", "The message you're replying to does not exist.")
 				return false
 			}
-			if parent.ThreadID != nil && *parent.ThreadID != entity.ThreadID {
+			if parent.ThreadID != nil && *parent.ThreadID != *entity.ThreadID {
 				failBadRequest(c, "CHAT_THREAD_PARENT_MISMATCH", "The parent must belong to the same thread.")
 				return false
 			}

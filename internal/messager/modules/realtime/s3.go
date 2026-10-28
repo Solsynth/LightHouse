@@ -20,14 +20,15 @@ var errObjectNotFound = errors.New("voice object not found")
 
 // s3Settings mirrors the C# ChatVoiceS3Configuration.
 type s3Settings struct {
-	ServiceURL    string
-	Endpoint      string
-	PublicBaseURL string
-	Region        string
-	AccessKey     string
-	SecretKey     string
-	Bucket        string
-	EnableSSL     bool
+	ServiceURL     string
+	Endpoint       string
+	PublicBaseURL  string
+	Region         string
+	AccessKey      string
+	SecretKey      string
+	Bucket         string
+	ForcePathStyle bool
+	EnableSSL      bool
 }
 
 // s3Storage is the lazily built S3 client for voice clips. The client is only
@@ -117,8 +118,7 @@ func (s *s3Storage) clientFor(ctx context.Context) (*s3.Client, error) {
 	}
 	client := s3.NewFromConfig(cfg, func(options *s3.Options) {
 		options.BaseEndpoint = aws.String(endpoint)
-		// The C# deployment defaults to path-style addressing (MinIO).
-		options.UsePathStyle = true
+		options.UsePathStyle = s.settings.ForcePathStyle
 	})
 	s.client = client
 	return client, nil

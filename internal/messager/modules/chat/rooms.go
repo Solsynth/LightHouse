@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+	gen "src.solsynth.dev/sosys/go/proto"
 	"src.solsynth.dev/sosys/go/pkg/errs"
 	"gorm.io/gorm"
 
@@ -286,8 +287,7 @@ func (i *instance) createDirectMessage(c *gin.Context) {
 		IsPublic:       false,
 		AccountID:      &selfUUID,
 		EncryptionMode: requestedMode,
-		E2eePolicy:     store.ToJSON(map[string]any{}),
-		Picture:        store.ToJSON(nil),
+		E2eePolicy:     nil,
 		Background:     store.ToJSON(nil),
 	}
 	members := []*store.ChatMemberEntity{

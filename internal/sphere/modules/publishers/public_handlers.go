@@ -78,7 +78,7 @@ func (i *instance) handleSearchPublishers(c *gin.Context) {
 		take = i.maxTake()
 	}
 	fuzzy := len([]rune(query)) >= 3
-	pattern := "%" + query + "%"
+	pattern := "%" + strings.ToLower(query) + "%"
 
 	sql := "SELECT * FROM publishers WHERE deleted_at IS NULL AND type <> ?"
 	args := []any{publisherFediverse}

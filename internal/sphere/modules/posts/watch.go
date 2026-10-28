@@ -1,8 +1,8 @@
 package posts
 
 import (
+	"context"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -33,7 +33,7 @@ func watchSourceName(source int) string {
 	case watchSourceReply:
 		return "reply"
 	default:
-		return strings.ToLower(string(rune('0' + source)))
+		return "unknown"
 	}
 }
 
@@ -79,14 +79,9 @@ func (h *handler) getWatchPreferences(c *gin.Context) {
 	httpx.OK(c, h.effectiveWatchPreferences(ctx, accountID))
 }
 
-func (h *handler) effectiveWatchPreferences(ctx interface {
-	Done() <-chan struct{}
-	Err() error
-	Value(any) any
-	Deadline() (time.Time, bool)
-}, accountID uuid.UUID) []model.PostWatchPreferenceResponse {
+func (h *handler) effectiveWatchPreferences(ctx context.Context, accountID uuid.UUID) []model.PostWatchPreferenceResponse {
 	var stored []store.PostWatchPreferenceEntity
-	h.db.Where("account_id = ?", accountID).Find(&stored)
+	h.db.WithContext(ctx).Where("account_id = ?", accountID).Find(&stored)
 	bySource := map[int]store.PostWatchPreferenceEntity{}
 	for _, row := range stored {
 		bySource[row.Source] = row

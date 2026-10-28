@@ -126,21 +126,3 @@ func (i *instance) moderateTimeoutMember(c *gin.Context) {
 	})
 }
 
-func itoaMinutes(value int) string {
-	if value == 0 {
-		return "0"
-	}
-	negative := value < 0
-	if negative {
-		value = -value
-	}
-	digits := []byte{}
-	for value > 0 {
-		digits = append([]byte{byte('0' + value%10)}, digits...)
-		value /= 10
-	}
-	if negative {
-		return "-" + string(digits)
-	}
-	return string(digits)
-}

@@ -126,8 +126,8 @@ func (p *filesPort) GetFiles(ctx context.Context, ids []string) (map[string]mode
 			MimeType: file.GetMimeType(),
 			Url:      file.GetUrl(),
 			Size:     file.GetSize(),
-			Width:    file.GetWidth(),
-			Height:   file.GetHeight(),
+			Width:    file.Width,
+			Height:   file.Height,
 			Blurhash: file.GetBlurhash(),
 		}
 	}
@@ -168,7 +168,7 @@ func (p *spherePort) GetSurvey(ctx context.Context, id string) (*gen.DySurvey, e
 	if p.clients.Surveys == nil {
 		return nil, ports.ErrUnavailable
 	}
-	return p.clients.Surveys.GetSurvey(ctx, &gen.DyGetSurveyRequest{Id: id})
+	return p.clients.Surveys.GetSurvey(ctx, &gen.DyGetSurveyRequest{Identifier: &gen.DyGetSurveyRequest_Id{Id: id}})
 }
 
 func (p *spherePort) GetStickerByIdentifier(ctx context.Context, identifier string) (*gen.DySticker, error) {
@@ -212,7 +212,7 @@ func (p *spherePort) IsPublisherMember(ctx context.Context, publisherID, account
 	if err != nil {
 		return false, err
 	}
-	return resp.GetIsMember(), nil
+	return resp.GetValid(), nil
 }
 
 var _ = strings.TrimSpace

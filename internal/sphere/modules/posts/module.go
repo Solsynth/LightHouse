@@ -76,7 +76,7 @@ func (i *instance) Configure(ctx context.Context, host *module.Host[core.Service
 		gen.RegisterDyPostServiceServer(host.GRPC, &grpcService{h: h})
 	}
 	h.startConsumers(ctx)
-	h.startJobs(ctx)
+	h.startJobs(host)
 	return nil
 }
 

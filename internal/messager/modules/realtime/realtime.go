@@ -81,6 +81,9 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 	if realtime, ok := module.Get[ports.Realtime](host.Ports, ports.PortRealtime); ok {
 		s.realtime = realtime
 	}
+	if host.Core.Clients != nil && host.Core.Clients.Ring != nil {
+		s.ring = host.Core.Clients.Ring
+	}
 	s.voice = newVoiceService(s, host.Core.Config)
 
 	requirePermission := func(key string) gin.HandlerFunc {
@@ -139,14 +142,15 @@ func newVoiceService(s *server, cfg *config.Config) *voiceService {
 	return &voiceService{
 		srv: s,
 		storage: &s3Storage{settings: s3Settings{
-			ServiceURL:    bucket.ServiceURL,
-			Endpoint:      bucket.Endpoint,
-			PublicBaseURL: bucket.PublicBaseURL,
-			Region:        bucket.Region,
-			AccessKey:     bucket.AccessKey,
-			SecretKey:     bucket.SecretKey,
-			Bucket:        bucket.Bucket,
-			EnableSSL:     bucket.EnableSSL,
+			ServiceURL:     bucket.ServiceURL,
+			Endpoint:       bucket.Endpoint,
+			PublicBaseURL:  bucket.PublicBaseURL,
+			Region:         bucket.Region,
+			AccessKey:      bucket.AccessKey,
+			SecretKey:      bucket.SecretKey,
+			Bucket:         bucket.Bucket,
+			ForcePathStyle: bucket.ForcePathStyle,
+			EnableSSL:      bucket.EnableSSL,
 		}},
 		maxFileSize:   maxSize,
 		keyPrefix:     prefix,

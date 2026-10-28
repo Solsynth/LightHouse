@@ -59,8 +59,10 @@ func (i *instance) handleRatingHistory(c *gin.Context) {
 	}
 	ctx := c.Request.Context()
 	isMember := false
-	if accountID, ok := i.accountID(c); ok {
-		isMember = i.isMemberWithRole(ctx, publisher.ID, accountID, roleViewer)
+	if user := authn.CurrentUser(c); user != nil {
+		if accountID, err := uuid.Parse(user.GetId()); err == nil {
+			isMember = i.isMemberWithRole(ctx, publisher.ID, accountID, roleViewer)
+		}
 	}
 	var total int64
 	if err := i.store.DB.WithContext(ctx).Model(&store.PublisherRatingRecordEntity{}).

@@ -59,6 +59,7 @@ type server struct {
 	accounts ports.Accounts
 	notify   ports.Notify
 	realtime ports.Realtime
+	ring     gen.DyRingServiceClient
 }
 
 // account returns the authenticated account, writing 401 when anonymous.

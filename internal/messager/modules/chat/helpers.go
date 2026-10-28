@@ -521,15 +521,18 @@ func (i *instance) hydrateRooms(ctx context.Context, rooms []*store.ChatRoomEnti
 // --- messages -------------------------------------------------------------
 
 func (i *instance) insertMessage(ctx context.Context, tx *gorm.DB, entity *store.ChatMessageEntity) error {
-	if tx == nil {
-		tx = i.db
+	run := func(handle *gorm.DB) error {
+		sequence, err := i.st.NextRoomSequence(ctx, handle, entity.ChatRoomID)
+		if err != nil {
+			return err
+		}
+		entity.RoomSequence = sequence
+		return handle.WithContext(ctx).Create(entity).Error
 	}
-	sequence, err := i.st.NextRoomSequence(ctx, tx, entity.ChatRoomID)
-	if err != nil {
-		return err
+	if tx == nil || tx == i.db {
+		return i.db.WithContext(ctx).Transaction(run)
 	}
-	entity.RoomSequence = sequence
-	return tx.WithContext(ctx).Create(entity).Error
+	return run(tx)
 }
 
 func (i *instance) messageModel(ctx context.Context, entity *store.ChatMessageEntity) model.ChatMessage {
