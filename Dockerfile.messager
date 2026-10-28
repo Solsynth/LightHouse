@@ -1,0 +1,19 @@
+# syntax=docker/dockerfile:1
+
+# ---- Messager image ----
+FROM golang:1.27-alpine AS messager-build
+ARG VERSION=dev
+ARG GIT_COMMIT=unknown
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -ldflags "-X main.version=${VERSION} -X main.gitCommit=${GIT_COMMIT}" -o /out/messager ./cmd/messager
+
+FROM alpine:3.21 AS messager
+RUN apk add --no-cache ca-certificates tzdata
+WORKDIR /app
+COPY --from=messager-build /out/messager /app/messager
+COPY config/messager.example.toml /app/config.example.toml
+EXPOSE 5072 7100
+ENTRYPOINT ["/app/messager"]

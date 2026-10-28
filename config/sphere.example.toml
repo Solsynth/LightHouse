@@ -1,0 +1,109 @@
+siteUrl = "http://localhost:3000"
+baseUrl = "http://localhost:5071"
+
+[http]
+port = "5071"
+
+[grpc]
+port = "7099"
+useTLS = false
+# certFile = "Keys/server.crt"
+# keyFile = "Keys/server.key"
+
+[database]
+dsn = "host=localhost port=5432 user=postgres password=postgres dbname=dyson_sphere sslmode=disable"
+
+[redis]
+addr = ""
+password = ""
+db = 0
+
+[nats]
+target = ""
+websocketPushSubject = "websocket_push"
+
+# Inbound bearer tokens are validated by Stargate's DyAuthService over gRPC.
+# No target means authenticated routes answer 401.
+[services]
+stargate = { grpc = "" }
+ring = { grpc = "" }
+drive = { grpc = "" }
+wallet = { grpc = "" }
+develop = { grpc = "" }
+blade = { grpc = "" }
+
+# Compiled-in modules. An empty enabled list means every module whose default is
+# on. Disabling a module unmounts its routes/gRPC services and, on a fresh
+# database, prevents its tables from being created. Existing tables are never
+# dropped.
+[modules]
+enabled = []
+disabled = []
+# [modules.settings."app.solian.sphere.posts"]
+# searchEngine = "semantic"
+
+# Select a provider when more than one enabled module provides the same port.
+# [ports]
+# accounts = "app.solian.sphere.integrations"
+
+[posts]
+searchEngineDefault = "semantic"
+autoChainWindowMinutes = 5
+
+[activityPub]
+domain = "solian.app"
+fileBaseUrl = "https://solian.app/files"
+serverKeyPath = "Keys/server-key.json"
+
+[activityPubDelivery]
+maxRetries = 5
+consumerCount = 4
+
+[liveStream]
+endpoint = ""
+apiKey = ""
+apiSecret = ""
+playbackUrl = ""
+
+[translation]
+provider = ""
+region = "ap-hongkong"
+projectId = "0"
+secretId = ""
+secretKey = ""
+
+[security]
+trustedProxyHops = 1
+maxTake = 100
+
+[discovery]
+enabled = false
+target = "blade:9090"
+registrationToken = ""
+service = "sphere"
+instanceId = ""
+httpEndpoint = ""
+grpcEndpoint = ""
+leaseSeconds = 30
+weight = 1
+
+# Rules seeded into automod_rules on boot (upserted by name).
+[[automod.rules]]
+name = "Block known spam domains"
+description = "Derank posts containing links to known spam domains"
+type = "LinkBlocklist"
+action = "Derank"
+pattern = "(?i)(spamdomain\\.com|malware\\.net|phishingsite\\.org)"
+isRegex = true
+derankWeight = 15
+isEnabled = true
+priority = 10
+
+# Rules seeded into fediverse_moderation_rules on boot (upserted by name).
+# [[fediverseModeration.rules]]
+# name = "Block known spam instances"
+# type = "DomainBlock"
+# action = "Block"
+# domain = "spam-instance.example"
+# isEnabled = true
+# priority = 10
