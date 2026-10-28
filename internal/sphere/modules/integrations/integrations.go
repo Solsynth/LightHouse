@@ -31,7 +31,7 @@ func Factory() module.Factory[core.Services] {
 		Capabilities: []string{
 			"integrations.accounts", "integrations.files", "integrations.realtime",
 			"integrations.notify", "integrations.payments", "integrations.subscriptions",
-			"integrations.domains",
+			"integrations.domains", "integrations.realms",
 		},
 		New: func() module.Instance[core.Services] { return &instance{} },
 	}
@@ -76,6 +76,10 @@ func (i *instance) ProvidePorts(_ context.Context, host *module.Host[core.Servic
 	if clients.DomainBlock != nil {
 		module.Provide[ports.Domains](host.Ports, ports.PortDomains, ModuleID,
 			module.KindIntegration, &domainsPort{clients: clients})
+	}
+	if clients.Realm != nil {
+		module.Provide[ports.Realms](host.Ports, ports.PortRealms, ModuleID,
+			module.KindIntegration, &realmsPort{clients: clients})
 	}
 	return nil
 }
@@ -241,4 +245,55 @@ func (p *domainsPort) IsDomainBlocked(ctx context.Context, domain string) (bool,
 		return false, err
 	}
 	return resp.GetIsBlocked(), nil
+}
+
+// realmsPort resolves realm snapshots from Passport/Stargate.
+type realmsPort struct{ clients *grpcclient.Clients }
+
+func (p *realmsPort) GetRealm(ctx context.Context, id string) (*ports.RealmInfo, error) {
+	if p.clients.Realm == nil || id == "" {
+		return nil, ports.ErrUnavailable
+	}
+	realm, err := p.clients.Realm.GetRealm(ctx, &gen.DyGetRealmRequest{
+		Query: &gen.DyGetRealmRequest_Id{Id: id},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return realmInfo(realm), nil
+}
+
+func (p *realmsPort) GetRealmBySlug(ctx context.Context, slug string) (*ports.RealmInfo, error) {
+	if p.clients.Realm == nil || slug == "" {
+		return nil, ports.ErrUnavailable
+	}
+	realm, err := p.clients.Realm.GetRealm(ctx, &gen.DyGetRealmRequest{
+		Query: &gen.DyGetRealmRequest_Slug{Slug: slug},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return realmInfo(realm), nil
+}
+
+func realmInfo(realm *gen.DyRealm) *ports.RealmInfo {
+	if realm == nil {
+		return nil
+	}
+	info := &ports.RealmInfo{
+		ID:       realm.GetId(),
+		Slug:     realm.GetSlug(),
+		Name:     realm.GetName(),
+		IsPublic: realm.GetIsPublic(),
+	}
+	if description := realm.GetDescription(); description != "" {
+		info.Description = &description
+	}
+	if picture := realm.GetPicture(); picture != nil {
+		info.Picture = models.FromProtoValue(picture)
+	}
+	if background := realm.GetBackground(); background != nil {
+		info.Background = models.FromProtoValue(background)
+	}
+	return info
 }

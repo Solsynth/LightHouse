@@ -62,6 +62,10 @@ func (i *instance) ProvidePorts(_ context.Context, host *module.Host[core.Servic
 		module.Provide[ports.Realtime](host.Ports, ports.PortRealtime, ModuleID,
 			module.KindIntegration, &realtimePort{bus: host.Core.NATS})
 	}
+	if clients.Realm != nil {
+		module.Provide[ports.Realms](host.Ports, ports.PortRealms, ModuleID,
+			module.KindIntegration, &realmsPort{clients: clients})
+	}
 	if clients.Surveys != nil || clients.Stickers != nil || clients.Autocomplete != nil ||
 		clients.WebReader != nil || clients.Publishers != nil {
 		module.Provide[ports.Sphere](host.Ports, ports.PortSphere, ModuleID,
@@ -121,8 +125,8 @@ func (p *filesPort) GetFiles(ctx context.Context, ids []string) (map[string]mode
 	}
 	for _, file := range resp.GetFiles() {
 		out[file.GetId()] = model.CloudFileReferenceObject{
-			Id:   file.GetId(),
-			Name: file.GetName(),
+			Id:       file.GetId(),
+			Name:     file.GetName(),
 			MimeType: file.GetMimeType(),
 			Url:      file.GetUrl(),
 			Size:     file.GetSize(),
@@ -216,3 +220,48 @@ func (p *spherePort) IsPublisherMember(ctx context.Context, publisherID, account
 }
 
 var _ = strings.TrimSpace
+
+// realmsPort resolves realm snapshots from Passport/Stargate.
+type realmsPort struct{ clients *grpcclient.Clients }
+
+func (p *realmsPort) GetRealm(ctx context.Context, id string) (*ports.RealmInfo, error) {
+	if p.clients.Realm == nil || id == "" {
+		return nil, ports.ErrUnavailable
+	}
+	realm, err := p.clients.Realm.GetRealm(ctx, &gen.DyGetRealmRequest{
+		Query: &gen.DyGetRealmRequest_Id{Id: id},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return realmInfo(realm), nil
+}
+
+func (p *realmsPort) GetRealmBySlug(ctx context.Context, slug string) (*ports.RealmInfo, error) {
+	if p.clients.Realm == nil || slug == "" {
+		return nil, ports.ErrUnavailable
+	}
+	realm, err := p.clients.Realm.GetRealm(ctx, &gen.DyGetRealmRequest{
+		Query: &gen.DyGetRealmRequest_Slug{Slug: slug},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return realmInfo(realm), nil
+}
+
+func realmInfo(realm *gen.DyRealm) *ports.RealmInfo {
+	if realm == nil {
+		return nil
+	}
+	info := &ports.RealmInfo{
+		ID:       realm.GetId(),
+		Slug:     realm.GetSlug(),
+		Name:     realm.GetName(),
+		IsPublic: realm.GetIsPublic(),
+	}
+	if description := realm.GetDescription(); description != "" {
+		info.Description = &description
+	}
+	return info
+}

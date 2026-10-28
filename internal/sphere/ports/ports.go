@@ -71,3 +71,57 @@ type Domains interface {
 	ValidateURL(ctx context.Context, url string) (bool, error)
 	IsDomainBlocked(ctx context.Context, domain string) (bool, error)
 }
+
+// Additional port IDs for cross-module collaboration inside the service.
+const (
+	// PortRealms resolves realm snapshots from Passport/Stargate.
+	PortRealms = "realms"
+	// PortFederation asks the fediverse module to deliver a post activity.
+	PortFederation = "federation"
+	// PortPostSignals lets other modules record view/interest signals and read
+	// the sponsored post without importing the posts module.
+	PortPostSignals = "postsignals"
+	// PortAds exposes the sponsor read model to the timeline.
+	PortAds = "ads"
+)
+
+// RealmInfo is the realm snapshot Sphere embeds in responses.
+type RealmInfo struct {
+	ID          string  `json:"id"`
+	Slug        string  `json:"slug"`
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+	IsPublic    bool    `json:"is_public"`
+	Picture     any     `json:"picture"`
+	Background  any     `json:"background"`
+}
+
+// Realms resolves realm snapshots.
+type Realms interface {
+	GetRealm(ctx context.Context, id string) (*RealmInfo, error)
+	GetRealmBySlug(ctx context.Context, slug string) (*RealmInfo, error)
+}
+
+// Federation publishes post lifecycle activities to the fediverse.
+type Federation interface {
+	// PublishPost enqueues the ActivityPub activities for a post. event is
+	// "created", "updated" or "deleted".
+	PublishPost(ctx context.Context, postID string, event string) error
+	// Enabled reports whether the post's publisher federates.
+	Enabled(ctx context.Context, postID string) (bool, error)
+}
+
+// PostSignals lets sibling modules record interaction signals on posts without
+// importing the posts module.
+type PostSignals interface {
+	// IncrementViews records a view; accountID may be empty for anonymous
+	// reads. The implementation deduplicates per account/hour.
+	IncrementViews(ctx context.Context, postID, accountID string) error
+	// RecordInterest bumps an account's interest profile for a reference.
+	RecordInterest(ctx context.Context, accountID string, kind int, referenceID string, score float64, signal string) error
+	// SponsoredPost returns the post currently placed as a sponsored slot, or
+	// nil when none is active.
+	SponsoredPost(ctx context.Context) (*model.Post, error)
+	// MarkSponsoredShown records that a sponsored post was displayed.
+	MarkSponsoredShown(ctx context.Context, postID string) error
+}

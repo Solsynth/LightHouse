@@ -21,7 +21,9 @@ const (
 	PortFiles     = "files"
 	PortNotify    = "notify"
 	PortRealtime  = "realtime"
-	PortSphere    = "sphere"
+	PortSphere = "sphere"
+	// PortRealms resolves realm snapshots for realm chat.
+	PortRealms = "realms"
 )
 
 // Accounts resolves accounts from Stargate.
@@ -56,4 +58,21 @@ type Sphere interface {
 	Autocomplete(ctx context.Context, content, chatID, realmID string, limit int) ([]byte, error)
 	GetLinkPreview(ctx context.Context, url string) ([]byte, error)
 	IsPublisherMember(ctx context.Context, publisherID, accountID string) (bool, error)
+}
+
+// RealmInfo is the realm snapshot the chat module embeds in responses.
+type RealmInfo struct {
+	ID          string  `json:"id"`
+	Slug        string  `json:"slug"`
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+	IsPublic    bool    `json:"is_public"`
+	Picture     any     `json:"picture"`
+	Background  any     `json:"background"`
+}
+
+// Realms resolves realm snapshots.
+type Realms interface {
+	GetRealm(ctx context.Context, id string) (*RealmInfo, error)
+	GetRealmBySlug(ctx context.Context, slug string) (*RealmInfo, error)
 }
