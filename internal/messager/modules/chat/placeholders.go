@@ -142,6 +142,13 @@ func (i *instance) expirePlaceholder(ctx context.Context, entity *store.ChatMess
 }
 
 func (i *instance) finalizePlaceholder(ctx context.Context, room *store.ChatRoomEntity, sender *store.ChatMemberEntity, entity *store.ChatMessageEntity, content string) {
+	i.finalizePlaceholderWith(ctx, room, sender, entity, content, nil)
+}
+
+// finalizePlaceholderWith converts a placeholder into a text message and
+// delivers the `messages.sync.finalize` shadow message clients apply. A nil
+// attachment list keeps the placeholder's existing attachments.
+func (i *instance) finalizePlaceholderWith(ctx context.Context, room *store.ChatRoomEntity, sender *store.ChatMemberEntity, entity *store.ChatMessageEntity, content string, attachments []model.CloudFileReferenceObject) {
 	meta := messageMeta(entity)
 	for _, key := range []string{"placeholder_kind", "placeholder_content", "placeholder_progress", "placeholder_expires_at"} {
 		delete(meta, key)
@@ -149,6 +156,9 @@ func (i *instance) finalizePlaceholder(ctx context.Context, room *store.ChatRoom
 	updates := map[string]any{
 		"type":    "text",
 		"content": content,
+	}
+	if attachments != nil {
+		updates["attachments"] = store.ToJSON(attachments)
 	}
 	if len(meta) == 0 {
 		updates["meta"] = nil

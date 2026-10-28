@@ -499,6 +499,7 @@ func (s *service) listEventsForAnyone(ctx context.Context, take int, cursor *tim
 			activities = append(activities, postTimelineEvent(posts[i], postInstant(&posts[i])))
 		}
 	} else {
+		posts = s.insertSponsored(ctx, posts)
 		for i := range posts {
 			if rand.Float64() < 0.15 {
 				if discovery := s.maybeGetAnonymousDiscoveryActivity(ctx); discovery != nil {
@@ -511,7 +512,10 @@ func (s *service) listEventsForAnyone(ctx context.Context, take int, cursor *tim
 	if len(activities) == 0 {
 		activities = append(activities, emptyTimelineEvent(now))
 	}
-	return buildTimelinePage(activities, mode), nil
+	page := buildTimelinePage(activities, mode)
+	s.attachEventRealms(ctx, page)
+	s.recordPageViews(ctx, page, "")
+	return page, nil
 }
 
 func postInstant(post *model.Post) time.Time {
@@ -657,9 +661,13 @@ func (s *service) listEvents(
 		if len(activities) == 0 {
 			activities = append(activities, emptyTimelineEvent(time.Now().UTC()))
 		}
-		return buildTimelinePage(activities, mode), nil
+		page := buildTimelinePage(activities, mode)
+		s.attachEventRealms(ctx, page)
+		s.recordPageViews(ctx, page, accountID.String())
+		return page, nil
 	}
 
+	posts = s.insertSponsored(ctx, posts)
 	postEvents := make([]model.TimelineEvent, 0, len(posts))
 	for i := range posts {
 		postEvents = append(postEvents, postTimelineEvent(posts[i], postInstant(&posts[i])))
@@ -689,7 +697,10 @@ func (s *service) listEvents(
 	if len(activities) == 0 {
 		activities = append(activities, emptyTimelineEvent(time.Now().UTC()))
 	}
-	return buildTimelinePage(activities, mode), nil
+	page := buildTimelinePage(activities, mode)
+	s.attachEventRealms(ctx, page)
+	s.recordPageViews(ctx, page, accountID.String())
+	return page, nil
 }
 
 // subscriptionPublisherIDs lists blocked or muted publisher subscriptions.

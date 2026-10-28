@@ -70,7 +70,7 @@ type instance struct {
 	blade gen.WebSocketServiceClient
 }
 
-func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]) error {
+func (i *instance) Configure(ctx context.Context, host *module.Host[core.Services]) error {
 	i.host = host
 	i.db = host.Core.DB
 	i.st = store.New(host.Core.DB)
@@ -92,6 +92,11 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 	i.registerChatRoutes(host.API)
 	i.registerRoomRoutes(host.API)
 	host.API.GET("/realms/:slug/chat", authn.RequireAuth(), i.listRealmChat)
+
+	// Inbound websocket commands (messages.send/read/typing/subscribe/...)
+	// arrive relayed by Blade; the C# ChatController never exposed them over
+	// HTTP.
+	i.startWebSocketConsumer(ctx)
 
 	if host.Core.Jobs != nil {
 		host.Core.Jobs.Cron("chat.placeholders.expire", "0 * * * * ?", i.expireStalePlaceholders)

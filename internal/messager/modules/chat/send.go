@@ -202,25 +202,31 @@ func (i *instance) validateSurvey(ctx context.Context, c *gin.Context, surveyID 
 	return survey, true
 }
 
-// attachFiles resolves attachment ids through the Drive port, preserving the
-// request order.
-func (i *instance) attachFiles(ctx context.Context, c *gin.Context, ids []string) ([]model.CloudFileReferenceObject, bool) {
+// resolveAttachments resolves attachment ids through the Drive port, preserving
+// the request order. Ports that are unavailable keep the reference list empty.
+func (i *instance) resolveAttachments(ctx context.Context, ids []string) ([]model.CloudFileReferenceObject, error) {
 	attachments := []model.CloudFileReferenceObject{}
-	if len(ids) == 0 {
-		return attachments, true
-	}
-	if i.files == nil {
-		return attachments, true
+	if len(ids) == 0 || i.files == nil {
+		return attachments, nil
 	}
 	files, err := i.files.GetFiles(ctx, ids)
 	if err != nil {
-		failInternal(c, err)
-		return nil, false
+		return nil, err
 	}
 	for _, id := range ids {
 		if file, ok := files[id]; ok {
 			attachments = append(attachments, file)
 		}
+	}
+	return attachments, nil
+}
+
+// attachFiles is the gin-flavoured wrapper used by the HTTP handlers.
+func (i *instance) attachFiles(ctx context.Context, c *gin.Context, ids []string) ([]model.CloudFileReferenceObject, bool) {
+	attachments, err := i.resolveAttachments(ctx, ids)
+	if err != nil {
+		failInternal(c, err)
+		return nil, false
 	}
 	return attachments, true
 }

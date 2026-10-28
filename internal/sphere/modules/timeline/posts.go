@@ -346,7 +346,8 @@ func (s *service) accountBatch(ctx context.Context, ids []string) map[string]*mo
 }
 
 // loadPostRealms attaches the realm snapshot the C# service loaded through
-// RemoteRealmService.
+// RemoteRealmService. The realms port answers first; the realm gRPC client
+// fills in the ids the port could not resolve.
 func (s *service) loadPostRealms(ctx context.Context, posts []model.Post) {
 	ids := make([]string, 0, len(posts))
 	seen := map[string]struct{}{}
@@ -360,13 +361,16 @@ func (s *service) loadPostRealms(ctx context.Context, posts []model.Post) {
 		seen[*posts[i].RealmID] = struct{}{}
 		ids = append(ids, *posts[i].RealmID)
 	}
-	realms := s.realmBatch(ctx, ids)
+	if len(ids) == 0 {
+		return
+	}
+	realms := s.realmRefs(ctx, ids)
 	for i := range posts {
 		if posts[i].RealmID == nil {
 			continue
 		}
 		if realm, ok := realms[*posts[i].RealmID]; ok {
-			posts[i].Realm = realmRefFromProto(realm)
+			posts[i].Realm = realm
 		}
 	}
 }

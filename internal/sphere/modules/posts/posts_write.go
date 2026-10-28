@@ -273,6 +273,16 @@ func (h *handler) createPost(c *gin.Context) {
 		httpx.Forbidden(c, "You need at least be an editor to post as this publisher.")
 		return
 	}
+	if request.RealmID != nil {
+		if status, message := h.validatePostRealm(ctx, *request.RealmID, accountID); status != 0 {
+			if status == 403 {
+				httpx.Forbidden(c, message)
+			} else {
+				httpx.BadRequest(c, message, "The realm does not exist or is unavailable.")
+			}
+			return
+		}
+	}
 
 	if postType == int(model.PostTypeBlog) {
 		if strings.TrimSpace(stringValue(request.Content)) == "" {
@@ -438,12 +448,16 @@ func (h *handler) createPost(c *gin.Context) {
 			}
 		}
 	}
+	if err := h.writePostIndex(ctx, &ent); err != nil {
+		h.log.Warn("posts: index created post failed", "post", ent.ID, "error", err)
+	}
 
 	post, err := h.hydrateOne(ctx, &ent, h.newViewer(c), false, false)
 	if err != nil {
 		httpx.Internal(c)
 		return
 	}
+	h.afterPostCreated(ctx, &ent, &post, accountID)
 	httpx.OK(c, post)
 }
 
@@ -849,6 +863,16 @@ func (h *handler) updatePost(c *gin.Context) {
 		}
 		ent.PublisherID = publisher.ID
 	}
+	if request.RealmID != nil {
+		if status, message := h.validatePostRealm(ctx, *request.RealmID, accountID); status != 0 {
+			if status == 403 {
+				httpx.Forbidden(c, message)
+			} else {
+				httpx.BadRequest(c, message, "The realm does not exist or is unavailable.")
+			}
+			return
+		}
+	}
 
 	if request.Title != nil {
 		ent.Title = request.Title
@@ -998,11 +1022,15 @@ func (h *handler) updatePost(c *gin.Context) {
 		httpx.Internal(c)
 		return
 	}
+	if err := h.writePostIndex(ctx, &ent); err != nil {
+		h.log.Warn("posts: index updated post failed", "post", ent.ID, "error", err)
+	}
 	post, err := h.hydrateOne(ctx, &ent, h.newViewer(c), false, false)
 	if err != nil {
 		httpx.Internal(c)
 		return
 	}
+	h.afterPostUpdated(ctx, &ent, &post, accountID)
 	httpx.OK(c, post)
 }
 
@@ -1061,7 +1089,7 @@ func (h *handler) deletePost(c *gin.Context) {
 
 func (h *handler) softDeletePost(ctx context.Context, ent *store.PostEntity) error {
 	now := time.Now().UTC()
-	return h.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := h.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("post_id = ?", ent.ID).Delete(&store.PostReactionEntity{}).Error; err != nil {
 			return err
 		}
@@ -1077,6 +1105,11 @@ func (h *handler) softDeletePost(ctx context.Context, ent *store.PostEntity) err
 		_ = now
 		return tx.Delete(&store.PostEntity{}, "id = ?", ent.ID).Error
 	})
+	if err != nil {
+		return err
+	}
+	h.afterPostDeleted(ctx, ent)
+	return nil
 }
 
 func (h *handler) batchDeletePosts(c *gin.Context) {
