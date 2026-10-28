@@ -53,6 +53,7 @@ type PublisherMemberRow struct {
 // TableName pins the row to the legacy table.
 func (PublisherMemberRow) TableName() string { return "publisher_members" }
 
+func (s *Store) PublisherMemberRows(ctx context.Context, publisherID uuid.UUID, joinedOnly bool, offset, take int) ([]PublisherMemberRow, int64, error) {
 	base := func() *gorm.DB {
 		query := s.DB.WithContext(ctx).Model(&PublisherMemberRow{}).
 			Where("publisher_id = ?", publisherID).

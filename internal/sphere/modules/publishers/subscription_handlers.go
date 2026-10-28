@@ -3,6 +3,7 @@ package publishers
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -315,7 +316,7 @@ func (i *instance) handleSubscriptions(c *gin.Context) {
 	if !ok {
 		return
 	}
-	order := c.Query("order")
+	order := strings.ToLower(strings.TrimSpace(c.Query("order")))
 	ctx := c.Request.Context()
 	query := i.store.DB.WithContext(ctx).Model(&store.PublisherSubscriptionEntity{}).
 		Where("account_id = ? AND ended_at IS NULL AND state = ? AND is_blocking = ?",

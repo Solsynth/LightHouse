@@ -133,8 +133,8 @@ func (h *handler) listAllCollections(c *gin.Context) {
 	}
 	if search != "" && len([]rune(search)) >= 3 {
 		pattern := "%" + search + "%"
-		query = query.Order(gorm.Expr("(slug ILIKE ? OR name ILIKE ? OR description ILIKE ?) DESC", pattern, pattern, pattern)).
-			Order(gorm.Expr("similarity(slug, ?) DESC", search))
+		query = query.Order(orderExpr("(slug ILIKE ? OR name ILIKE ? OR description ILIKE ?) DESC", pattern, pattern, pattern)).
+			Order(orderExpr("similarity(slug, ?) DESC", search))
 	} else {
 		query = query.Order("COALESCE(name, slug) ASC").Order("slug ASC")
 	}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/authn"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/httpx"
@@ -80,7 +81,7 @@ func (i *instance) handleAdminList(c *gin.Context) {
 		}
 	}
 	var total int64
-	if err := query.Count(&total).Error; err != nil {
+	if err := query.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		i.internal(c)
 		return
 	}

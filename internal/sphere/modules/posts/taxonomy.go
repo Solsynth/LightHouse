@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/go/pkg/errs"
 
@@ -103,7 +102,7 @@ func (h *handler) listCategories(c *gin.Context) {
 	case "usage":
 		q = q.Order("(SELECT count(*) FROM post_category_links l JOIN posts p ON p.id = l.posts_id AND p.deleted_at IS NULL WHERE l.categories_id = post_categories.id) DESC")
 	case "popularity":
-		q = q.Order(gorm.Expr("(SELECT count(*) FROM post_category_links l JOIN posts p ON p.id = l.posts_id AND p.deleted_at IS NULL WHERE l.categories_id = post_categories.id AND p.drafted_at IS NULL AND p.visibility = ? AND p.created_at >= ? AND p.created_at <= ?) DESC", int(model.VisibilityPublic), recent, now))
+		q = q.Order(orderExpr("(SELECT count(*) FROM post_category_links l JOIN posts p ON p.id = l.posts_id AND p.deleted_at IS NULL WHERE l.categories_id = post_categories.id AND p.drafted_at IS NULL AND p.visibility = ? AND p.created_at >= ? AND p.created_at <= ?) DESC", int(model.VisibilityPublic), recent, now))
 	case "":
 		q = q.Order("COALESCE(name, slug) ASC")
 	default:
@@ -181,7 +180,7 @@ func (h *handler) listTags(c *gin.Context) {
 	case "usage":
 		q = q.Order("(SELECT count(*) FROM post_tag_links l JOIN posts p ON p.id = l.posts_id AND p.deleted_at IS NULL WHERE l.tags_id = post_tags.id) DESC")
 	case "popularity":
-		q = q.Order(gorm.Expr("(SELECT count(*) FROM post_tag_links l JOIN posts p ON p.id = l.posts_id AND p.deleted_at IS NULL WHERE l.tags_id = post_tags.id AND p.drafted_at IS NULL AND p.visibility = ? AND p.created_at >= ? AND p.created_at <= ?) DESC", int(model.VisibilityPublic), recent, now))
+		q = q.Order(orderExpr("(SELECT count(*) FROM post_tag_links l JOIN posts p ON p.id = l.posts_id AND p.deleted_at IS NULL WHERE l.tags_id = post_tags.id AND p.drafted_at IS NULL AND p.visibility = ? AND p.created_at >= ? AND p.created_at <= ?) DESC", int(model.VisibilityPublic), recent, now))
 	case "":
 		q = q.Order("COALESCE(name, slug) ASC")
 	default:

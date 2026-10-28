@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"src.solsynth.dev/sosys/go/pkg/errs"
 	gen "src.solsynth.dev/sosys/go/proto"
@@ -495,6 +496,11 @@ func orderByDate(order string) bool {
 	return normalized == orderDate || normalized == orderCreatedAt
 }
 
+// orderExpr builds an ORDER BY entry whose SQL carries bind parameters.
+func orderExpr(sql string, args ...any) clause.OrderBy {
+	return clause.OrderBy{Expression: gorm.Expr(sql, args...)}
+}
+
 func applyPostOrdering(q *gorm.DB, order string, orderDesc, shuffle bool, search string) *gorm.DB {
 	if shuffle {
 		return q.Order("random()")
@@ -502,13 +508,13 @@ func applyPostOrdering(q *gorm.DB, order string, orderDesc, shuffle bool, search
 	normalized := normalizeOrder(order)
 	if len(search) >= 3 && !orderByDate(normalized) {
 		pattern := "%" + search + "%"
-		q = q.Order(gorm.Expr(
+		q = q.Order(orderExpr(
 			"(title ILIKE ? OR description ILIKE ? OR content ILIKE ?) DESC",
 			pattern, pattern, pattern,
 		))
-		q = q.Order(gorm.Expr("similarity(COALESCE(title, ''), ?) DESC", search))
-		q = q.Order(gorm.Expr("similarity(COALESCE(description, ''), ?) DESC", search))
-		q = q.Order(gorm.Expr("similarity(COALESCE(content, ''), ?) DESC", search))
+		q = q.Order(orderExpr("similarity(COALESCE(title, ''), ?) DESC", search))
+		q = q.Order(orderExpr("similarity(COALESCE(description, ''), ?) DESC", search))
+		q = q.Order(orderExpr("similarity(COALESCE(content, ''), ?) DESC", search))
 	}
 	if normalized == orderPopularity {
 		if orderDesc {

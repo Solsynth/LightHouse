@@ -127,7 +127,7 @@ func (s *server) handleFollow(ctx context.Context, actorURI string, activity map
 	}
 
 	var existing store.PublisherSubscriptionEntity
-	err = s.s.db.WithContext(ctx).
+	err = s.db.WithContext(ctx).
 		Where("follower_publisher_id = ? AND publisher_id = ?", actor.ID, target.ID).
 		First(&existing).Error
 
