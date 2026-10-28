@@ -12,6 +12,7 @@ import (
 
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
+	"src.solsynth.dev/sosys/lighthouse/internal/sphere/ports"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
 )
 
@@ -31,6 +32,10 @@ func Factory() module.Factory[core.Services] {
 		Kind:           module.KindFeature,
 		DefaultEnabled: true,
 		Requires:       []string{PostsModuleID, PublishersModuleID},
+		Ports: []module.PortRequirement{
+			{ID: ports.PortPostSignals, Optional: true},
+			{ID: ports.PortRealms, Optional: true},
+		},
 		Models:         []any{store.PostInterestProfileEntity{}, store.DiscoveryPreferenceEntity{}},
 		SQL:            []module.SchemaHook{indexHook},
 		Capabilities:   []string{"timeline", "timeline.discovery"},
@@ -63,6 +68,8 @@ type instance struct {
 
 func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]) error {
 	i.svc = newService(host.Core, host.Log)
+	i.svc.signals, _ = module.Get[ports.PostSignals](host.Ports, ports.PortPostSignals)
+	i.svc.realms, _ = module.Get[ports.Realms](host.Ports, ports.PortRealms)
 
 	api := host.API
 	api.GET("/timeline", i.svc.handleListEvents)

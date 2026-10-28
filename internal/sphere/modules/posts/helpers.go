@@ -53,8 +53,9 @@ type handler struct {
 	ports *module.PortRegistry
 	log   *slog.Logger
 
-	viewMu sync.Mutex
-	views  map[uuid.UUID]*viewBucket
+	viewMu    sync.Mutex
+	views     map[uuid.UUID]*viewBucket
+	viewDedup map[string]time.Time
 
 	interestMu sync.Mutex
 	interest   []interestSignal
@@ -84,7 +85,8 @@ func newHandler(host *module.Host[core.Services]) *handler {
 		st:    store.New(host.Core.DB),
 		ports: host.Ports,
 		log:   log,
-		views: map[uuid.UUID]*viewBucket{},
+		views:     map[uuid.UUID]*viewBucket{},
+		viewDedup: map[string]time.Time{},
 	}
 }
 

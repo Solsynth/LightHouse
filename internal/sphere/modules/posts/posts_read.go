@@ -2,6 +2,7 @@ package posts
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -546,10 +547,22 @@ func (h *handler) listPosts(c *gin.Context) {
 	case pinned != nil && !*pinned:
 		query = query.Where("pin_mode IS NULL")
 	}
-	if realm != "" && !hasPublisherFilter {
-		// Realm resolution lives in Passport; without a realm port the filter
-		// cannot be applied by slug.
-		h.log.Debug("posts: realm filter ignored, realm port unavailable", "realm", realm)
+	if realm != "" {
+		switch id, ok := parseUUID(realm); {
+		case ok:
+			query = query.Where("realm_id = ?", id)
+		default:
+			resolved, err := h.realmIDBySlug(ctx, realm)
+			switch {
+			case err == nil:
+				query = query.Where("realm_id = ?", resolved)
+			case errors.Is(err, errRealmUnavailable):
+				h.log.Debug("posts: realm filter ignored, realm port unavailable", "realm", realm)
+			default:
+				h.log.Debug("posts: realm filter not found", "realm", realm, "error", err)
+				query = query.Where("1 = 0")
+			}
+		}
 	}
 
 	if includeReplies := queryBoolPtr(c, "replies"); includeReplies != nil {

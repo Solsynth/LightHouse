@@ -26,6 +26,7 @@ type postRelations struct {
 	replies        map[uuid.UUID]int
 	threadReplies  map[uuid.UUID]int
 	collections    map[uuid.UUID][]model.PostCollection
+	realms         map[uuid.UUID]*model.RealmRef
 }
 
 // hydrate converts post rows into wire posts with every relation the C#
@@ -55,10 +56,14 @@ func (h *handler) hydrate(ctx context.Context, ents []store.PostEntity, v *viewe
 
 	allIDs := make([]uuid.UUID, 0, len(allEnts))
 	publisherIDs := make([]uuid.UUID, 0, len(allEnts))
+	realmIDs := make([]uuid.UUID, 0, len(allEnts))
 	for i := range allEnts {
 		allIDs = append(allIDs, allEnts[i].ID)
 		if allEnts[i].PublisherID != uuid.Nil {
 			publisherIDs = append(publisherIDs, allEnts[i].PublisherID)
+		}
+		if allEnts[i].RealmID != nil {
+			realmIDs = append(realmIDs, *allEnts[i].RealmID)
 		}
 	}
 
@@ -66,6 +71,7 @@ func (h *handler) hydrate(ctx context.Context, ents []store.PostEntity, v *viewe
 	if err != nil {
 		return nil, err
 	}
+	rel.realms = h.loadRealmRefs(ctx, realmIDs)
 
 	base := make(map[uuid.UUID]model.Post, len(allEnts))
 	for i := range allEnts {
@@ -436,6 +442,11 @@ func (h *handler) buildPost(ent *store.PostEntity, rel *postRelations) model.Pos
 	post.IsBookmarked = rel.bookmarked[ent.ID]
 	post.RepliesCount = rel.replies[ent.ID]
 	post.ThreadRepliesCount = rel.threadReplies[ent.ID]
+	if ent.RealmID != nil {
+		if ref, ok := rel.realms[*ent.RealmID]; ok {
+			post.Realm = ref
+		}
+	}
 	return post
 }
 

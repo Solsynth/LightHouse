@@ -19,6 +19,7 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/grpcclient"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
+	"src.solsynth.dev/sosys/lighthouse/internal/sphere/ports"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
 )
 
@@ -65,6 +66,8 @@ type service struct {
 	clients *grpcclient.Clients
 	log     *slog.Logger
 	maxTake int
+	signals ports.PostSignals
+	realms  ports.Realms
 }
 
 func newService(c *core.Services, log *slog.Logger) *service {

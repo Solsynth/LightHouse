@@ -12,6 +12,7 @@ import (
 
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
+	"src.solsynth.dev/sosys/lighthouse/internal/sphere/ports"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
 )
 
@@ -32,7 +33,10 @@ func Factory() module.Factory[core.Services] {
 			{ID: "realtime", Optional: true},
 			{ID: "payments", Optional: true},
 			{ID: "subscriptions", Optional: true},
+			{ID: "realms", Optional: true},
+			{ID: "federation", Optional: true},
 		},
+		Provides: []module.PortID{ports.PortPostSignals},
 		Models: []any{
 			store.PostEntity{},
 			store.PostReactionEntity{},
@@ -66,10 +70,22 @@ func Factory() module.Factory[core.Services] {
 	}
 }
 
-type instance struct{}
+type instance struct{ h *handler }
+
+// ProvidePorts publishes the post signal port so sibling modules can record
+// views and interest and read the sponsored slot without importing posts.
+func (i *instance) ProvidePorts(_ context.Context, host *module.Host[core.Services]) error {
+	i.h = newHandler(host)
+	module.Provide[ports.PostSignals](host.Ports, ports.PortPostSignals, ModuleID,
+		module.KindFeature, &signalsPort{h: i.h})
+	return nil
+}
 
 func (i *instance) Configure(ctx context.Context, host *module.Host[core.Services]) error {
-	h := newHandler(host)
+	h := i.h
+	if h == nil {
+		h = newHandler(host)
+	}
 	h.registerRoutes(host)
 	if host.GRPC != nil {
 		gen.RegisterDyPostServiceServer(host.GRPC, &grpcService{h: h})

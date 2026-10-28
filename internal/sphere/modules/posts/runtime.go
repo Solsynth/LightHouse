@@ -26,6 +26,8 @@ func (h *handler) startJobs(host *module.Host[core.Services]) {
 	jobs.Every("posts_interest_flush", time.Minute, h.flushInterest)
 	jobs.Every("posts_scheduled_publish", 15*time.Second, h.publishScheduledPosts)
 	jobs.Cron("posts_sponsor_auction", "0 0 * * * ?", h.runSponsorAuction)
+	jobs.Every("posts_index_backfill", 10*time.Minute, h.backfillPostIndices)
+	jobs.Now("posts_index_backfill_initial", h.backfillPostIndices)
 }
 
 // ---------------------------------------------------------------------------
