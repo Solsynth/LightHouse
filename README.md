@@ -97,6 +97,8 @@ SPHERE_TARGET_DSN=postgres://…/dyson_sphere_go \
 and then `INSERT … ON CONFLICT DO NOTHING`, so re-running is safe. Soft-deleted
 rows are copied with their `deleted_at` intact.
 
+Status, verification and the known gaps are in [`docs/PORT_STATUS.md`](docs/PORT_STATUS.md).
+
 ## Compatibility notes
 
 - JSON is snake_case; enums are integers; times are UTC RFC3339 (seconds);
