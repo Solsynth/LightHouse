@@ -73,6 +73,7 @@ type instance struct {
 func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]) error {
 	i.host = host
 	i.db = host.Core.DB
+	i.st = store.New(host.Core.DB)
 	i.log = host.Log
 	if i.log == nil {
 		i.log = slog.Default()
