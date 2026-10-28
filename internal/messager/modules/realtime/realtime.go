@@ -101,9 +101,12 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 	calls.POST("/:roomId/invite/:targetAccountId", authn.RequireAuth(), requirePermission(permissionCallInvite), s.inviteToCall)
 	calls.DELETE("/:roomId", authn.RequireAuth(), s.leaveCall)
 
+	// The chat module owns the `/chat/:id` wildcard, so these routes must reuse
+	// the same parameter name; gin rejects two different wildcard names at one
+	// position.
 	chat := host.API.Group("/chat")
-	chat.POST("/:roomId/messages/voice", authn.RequireAuth(), requirePermission(permissionMessagesCreate), s.sendVoiceMessage)
-	chat.GET("/:roomId/voice/:voiceId", s.getVoiceMessage)
+	chat.POST("/:id/messages/voice", authn.RequireAuth(), requirePermission(permissionMessagesCreate), s.sendVoiceMessage)
+	chat.GET("/:id/voice/:voiceId", s.getVoiceMessage)
 
 	if host.Core.Jobs != nil {
 		host.Core.Jobs.Cron("messager.voice.cleanup", s.voice.cleanupCron, s.voice.cleanupJob)

@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -384,27 +385,7 @@ func (s *service) fetchPublicRealms(ctx context.Context, order string, take int)
 	return resp.GetRealms()
 }
 
-func itoa(value int) string {
-	if value == 0 {
-		return "0"
-	}
-	negative := value < 0
-	if negative {
-		value = -value
-	}
-	var digits [20]byte
-	pos := len(digits)
-	for value > 0 {
-		pos--
-		digits[pos] = byte('0' + value%10)
-		value /= 10
-	}
-	if negative {
-		pos--
-		digits[pos] = '-'
-	}
-	return string(digits[pos:])
-}
+func itoa(value int) string { return strconv.Itoa(value) }
 
 // boostedPostIDs mirrors GetBoostedPostIdsForTimelineAsync.
 func (s *service) boostedPostIDs(ctx context.Context, accountID uuid.UUID, cursor *time.Time) []uuid.UUID {
@@ -424,10 +405,19 @@ func (s *service) boostedPostIDs(ctx context.Context, accountID uuid.UUID, curso
 	if cursor != nil {
 		query = query.Where("boosted_at < ?", *cursor)
 	}
-	var ids []uuid.UUID
-	if err := query.Order("boosted_at DESC").Distinct("post_id").Pluck("post_id", &ids).Error; err != nil {
+	var rows []uuid.UUID
+	if err := query.Order("boosted_at DESC").Pluck("post_id", &rows).Error; err != nil {
 		s.log.Warn("timeline: boosted posts", "error", err)
 		return nil
+	}
+	seen := make(map[uuid.UUID]struct{}, len(rows))
+	ids := make([]uuid.UUID, 0, len(rows))
+	for _, id := range rows {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
 	}
 	if cursor == nil {
 		s.cacheSet(ctx, cacheKey, ids, boostedPostsTTL)

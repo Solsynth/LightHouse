@@ -461,7 +461,6 @@ func (i *instance) roomSyncData(c *gin.Context) {
 	ranges := normalizeSequenceRanges(request.MissingSequenceRanges)
 	useSequences := len(sequences) > 0 || len(ranges) > 0
 	if useSequences {
-		clause := i.db.WithContext(ctx)
 		parts := []string{}
 		args := []any{}
 		if len(sequences) > 0 {
@@ -472,7 +471,6 @@ func (i *instance) roomSyncData(c *gin.Context) {
 			parts = append(parts, "(room_sequence >= ? AND room_sequence <= ?)")
 			args = append(args, item.StartSequence, item.EndSequence)
 		}
-		_ = clause
 		query = query.Where(strings.Join(parts, " OR "), args...)
 	} else {
 		since := time.UnixMilli(request.LastSyncTimestamp).UTC()
@@ -494,7 +492,7 @@ func (i *instance) roomSyncData(c *gin.Context) {
 	if len(messages) > 0 && messages[len(messages)-1].CreatedAt != nil {
 		latest = time.Time(*messages[len(messages)-1].CreatedAt)
 	}
-	c.Header("X-Total", itoa(total))
+	c.Header("X-Total", strconv.Itoa(total))
 	httpx.OK(c, syncResponse{
 		Messages:         messages,
 		CurrentTimestamp: model.NewTime(latest),
@@ -997,23 +995,4 @@ func (i *instance) botCommands(c *gin.Context) {
 	}
 	// Bot chat manifests are not exposed through any port in this deployment.
 	httpx.OK(c, map[string]any{})
-}
-
-func itoa(value int) string {
-	if value == 0 {
-		return "0"
-	}
-	negative := value < 0
-	if negative {
-		value = -value
-	}
-	digits := []byte{}
-	for value > 0 {
-		digits = append([]byte{byte('0' + value%10)}, digits...)
-		value /= 10
-	}
-	if negative {
-		return "-" + string(digits)
-	}
-	return string(digits)
 }

@@ -14,6 +14,7 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/modules/posts"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/modules/publishers"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/modules/reader"
+	"src.solsynth.dev/sosys/lighthouse/internal/sphere/modules/rewind"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/modules/stickers"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/modules/surveys"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/modules/timeline"
@@ -38,6 +39,7 @@ func Modules() []module.Factory[core.Services] {
 		automod.Factory(),
 		autocomplete.Factory(),
 		reader.Factory(),
+		rewind.Factory(),
 		translation.Factory(),
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/modules/chat"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/modules/integrations"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/modules/realtime"
+	"src.solsynth.dev/sosys/lighthouse/internal/messager/modules/rewind"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
 )
 
@@ -16,5 +17,6 @@ func Modules() []module.Factory[core.Services] {
 		integrations.Factory(),
 		chat.Factory(),
 		realtime.Factory(),
+		rewind.Factory(),
 	}
 }

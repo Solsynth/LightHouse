@@ -309,7 +309,12 @@ func findParticipant(participants []participantCacheItem, accountID uuid.UUID) *
 }
 
 func parseRoomID(c *gin.Context) (uuid.UUID, bool) {
-	roomID, err := uuid.Parse(c.Param("roomId"))
+	raw := c.Param("roomId")
+	if raw == "" {
+		// The chat module owns the `/chat/:id` wildcard these routes share.
+		raw = c.Param("id")
+	}
+	roomID, err := uuid.Parse(raw)
 	if err != nil {
 		httpx.NotFound(c, "Room not found.")
 		return uuid.UUID{}, false

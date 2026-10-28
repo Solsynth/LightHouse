@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"net"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -13,11 +13,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
-	"src.solsynth.dev/sosys/go/pkg/errs"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/httpx"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
-	"src.solsynth.dev/sosys/lighthouse/internal/sphere/config"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
@@ -360,40 +357,3 @@ func randomToken() string {
 // errNotFound is the package's sentinel for missing rows.
 var errNotFound = gorm.ErrRecordNotFound
 
-// unsafeURL guards the fields that must be absolute https URIs (actor URIs).
-func unsafeURL(raw string) bool {
-	return strings.TrimSpace(raw) == "" || strings.HasPrefix(raw, "http://")
-}
-
-// hostOf extracts a host without panicking on malformed input.
-func hostOf(raw string) string {
-	if parsed, err := urlParse(raw); err == nil {
-		return parsed.Host
-	}
-	return ""
-}
-
-// urlParse indirection keeps net/url out of the helper imports where unused.
-func urlParse(raw string) (*parsedURL, error) {
-	return parseURL(raw)
-}
-
-type parsedURL = urlValue
-
-// netIP is used by the redirect guard.
-func netIP(host string) []net.IP {
-	addresses, err := net.LookupIP(host)
-	if err != nil {
-		return nil
-	}
-	return addresses
-}
-
-// ensure module import stays referenced if helpers change.
-var _ = module.PortRequirement{}
-
-// compile-time guard that the wire model stays reachable from this file.
-var _ = model.FediverseInstance{}
-
-// configDocuments keeps the config type referenced for documentation.
-var _ = config.FediverseRuleSeed{}
