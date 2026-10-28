@@ -46,6 +46,9 @@ func failNotFound(c *gin.Context) {
 	httpx.Fail(c, errs.NotFound("The requested resource was not found."))
 }
 
+// noContent mirrors ASP.NET's NoContent(): a bare 204 without a body.
+func noContent(c *gin.Context) { c.Status(http.StatusNoContent) }
+
 func failValidation(c *gin.Context, field, message, code string) {
 	apiErr := errs.Validation(map[string][]string{field: {message}})
 	if code != "" {

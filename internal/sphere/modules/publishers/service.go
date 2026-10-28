@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -604,8 +605,15 @@ func (i *instance) invalidateSubscribedPublishers(ctx context.Context, accountID
 // ---------------------------------------------------------------------------
 
 func (i *instance) createFollowRequest(ctx context.Context, publisher *store.PublisherEntity, accountID uuid.UUID) (*store.PublisherSubscriptionEntity, error) {
-	if publisher.AccountID != nil && i.accounts != nil {
-		if blocked, err := i.accounts.HasRelationship(ctx, accountID.String(), publisher.AccountID.String()); err == nil && blocked {
+	if publisher.AccountID != nil && i.core != nil && i.core.Clients != nil && i.core.Clients.Profile != nil {
+		blockedStatus := int32(-100)
+		response, err := i.core.Clients.Profile.GetRelationship(ctx, &gen.DyGetRelationshipRequest{
+			AccountId:       accountID.String(),
+			RelatedId:       publisher.AccountID.String(),
+			Status:          &blockedStatus,
+			EitherDirection: true,
+		})
+		if err == nil && response.GetRelationship() != nil {
 			return nil, errors.New("You cannot follow a publisher you have blocked or who has blocked you.")
 		}
 	}
@@ -963,6 +971,10 @@ func (i *instance) quota(ctx context.Context, account *gen.DyAccount) (publisher
 			}
 		}
 	}
+
+	sort.SliceStable(owned, func(a, b int) bool {
+		return owned[a].CreatedAt.Before(owned[b].CreatedAt)
+	})
 
 	total := publisherQuotaTotal(level, perkLevel)
 	used := len(owned)

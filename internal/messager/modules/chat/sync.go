@@ -438,6 +438,10 @@ func (i *instance) websocketConnected(ctx context.Context, deviceID, accountID s
 
 func (i *instance) roomSyncData(c *gin.Context) {
 	ctx := c.Request.Context()
+	if currentUser(c) == nil {
+		httpx.Unauthorized(c)
+		return
+	}
 	roomID, ok := uuidParam(c, "id")
 	if !ok {
 		return

@@ -125,6 +125,9 @@ func (i *instance) sendMessage(c *gin.Context) {
 	if !httpx.BindJSON(c, &request) {
 		return
 	}
+	if !validateSendLengths(c, request) {
+		return
+	}
 	request.Content = sanitizeText(request.Content)
 	if !validWKT(request.LocationWKT) {
 		failBadRequest(c, "CHAT_MESSAGE_LOCATION_INVALID", "Invalid location WKT.")
@@ -193,7 +196,9 @@ func (i *instance) updateMessage(c *gin.Context) {
 	if !httpx.BindJSON(c, &request) {
 		return
 	}
-	request.Content = sanitizeText(request.Content)
+	if !validateSendLengths(c, request) {
+		return
+	}
 	if !validWKT(request.LocationWKT) {
 		failBadRequest(c, "CHAT_MESSAGE_LOCATION_INVALID", "Invalid location WKT.")
 		return

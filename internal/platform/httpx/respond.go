@@ -54,9 +54,12 @@ func OK(c *gin.Context, body any) { c.JSON(http.StatusOK, body) }
 // Created writes 201 with body.
 func Created(c *gin.Context, body any) { c.JSON(http.StatusCreated, body) }
 
-// NoContent writes 200 with an empty object, which is what the C# controllers
-// return for "OK" actions that carry no payload.
-func NoContent(c *gin.Context) { c.JSON(http.StatusOK, gin.H{}) }
+// NoContent writes 204 with no body, matching ASP.NET's NoContent().
+func NoContent(c *gin.Context) { c.Status(http.StatusNoContent) }
+
+// OKEmpty writes 200 with no body, matching an ASP.NET action that returns
+// Ok() without a value.
+func OKEmpty(c *gin.Context) { c.Status(http.StatusOK) }
 
 // Fail writes an ApiError.
 func Fail(c *gin.Context, apiErr *errs.ApiError) {

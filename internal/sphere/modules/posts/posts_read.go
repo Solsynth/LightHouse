@@ -669,7 +669,7 @@ func (h *handler) respondDetail(c *gin.Context, id uuid.UUID) {
 	}
 	h.enqueueView(ent.ID, v)
 	if v.authed() {
-		h.enqueueInterest(v.accountID, ent.ID, 1, "view")
+		h.enqueueInterest(v.accountID, ent.ID, 0.2, "view")
 	}
 	httpx.OK(c, post)
 }
@@ -1332,7 +1332,7 @@ func (h *handler) getThread(c *gin.Context) {
 
 	h.enqueueView(ent.ID, v)
 	if v.authed() {
-		h.enqueueInterest(v.accountID, ent.ID, 1, "view")
+		h.enqueueInterest(v.accountID, ent.ID, 0.2, "view")
 	}
 
 	depth := len(ancestorNodes)

@@ -126,7 +126,7 @@ func (s *server) verifyIncoming(r *http.Request, body []byte) (bool, string, err
 	if err != nil {
 		return false, "", err
 	}
-	signingString := signingString(signature.Headers, requestTarget(r), r.Host,
+	signingString := signingString(r.Method, signature.Headers, requestTarget(r), r.Host,
 		r.Header.Get("Date"), r.Header.Get("Digest"), r.Header.Get("Content-Type"),
 		signature.Created, signature.Expires)
 	if err := verifyRSA(publicKey, signingString, signature.Signature); err != nil {
@@ -205,13 +205,13 @@ func requestTarget(r *http.Request) string {
 	return target
 }
 
-func signingString(headers []string, target, host, date, digest, contentType, created, expires string) string {
+func signingString(method string, headers []string, target, host, date, digest, contentType, created, expires string) string {
 	lines := make([]string, 0, len(headers))
 	for _, header := range headers {
 		var value string
 		switch strings.ToLower(header) {
 		case "(request-target)":
-			value = target
+			value = strings.ToLower(method) + " " + target
 		case "host":
 			value = host
 		case "date":
@@ -250,7 +250,7 @@ func (s *server) signRequest(req *http.Request, body []byte, keyID, privatePEM s
 		headers = append(headers, "content-type")
 	}
 
-	base := signingString(headers, requestTarget(req), req.Host,
+	base := signingString(req.Method, headers, requestTarget(req), req.Host,
 		req.Header.Get("Date"), req.Header.Get("Digest"), req.Header.Get("Content-Type"), "", "")
 
 	privateKey, err := parsePrivateKeyPEM(privatePEM)

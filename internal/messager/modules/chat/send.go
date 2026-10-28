@@ -57,6 +57,22 @@ func (r sendMessageRequest) hasPlaintextFields() bool {
 		r.NotableDayID != nil || r.CalendarEventID != nil || len(r.Embeds) > 0 || r.hasLocation()
 }
 
+func validateSendLengths(c *gin.Context, request sendMessageRequest) bool {
+	if request.Content != nil && len([]rune(*request.Content)) > 4096 {
+		failValidation(c, "content", "The content field must be at most 4096 characters.", "")
+		return false
+	}
+	if request.Nonce != nil && len(*request.Nonce) > 36 {
+		failValidation(c, "nonce", "The nonce field must be at most 36 characters.", "")
+		return false
+	}
+	if request.ClientMessageID != nil && len(*request.ClientMessageID) > 128 {
+		failValidation(c, "client_message_id", "The client_message_id field must be at most 128 characters.", "")
+		return false
+	}
+	return true
+}
+
 func looksLikePlaintextJSON(payload []byte) bool {
 	if len(payload) <= 1 {
 		return false

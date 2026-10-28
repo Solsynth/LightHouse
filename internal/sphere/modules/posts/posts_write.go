@@ -249,7 +249,7 @@ func (h *handler) createPost(c *gin.Context) {
 		postType = *request.Type
 	}
 	if postType != int(model.PostTypeBlog) {
-		if strings.TrimSpace(stringValue(request.Content)) == "" && len(request.Attachments) == 0 {
+		if strings.TrimSpace(stringValue(request.Content)) == "" && len(request.Attachments) == 0 && request.ForwardedPostID == nil {
 			httpx.BadRequest(c, "POST_CONTENT_REQUIRED", "Content is required.")
 			return
 		}
@@ -339,14 +339,12 @@ func (h *handler) createPost(c *gin.Context) {
 		}
 	}
 
-	var replied, forwarded *store.PostEntity
 	if request.RepliedPostID != nil {
 		var target store.PostEntity
 		if err := h.db.WithContext(ctx).Where("id = ?", *request.RepliedPostID).First(&target).Error; err != nil {
 			httpx.BadRequest(c, "POST_REPLY_TARGET_NOT_FOUND", "Post replying to was not found.")
 			return
 		}
-		replied = &target
 		ent.RepliedPostID = &target.ID
 	}
 	if request.ForwardedPostID != nil {
@@ -355,7 +353,6 @@ func (h *handler) createPost(c *gin.Context) {
 			httpx.BadRequest(c, "POST_FORWARD_TARGET_NOT_FOUND", "Forwarded post was not found.")
 			return
 		}
-		forwarded = &target
 		ent.ForwardedPostID = &target.ID
 	}
 	if request.ChainedPostID != nil && (request.RepliedPostID != nil || request.ForwardedPostID != nil) {
@@ -386,6 +383,10 @@ func (h *handler) createPost(c *gin.Context) {
 	h.applyEmbeds(ctx, metadata, &request)
 	ent.Metadata = store.ToJSON(metadata)
 
+	if request.DraftedAt == nil && request.PublishedAt != nil && request.PublishedAt.Time().Before(now) {
+		httpx.BadRequest(c, "POST_CREATE_FAILED", "Cannot create the post which published in the past.")
+		return
+	}
 	applyPublicationTimes(&ent, request.DraftedAt, request.PublishedAt, now, true)
 
 	if err := h.resolveAttachments(ctx, &ent, request.Attachments); err != nil {
@@ -393,12 +394,12 @@ func (h *handler) createPost(c *gin.Context) {
 		return
 	}
 
-	tags, tagSlugs, err := h.resolveTags(ctx, request.Tags, publisher)
+	_, tagSlugs, err := h.resolveTags(ctx, request.Tags, publisher)
 	if err != nil {
 		httpx.BadRequest(c, "POST_CREATE_FAILED", err.Error())
 		return
 	}
-	categories, categorySlugs, err := h.resolveCategories(ctx, request.Categories)
+	_, categorySlugs, err := h.resolveCategories(ctx, request.Categories)
 	if err != nil {
 		httpx.BadRequest(c, "POST_CREATE_FAILED", err.Error())
 		return
@@ -424,6 +425,10 @@ func (h *handler) createPost(c *gin.Context) {
 		h.applyAutoChain(ctx, &ent)
 	}
 
+	if ent.RepliedPostID != nil {
+		h.enqueueInterest(accountID, *ent.RepliedPostID, 1.5, "reply")
+	}
+
 	if len(request.CollectionIDs) > 0 {
 		var collections []store.PostCollectionEntity
 		h.db.WithContext(ctx).Where("publisher_id = ? AND id IN ?", publisher.ID, request.CollectionIDs).Find(&collections)
@@ -433,11 +438,6 @@ func (h *handler) createPost(c *gin.Context) {
 			}
 		}
 	}
-
-	_ = replied
-	_ = forwarded
-	_ = tags
-	_ = categories
 
 	post, err := h.hydrateOne(ctx, &ent, h.newViewer(c), false, false)
 	if err != nil {
@@ -670,29 +670,44 @@ func (h *handler) applyEmbeds(ctx context.Context, metadata map[string]any, requ
 	}
 	embeds := embedList(metadata)
 
-	appendEmbed := func(kind string, id uuid.UUID) {
-		embeds = append(embeds, map[string]any{"type": kind, "id": id.String()})
+	replaceEmbed := func(kind string, id uuid.UUID) {
+		filtered := embeds[:0]
+		for _, embed := range embeds {
+			if existing, _ := embed["type"].(string); existing == kind {
+				continue
+			}
+			filtered = append(filtered, embed)
+		}
+		embeds = append(filtered, map[string]any{"type": kind, "id": id.String()})
 	}
 
 	if request.SurveyID != nil {
-		appendEmbed("survey", *request.SurveyID)
+		replaceEmbed("survey", *request.SurveyID)
 	}
 	if request.FundID != nil {
-		appendEmbed("fund", *request.FundID)
+		replaceEmbed("fund", *request.FundID)
 	}
 	if request.MeetID != nil {
-		appendEmbed("meet", *request.MeetID)
+		replaceEmbed("meet", *request.MeetID)
 	}
 	if request.LiveStreamID != nil {
-		appendEmbed("livestream", *request.LiveStreamID)
+		replaceEmbed("livestream", *request.LiveStreamID)
 	}
 	if request.NotableDayID != nil {
-		appendEmbed("notable_day", *request.NotableDayID)
+		replaceEmbed("notable_day", *request.NotableDayID)
 	}
 	if request.CalendarEventID != nil {
-		appendEmbed("calendar_event", *request.CalendarEventID)
+		replaceEmbed("calendar_event", *request.CalendarEventID)
 	}
 	if hasLocationPayload(request) {
+		filtered := embeds[:0]
+		for _, embed := range embeds {
+			if kind, _ := embed["type"].(string); kind == "location" {
+				continue
+			}
+			filtered = append(filtered, embed)
+		}
+		embeds = filtered
 		location := map[string]any{"type": "location"}
 		if request.LocationName != nil {
 			location["name"] = *request.LocationName
@@ -796,7 +811,7 @@ func (h *handler) updatePost(c *gin.Context) {
 		postType = *request.Type
 	}
 	if postType != int(model.PostTypeBlog) {
-		if strings.TrimSpace(stringValue(request.Content)) == "" && len(request.Attachments) == 0 {
+		if strings.TrimSpace(stringValue(request.Content)) == "" && len(request.Attachments) == 0 && request.ForwardedPostID == nil {
 			httpx.BadRequest(c, "POST_CONTENT_REQUIRED", "Content is required.")
 			return
 		}

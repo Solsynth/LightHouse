@@ -332,7 +332,6 @@ func (h *handler) applyVisibility(q *gorm.DB, v *viewer, listing bool, info gate
 
 	q = q.Where("((drafted_at IS NULL AND published_at IS NOT NULL AND published_at <= ?) OR publisher_id IN ?)", now, memberIDs)
 	q = q.Where("(visibility <> ? OR publisher_id IN ?)", int(model.VisibilityPrivate), memberIDs)
-	q = q.Where("(visibility <> ? OR publisher_id IN ?)", int(model.VisibilityFriends), memberIDs)
 	q = q.Where("(visibility <> ? OR publisher_id IN ?)", int(model.VisibilityCloseFriendsOnly), memberIDs)
 	if !showQuietPublic {
 		if len(info.subscribed) > 0 {

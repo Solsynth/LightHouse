@@ -38,7 +38,10 @@ func (i *instance) handleListSubscribers(c *gin.Context) {
 		Where("publisher_id = ? AND ended_at IS NULL AND state = ? AND is_blocking = ?",
 			publisher.ID, subscriptionAccepted, false)
 	var total int64
-	if err := query.Count(&total).Error; err != nil {
+	if err := i.store.DB.WithContext(ctx).Model(&store.PublisherSubscriptionEntity{}).
+		Where("publisher_id = ? AND ended_at IS NULL AND state = ? AND is_blocking = ?",
+			publisher.ID, subscriptionAccepted, false).
+		Count(&total).Error; err != nil {
 		i.internal(c)
 		return
 	}

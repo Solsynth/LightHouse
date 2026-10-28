@@ -53,20 +53,21 @@ type PublisherMemberRow struct {
 // TableName pins the row to the legacy table.
 func (PublisherMemberRow) TableName() string { return "publisher_members" }
 
-// PublisherMemberRows lists live membership rows ordered by creation time.
-func (s *Store) PublisherMemberRows(ctx context.Context, publisherID uuid.UUID, joinedOnly bool, offset, take int) ([]PublisherMemberRow, int64, error) {
-	query := s.DB.WithContext(ctx).Model(&PublisherMemberRow{}).
-		Where("publisher_id = ?", publisherID).
-		Where("deleted_at IS NULL")
-	if joinedOnly {
-		query = query.Where("joined_at IS NOT NULL")
+	base := func() *gorm.DB {
+		query := s.DB.WithContext(ctx).Model(&PublisherMemberRow{}).
+			Where("publisher_id = ?", publisherID).
+			Where("deleted_at IS NULL")
+		if joinedOnly {
+			query = query.Where("joined_at IS NOT NULL")
+		}
+		return query
 	}
 	var total int64
-	if err := query.Count(&total).Error; err != nil {
+	if err := base().Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 	var rows []PublisherMemberRow
-	if err := query.Order("created_at ASC").Offset(offset).Limit(take).Find(&rows).Error; err != nil {
+	if err := base().Order("created_at ASC").Offset(offset).Limit(take).Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
 	return rows, total, nil
@@ -435,6 +436,8 @@ func (s *Store) UnsettledPositiveAwards(ctx context.Context) ([]PostAwardWithPub
 		JOIN posts p ON p.id = a.post_id
 		WHERE a.settled_at IS NULL
 			AND a.deleted_at IS NULL
+			AND a.deleted_at IS NULL
+			AND p.deleted_at IS NULL
 			AND a.attitude = 1
 	`).Scan(&rows).Error
 	return rows, err

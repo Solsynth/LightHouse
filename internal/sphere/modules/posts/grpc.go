@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -24,7 +26,7 @@ type grpcService struct {
 }
 
 func (s *grpcService) GetPost(ctx context.Context, request *gen.DyGetPostRequest) (*gen.DyPost, error) {
-	query := s.h.db.WithContext(ctx).Model(&store.PostEntity{}).Where("drafted_at IS NULL")
+	query := anonymousVisible(s.h.db.WithContext(ctx).Model(&store.PostEntity{}).Where("drafted_at IS NULL"))
 	switch identifier := request.Identifier.(type) {
 	case *gen.DyGetPostRequest_Id:
 		id, err := uuid.Parse(identifier.Id)
@@ -65,8 +67,8 @@ func (s *grpcService) GetPostBatch(ctx context.Context, request *gen.DyGetPostBa
 		return response, nil
 	}
 	var rows []store.PostEntity
-	if err := s.h.db.WithContext(ctx).Model(&store.PostEntity{}).
-		Where("drafted_at IS NULL").Where("id IN ?", ids).Find(&rows).Error; err != nil {
+	if err := anonymousVisible(s.h.db.WithContext(ctx).Model(&store.PostEntity{}).
+		Where("drafted_at IS NULL")).Where("id IN ?", ids).Find(&rows).Error; err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	posts, err := s.h.hydrate(ctx, rows, nil, true, false)
@@ -80,7 +82,7 @@ func (s *grpcService) GetPostBatch(ctx context.Context, request *gen.DyGetPostBa
 }
 
 func (s *grpcService) SearchPosts(ctx context.Context, request *gen.DySearchPostsRequest) (*gen.DySearchPostsResponse, error) {
-	query := s.h.db.WithContext(ctx).Model(&store.PostEntity{}).Where("drafted_at IS NULL")
+	query := anonymousVisible(s.h.db.WithContext(ctx).Model(&store.PostEntity{}).Where("drafted_at IS NULL"))
 	if request.PublisherId != "" {
 		if id, err := uuid.Parse(request.PublisherId); err == nil {
 			query = query.Where("publisher_id = ?", id)
@@ -123,7 +125,7 @@ func (s *grpcService) SearchPosts(ctx context.Context, request *gen.DySearchPost
 }
 
 func (s *grpcService) ListPosts(ctx context.Context, request *gen.DyListPostsRequest) (*gen.DyListPostsResponse, error) {
-	query := s.h.db.WithContext(ctx).Model(&store.PostEntity{}).Where("drafted_at IS NULL")
+	query := anonymousVisible(s.h.db.WithContext(ctx).Model(&store.PostEntity{}).Where("drafted_at IS NULL"))
 	if request.PublisherId != nil && request.PublisherId.Value != "" {
 		if id, err := uuid.Parse(request.PublisherId.Value); err == nil {
 			query = query.Where("publisher_id = ?", id)
@@ -220,6 +222,14 @@ func (s *grpcService) ListPosts(ctx context.Context, request *gen.DyListPostsReq
 	}
 	response.NextPageToken = nextPageToken(offset, pageSize, total)
 	return response, nil
+}
+
+// anonymousVisible mirrors FilterWithVisibility(null, [], []): only published
+// public posts are reachable over the fleet gRPC surface.
+func anonymousVisible(query *gorm.DB) *gorm.DB {
+	return query.
+		Where("published_at IS NOT NULL AND published_at <= ?", time.Now().UTC()).
+		Where("visibility = ?", int(model.VisibilityPublic))
 }
 
 func grpcPage(token string, size int32) (int, int) {
@@ -431,18 +441,23 @@ func embedViewToProto(value any) *gen.DyPostEmbedView {
 	if err != nil {
 		return mapped
 	}
-	var decoded struct {
-		URI         string  `json:"uri"`
-		AspectRatio float64 `json:"aspect_ratio"`
-		Renderer    int     `json:"renderer"`
-	}
+	var decoded map[string]any
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		return mapped
 	}
-	mapped.Uri = decoded.URI
-	aspect := decoded.AspectRatio
-	mapped.AspectRatio = &aspect
-	mapped.Renderer = gen.DyPostEmbedViewRenderer(decoded.Renderer)
+	if uri, ok := decoded["uri"].(string); ok {
+		mapped.Uri = uri
+	} else if uri, ok := decoded["Uri"].(string); ok {
+		mapped.Uri = uri
+	}
+	if ratio, ok := decoded["aspect_ratio"].(float64); ok {
+		mapped.AspectRatio = &ratio
+	} else if ratio, ok := decoded["aspectRatio"].(float64); ok {
+		mapped.AspectRatio = &ratio
+	}
+	if renderer, ok := decoded["renderer"].(float64); ok {
+		mapped.Renderer = gen.DyPostEmbedViewRenderer(int(renderer) + 1)
+	}
 	return mapped
 }
 
