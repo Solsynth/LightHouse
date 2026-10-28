@@ -35,7 +35,6 @@ func Factory() module.Factory[core.Services] {
 		},
 		Models: []any{
 			store.PostEntity{},
-			store.PostIndexEntity{},
 			store.PostReactionEntity{},
 			store.PostBookmarkEntity{},
 			store.PostWatchPreferenceEntity{},

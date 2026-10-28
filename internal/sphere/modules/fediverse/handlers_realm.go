@@ -58,7 +58,7 @@ func (s *server) handleRealmActor(c *gin.Context) {
 
 	var community store.PublisherEntity
 	hasCommunity := s.db.WithContext(ctx).
-		Where("realm_id = ? AND is_community = ?", uuid.MustParse(realm.GetId()), true).
+		Where("realm_id = ? AND is_community = ?", parseRealmID(realm.GetId()), true).
 		First(&community).Error == nil
 
 	document := map[string]any{
@@ -116,7 +116,7 @@ func (s *server) handleRealmFollowers(c *gin.Context) {
 
 	var subscriptions []store.PublisherSubscriptionEntity
 	_ = s.db.WithContext(ctx).
-		Where("realm_id = ? AND state = ?", uuid.MustParse(realm.GetId()), int(model.SubscriptionAccepted)).
+		Where("realm_id = ? AND state = ?", parseRealmID(realm.GetId()), int(model.SubscriptionAccepted)).
 		Limit(limit).Find(&subscriptions).Error
 
 	ids := make([]uuid.UUID, 0, len(subscriptions))
@@ -151,8 +151,7 @@ func (s *server) handleRealmFollowers(c *gin.Context) {
 }
 
 func (s *server) handleRealmOutbox(c *gin.Context) {
-	realm, ok := s.realmBySlug(c, c.Param("slug"))
-	if !ok {
+	if _, ok := s.realmBySlug(c, c.Param("slug")); !ok {
 		return
 	}
 	limit := 20
@@ -223,7 +222,7 @@ func (s *server) handleRealmInbox(c *gin.Context) {
 	}
 	slug := c.Param("slug")
 	communityURL := s.baseURL + "/activitypub/realms/" + slug
-	realmID := uuid.MustParse(realm.GetId())
+	realmID := parseRealmID(realm.GetId())
 	ctx := c.Request.Context()
 
 	switch getString(activity, "type") {
@@ -310,4 +309,13 @@ func (s *server) handleRealmInbox(c *gin.Context) {
 		s.log.Warn("unsupported realm activity", "type", getString(activity, "type"), "slug", slug)
 		httpx.OK(c, gin.H{"status": "ignored"})
 	}
+}
+
+// parseRealmID tolerates a non-UUID realm id instead of panicking.
+func parseRealmID(value string) uuid.UUID {
+	id, err := uuid.Parse(value)
+	if err != nil {
+		return uuid.Nil
+	}
+	return id
 }

@@ -52,6 +52,7 @@ func (s *grpcService) GetPost(ctx context.Context, request *gen.DyGetPostRequest
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	s.attachAwards(ctx, []model.Post{post})
 	return postToProto(&post), nil
 }
 
@@ -75,6 +76,7 @@ func (s *grpcService) GetPostBatch(ctx context.Context, request *gen.DyGetPostBa
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	s.attachAwards(ctx, posts)
 	for i := range posts {
 		response.Posts = append(response.Posts, postToProto(&posts[i]))
 	}
@@ -116,6 +118,7 @@ func (s *grpcService) SearchPosts(ctx context.Context, request *gen.DySearchPost
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	s.attachAwards(ctx, posts)
 	response := &gen.DySearchPostsResponse{TotalSize: int32(total)}
 	for i := range posts {
 		response.Posts = append(response.Posts, postToProto(&posts[i]))
@@ -162,9 +165,13 @@ func (s *grpcService) ListPosts(ctx context.Context, request *gen.DyListPostsReq
 	if request.Pinned != nil {
 		switch *request.Pinned {
 		case gen.DyPostPinMode_DY_REALM_PAGE:
-			query = query.Where("pin_mode = ?", int(model.PinModeRealmPage))
+			if request.RealmId != nil && request.RealmId.Value != "" {
+				query = query.Where("pin_mode = ?", int(model.PinModeRealmPage))
+			}
 		case gen.DyPostPinMode_DY_PUBLISHER_PAGE:
-			query = query.Where("pin_mode = ?", int(model.PinModePublisherPage))
+			if request.PublisherId != nil && request.PublisherId.Value != "" {
+				query = query.Where("pin_mode = ?", int(model.PinModePublisherPage))
+			}
 		case gen.DyPostPinMode_DY_REPLY_PAGE:
 			query = query.Where("pin_mode = ?", int(model.PinModeReplyPage))
 		}
@@ -216,6 +223,7 @@ func (s *grpcService) ListPosts(ctx context.Context, request *gen.DyListPostsReq
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	s.attachAwards(ctx, posts)
 	response := &gen.DyListPostsResponse{TotalSize: int32(total)}
 	for i := range posts {
 		response.Posts = append(response.Posts, postToProto(&posts[i]))
@@ -230,6 +238,32 @@ func anonymousVisible(query *gorm.DB) *gorm.DB {
 	return query.
 		Where("published_at IS NOT NULL AND published_at <= ?", time.Now().UTC()).
 		Where("visibility = ?", int(model.VisibilityPublic))
+}
+
+// attachAwards fills the awards the fleet gRPC reads include.
+func (s *grpcService) attachAwards(ctx context.Context, posts []model.Post) {
+	if len(posts) == 0 {
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(posts))
+	for i := range posts {
+		if id, err := uuid.Parse(posts[i].ID); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	var rows []store.PostAwardEntity
+	if err := s.h.db.WithContext(ctx).Where("post_id IN ?", ids).Order("created_at ASC").Find(&rows).Error; err != nil {
+		return
+	}
+	byPost := map[string][]model.PostAward{}
+	for i := range rows {
+		byPost[rows[i].PostID.String()] = append(byPost[rows[i].PostID.String()], postAwardToModel(&rows[i]))
+	}
+	for i := range posts {
+		if awards, ok := byPost[posts[i].ID]; ok {
+			posts[i].Awards = awards
+		}
+	}
 }
 
 func grpcPage(token string, size int32) (int, int) {

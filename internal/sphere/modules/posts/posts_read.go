@@ -64,7 +64,12 @@ func (h *handler) listFeaturedPosts(c *gin.Context) {
 		return
 	}
 	if len(featuredIDs) == 0 {
-		httpx.List(c, []model.Post{}, 0)
+		posts := []model.Post{}
+		if sponsored, err := h.currentSponsoredPost(ctx, v); err == nil && sponsored != nil {
+			sponsored.Sponsored = true
+			posts = append(posts, *sponsored)
+		}
+		httpx.List(c, posts, int64(len(posts)))
 		return
 	}
 
@@ -404,7 +409,8 @@ func (h *handler) listDrafts(c *gin.Context) {
 	includeScheduled := c.Query("include_scheduled") == "true" || c.Query("include_scheduled") == "1"
 	now := time.Now().UTC()
 
-	query := h.db.WithContext(ctx).Where("publisher_id <> ?", uuid.Nil).
+	query := h.db.WithContext(ctx).Model(&store.PostEntity{}).
+		Where("publisher_id <> ?", uuid.Nil).
 		Where("publisher_id IN ?", publisherIDs)
 	if includeScheduled {
 		query = query.Where("(drafted_at IS NOT NULL OR (drafted_at IS NULL AND published_at IS NOT NULL AND published_at > ?))", now).
@@ -415,7 +421,7 @@ func (h *handler) listDrafts(c *gin.Context) {
 	}
 
 	var total int64
-	if err := query.Model(&store.PostEntity{}).Count(&total).Error; err != nil {
+	if err := query.Count(&total).Error; err != nil {
 		httpx.Internal(c)
 		return
 	}
