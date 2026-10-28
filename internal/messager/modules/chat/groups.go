@@ -159,7 +159,7 @@ func (i *instance) deleteGroup(c *gin.Context) {
 		failInternal(c, err)
 		return
 	}
-	httpx.NoContent(c)
+	httpx.OKEmpty(c)
 }
 
 func (i *instance) moveToGroup(c *gin.Context) {
@@ -198,5 +198,5 @@ func (i *instance) moveToGroup(c *gin.Context) {
 		_ = i.db.WithContext(ctx).Model(&store.ChatMemberEntity{}).Where("id = ?", member.ID).
 			Update("chat_group_id", nil).Error
 	}
-	httpx.NoContent(c)
+	httpx.OKEmpty(c)
 }

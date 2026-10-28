@@ -143,7 +143,7 @@ func (i *instance) markAllRead(c *gin.Context) {
 		payload["member_id"] = member.ID.String()
 		i.pushToAccounts(ctx, []string{accountID}, "messages.read", payload)
 	}
-	httpx.NoContent(c)
+	httpx.OKEmpty(c)
 }
 
 // --- subscriptions --------------------------------------------------------
@@ -985,7 +985,7 @@ func (i *instance) deviceJoined(c *gin.Context) {
 			return
 		}
 	}
-	httpx.NoContent(c)
+	httpx.OKEmpty(c)
 }
 
 func (i *instance) botCommands(c *gin.Context) {

@@ -218,7 +218,7 @@ func (i *instance) handleSettleRewards(c *gin.Context) {
 		i.internal(c)
 		return
 	}
-	httpx.NoContent(c)
+	httpx.OKEmpty(c)
 }
 
 func (i *instance) handleSettleAwards(c *gin.Context) {
@@ -230,7 +230,7 @@ func (i *instance) handleSettleAwards(c *gin.Context) {
 		i.internal(c)
 		return
 	}
-	httpx.NoContent(c)
+	httpx.OKEmpty(c)
 }
 
 func (i *instance) handleResettle(c *gin.Context) {

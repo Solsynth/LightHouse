@@ -143,7 +143,7 @@ func (h *handler) featuredPostIDs(ctx context.Context) ([]uuid.UUID, error) {
 		Score  int       `gorm:"column:score"`
 	}
 	h.db.WithContext(ctx).Model(&store.PostReactionEntity{}).
-		Select("post_id, sum(CASE WHEN attitude = ? THEN 1 ELSE -1 END) AS score", int(model.ReactionPositive)).
+		Select("post_id, sum(CASE WHEN attitude = ? THEN 1 ELSE -1 END) AS score", attitudePositive).
 		Where("post_id IN ?", candidateIDs).
 		Group("post_id").Scan(&reactionRows)
 	for _, row := range reactionRows {

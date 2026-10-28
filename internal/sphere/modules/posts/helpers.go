@@ -305,12 +305,9 @@ func (h *handler) gatekeepInfo(ctx context.Context, v *viewer, publisherIDs []uu
 // applyVisibility constrains a post query to what the viewer may see in a
 // listing. Post-level friend checks that cannot be expressed in SQL are applied
 // later by filterVisible.
-func (h *handler) applyVisibility(q *gorm.DB, v *viewer, listing bool, info gatekeep, showQuietPublic bool) *gorm.DB {
+func (h *handler) applyVisibility(q *gorm.DB, v *viewer, listing bool, _ gatekeep, showQuietPublic bool) *gorm.DB {
 	now := time.Now().UTC()
-	memberIDs := make([]uuid.UUID, 0, len(v.memberPubs))
-	for id := range v.memberPubs {
-		memberIDs = append(memberIDs, id)
-	}
+	memberIDs := v.memberIDs()
 
 	if listing {
 		q = q.Where("drafted_at IS NULL")
@@ -321,36 +318,29 @@ func (h *handler) applyVisibility(q *gorm.DB, v *viewer, listing bool, info gate
 		}
 	}
 
+	const gatekeptPublishers = "publisher_id NOT IN (SELECT id FROM publishers WHERE gatekept_follows = true)"
 	if !v.authed() {
-		q = q.Where("published_at IS NOT NULL AND published_at <= ?", now).
-			Where("visibility = ?", int(model.VisibilityPublic))
-		if len(info.gatekept) > 0 {
-			gatekeptIDs := keysOf(info.gatekept)
-			q = q.Where("NOT (publisher_id IN ?)", gatekeptIDs)
-		}
-		return q
+		return q.Where("published_at IS NOT NULL AND published_at <= ?", now).
+			Where("visibility = ?", int(model.VisibilityPublic)).
+			Where(gatekeptPublishers)
 	}
+
+	const subscribedPublishers = `publisher_id IN (SELECT publisher_id FROM publisher_subscriptions
+		WHERE account_id = ? AND ended_at IS NULL AND state = ? AND is_blocking = false)`
 
 	q = q.Where("((drafted_at IS NULL AND published_at IS NOT NULL AND published_at <= ?) OR publisher_id IN ?)", now, memberIDs)
 	q = q.Where("(visibility <> ? OR publisher_id IN ?)", int(model.VisibilityPrivate), memberIDs)
 	q = q.Where("(visibility <> ? OR publisher_id IN ?)", int(model.VisibilityCloseFriendsOnly), memberIDs)
 	if !showQuietPublic {
-		if len(info.subscribed) > 0 {
-			subscribedIDs := keysOf(info.subscribed)
-			q = q.Where("(visibility <> ? OR publisher_id IN ? OR publisher_id IN ?)", int(model.VisibilityQuietPublic), memberIDs, subscribedIDs)
-		} else {
-			q = q.Where("(visibility <> ? OR publisher_id IN ?)", int(model.VisibilityQuietPublic), memberIDs)
-		}
+		q = q.Where(
+			"(visibility <> ? OR publisher_id IN ? OR "+subscribedPublishers+")",
+			int(model.VisibilityQuietPublic), memberIDs, v.accountID, int(model.SubscriptionAccepted),
+		)
 	}
-	if len(info.gatekept) > 0 {
-		gatekeptIDs := keysOf(info.gatekept)
-		allowed := append(append([]uuid.UUID{}, memberIDs...), keysOf(info.subscribed)...)
-		if len(allowed) > 0 {
-			q = q.Where("(NOT (publisher_id IN ?) OR publisher_id IN ?)", gatekeptIDs, allowed)
-		} else {
-			q = q.Where("NOT (publisher_id IN ?)", gatekeptIDs)
-		}
-	}
+	q = q.Where(
+		"("+gatekeptPublishers+" OR publisher_id IN ? OR "+subscribedPublishers+")",
+		memberIDs, v.accountID, int(model.SubscriptionAccepted),
+	)
 	return q
 }
 
@@ -380,6 +370,7 @@ func (h *handler) filterVisible(ctx context.Context, posts []model.Post, v *view
 			}
 		}
 	}
+	info = h.gatekeepInfo(ctx, v, publisherIDs)
 	for i := range posts {
 		publisherID, _ := uuid.Parse(posts[i].PublisherID)
 		accountID := publisherAccounts[publisherID]
@@ -422,7 +413,7 @@ func (h *handler) canViewPost(ctx context.Context, post *model.Post, v *viewer, 
 		return member || (v.authed() && h.isFriend(ctx, v, publisherAccountID))
 	}
 	if !v.authed() {
-		return post.Visibility == int(model.VisibilityPublic)
+		return post.Visibility == int(model.VisibilityPublic) || post.Visibility == int(model.VisibilityUnlisted)
 	}
 	return true
 }
@@ -608,14 +599,6 @@ func parseUUID(value string) (uuid.UUID, bool) {
 	return id, true
 }
 
-func keysOf(set map[uuid.UUID]struct{}) []uuid.UUID {
-	out := make([]uuid.UUID, 0, len(set))
-	for id := range set {
-		out = append(out, id)
-	}
-	return out
-}
-
 func queryInt(c *gin.Context, name string, fallback int) int {
 	raw := c.Query(name)
 	if raw == "" {
@@ -691,14 +674,6 @@ func normalizeOptionalText(value *string) *string {
 	return &trimmed
 }
 
-func normalizeOptionalTextValue(value string) *string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return nil
-	}
-	return &trimmed
-}
-
 func stringValue(value *string) string {
 	if value == nil {
 		return ""
@@ -760,7 +735,7 @@ func (h *handler) applyDetailScope(q *gorm.DB, v *viewer) *gorm.DB {
 	now := time.Now().UTC()
 	if !v.authed() {
 		return q.Where("published_at IS NOT NULL AND published_at <= ?", now).
-			Where("visibility = ?", int(model.VisibilityPublic))
+			Where("visibility IN ?", []int{int(model.VisibilityPublic), int(model.VisibilityUnlisted)})
 	}
 	memberIDs := make([]uuid.UUID, 0, len(v.memberPubs))
 	for id := range v.memberPubs {

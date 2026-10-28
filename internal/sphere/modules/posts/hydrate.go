@@ -656,8 +656,8 @@ var htmlTagPattern = regexp.MustCompile(`<[^>]*>`)
 
 func truncatePost(post *model.Post) {
 	if post.Content != nil && len(*post.Content) > truncateMaxLength {
-		if plain, ok := plainText(*post.Content, post.ContentType); ok && len(plain) > truncateMaxLength {
-			cut := plain[:truncateMaxLength]
+		if plain, ok := plainText(*post.Content, post.ContentType); ok && len([]rune(plain)) > truncateMaxLength {
+			cut := truncateRunes(plain, truncateMaxLength)
 			post.Content = &cut
 			post.IsTruncated = true
 		}
@@ -670,11 +670,19 @@ func truncateEmbedded(embedded *model.Post, contentType int) {
 	if embedded == nil || embedded.Content == nil || len(*embedded.Content) <= truncateEmbedMax {
 		return
 	}
-	if plain, ok := plainText(*embedded.Content, contentType); ok && len(plain) > truncateEmbedMax {
-		cut := plain[:truncateEmbedMax]
+	if plain, ok := plainText(*embedded.Content, contentType); ok && len([]rune(plain)) > truncateEmbedMax {
+		cut := truncateRunes(plain, truncateEmbedMax)
 		embedded.Content = &cut
 		embedded.IsTruncated = true
 	}
+}
+
+func truncateRunes(value string, limit int) string {
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit])
 }
 
 func plainText(content string, contentType int) (string, bool) {

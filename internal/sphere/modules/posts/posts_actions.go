@@ -30,6 +30,13 @@ const (
 	sponsorProductIdentifier = "ads.sponsor"
 	awardProductIdentifier   = "posts.award"
 	minimumSponsorBid        = 5.0
+	// The persisted attitude ints follow DysonNetwork.Shared.Models:
+	// Positive = 0, Neutral = 1, Negative = 2. model.PostReactionAttitude
+	// declares a different order, so the module keeps its own constants for
+	// database predicates.
+	attitudePositive = 0
+	attitudeNeutral  = 1
+	attitudeNegative = 2
 	sponsorBidDuration       = 24 * time.Hour
 )
 
@@ -64,11 +71,11 @@ type boostRequest struct {
 
 func reactionWeight(attitude int) int {
 	switch attitude {
-	case int(model.ReactionPositive):
+	case attitudePositive:
 		return positiveReactionWeight
-	case int(model.ReactionNeutral):
+	case attitudeNeutral:
 		return neutralReactionWeight
-	case int(model.ReactionNegative):
+	case attitudeNegative:
 		return negativeReactionWeight
 	default:
 		return 0
@@ -173,9 +180,9 @@ func (h *handler) adjustPostVotes(ctx context.Context, ent *store.PostEntity, at
 	scoreDelta := delta
 	upvotes, downvotes := 0, 0
 	switch attitude {
-	case int(model.ReactionPositive):
+	case attitudePositive:
 		upvotes = 1
-	case int(model.ReactionNegative):
+	case attitudeNegative:
 		downvotes = 1
 	}
 	if !adding {
@@ -335,7 +342,7 @@ func (h *handler) getPendingAwards(c *gin.Context) {
 	}
 	var rows []store.PostAwardEntity
 	if err := h.db.WithContext(ctx).
-		Where("post_id = ? AND settled_at IS NULL AND attitude = ?", id, int(model.ReactionPositive)).
+		Where("post_id = ? AND settled_at IS NULL AND attitude = ?", id, attitudePositive).
 		Find(&rows).Error; err != nil {
 		httpx.Internal(c)
 		return
@@ -367,7 +374,7 @@ func (h *handler) awardPost(c *gin.Context) {
 	if !httpx.BindJSON(c, &request) {
 		return
 	}
-	if request.Attitude == int(model.ReactionNeutral) {
+	if request.Attitude == attitudeNeutral {
 		httpx.BadRequest(c, "POST_AWARD_NEUTRAL_NOT_ALLOWED", "You cannot create a neutral post award")
 		return
 	}
@@ -432,7 +439,7 @@ func (h *handler) settleAward(ctx context.Context, postID, accountID uuid.UUID, 
 		return err
 	}
 	delta := amount
-	if attitude != int(model.ReactionPositive) {
+	if attitude != attitudePositive {
 		delta = -amount
 	}
 	return h.db.WithContext(ctx).Model(&store.PostEntity{}).Where("id = ?", postID).

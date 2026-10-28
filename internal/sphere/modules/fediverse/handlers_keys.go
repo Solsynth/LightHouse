@@ -59,8 +59,7 @@ func (s *server) handleKeyBackfill(c *gin.Context) {
 	})
 }
 
-func (s *server) migratePublicKeys(c *gin.Context) (int64, error) {
-	ctx := c.Request.Context()
+func (s *server) migratePublicKeys(ctx context.Context) (int64, error) {
 	var actors []store.PublisherEntity
 	if err := s.db.WithContext(ctx).
 		Where("public_key IS NOT NULL AND public_key <> ''").
@@ -92,8 +91,7 @@ func (s *server) migratePublicKeys(c *gin.Context) (int64, error) {
 	return migrated, nil
 }
 
-func (s *server) backfillActorKeys(c *gin.Context) (int64, error) {
-	ctx := c.Request.Context()
+func (s *server) backfillActorKeys(ctx context.Context) (int64, error) {
 	var actors []store.PublisherEntity
 	if err := s.db.WithContext(ctx).
 		Where("type <> ? AND uri IS NOT NULL", int(model.PublisherFediverse)).

@@ -160,5 +160,5 @@ func (s *server) handleQuoteRevoke(c *gin.Context) {
 		httpx.Fail(c, errs.New("INTERNAL_ERROR", "An unexpected error occurred.", http.StatusInternalServerError))
 		return
 	}
-	httpx.NoContent(c)
+	httpx.OKEmpty(c)
 }

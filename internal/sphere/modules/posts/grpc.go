@@ -257,7 +257,9 @@ func nextPageToken(offset, pageSize int, total int64) string {
 // Proto mapping
 // ---------------------------------------------------------------------------
 
-func postToProto(post *model.Post) *gen.DyPost {
+func postToProto(post *model.Post) *gen.DyPost { return postToProtoDepth(post, 0) }
+
+func postToProtoDepth(post *model.Post, depth int) *gen.DyPost {
 	proto := &gen.DyPost{
 		Id:             post.ID,
 		Title:          stringValue(post.Title),
@@ -327,11 +329,11 @@ func postToProto(post *model.Post) *gen.DyPost {
 	if post.Publisher != nil {
 		proto.Publisher = publisherToProto(post.Publisher)
 	}
-	if post.RepliedPost != nil {
-		proto.RepliedPost = postToProto(post.RepliedPost)
+	if post.RepliedPost != nil && depth < 8 {
+		proto.RepliedPost = postToProtoDepth(post.RepliedPost, depth+1)
 	}
-	if post.ForwardedPost != nil {
-		proto.ForwardedPost = postToProto(post.ForwardedPost)
+	if post.ForwardedPost != nil && depth < 8 {
+		proto.ForwardedPost = postToProtoDepth(post.ForwardedPost, depth+1)
 	}
 	for _, attachment := range post.Attachments {
 		proto.Attachments = append(proto.Attachments, fileToProto(&attachment))

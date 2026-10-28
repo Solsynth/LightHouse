@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
 )
 
@@ -73,7 +74,7 @@ func (d *deliveryService) enqueue(ctx context.Context, activityType string, acti
 		sent := time.Now().UTC()
 		delivery.Status = deliverySent
 		delivery.SentAt = &sent
-		delivery.ResponseStatusCode = strconv.Itoa(status)
+		delivery.ResponseStatusCode = statusCodePointer(status)
 		_ = d.s.db.WithContext(ctx).Save(delivery).Error
 		d.s.log.Info("delivered activity", "type", activityType, "id", activityID, "inbox", inboxURI, "status", status)
 		return true, nil
@@ -85,7 +86,7 @@ func (d *deliveryService) enqueue(ctx context.Context, activityType string, acti
 	}
 	delivery.ErrorMessage = &reason
 	if status > 0 {
-		delivery.ResponseStatusCode = strconv.Itoa(status)
+		delivery.ResponseStatusCode = statusCodePointer(status)
 	}
 	if shouldRetryStatus(status) && delivery.RetryCount < d.maxRetries() {
 		delivery.Status = deliveryFailed
@@ -176,7 +177,7 @@ func (d *deliveryService) retryFailed(ctx context.Context) error {
 		if err == nil && status >= 200 && status < 300 {
 			delivery.Status = deliverySent
 			delivery.SentAt = &attempted
-			delivery.ResponseStatusCode = strconv.Itoa(status)
+			delivery.ResponseStatusCode = statusCodePointer(status)
 			delivery.ErrorMessage = nil
 			delivery.NextRetryAt = nil
 		} else {
@@ -186,7 +187,7 @@ func (d *deliveryService) retryFailed(ctx context.Context) error {
 			}
 			delivery.ErrorMessage = &reason
 			if status > 0 {
-				delivery.ResponseStatusCode = strconv.Itoa(status)
+				delivery.ResponseStatusCode = statusCodePointer(status)
 			}
 			delivery.RetryCount++
 			if delivery.RetryCount >= d.maxRetries() {
@@ -221,7 +222,7 @@ func (d *deliveryService) moveToDeadLetter(ctx context.Context, delivery *store.
 		ActivityPayload: payload,
 		ErrorMessage:    &errorText,
 		RetryCount:      delivery.RetryCount,
-		CreatedAt:       delivery.CreatedAt,
+		CreatedAt:       timeValue(delivery.LastAttemptAt),
 		FailedAt:        time.Now().UTC(),
 	}
 	if err := d.s.db.WithContext(ctx).Create(dead).Error; err != nil {
@@ -240,8 +241,8 @@ func (d *deliveryService) cleanup(ctx context.Context) error {
 	cutoff := time.Now().UTC().Add(-7 * 24 * time.Hour)
 	var stale []store.ActivityPubDeliveryEntity
 	if err := d.s.db.WithContext(ctx).
-		Where("status IN ? AND created_at < ?", []int{deliverySent, deliveryExhaustedRetries}, cutoff).
-		Order("created_at ASC").
+		Where("status IN ? AND COALESCE(sent_at, last_attempt_at) < ?", []int{deliverySent, deliveryExhaustedRetries}, cutoff).
+		Order("COALESCE(sent_at, last_attempt_at) ASC").
 		Limit(1000).
 		Find(&stale).Error; err != nil {
 		return err
@@ -284,7 +285,7 @@ func (d *deliveryService) healthCheck(ctx context.Context) error {
 	}
 	var pendingOld int64
 	if err := d.s.db.WithContext(ctx).Model(&store.ActivityPubDeliveryEntity{}).
-		Where("status = ? AND created_at < ?", deliveryPending, time.Now().UTC().Add(-time.Hour)).
+		Where("status = ? AND (last_attempt_at IS NULL OR last_attempt_at < ?)", deliveryPending, time.Now().UTC().Add(-time.Hour)).
 		Count(&pendingOld).Error; err != nil {
 		return err
 	}
@@ -337,14 +338,14 @@ func (d *deliveryService) sendFollow(ctx context.Context, publisherID uuid.UUID,
 			AccountID:           local.AccountID,
 			FollowerPublisherID: &local.ID,
 			PublisherID:         target.ID,
-			State:               int(model.PublisherSubscriptionStatePending),
+			State:               int(model.SubscriptionPending),
 			FollowedAt:          &now,
 		}
 		if createErr := d.s.db.WithContext(ctx).Create(&existing).Error; createErr != nil {
 			return false
 		}
 	} else if err == nil {
-		existing.State = int(model.PublisherSubscriptionStatePending)
+		existing.State = int(model.SubscriptionPending)
 		existing.EndedAt = nil
 		_ = d.s.db.WithContext(ctx).Save(&existing).Error
 	} else {
@@ -444,5 +445,10 @@ func nextRetryAt(retryCount int, retryAfter time.Duration) time.Time {
 	}
 	jitter := rand.Float64() * 0.3 * delay
 	return time.Now().UTC().Add(time.Duration((delay + jitter) * float64(time.Second)))
+}
+
+func statusCodePointer(status int) *string {
+	value := strconv.Itoa(status)
+	return &value
 }
 

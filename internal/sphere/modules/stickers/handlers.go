@@ -1018,7 +1018,7 @@ func (s *service) reorderOwnedPacks(c *gin.Context) {
 			return
 		}
 	}
-	httpx.NoContent(c)
+	httpx.OKEmpty(c)
 }
 
 func (s *service) reorderStickers(c *gin.Context) {
@@ -1081,7 +1081,7 @@ func (s *service) reorderStickers(c *gin.Context) {
 			return
 		}
 	}
-	httpx.NoContent(c)
+	httpx.OKEmpty(c)
 }
 
 // ---- helpers --------------------------------------------------------------

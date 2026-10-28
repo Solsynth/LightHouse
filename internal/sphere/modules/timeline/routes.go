@@ -181,7 +181,7 @@ func (s *service) handleRemoveUninterested(c *gin.Context) {
 		c.JSON(http.StatusNotFound, errs.NotFound(""))
 		return
 	}
-	httpx.NoContent(c)
+	httpx.OKEmpty(c)
 }
 
 // handleFeedback serves POST /api/timeline/discovery/feedback.

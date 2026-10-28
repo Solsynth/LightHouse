@@ -406,7 +406,7 @@ func (s *service) stopEgress(c *gin.Context) {
 		httpx.Internal(c)
 		return
 	}
-	httpx.NoContent(c)
+	httpx.OKEmpty(c)
 }
 
 func (s *service) startHLS(c *gin.Context) {
@@ -477,7 +477,7 @@ func (s *service) stopHLS(c *gin.Context) {
 		httpx.Internal(c)
 		return
 	}
-	httpx.NoContent(c)
+	httpx.OKEmpty(c)
 }
 
 func (s *service) end(c *gin.Context) {
@@ -497,7 +497,7 @@ func (s *service) end(c *gin.Context) {
 		httpx.Internal(c)
 		return
 	}
-	httpx.NoContent(c)
+	httpx.OKEmpty(c)
 }
 
 func (s *service) update(c *gin.Context) {
@@ -602,7 +602,7 @@ func (s *service) delete(c *gin.Context) {
 		httpx.Internal(c)
 		return
 	}
-	httpx.NoContent(c)
+	httpx.OKEmpty(c)
 }
 
 func (s *service) details(c *gin.Context) {
@@ -735,7 +735,7 @@ func (s *service) deleteChat(c *gin.Context) {
 		httpx.Internal(c)
 		return
 	}
-	httpx.NoContent(c)
+	httpx.OKEmpty(c)
 }
 
 func (s *service) timeoutChat(c *gin.Context) {
@@ -786,7 +786,7 @@ func (s *service) timeoutChat(c *gin.Context) {
 		"duration_minutes": duration,
 	})
 	_ = s.lk.sendData(c.Request.Context(), entity.RoomName, payload)
-	httpx.NoContent(c)
+	httpx.OKEmpty(c)
 }
 
 // ---- awards ---------------------------------------------------------------

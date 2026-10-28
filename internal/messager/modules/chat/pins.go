@@ -142,7 +142,7 @@ func (i *instance) unpinMessage(c *gin.Context) {
 		"pin_id":     pin.ID.String(),
 		"message_id": pin.MessageID.String(),
 	})
-	httpx.NoContent(c)
+	httpx.OKEmpty(c)
 }
 
 func (i *instance) listPins(c *gin.Context) {

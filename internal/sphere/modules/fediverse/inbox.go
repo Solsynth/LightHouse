@@ -133,7 +133,7 @@ func (s *server) handleFollow(ctx context.Context, actorURI string, activity map
 
 	needsApproval := target.IsLocked || (target.ModerateSubscription != nil && *target.ModerateSubscription)
 	if needsApproval {
-		if err == nil && existing.State == int(model.PublisherSubscriptionStateAccepted) {
+		if err == nil && existing.State == int(model.SubscriptionAccepted) {
 			return inboxSuccess
 		}
 		now := time.Now().UTC()
@@ -142,13 +142,13 @@ func (s *server) handleFollow(ctx context.Context, actorURI string, activity map
 				ID:                  uuid.New(),
 				FollowerPublisherID: &actor.ID,
 				PublisherID:         target.ID,
-				State:               int(model.PublisherSubscriptionStatePending),
+				State:               int(model.SubscriptionPending),
 			}
 			if createErr := s.db.WithContext(ctx).Create(&subscription).Error; createErr != nil {
 				return inboxBadRequest
 			}
 		} else {
-			existing.State = int(model.PublisherSubscriptionStatePending)
+			existing.State = int(model.SubscriptionPending)
 			existing.EndedAt = nil
 			existing.RejectReason = nil
 			existing.FollowedAt = &now
@@ -159,21 +159,21 @@ func (s *server) handleFollow(ctx context.Context, actorURI string, activity map
 
 	now := time.Now().UTC()
 	switch {
-	case err == nil && existing.State == int(model.PublisherSubscriptionStateAccepted):
+	case err == nil && existing.State == int(model.SubscriptionAccepted):
 		return inboxSuccess
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		subscription := store.PublisherSubscriptionEntity{
 			ID:                  uuid.New(),
 			FollowerPublisherID: &actor.ID,
 			PublisherID:         target.ID,
-			State:               int(model.PublisherSubscriptionStateAccepted),
+			State:               int(model.SubscriptionAccepted),
 			FollowedAt:          &now,
 		}
 		if createErr := s.db.WithContext(ctx).Create(&subscription).Error; createErr != nil {
 			return inboxBadRequest
 		}
 	default:
-		existing.State = int(model.PublisherSubscriptionStateAccepted)
+		existing.State = int(model.SubscriptionAccepted)
 		existing.EndedAt = nil
 		existing.FollowedAt = &now
 		if saveErr := s.db.WithContext(ctx).Save(&existing).Error; saveErr != nil {
@@ -218,14 +218,14 @@ func (s *server) handleAccept(ctx context.Context, actorURI string, activity map
 			AccountID:           local.AccountID,
 			FollowerPublisherID: &local.ID,
 			PublisherID:         actor.ID,
-			State:               int(model.PublisherSubscriptionStateAccepted),
+			State:               int(model.SubscriptionAccepted),
 			FollowedAt:          &now,
 		}
 		if createErr := s.db.WithContext(ctx).Create(&relationship).Error; createErr != nil {
 			return inboxBadRequest
 		}
 	} else if err == nil {
-		relationship.State = int(model.PublisherSubscriptionStateAccepted)
+		relationship.State = int(model.SubscriptionAccepted)
 		relationship.EndedAt = nil
 		relationship.FollowedAt = &now
 		if saveErr := s.db.WithContext(ctx).Save(&relationship).Error; saveErr != nil {
@@ -243,9 +243,9 @@ func (s *server) handleReject(ctx context.Context, actorURI string, _ map[string
 		return inboxBadRequest
 	}
 	if err := s.db.WithContext(ctx).Model(&store.PublisherSubscriptionEntity{}).
-		Where("publisher_id = ? AND state = ?", actor.ID, int(model.PublisherSubscriptionStatePending)).
+		Where("publisher_id = ? AND state = ?", actor.ID, int(model.SubscriptionPending)).
 		Updates(map[string]any{
-			"state":         int(model.PublisherSubscriptionStateRejected),
+			"state":         int(model.SubscriptionRejected),
 			"reject_reason": "Remote rejected follow",
 		}).Error; err != nil {
 		return inboxBadRequest

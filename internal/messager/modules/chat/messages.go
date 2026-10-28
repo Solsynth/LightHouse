@@ -470,7 +470,7 @@ func (i *instance) deleteMessage(c *gin.Context) {
 	if err := i.insertMessage(ctx, i.db, syncEntity); err == nil {
 		i.deliverMessage(ctx, room, &sender, syncEntity, "messages.delete", false)
 	}
-	httpx.NoContent(c)
+	httpx.OKEmpty(c)
 }
 
 // --- reactions ------------------------------------------------------------
