@@ -162,6 +162,9 @@ func (i *instance) finalizePlaceholderWith(ctx context.Context, room *store.Chat
 	}
 	if len(meta) == 0 {
 		updates["meta"] = nil
+		// GORM leaves a non-empty destination field untouched when the
+		// scanned column is NULL, so clear it before the reload below.
+		entity.Meta = nil
 	} else {
 		updates["meta"] = store.ToJSON(meta)
 	}
