@@ -33,9 +33,10 @@ type Rule struct {
 	IsRegex      bool
 
 	// expression is the compiled pattern. It is nil when the rule is literal
-	// or when the configured pattern does not compile, which makes the rule
-	// inert instead of failing the whole evaluation.
+	// or when the configured pattern does not compile; invalid records the
+	// latter so evaluation never retries a broken pattern.
 	expression *regexp.Regexp
+	invalid    bool
 }
 
 // Result is one rule hit: the rule that matched, the action it asks for and the
@@ -90,6 +91,10 @@ func EvaluateRules(rules []Rule, content string) []Result {
 	}
 	results := make([]Result, 0, len(rules))
 	for _, rule := range rules {
+		if rule.IsRegex && rule.expression == nil && !rule.invalid {
+			// A rule built by hand instead of through SetRules still evaluates.
+			rule.compile()
+		}
 		matched, ok := matchRule(rule, content)
 		if !ok {
 			continue
@@ -146,6 +151,7 @@ func compileRule(entity *store.AutomodRuleEntity) Rule {
 }
 
 func (r *Rule) compile() {
+	r.invalid = false
 	if !r.IsRegex || r.Pattern == "" {
 		r.expression = nil
 		return
@@ -154,6 +160,7 @@ func (r *Rule) compile() {
 	expression, err := regexp.Compile("(?i)" + r.Pattern)
 	if err != nil {
 		r.expression = nil
+		r.invalid = true
 		return
 	}
 	r.expression = expression
