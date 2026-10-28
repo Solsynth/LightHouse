@@ -482,6 +482,10 @@ func (s *server) getVoiceMessage(c *gin.Context) {
 	if length <= 0 {
 		length = size
 	}
+	if length <= 0 {
+		// gin treats any non-negative length as a Content-Length header.
+		length = -1
+	}
 	contentType := clip.MimeType
 	if strings.TrimSpace(contentType) == "" {
 		contentType = "application/octet-stream"

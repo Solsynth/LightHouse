@@ -119,6 +119,7 @@ func (i *instance) registerChatRoutes(api *gin.RouterGroup) {
 
 	api.GET("/chat/:id/messages", i.listMessages)
 	api.POST("/chat/:id/messages", i.auth(), i.perm("chat.messages.create"), i.sendMessage)
+	api.POST("/chat/:id/messages/placeholder", i.auth(), i.perm("chat.messages.create"), i.sendPlaceholderMessage)
 	api.GET("/chat/:id/messages/:messageId", i.getMessage)
 	api.PATCH("/chat/:id/messages/:messageId", i.auth(), i.perm("chat.messages.update"), i.updateMessage)
 	api.DELETE("/chat/:id/messages/:messageId", i.auth(), i.perm("chat.messages.delete"), i.deleteMessage)

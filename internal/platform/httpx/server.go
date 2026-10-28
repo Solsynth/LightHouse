@@ -58,10 +58,13 @@ func New(opts Options) *Server {
 		c.JSON(http.StatusOK, gin.H{"status": "Healthy"})
 	})
 
-	api := engine.Group("/api")
+	// The auth middleware must be attached to the engine BEFORE the /api group
+	// is created: a gin group snapshots the engine's handler chain when it is
+	// built, so middleware added afterwards would not run for its routes.
 	if opts.Auth != nil {
 		engine.Use(opts.Auth)
 	}
+	api := engine.Group("/api")
 	engine.NoRoute(func(c *gin.Context) {
 		c.JSON(http.StatusNotFound, errs.NotFound("The requested resource was not found."))
 	})

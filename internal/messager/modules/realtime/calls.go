@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	gen "src.solsynth.dev/sosys/go/proto"
 	"src.solsynth.dev/sosys/go/pkg/errs"
@@ -184,7 +185,9 @@ func (s *server) ensureCall(ctx context.Context, roomID uuid.UUID, member *store
 	}
 	if len(params) > 0 {
 		if encoded, err := json.Marshal(params); err == nil {
-			updates["upstream"] = string(encoded)
+			// datatypes.JSON makes pgx write the bytes as JSON instead of a
+			// quoted JSON string.
+			updates["upstream"] = datatypes.JSON(encoded)
 		}
 	}
 	if len(updates) > 0 {
@@ -847,9 +850,11 @@ func callInviteText(language, senderName, roomName string) (string, string) {
 	}
 }
 
-// pushCallInvite sends the VoIP push, best-effort.
+// pushCallInvite sends the VoIP push (topic call.incoming, push type VoIP),
+// best-effort. The notify port cannot express a push type, so the C# path
+// through the Ring service is used when it is wired.
 func (s *server) pushCallInvite(ctx context.Context, accountID, title, body string, payload map[string]any) {
-	if s.notify == nil {
+	if s.notify == nil && s.ring == nil {
 		return
 	}
 	meta := make(map[string]string, len(payload)+1)
@@ -857,17 +862,36 @@ func (s *server) pushCallInvite(ctx context.Context, accountID, title, body stri
 		meta[key] = fmt.Sprint(value)
 	}
 	meta["push_type"] = "VoIP"
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		raw = nil
+	}
 	eventCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	go func() {
 		defer cancel()
-		var err error
-		if voip, ok := s.notify.(voipPushPort); ok {
-			err = voip.SendPushWithType(eventCtx, accountID, "call.incoming", title, body, "VoIP", meta)
-		} else {
-			err = s.notify.SendPush(eventCtx, accountID, "call.incoming", title, body, meta)
+		var pushErr error
+		switch {
+		case s.ring != nil:
+			_, pushErr = s.ring.SendPushNotificationToUsers(eventCtx, &gen.DySendPushNotificationToUsersRequest{
+				UserIds: []string{accountID},
+				Notification: &gen.DyPushNotification{
+					Topic:     "call.incoming",
+					Title:     title,
+					Body:      body,
+					Meta:      raw,
+					PushType:  new("VoIP"),
+					IsSavable: false,
+				},
+			})
+		case s.notify != nil:
+			if voip, ok := s.notify.(voipPushPort); ok {
+				pushErr = voip.SendPushWithType(eventCtx, accountID, "call.incoming", title, body, "VoIP", meta)
+			} else {
+				pushErr = s.notify.SendPush(eventCtx, accountID, "call.incoming", title, body, meta)
+			}
 		}
-		if err != nil {
-			s.log.Warn("failed to send call invite push", "account_id", accountID, "error", err)
+		if pushErr != nil {
+			s.log.Warn("failed to send call invite push", "account_id", accountID, "error", pushErr)
 		}
 	}()
 }

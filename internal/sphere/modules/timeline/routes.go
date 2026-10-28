@@ -163,7 +163,7 @@ func (s *service) handleRemoveUninterested(c *gin.Context) {
 		httpx.BadRequest(c, "DISCOVERY_INVALID_KIND", "Invalid kind. Expected publisher, realm, or account.")
 		return
 	}
-	referenceID, ok := parseBodyUUID(c, c.Query("referenceId"), "referenceId")
+	referenceID, ok := parseQueryUUID(c, c.Query("referenceId"), "referenceId")
 	if !ok {
 		return
 	}
@@ -294,13 +294,31 @@ func accountUUID(c *gin.Context, raw string) (uuid.UUID, bool) {
 	return id, true
 }
 
-// parseBodyUUID parses a UUID from a body/query field, writing the C# model
-// binding failure shape when it is not a UUID.
+// parseBodyUUID parses a UUID from a JSON body field. A missing value keeps the
+// C# model's Guid.Empty default; a malformed value is the model binding
+// failure the C# binder produces.
 func parseBodyUUID(c *gin.Context, raw, field string) (uuid.UUID, bool) {
-	id, err := uuid.Parse(strings.TrimSpace(raw))
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return uuid.Nil, true
+	}
+	id, err := uuid.Parse(trimmed)
 	if err != nil {
 		httpx.Fail(c, errs.Validation(map[string][]string{
 			field: {"The JSON value could not be converted to System.Guid."},
+		}))
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+// parseQueryUUID parses a required query UUID, rejecting a missing value like
+// the C# model binder does.
+func parseQueryUUID(c *gin.Context, raw, field string) (uuid.UUID, bool) {
+	id, err := uuid.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		httpx.Fail(c, errs.Validation(map[string][]string{
+			field: {"The value '" + raw + "' is not valid."},
 		}))
 		return uuid.Nil, false
 	}

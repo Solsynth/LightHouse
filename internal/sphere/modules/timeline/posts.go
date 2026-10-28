@@ -337,6 +337,9 @@ func (s *service) accountBatch(ctx context.Context, ids []string) map[string]*mo
 		return out
 	}
 	for _, account := range resp.GetAccounts() {
+		if account == nil {
+			continue
+		}
 		out[account.GetId()] = accountRefFromProto(account)
 	}
 	return out
@@ -381,6 +384,9 @@ func (s *service) realmBatch(ctx context.Context, ids []string) map[string]*gen.
 		return out
 	}
 	for _, realm := range resp.GetRealms() {
+		if realm == nil {
+			continue
+		}
 		out[realm.GetId()] = realm
 	}
 	return out

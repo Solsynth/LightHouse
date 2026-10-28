@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -338,7 +339,7 @@ func (h *handler) createPost(c *gin.Context) {
 		}
 	}
 
-	var replied, forwarded, chained *store.PostEntity
+	var replied, forwarded *store.PostEntity
 	if request.RepliedPostID != nil {
 		var target store.PostEntity
 		if err := h.db.WithContext(ctx).Where("id = ?", *request.RepliedPostID).First(&target).Error; err != nil {
@@ -375,6 +376,7 @@ func (h *handler) createPost(c *gin.Context) {
 		if target.ChainedPostID != nil {
 			headID = *target.ChainedPostID
 		}
+		_ = headID
 		ent.ChainedPostID = &headID
 	}
 	if request.RealmID != nil {
@@ -402,7 +404,7 @@ func (h *handler) createPost(c *gin.Context) {
 		return
 	}
 
-	isPublishedNow := ent.DraftedAt == nil && ent.PublishedAt != nil && !ent.PublishedAt.Time().After(now)
+	isPublishedNow := ent.DraftedAt == nil && ent.PublishedAt != nil && !ent.PublishedAt.After(now)
 	if isPublishedNow {
 		ent.PublishNotifiedAt = &now
 	}
@@ -741,7 +743,7 @@ func (h *handler) applyAutoChain(ctx context.Context, ent *store.PostEntity) {
 	if ent.PublishedAt == nil {
 		return
 	}
-	from := ent.PublishedAt.Time().Add(-time.Duration(window) * time.Minute)
+	from := ent.PublishedAt.Add(-time.Duration(window) * time.Minute)
 	var latest store.PostEntity
 	err := h.db.WithContext(ctx).
 		Where("publisher_id = ? AND id <> ?", ent.PublisherID, ent.ID).
@@ -949,12 +951,12 @@ func (h *handler) updatePost(c *gin.Context) {
 
 	now := time.Now().UTC()
 	ent.EditedAt = &now
-	wasPublished := ent.DraftedAt == nil && ent.PublishedAt != nil && !ent.PublishedAt.Time().After(now)
+	wasPublished := ent.DraftedAt == nil && ent.PublishedAt != nil && !ent.PublishedAt.After(now)
 
 	if request.PublishedAt != nil {
 		published := request.PublishedAt.Time()
 		if published.Before(now) {
-			wasScheduled := ent.PublishedAt != nil && ent.PublishedAt.Time().After(now)
+			wasScheduled := ent.PublishedAt != nil && ent.PublishedAt.After(now)
 			if ent.DraftedAt != nil || wasScheduled {
 				published = now
 			} else {
@@ -971,7 +973,7 @@ func (h *handler) updatePost(c *gin.Context) {
 		ent.PublishedAt = nil
 	}
 
-	isPublished := ent.DraftedAt == nil && ent.PublishedAt != nil && !ent.PublishedAt.Time().After(now)
+	isPublished := ent.DraftedAt == nil && ent.PublishedAt != nil && !ent.PublishedAt.After(now)
 	if isPublished && !wasPublished {
 		ent.PublishNotifiedAt = &now
 	} else if !isPublished {

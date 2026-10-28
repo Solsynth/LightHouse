@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -16,9 +17,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
 )
 
-// Signature timing tolerances mirror HttpSignature.MaxClockSkew.
 const (
 	maxClockSkew      = 5 * time.Minute
 	maxSignatureAge   = 5 * time.Minute
@@ -282,16 +284,12 @@ func (s *server) signRequestAs(ctx context.Context, req *http.Request, body []by
 
 // ---- crypto helpers -------------------------------------------------------
 
-func verifyRSA(publicKeyPEM, base, signatureB64 string) error {
+func verifyRSA(publicKeyPEM, base string, signature []byte) error {
 	publicKey, err := parsePublicKeyPEM(publicKeyPEM)
 	if err != nil {
 		return err
 	}
-	decoded, err := base64.StdEncoding.DecodeString(signatureB64)
-	if err != nil {
-		return err
-	}
-	return verifyRSABytes(publicKey, base, decoded)
+	return verifyRSABytes(publicKey, base, signature)
 }
 
 func verifyRSABytes(publicKey *rsa.PublicKey, base string, signature []byte) error {
@@ -345,7 +343,7 @@ func parsePublicKeyPEM(value string) (*rsa.PublicKey, error) {
 }
 
 func generateKeyPair() (privatePEM, publicPEM string, err error) {
-	key, err := rsa.GenerateKey(cryptoRandReader(), 2048)
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return "", "", err
 	}

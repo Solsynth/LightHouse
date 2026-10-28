@@ -134,7 +134,7 @@ func (s *service) resolveFeedScope(ctx context.Context, publisherName, collectio
 		return scope, nil
 	}
 	var publisher store.PublisherEntity
-	if err := s.db.WithContext(ctx).Where("name = ?", *normalizedPublisher).First(&publisher).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("lower(name) = ?", normalizeSlug(*normalizedPublisher)).First(&publisher).Error; err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return scope, err
 		}
@@ -811,6 +811,9 @@ func (s *service) cachedFriendsPresence(ctx context.Context, accountID uuid.UUID
 	accountSet := make([]string, 0, len(resp.GetActivities()))
 	seen := map[string]struct{}{}
 	for _, raw := range resp.GetActivities() {
+		if raw == nil {
+			continue
+		}
 		activity := presenceActivityFromProto(raw)
 		activities = append(activities, activity)
 		if _, ok := seen[activity.AccountID]; !ok {
@@ -868,6 +871,9 @@ func (s *service) cachedFriendsStatuses(ctx context.Context, accountID uuid.UUID
 	accountSet := make([]string, 0, len(resp.GetStatuses()))
 	seen := map[string]struct{}{}
 	for _, raw := range resp.GetStatuses() {
+		if raw == nil {
+			continue
+		}
 		status := accountStatusFromProto(raw)
 		statuses = append(statuses, status)
 		if _, ok := seen[status.AccountID]; !ok {
@@ -1567,6 +1573,9 @@ func nextCursor(activities []model.TimelineEvent) *string {
 			continue
 		}
 		instant := eventInstant(activities[i])
+		if instant.IsZero() {
+			continue
+		}
 		if !found || instant.Before(oldest) {
 			oldest = instant
 			found = true

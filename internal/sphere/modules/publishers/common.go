@@ -255,3 +255,7 @@ func normalizeTagList(values []string) []string {
 func itoa(value int) string {
 	return strconv.Itoa(value)
 }
+
+func newAPIError(code, message string, status int) *errs.ApiError {
+	return errs.New(code, message, status)
+}
