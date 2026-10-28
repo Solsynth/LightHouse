@@ -168,9 +168,12 @@ func (h *handler) realmMembership(ctx context.Context, realmID, accountID uuid.U
 func (h *handler) validatePostRealm(ctx context.Context, realmID, accountID uuid.UUID) (int, string) {
 	if _, err := h.realmByID(ctx, realmID); err != nil {
 		if errors.Is(err, errRealmUnavailable) {
-			h.log.Warn("posts: realm validation skipped, realm service unavailable",
+			// Fail closed: a post that claims a realm must be authorised by the
+			// realm service. Accepting the claim while the service is down would
+			// let any account post into any realm.
+			h.log.Warn("posts: realm validation failed, realm service unavailable",
 				"realm", realmID)
-			return 0, ""
+			return 503, "REALM_SERVICE_UNAVAILABLE"
 		}
 		h.log.Debug("posts: realm not found", "realm", realmID, "error", err)
 		return 400, "REALM_NOT_FOUND"
@@ -179,7 +182,7 @@ func (h *handler) validatePostRealm(ctx context.Context, realmID, accountID uuid
 	if !checked {
 		h.log.Warn("posts: realm membership not verified, membership API unavailable",
 			"realm", realmID, "account", accountID)
-		return 0, ""
+		return 503, "REALM_MEMBERSHIP_UNVERIFIED"
 	}
 	if !member {
 		return 403, "REALM_MEMBERSHIP_REQUIRED"

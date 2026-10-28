@@ -275,9 +275,12 @@ func (h *handler) createPost(c *gin.Context) {
 	}
 	if request.RealmID != nil {
 		if status, message := h.validatePostRealm(ctx, *request.RealmID, accountID); status != 0 {
-			if status == 403 {
+			switch status {
+			case 403:
 				httpx.Forbidden(c, message)
-			} else {
+			case 503:
+				httpx.Fail(c, errs.New("SERVICE_UNAVAILABLE", "The realm service is unavailable.", 503))
+			default:
 				httpx.BadRequest(c, message, "The realm does not exist or is unavailable.")
 			}
 			return
@@ -865,9 +868,12 @@ func (h *handler) updatePost(c *gin.Context) {
 	}
 	if request.RealmID != nil {
 		if status, message := h.validatePostRealm(ctx, *request.RealmID, accountID); status != 0 {
-			if status == 403 {
+			switch status {
+			case 403:
 				httpx.Forbidden(c, message)
-			} else {
+			case 503:
+				httpx.Fail(c, errs.New("SERVICE_UNAVAILABLE", "The realm service is unavailable.", 503))
+			default:
 				httpx.BadRequest(c, message, "The realm does not exist or is unavailable.")
 			}
 			return
