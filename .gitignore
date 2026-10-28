@@ -1,0 +1,14 @@
+# Build output
+bin/
+
+# Local configuration and runtime secrets
+config/*.toml
+!config/*.example.toml
+config.toml
+Keys/
+
+# Editor and OS noise
+.DS_Store
+*.swp
+.idea/
+.vscode/
