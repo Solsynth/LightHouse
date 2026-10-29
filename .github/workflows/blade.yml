@@ -1,14 +1,19 @@
-name: Docker Build
+name: Blade images
 
 on:
   push:
     branches: [master]
+    paths:
+      - "blade/**"
+      - ".github/workflows/blade.yml"
   pull_request:
     branches: [master]
+    paths:
+      - "blade/**"
+      - ".github/workflows/blade.yml"
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ vars.PACKAGE_OWNER }}/stargate
 
 jobs:
   build:
@@ -17,11 +22,17 @@ jobs:
       contents: read
       packages: write
 
+    strategy:
+      matrix:
+        include:
+          - image: blade
+            dockerfile: Dockerfile
+          - image: blade-relay
+            dockerfile: Dockerfile.relay
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -37,11 +48,10 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          # Context is the child module: the image never sees go.work.
+          context: ./blade
+          file: ./blade/${{ matrix.dockerfile }}
           push: ${{ github.event_name != 'pull_request' }}
-          build-args: |
-            VERSION=${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
-            GIT_COMMIT=${{ github.sha }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ vars.PACKAGE_OWNER }}/${{ matrix.image }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ vars.PACKAGE_OWNER }}/${{ matrix.image }}:latest

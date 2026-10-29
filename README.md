@@ -1,27 +1,36 @@
 # Lighthouse
 
-The Go monorepo for the Solar Network services. Current contents:
+The Go monorepo for the Solar Network services. Four services, three Go
+modules, one workspace:
 
 - **sphere** — the port of `DysonNetwork.Sphere`: posts, publishers, timelines,
   categories/tags/collections, surveys, stickers, automod, the web reader,
   livestreams and ActivityPub federation.
 - **messager** — the port of `DysonNetwork.Messager`: chat rooms, members,
   groups, messages, reactions, pins, voice clips and realtime calls.
+- **stargate** — the port of `DysonNetwork.Padlock` (auth, accounts, OIDC,
+  admin, E2EE/MLS) plus the Passport account/profile domain. Every other
+  service validates inbound tokens through it.
+- **blade** — the API gateway: reverse proxy, health checks, gRPC service
+  discovery, L4 TLS-SNI relays (`cmd/relay`) and the websocket gateway.
 
 Sphere and Messager are **separate services**: separate binaries, separate
 databases, separate module sets. They share the platform layer
-(`internal/platform`) and nothing else. Blade and Stargate move into this
-monorepo later; the layout leaves room for them.
+(`internal/platform`) and nothing else. Stargate and Blade live in their own
+modules under `stargate/` and `blade/`, keep their own `go.mod`, Dockerfiles
+and configs, and talk to the other services over HTTP/gRPC/NATS only.
 
 ## Layout
 
 ```
+go.work                   workspace: ., ./stargate, ./blade
+go.mod                    module src.solsynth.dev/sosys/lighthouse
 cmd/sphere                sphere process
 cmd/messager              messager process
 cmd/sphere-migrate        legacy Sphere/Postgres import
 cmd/messager-migrate      legacy Messager/Postgres import
-config/                   example TOML per service
-docs/MODULE_CONTRACT.md   the interface every module is written against
+config/                   example TOML per Lighthouse service
+docs/MODULE_CONTRACT.md   the interface every Lighthouse module is written against
 internal/platform/        shared house infrastructure
   module/                 compile-time module registry (Caddy style)
   app/                    process bootstrap (HTTP + gRPC + discovery)
@@ -37,14 +46,44 @@ internal/sphere/          sphere service
   config/ core/ app/ model/ store/ ports/ migrate/
   modules/*               feature modules (posts, publishers, ...)
 internal/messager/        messager service (same shape)
+stargate/                 module src.solsynth.dev/sosys/stargate
+  cmd/stargate              the service (HTTP :8080, gRPC :9090)
+  cmd/stargate-migrate      legacy Padlock/Passport import
+  cmd/stargate-module-import  per-module legacy import
+  cmd/stargate-hash-password  bcrypt hash for [auth.singleUser]
+  internal/                 module registry, modules, controllers, store
+  web/                      Vue 3 + Vite console (served by internal/webui)
+  config.example.toml       see stargate/README.md
+blade/                    module srv.solsynth.dev/sosys/blade
+  cmd/                      gateway (:6000 HTTP, :7001 gRPC)
+  cmd/relay                 L4 TLS-SNI relay node (:443)
+  internal/                 proxy, discovery, health, wsgateway, relay
+  configs/                  config.toml, docker.toml, relay.toml
+  docs/                     see blade/README.md
 ```
+
+## Workspace
+
+`go.work` uses the three modules so one checkout builds and tests all of them
+with a single toolchain (`go 1.27`). Nothing is published between them yet —
+each service still has its own dependency graph and `go.sum`.
+
+Two consequences worth knowing:
+
+- Directory patterns stop at a nested `go.mod`, so `go build ./...` at the
+  root covers only sphere/messager. Use the Makefile (or `go build
+  ./stargate/...` / `go build ./blade/...` from the root) for the whole tree.
+- Docker images build with a child directory as context (`./stargate`,
+  `./blade`), so `go.work` never enters an image and the children stay
+  buildable on their own. Their `Makefile`s keep working from inside the
+  child directory.
 
 ## Module system
 
-Both services use the same compile-time registry: a `module.Factory[C]` carries
-the module ID, dependencies, ports, GORM models, schema hooks and capabilities;
-`Configure` mounts its HTTP routes and gRPC services. `[modules]` in the TOML
-selects what runs:
+Both Lighthouse services use the same compile-time registry: a
+`module.Factory[C]` carries the module ID, dependencies, ports, GORM models,
+schema hooks and capabilities; `Configure` mounts its HTTP routes and gRPC
+services. `[modules]` in the TOML selects what runs:
 
 ```toml
 [modules]
@@ -54,29 +93,56 @@ disabled = ["app.solian.sphere.fediverse"]
 
 Disabling a module unmounts its surface and, on a fresh database, prevents its
 tables from being created. Existing tables are never dropped. `GET /api/modules`
-reports the resolved set and capabilities.
+reports the resolved set and capabilities. Stargate uses the same shape (see
+[`stargate/docs/module-system-plan.md`](stargate/docs/module-system-plan.md)).
 
 `docs/MODULE_CONTRACT.md` is the authoring contract: helpers, wire-type rules,
 persistence conventions and route-fidelity requirements.
 
 ## Run
 
+| binary | HTTP | gRPC | config |
+|---|---|---|---|
+| `sphere` | `:5071` | `:7099` | `config/sphere.toml` |
+| `messager` | `:5072` | `:7100` | `config/messager.toml` |
+| `stargate` | `:8080` | `:9090` | `stargate/config.toml` |
+| `blade` | `:6000` | `:7001` | `blade/configs/config.toml` |
+| `relay` | `:443` (TLS passthrough) | — | `blade/configs/relay.toml` |
+
 ```sh
 cp config/sphere.example.toml config/sphere.toml
 cp config/messager.example.toml config/messager.toml
-make build
-CONFIG_PATH=config/sphere.toml ./bin/sphere
+cp stargate/config.example.toml stargate/config.toml
+make build                       # bin/{sphere,messager,stargate,blade,relay}
+make run-stargate                # each run target cds into its module
+make run-blade
+make run-sphere
 CONFIG_PATH=config/messager.toml ./bin/messager
+```
+
+The Stargate console builds separately and is served by the Stargate process:
+
+```sh
+make web                         # stargate/web → stargate/web/dist (bun)
+make web-dev                     # Vite on :5173 proxying /api to :8080
 ```
 
 Postgres is required. Redis, NATS and every `[services]` target are optional: a
 missing one degrades only the features that depend on it (session caching falls
 back to memory, events stop, enrichment/lookup/notification features are
-skipped).
+skipped). Stargate's Postgres is its own database; it additionally validates
+tokens for sphere/messager over gRPC.
 
-Sphere listens on `:5071` (HTTP) and `:7099` (gRPC); Messager on `:5072` and
-`:7100`, matching the C# services. Both expose `/health`, `/alive`, `/api/modules`
-and a canonical JSON 404.
+## Deploy
+
+- `stargate/Dockerfile` builds the SPA and the service; context `./stargate`.
+- `blade/Dockerfile` and `blade/Dockerfile.relay` build the gateway and relay;
+  context `./blade`.
+- `blade/docker-compose.yml` (gateway + its Redis registry) and
+  `blade/docker-compose.relay.yml` (a PoP relay) keep their own contexts and
+  run unchanged with `docker compose -f blade/docker-compose.yml up -d`.
+- Root CI (`.github/workflows/stargate.yml`, `.github/workflows/blade.yml`)
+  builds and pushes the same images, path-filtered on their directories.
 
 ## Legacy data
 
@@ -95,7 +161,8 @@ SPHERE_TARGET_DSN=postgres://…/dyson_sphere_go \
 
 `sphere-migrate` / `messager-migrate` COPY the source rows into a staging table
 and then `INSERT … ON CONFLICT DO NOTHING`, so re-running is safe. Soft-deleted
-rows are copied with their `deleted_at` intact.
+rows are copied with their `deleted_at` intact. Stargate's equivalent is
+`make migrate-stargate` (see [`stargate/README.md`](stargate/README.md)).
 
 Status, verification and the known gaps are in [`docs/PORT_STATUS.md`](docs/PORT_STATUS.md).
 
