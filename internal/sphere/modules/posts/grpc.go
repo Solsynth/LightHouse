@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+	"gorm.io/gorm"
 
 	gen "src.solsynth.dev/sosys/go/proto"
 
@@ -295,35 +295,35 @@ func postToProto(post *model.Post) *gen.DyPost { return postToProtoDepth(post, 0
 
 func postToProtoDepth(post *model.Post, depth int) *gen.DyPost {
 	proto := &gen.DyPost{
-		Id:             post.ID,
-		Title:          stringValue(post.Title),
-		Description:    stringValue(post.Description),
-		Slug:           stringValue(post.Slug),
-		EditedAt:       timestampOf(post.EditedAt),
-		PublishedAt:    timestampOf(post.PublishedAt),
-		Visibility:     gen.DyPostVisibility(post.Visibility + 1),
-		Type:           gen.DyPostType(post.Type + 1),
-		ViewsUnique:    int32(post.ViewsUnique),
-		ViewsTotal:     int32(post.ViewsTotal),
-		Upvotes:        int32(post.Upvotes),
-		Downvotes:      int32(post.Downvotes),
-		AwardedScore:   post.AwardedScore,
-		ReactionsCount: map[string]int32{},
-		ReactionsMade:  map[string]bool{},
-		RepliesCount:   int32(post.RepliesCount),
+		Id:                 post.ID,
+		Title:              stringValue(post.Title),
+		Description:        stringValue(post.Description),
+		Slug:               stringValue(post.Slug),
+		EditedAt:           timestampOf(post.EditedAt),
+		PublishedAt:        timestampOf(post.PublishedAt),
+		Visibility:         gen.DyPostVisibility(post.Visibility + 1),
+		Type:               gen.DyPostType(post.Type + 1),
+		ViewsUnique:        int32(post.ViewsUnique),
+		ViewsTotal:         int32(post.ViewsTotal),
+		Upvotes:            int32(post.Upvotes),
+		Downvotes:          int32(post.Downvotes),
+		AwardedScore:       post.AwardedScore,
+		ReactionsCount:     map[string]int32{},
+		ReactionsMade:      map[string]bool{},
+		RepliesCount:       int32(post.RepliesCount),
 		ThreadRepliesCount: int32(post.ThreadRepliesCount),
-		RepliedGone:    post.RepliedGone,
-		ForwardedGone:  post.ForwardedGone,
-		RepliedPostId:  post.RepliedPostID,
-		ForwardedPostId: post.ForwardedPostID,
-		RealmId:        post.RealmID,
-		PublisherId:    post.PublisherID,
-		FediverseUri:   post.FediverseURI,
-		Language:       post.Language,
-		BoostCount:     int32(post.BoostCount),
-		CreatedAt:      timestampOf(post.CreatedAt),
-		UpdatedAt:      timestampOf(post.UpdatedAt),
-		DeletedAt:      timestampOf(post.DeletedAt),
+		RepliedGone:        post.RepliedGone,
+		ForwardedGone:      post.ForwardedGone,
+		RepliedPostId:      post.RepliedPostID,
+		ForwardedPostId:    post.ForwardedPostID,
+		RealmId:            post.RealmID,
+		PublisherId:        post.PublisherID,
+		FediverseUri:       post.FediverseURI,
+		Language:           post.Language,
+		BoostCount:         int32(post.BoostCount),
+		CreatedAt:          timestampOf(post.CreatedAt),
+		UpdatedAt:          timestampOf(post.UpdatedAt),
+		DeletedAt:          timestampOf(post.DeletedAt),
 	}
 	if post.Content != nil {
 		content := *post.Content
@@ -510,4 +510,3 @@ func stringPtrOrNil(value string) *string {
 	}
 	return &value
 }
-

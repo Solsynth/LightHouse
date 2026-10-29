@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/migrate"
@@ -36,6 +37,11 @@ func main() {
 		os.Exit(1)
 	}
 	for _, table := range report.Tables {
+		if len(table.MissingInSource) > 0 {
+			fmt.Printf("%-32s %8d rows (target-only columns keep defaults: %s)\n",
+				table.Table, table.Written, strings.Join(table.MissingInSource, ", "))
+			continue
+		}
 		fmt.Printf("%-32s %8d rows\n", table.Table, table.Written)
 	}
 	for _, skipped := range report.Skipped {

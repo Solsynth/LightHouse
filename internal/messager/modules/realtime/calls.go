@@ -14,9 +14,9 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
-	gen "src.solsynth.dev/sosys/go/proto"
 	"src.solsynth.dev/sosys/go/pkg/errs"
 	models "src.solsynth.dev/sosys/go/pkg/models"
+	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/model"
@@ -493,13 +493,13 @@ func (s *server) kickParticipant(c *gin.Context) {
 		s.sendSystemMessage(ctx, room, member, "system.call.member.left",
 			fmt.Sprintf("%s was removed from the call by %s.", memberName, operatorName),
 			map[string]any{
-				"event":                "call_member_left",
-				"reason":               "removed",
-				"call_id":              call.ID.String(),
-				"member_id":            targetMember.ID.String(),
-				"account_id":           targetMember.AccountID.String(),
-				"operator_member_id":   member.ID.String(),
-				"operator_account_id":  member.AccountID.String(),
+				"event":               "call_member_left",
+				"reason":              "removed",
+				"call_id":             call.ID.String(),
+				"member_id":           targetMember.ID.String(),
+				"account_id":          targetMember.AccountID.String(),
+				"operator_member_id":  member.ID.String(),
+				"operator_account_id": member.AccountID.String(),
 			})
 	}
 	httpx.NoContent(c)
@@ -816,13 +816,13 @@ func (s *server) inviteToCall(c *gin.Context) {
 		subject = *title
 	}
 	payload := map[string]any{
-		"uuid":       uuid.New().String(),
-		"caller_id":  accountID.String(),
+		"uuid":        uuid.New().String(),
+		"caller_id":   accountID.String(),
 		"caller_name": callerName,
-		"room_id":    roomID.String(),
-		"call_id":    call.ID.String(),
-		"room_name":  subject,
-		"session_id": *call.SessionID,
+		"room_id":     roomID.String(),
+		"call_id":     call.ID.String(),
+		"room_name":   subject,
+		"session_id":  *call.SessionID,
 	}
 	if picture := user.GetPicture(); picture != nil && picture.GetId() != "" {
 		payload["pfp"] = picture.GetId()

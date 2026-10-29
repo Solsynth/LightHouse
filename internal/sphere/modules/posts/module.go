@@ -7,8 +7,8 @@ package posts
 import (
 	"context"
 
-	gen "src.solsynth.dev/sosys/go/proto"
 	"gorm.io/gorm"
+	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
@@ -112,6 +112,9 @@ func schemaHook(ctx context.Context, db *gorm.DB) error {
 			source_text text NOT NULL,
 			embedding vector(1024),
 			indexed_at timestamptz NOT NULL,
+			created_at timestamptz NOT NULL,
+			updated_at timestamptz NOT NULL,
+			deleted_at timestamptz,
 			CONSTRAINT pk_post_indices PRIMARY KEY (id),
 			CONSTRAINT ix_post_indices_post_id UNIQUE (post_id),
 			CONSTRAINT fk_post_indices_posts_post_id FOREIGN KEY (post_id)

@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	gen "src.solsynth.dev/sosys/go/proto"
 	"src.solsynth.dev/sosys/go/pkg/errs"
+	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/authn"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/httpx"

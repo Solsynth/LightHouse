@@ -503,4 +503,3 @@ func (i *instance) notifyManagers(ctx context.Context, publisher *store.Publishe
 		}
 	}
 }
-

@@ -451,4 +451,3 @@ func statusCodePointer(status int) *string {
 	value := strconv.Itoa(status)
 	return &value
 }
-

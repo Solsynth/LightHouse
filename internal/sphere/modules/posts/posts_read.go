@@ -1516,4 +1516,3 @@ func (h *handler) listForwards(c *gin.Context) {
 	posts = h.filterVisible(ctx, posts, v, info, true)
 	httpx.List(c, posts, total)
 }
-

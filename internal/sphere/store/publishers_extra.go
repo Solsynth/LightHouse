@@ -89,7 +89,6 @@ func (s *Store) PublisherCountsFor(ctx context.Context, publisherID uuid.UUID) (
 	var counts PublisherCounts
 	db := s.DB.WithContext(ctx)
 
-
 	var posts int64
 	if err := db.Model(&PostEntity{}).Where("publisher_id = ?", publisherID).Count(&posts).Error; err != nil {
 		return counts, err

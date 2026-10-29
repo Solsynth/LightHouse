@@ -110,9 +110,9 @@ func (i *instance) moderateTimeoutMember(c *gin.Context) {
 		reason = *request.Reason
 	}
 	cause := map[string]any{
-		"reason":    reason,
-		"type":      int(model.ChatTimeoutModerator),
-		"since":     model.NewTime(now),
+		"reason": reason,
+		"type":   int(model.ChatTimeoutModerator),
+		"since":  model.NewTime(now),
 	}
 	_ = i.db.WithContext(ctx).Model(&store.ChatMemberEntity{}).Where("id = ?", member.ID).
 		Updates(map[string]any{"timeout_until": until, "timeout_cause": store.ToJSON(cause)}).Error
@@ -125,4 +125,3 @@ func (i *instance) moderateTimeoutMember(c *gin.Context) {
 		"timeout_until": model.NewTime(until),
 	})
 }
-

@@ -11,11 +11,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	gen "src.solsynth.dev/sosys/go/proto"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/ports"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
-	gen "src.solsynth.dev/sosys/go/proto"
 )
 
 // ModuleID is the publisher module's registry ID.
@@ -23,17 +23,17 @@ const ModuleID = "app.solian.sphere.publishers"
 
 // Permission keys, copied verbatim from DysonNetwork.Shared.Auth.PermissionKeys.
 const (
-	permCreate            = "publishers.create"
-	permUpdate            = "publishers.update"
-	permDelete            = "publishers.delete"
-	permModerate          = "publishers.moderate"
-	permMembersManage     = "publishers.members.manage"
-	permInvitesManage     = "publishers.invites.manage"
-	permFeaturesManage    = "publishers.features.manage"
-	permFediverseManage   = "publishers.fediverse.manage"
-	permDomainsManage     = "publishers.domains.manage"
-	permRewardsSettle     = "publishers.rewards.settle"
-	permSubscriptions     = "publishers.subscriptions.manage"
+	permCreate          = "publishers.create"
+	permUpdate          = "publishers.update"
+	permDelete          = "publishers.delete"
+	permModerate        = "publishers.moderate"
+	permMembersManage   = "publishers.members.manage"
+	permInvitesManage   = "publishers.invites.manage"
+	permFeaturesManage  = "publishers.features.manage"
+	permFediverseManage = "publishers.fediverse.manage"
+	permDomainsManage   = "publishers.domains.manage"
+	permRewardsSettle   = "publishers.rewards.settle"
+	permSubscriptions   = "publishers.subscriptions.manage"
 )
 
 // PublisherFeatureFlag constants.
@@ -114,14 +114,10 @@ func Factory() module.Factory[core.Services] {
 	}
 }
 
-// indexHook adds the constraints AutoMigrate cannot express on the legacy
-// tables and backfills the membership timestamps the C# ModelBase carried.
+// indexHook adds the constraints AutoMigrate cannot express. Every column
+// comes from the entity definitions, which keep the legacy C# layout exactly.
 func indexHook(ctx context.Context, db *gorm.DB) error {
 	statements := []string{
-		`ALTER TABLE publisher_members ADD COLUMN IF NOT EXISTS created_at timestamp with time zone NOT NULL DEFAULT now()`,
-		`ALTER TABLE publisher_members ADD COLUMN IF NOT EXISTS updated_at timestamp with time zone NOT NULL DEFAULT now()`,
-		`ALTER TABLE publisher_members ADD COLUMN IF NOT EXISTS deleted_at timestamp with time zone`,
-		`CREATE INDEX IF NOT EXISTS ix_publisher_members_deleted_at ON publisher_members (deleted_at)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS ix_publishers_name_deleted_at ON publishers (name, deleted_at)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS ix_publisher_verified_domains_publisher_id_domain ON publisher_verified_domains (publisher_id, domain)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS ix_publishing_settings_account_id_deleted_at ON publishing_settings (account_id, deleted_at)`,

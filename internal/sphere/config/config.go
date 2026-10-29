@@ -14,8 +14,8 @@ type Config struct {
 
 	// Posts controls post creation and search defaults.
 	Posts struct {
-		SearchEngineDefault   string `toml:"searchEngineDefault"`
-		AutoChainWindowMinutes int   `toml:"autoChainWindowMinutes"`
+		SearchEngineDefault    string `toml:"searchEngineDefault"`
+		AutoChainWindowMinutes int    `toml:"autoChainWindowMinutes"`
 	} `toml:"posts"`
 
 	// ActivityPub is the federation identity of this deployment.
@@ -65,15 +65,15 @@ type Config struct {
 
 // AutomodRuleSeed mirrors the C# Automod:R rules configuration block.
 type AutomodRuleSeed struct {
-	Name          string `toml:"name"`
-	Description   string `toml:"description"`
-	Type          string `toml:"type"`
-	Action        string `toml:"action"`
-	Pattern       string `toml:"pattern"`
-	IsRegex       bool   `toml:"isRegex"`
-	DerankWeight  int    `toml:"derankWeight"`
-	IsEnabled     bool   `toml:"isEnabled"`
-	Priority      int    `toml:"priority"`
+	Name         string `toml:"name"`
+	Description  string `toml:"description"`
+	Type         string `toml:"type"`
+	Action       string `toml:"action"`
+	Pattern      string `toml:"pattern"`
+	IsRegex      bool   `toml:"isRegex"`
+	DerankWeight int    `toml:"derankWeight"`
+	IsEnabled    bool   `toml:"isEnabled"`
+	Priority     int    `toml:"priority"`
 }
 
 // FediverseRuleSeed mirrors the C# FediverseModeration:R rules block.
@@ -130,6 +130,7 @@ func applyEnv(cfg *Config) {
 	config.SetStr("SPHERE_REDIS_PASSWORD", &cfg.Redis.Password)
 	config.SetStr("SPHERE_NATS_TARGET", &cfg.NATS.Target)
 	config.SetStr("SPHERE_SERVICES_STARGATE__GRPC", &cfg.Services.Stargate.GRPC)
+	config.SetStr("SPHERE_SERVICES_PASSPORT__GRPC", &cfg.Services.Passport.GRPC)
 	config.SetStr("SPHERE_SERVICES_RING__GRPC", &cfg.Services.Ring.GRPC)
 	config.SetStr("SPHERE_SERVICES_DRIVE__GRPC", &cfg.Services.Drive.GRPC)
 	config.SetStr("SPHERE_SERVICES_WALLET__GRPC", &cfg.Services.Wallet.GRPC)

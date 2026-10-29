@@ -805,4 +805,3 @@ func reactionFromEmoji(emoji string) (string, int) {
 		return "heart", int(model.ReactionPositive)
 	}
 }
-

@@ -569,11 +569,11 @@ func (s *service) listEvents(
 	visibleFediverse := s.visibleFediverseActorIDs(ctx, accountID, friends)
 
 	query := s.buildPostsQuery(ctx, feedQuery{
-		cursor:             cursor,
+		cursor:               cursor,
 		filteredPublisherIDs: filteredPublisherIDs,
-		realmIDs:           userRealmIDs,
-		scopedPublisherID:  scope.publisherID,
-		scopedCollectionID: scope.collectionID,
+		realmIDs:             userRealmIDs,
+		scopedPublisherID:    scope.publisherID,
+		scopedCollectionID:   scope.collectionID,
 	})
 	if len(visibleFediverse) > 0 {
 		query = query.Where("posts.fediverse_uri IS NULL OR posts.publisher_id IN ?", visibleFediverse)
@@ -1205,8 +1205,8 @@ func (s *service) rankPosts(
 	automated := s.automatedPublisherAccounts(ctx, posts)
 
 	type candidate struct {
-		post      model.Post
-		rank      float64
+		post       model.Post
+		rank       float64
 		shouldHide bool
 	}
 	candidates := make([]candidate, 0, len(posts))
@@ -1544,7 +1544,6 @@ func (s *service) automatedPublisherAccounts(ctx context.Context, posts []model.
 	}
 	return out
 }
-
 
 // sortLatestPosts mirrors SortLatestPosts.
 func sortLatestPosts(posts []model.Post, take int) []model.Post {

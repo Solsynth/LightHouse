@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"regexp"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -40,11 +40,11 @@ const (
 
 // moderationResult mirrors FediverseModerationResult.
 type moderationResult struct {
-	IsBlocked       bool   `json:"is_blocked"`
-	IsSilenced      bool   `json:"is_silenced"`
-	IsSuspended     bool   `json:"is_suspended"`
-	IsDeranked      bool   `json:"is_deranked"`
-	ShouldFlag      bool   `json:"should_flag"`
+	IsBlocked       bool    `json:"is_blocked"`
+	IsSilenced      bool    `json:"is_silenced"`
+	IsSuspended     bool    `json:"is_suspended"`
+	IsDeranked      bool    `json:"is_deranked"`
+	ShouldFlag      bool    `json:"should_flag"`
 	MatchedRuleName *string `json:"matched_rule_name"`
 	MatchedDomain   *string `json:"matched_domain"`
 	MatchedKeyword  *string `json:"matched_keyword"`

@@ -4,16 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"src.solsynth.dev/sosys/go/pkg/errs"
 	gen "src.solsynth.dev/sosys/go/proto"
@@ -80,11 +80,11 @@ func newHandler(host *module.Host[core.Services]) *handler {
 		log = slog.Default()
 	}
 	return &handler{
-		core:  host.Core,
-		db:    host.Core.DB,
-		st:    store.New(host.Core.DB),
-		ports: host.Ports,
-		log:   log,
+		core:      host.Core,
+		db:        host.Core.DB,
+		st:        store.New(host.Core.DB),
+		ports:     host.Ports,
+		log:       log,
 		views:     map[uuid.UUID]*viewBucket{},
 		viewDedup: map[string]time.Time{},
 	}

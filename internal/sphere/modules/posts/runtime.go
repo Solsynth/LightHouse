@@ -356,4 +356,3 @@ func (h *handler) upsertAggregatedStats(ctx context.Context, postID uuid.UUID) {
 		h.log.Warn("posts: update aggregated stats failed", "error", err)
 	}
 }
-

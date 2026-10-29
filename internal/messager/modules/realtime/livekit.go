@@ -167,13 +167,13 @@ func (l *livekitClient) userToken(account *gen.DyAccount, identity, sessionID, t
 		"name":     account.GetNick(),
 		"metadata": string(metadata),
 		"video": map[string]any{
-			"roomJoin":             true,
-			"room":                 sessionID,
-			"canPublish":           true,
-			"canPublishData":       true,
-			"canSubscribe":         true,
-			"canSubscribeMetrics":  true,
-			"roomAdmin":            isAdmin,
+			"roomJoin":            true,
+			"room":                sessionID,
+			"canPublish":          true,
+			"canPublishData":      true,
+			"canSubscribe":        true,
+			"canSubscribeMetrics": true,
+			"roomAdmin":           isAdmin,
 		},
 	})
 }
@@ -408,4 +408,3 @@ func decodeParticipantState(raw json.RawMessage) string {
 	}
 	return string(raw)
 }
-

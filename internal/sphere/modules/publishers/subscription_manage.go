@@ -494,4 +494,3 @@ func (i *instance) setRelationshipFlag(c *gin.Context, enabled, muting bool) {
 	}
 	httpx.OK(c, response)
 }
-

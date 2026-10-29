@@ -21,10 +21,13 @@ type Report struct {
 	Skipped []string
 }
 
-// TableReport is one table's row count.
+// TableReport is one table's row count. MissingInSource lists target columns
+// the legacy table does not have; those columns are left to their defaults for
+// the copied rows (the C# source never wrote them).
 type TableReport struct {
-	Table   string
-	Written int64
+	Table           string
+	Written         int64
+	MissingInSource []string
 }
 
 // TotalWritten is the sum of written rows.
@@ -70,11 +73,11 @@ func Run(ctx context.Context, sourceDSN, targetDSN string, tables []string, dryR
 			continue
 		}
 
-		written, err := copyTable(ctx, source, target, table, dryRun)
+		tableReport, err := copyTable(ctx, source, target, table, dryRun)
 		if err != nil {
 			return report, err
 		}
-		report.Tables = append(report.Tables, TableReport{Table: table, Written: written})
+		report.Tables = append(report.Tables, tableReport)
 	}
 	return report, nil
 }
@@ -90,22 +93,33 @@ func tableExists(ctx context.Context, conn *pgx.Conn, table string) (bool, error
 }
 
 // copyTable stages the source rows in a temp table shaped like the target and
-// then inserts them, skipping rows the target already holds.
-func copyTable(ctx context.Context, source, target *pgx.Conn, table string, dryRun bool) (int64, error) {
-	columns, err := columnsOf(ctx, target, table)
+// then inserts them, skipping rows the target already holds. Only columns the
+// two databases share are copied; a target-only column keeps its default, so a
+// port that added a column still imports an older legacy table.
+func copyTable(ctx context.Context, source, target *pgx.Conn, table string, dryRun bool) (TableReport, error) {
+	targetColumns, err := columnsOf(ctx, target, table)
 	if err != nil {
-		return 0, err
+		return TableReport{}, err
+	}
+	sourceColumns, err := columnsOf(ctx, source, table)
+	if err != nil {
+		return TableReport{}, err
+	}
+	columns, missing := intersect(targetColumns, sourceColumns)
+	report := TableReport{Table: table, MissingInSource: missing}
+	if len(columns) == 0 {
+		return report, fmt.Errorf("%s: the legacy and target tables share no columns", table)
 	}
 	columnList := strings.Join(quoteAll(columns), ", ")
 	stage := "stage_" + table
 
 	if _, err := target.Exec(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s", quote(stage))); err != nil {
-		return 0, fmt.Errorf("%s: drop stale staging table: %w", table, err)
+		return report, fmt.Errorf("%s: drop stale staging table: %w", table, err)
 	}
 	if _, err := target.Exec(ctx, fmt.Sprintf(
 		"CREATE TEMP TABLE %s AS SELECT %s FROM %s WITH NO DATA",
 		quote(stage), columnList, quote(table))); err != nil {
-		return 0, fmt.Errorf("%s: create staging table: %w", table, err)
+		return report, fmt.Errorf("%s: create staging table: %w", table, err)
 	}
 	defer func() {
 		_, _ = target.Exec(context.WithoutCancel(ctx), fmt.Sprintf("DROP TABLE IF EXISTS %s", quote(stage)))
@@ -126,27 +140,29 @@ func copyTable(ctx context.Context, source, target *pgx.Conn, table string, dryR
 		fmt.Sprintf("COPY %s (%s) FROM STDIN", quote(stage), columnList))
 	_ = reader.CloseWithError(err)
 	if sourceErr := <-copyErr; sourceErr != nil {
-		return 0, fmt.Errorf("%s: read source rows: %w", table, sourceErr)
+		return report, fmt.Errorf("%s: read source rows: %w", table, sourceErr)
 	}
 	if err != nil {
-		return 0, fmt.Errorf("%s: copy rows: %w", table, err)
+		return report, fmt.Errorf("%s: copy rows: %w", table, err)
 	}
 
 	var staged int64
 	if err := target.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM %s", quote(stage))).Scan(&staged); err != nil {
-		return 0, fmt.Errorf("%s: count staged rows: %w", table, err)
+		return report, fmt.Errorf("%s: count staged rows: %w", table, err)
 	}
 	if dryRun {
-		return staged, nil
+		report.Written = staged
+		return report, nil
 	}
 
 	tag, err := target.Exec(ctx, fmt.Sprintf(
 		"INSERT INTO %s (%s) SELECT %s FROM %s ON CONFLICT DO NOTHING",
 		quote(table), columnList, columnList, quote(stage)))
 	if err != nil {
-		return 0, fmt.Errorf("%s: insert rows: %w", table, err)
+		return report, fmt.Errorf("%s: insert rows: %w", table, err)
 	}
-	return tag.RowsAffected(), nil
+	report.Written = tag.RowsAffected()
+	return report, nil
 }
 
 // columnsOf lists the target table's columns so the copy is explicit and
@@ -175,6 +191,25 @@ func columnsOf(ctx context.Context, conn *pgx.Conn, table string) ([]string, err
 		return nil, errors.New(table + ": no columns found")
 	}
 	return columns, nil
+}
+
+// intersect returns the target columns the source also has, in target order,
+// plus the target-only columns that will keep their defaults.
+func intersect(target, source []string) ([]string, []string) {
+	available := make(map[string]struct{}, len(source))
+	for _, column := range source {
+		available[column] = struct{}{}
+	}
+	common := make([]string, 0, len(target))
+	missing := make([]string, 0)
+	for _, column := range target {
+		if _, ok := available[column]; ok {
+			common = append(common, column)
+		} else {
+			missing = append(missing, column)
+		}
+	}
+	return common, missing
 }
 
 func quote(identifier string) string { return `"` + identifier + `"` }

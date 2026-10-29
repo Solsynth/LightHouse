@@ -356,4 +356,3 @@ func randomToken() string {
 
 // errNotFound is the package's sentinel for missing rows.
 var errNotFound = gorm.ErrRecordNotFound
-

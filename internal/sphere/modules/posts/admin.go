@@ -425,4 +425,3 @@ func (h *handler) adminStats(c *gin.Context) {
 		TotalBookmarks:  bookmarks,
 	})
 }
-

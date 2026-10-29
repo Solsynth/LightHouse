@@ -11,8 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
-	gen "src.solsynth.dev/sosys/go/proto"
 	"src.solsynth.dev/sosys/go/pkg/errs"
+	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/authn"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/httpx"
@@ -214,4 +214,3 @@ func (i *instance) completeAccount(ctx context.Context, query string, hadSlash b
 	}
 	return results
 }
-

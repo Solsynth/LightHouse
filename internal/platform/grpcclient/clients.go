@@ -91,6 +91,7 @@ type Clients struct {
 // Targets is the [services] configuration a caller passes in.
 type Targets struct {
 	Stargate string
+	Passport string
 	Sphere   string
 	Messager string
 	Ring     string
@@ -120,12 +121,22 @@ func New(targets Targets) (*Clients, error) {
 		return nil, err
 	} else if conn != nil {
 		clients.Account = gen.NewDyAccountServiceClient(conn)
-		clients.Profile = gen.NewDyProfileServiceClient(conn)
 		clients.Permission = gen.NewDyPermissionServiceClient(conn)
 		clients.ActionLog = gen.NewDyActionLogServiceClient(conn)
-		clients.Realm = gen.NewDyRealmServiceClient(conn)
 		clients.Mls = gen.NewDyMlsServiceClient(conn)
 		clients.Presence = gen.NewDyPresenceServiceClient(conn)
+		// Passport owns profiles, realms and domain blocks. A deployment that
+		// serves them from the Stargate address gets them here instead.
+		clients.Profile = gen.NewDyProfileServiceClient(conn)
+		clients.Realm = gen.NewDyRealmServiceClient(conn)
+		clients.DomainBlock = gen.NewDyDomainBlockServiceClient(conn)
+	}
+	// A separate Passport endpoint replaces the profile-family clients.
+	if conn, err := dial(targets.Passport); err != nil {
+		return nil, err
+	} else if conn != nil {
+		clients.Profile = gen.NewDyProfileServiceClient(conn)
+		clients.Realm = gen.NewDyRealmServiceClient(conn)
 		clients.DomainBlock = gen.NewDyDomainBlockServiceClient(conn)
 	}
 	if conn, err := dial(targets.Ring); err != nil {

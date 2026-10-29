@@ -53,8 +53,6 @@ func extractLinkEmbed(finalURL *url.URL, body []byte) model.LinkEmbed {
 	firstParagraph := firstMeaningfulParagraph(document)
 	firstImage := firstMeaningfulImage(document)
 
-
-
 	favicon := faviconURL(document, &base)
 
 	if canonical := canonicalURL(document); canonical != nil {

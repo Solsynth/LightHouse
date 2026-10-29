@@ -16,25 +16,25 @@ type Config struct {
 	RealtimeChat struct {
 		Endpoint  string `toml:"endpoint"`
 		APIKey    string `toml:"apiKey"`
-		APISecret string `toml:"apiSecret"` 
+		APISecret string `toml:"apiSecret"`
 	} `toml:"realtimeChat"`
 
 	// VoiceMessages configures voice-message retention and storage.
 	VoiceMessages struct {
-		KeyPrefix      string `toml:"keyPrefix"`
-		MaxFileSizeBytes int64 `toml:"maxFileSizeBytes"`
-		RetentionDays  int    `toml:"retentionDays"`
-		CleanupCron    string `toml:"cleanupCron"`
-		S3             struct {
-			ServiceURL    string `toml:"serviceUrl"`
-			Endpoint      string `toml:"endpoint"`
-			PublicBaseURL string `toml:"publicBaseUrl"`
-			Region        string `toml:"region"`
-			AccessKey     string `toml:"accessKey"`
-			SecretKey     string `toml:"secretKey"`
-			Bucket        string `toml:"bucket"`
-			ForcePathStyle bool  `toml:"forcePathStyle"`
-			EnableSSL     bool   `toml:"enableSsl"`
+		KeyPrefix        string `toml:"keyPrefix"`
+		MaxFileSizeBytes int64  `toml:"maxFileSizeBytes"`
+		RetentionDays    int    `toml:"retentionDays"`
+		CleanupCron      string `toml:"cleanupCron"`
+		S3               struct {
+			ServiceURL     string `toml:"serviceUrl"`
+			Endpoint       string `toml:"endpoint"`
+			PublicBaseURL  string `toml:"publicBaseUrl"`
+			Region         string `toml:"region"`
+			AccessKey      string `toml:"accessKey"`
+			SecretKey      string `toml:"secretKey"`
+			Bucket         string `toml:"bucket"`
+			ForcePathStyle bool   `toml:"forcePathStyle"`
+			EnableSSL      bool   `toml:"enableSsl"`
 		} `toml:"s3"`
 	} `toml:"voiceMessages"`
 }
@@ -81,6 +81,7 @@ func applyEnv(cfg *Config) {
 	config.SetStr("MESSAGER_REDIS_PASSWORD", &cfg.Redis.Password)
 	config.SetStr("MESSAGER_NATS_TARGET", &cfg.NATS.Target)
 	config.SetStr("MESSAGER_SERVICES_STARGATE__GRPC", &cfg.Services.Stargate.GRPC)
+	config.SetStr("MESSAGER_SERVICES_PASSPORT__GRPC", &cfg.Services.Passport.GRPC)
 	config.SetStr("MESSAGER_SERVICES_SPHERE__GRPC", &cfg.Services.Sphere.GRPC)
 	config.SetStr("MESSAGER_SERVICES_RING__GRPC", &cfg.Services.Ring.GRPC)
 	config.SetStr("MESSAGER_SERVICES_DRIVE__GRPC", &cfg.Services.Drive.GRPC)

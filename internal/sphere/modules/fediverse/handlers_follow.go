@@ -349,4 +349,3 @@ func (s *server) currentAccount(c *gin.Context) (uuid.UUID, bool) {
 	}
 	return id, true
 }
-

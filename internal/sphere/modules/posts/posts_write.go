@@ -27,37 +27,37 @@ import (
 
 // postRequest mirrors PostActionController.PostRequest.
 type postRequest struct {
-	Title         *string                `json:"title"`
-	Description   *string                `json:"description"`
-	Slug          *string                `json:"slug"`
-	Content       *string                `json:"content"`
-	Visibility    *int                   `json:"visibility"`
-	Type          *int                   `json:"type"`
-	EmbedView     any                    `json:"embedView"`
-	Tags          []string               `json:"tags"`
-	Categories    []string               `json:"categories"`
-	Attachments   []string               `json:"attachments"`
-	Meta          map[string]any         `json:"meta"`
-	DraftedAt     *model.Time            `json:"draftedAt"`
-	PublishedAt   *model.Time            `json:"publishedAt"`
-	RepliedPostID *uuid.UUID             `json:"repliedPostId"`
-	ForwardedPostID *uuid.UUID           `json:"forwardedPostId"`
-	ChainedPostID *uuid.UUID             `json:"chainedPostId"`
-	AutoChain     *bool                  `json:"autoChain"`
-	RealmID       *uuid.UUID             `json:"realmId"`
-	SurveyID      *uuid.UUID             `json:"surveyId"`
-	FundID        *uuid.UUID             `json:"fundId"`
-	MeetID        *uuid.UUID             `json:"meetId"`
-	LiveStreamID  *uuid.UUID             `json:"liveStreamId"`
-	NotableDayID  *uuid.UUID             `json:"notableDayId"`
-	CalendarEventID *uuid.UUID           `json:"calendarEventId"`
-	LocationName  *string                `json:"locationName"`
-	LocationAddress *string              `json:"locationAddress"`
-	LocationWkt   *string                `json:"locationWkt"`
-	ThumbnailID   *string                `json:"thumbnailId"`
-	Embeds        []map[string]any       `json:"embeds"`
-	Language      *string                `json:"language"`
-	CollectionIDs []uuid.UUID            `json:"collectionIds"`
+	Title           *string          `json:"title"`
+	Description     *string          `json:"description"`
+	Slug            *string          `json:"slug"`
+	Content         *string          `json:"content"`
+	Visibility      *int             `json:"visibility"`
+	Type            *int             `json:"type"`
+	EmbedView       any              `json:"embedView"`
+	Tags            []string         `json:"tags"`
+	Categories      []string         `json:"categories"`
+	Attachments     []string         `json:"attachments"`
+	Meta            map[string]any   `json:"meta"`
+	DraftedAt       *model.Time      `json:"draftedAt"`
+	PublishedAt     *model.Time      `json:"publishedAt"`
+	RepliedPostID   *uuid.UUID       `json:"repliedPostId"`
+	ForwardedPostID *uuid.UUID       `json:"forwardedPostId"`
+	ChainedPostID   *uuid.UUID       `json:"chainedPostId"`
+	AutoChain       *bool            `json:"autoChain"`
+	RealmID         *uuid.UUID       `json:"realmId"`
+	SurveyID        *uuid.UUID       `json:"surveyId"`
+	FundID          *uuid.UUID       `json:"fundId"`
+	MeetID          *uuid.UUID       `json:"meetId"`
+	LiveStreamID    *uuid.UUID       `json:"liveStreamId"`
+	NotableDayID    *uuid.UUID       `json:"notableDayId"`
+	CalendarEventID *uuid.UUID       `json:"calendarEventId"`
+	LocationName    *string          `json:"locationName"`
+	LocationAddress *string          `json:"locationAddress"`
+	LocationWkt     *string          `json:"locationWkt"`
+	ThumbnailID     *string          `json:"thumbnailId"`
+	Embeds          []map[string]any `json:"embeds"`
+	Language        *string          `json:"language"`
+	CollectionIDs   []uuid.UUID      `json:"collectionIds"`
 }
 
 type blogPermissionRequest struct {
@@ -69,9 +69,9 @@ type batchDeleteRequest struct {
 }
 
 type batchVisibilityRequest struct {
-	PostIDs    []uuid.UUID `json:"postIds"`
-	Visibility *int        `json:"visibility"`
-	DraftedAt  *model.Time `json:"draftedAt"`
+	PostIDs     []uuid.UUID `json:"postIds"`
+	Visibility  *int        `json:"visibility"`
+	DraftedAt   *model.Time `json:"draftedAt"`
 	PublishedAt *model.Time `json:"publishedAt"`
 }
 
@@ -215,13 +215,13 @@ func (h *handler) checkBlogPermission(c *gin.Context) {
 	host := strings.ToLower(parsed.Hostname())
 	verified := h.domainVerified(ctx, publisher.ID, host)
 	httpx.OK(c, gin.H{
-		"can_create":             granted && verified,
+		"can_create":              granted && verified,
 		"permission_node_granted": granted,
-		"permission_granted":     granted,
-		"domain_verified":        verified,
-		"domain":                 host,
-		"publisher_id":           publisher.ID.String(),
-		"publisher_name":         publisher.Name,
+		"permission_granted":      granted,
+		"domain_verified":         verified,
+		"domain":                  host,
+		"publisher_id":            publisher.ID.String(),
+		"publisher_name":          publisher.Name,
 	})
 }
 
@@ -1286,4 +1286,3 @@ func (h *handler) publishDraft(c *gin.Context) {
 	}
 	httpx.OK(c, post)
 }
-

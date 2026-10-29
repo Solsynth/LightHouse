@@ -180,7 +180,6 @@ func (s *service) loadQuestions(ctx context.Context, surveyID uuid.UUID) ([]stor
 	return questions, err
 }
 
-
 func surveyWire(entity *store.SurveyEntity, questions []store.SurveyQuestionEntity) model.Survey {
 	survey := store.SurveyToModel(entity)
 	for i := range questions {

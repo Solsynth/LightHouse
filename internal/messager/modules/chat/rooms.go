@@ -9,9 +9,9 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
-	gen "src.solsynth.dev/sosys/go/proto"
-	"src.solsynth.dev/sosys/go/pkg/errs"
 	"gorm.io/gorm"
+	"src.solsynth.dev/sosys/go/pkg/errs"
+	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/store"
@@ -332,7 +332,6 @@ func currentUserName(c *gin.Context) string {
 	}
 	return ""
 }
-
 
 func (i *instance) confirmDirectMessage(c *gin.Context) {
 	ctx := c.Request.Context()

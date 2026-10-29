@@ -151,6 +151,7 @@ func Run[C any](parent context.Context, log *slog.Logger, opts Options[C]) error
 
 	clients, err := grpcclient.New(grpcclient.Targets{
 		Stargate: base.Services.Stargate.GRPC,
+		Passport: base.Services.Passport.GRPC,
 		Sphere:   base.Services.Sphere.GRPC,
 		Messager: base.Services.Messager.GRPC,
 		Ring:     base.Services.Ring.GRPC,
@@ -168,8 +169,8 @@ func Run[C any](parent context.Context, log *slog.Logger, opts Options[C]) error
 		Target: base.Services.Stargate.GRPC,
 		UseTLS: !strings.HasPrefix(strings.ToLower(base.Services.Stargate.GRPC), "http://") &&
 			!strings.HasPrefix(strings.ToLower(base.Services.Stargate.GRPC), "grpc://"),
-		Cache:  rc,
-		Log:    log,
+		Cache: rc,
+		Log:   log,
 	})
 	if err != nil {
 		return err
@@ -213,7 +214,6 @@ func Run[C any](parent context.Context, log *slog.Logger, opts Options[C]) error
 	grpcSrv := grpc.NewServer(grpcOpts...)
 	grpccore.Register(grpcSrv, module.Capabilities(resolution.Factories))
 	_ = opts.Factories
-
 
 	host := &module.Host[C]{
 		Core: core, Engine: srv.Engine, API: srv.API(), GRPC: grpcSrv,

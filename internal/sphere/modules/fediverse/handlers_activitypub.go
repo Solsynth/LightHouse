@@ -26,7 +26,6 @@ func isWebRequest(c *gin.Context) bool {
 	return strings.Contains(userAgent, "mozilla") || strings.Contains(accept, "text/html")
 }
 
-
 func writeActivityPub(c *gin.Context, body any) {
 	c.Header("Content-Type", "application/activity+json; charset=utf-8")
 	c.JSON(http.StatusOK, body)

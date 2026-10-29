@@ -35,12 +35,12 @@ type setProtectedRequest struct {
 }
 
 type protectedTagQuotaRecord struct {
-	ID          string     `json:"id"`
-	Slug        string     `json:"slug"`
-	Name        *string    `json:"name"`
-	Description *string    `json:"description"`
-	IsProtected bool       `json:"isProtected"`
-	IsEvent     bool       `json:"isEvent"`
+	ID          string      `json:"id"`
+	Slug        string      `json:"slug"`
+	Name        *string     `json:"name"`
+	Description *string     `json:"description"`
+	IsProtected bool        `json:"isProtected"`
+	IsEvent     bool        `json:"isEvent"`
 	EventEndsAt *model.Time `json:"eventEndsAt"`
 }
 
@@ -711,7 +711,9 @@ func (h *handler) protectedTagQuota(ctx context.Context, publisher *store.Publis
 	if accountID != uuid.Nil && h.ports != nil {
 		if accounts, ok := module.Get[ports.Accounts](h.ports, ports.PortAccounts); ok {
 			if account, err := accounts.GetAccount(ctx, accountID.String()); err == nil {
-				if account.GetProfile() != nil { level = int(account.GetProfile().GetLevel()) }
+				if account.GetProfile() != nil {
+					level = int(account.GetProfile().GetLevel())
+				}
 				perkLevel = int(account.GetPerkLevel())
 			}
 		}
@@ -750,4 +752,3 @@ func (h *handler) protectedTagQuota(ctx context.Context, publisher *store.Publis
 		Records:   records,
 	}
 }
-

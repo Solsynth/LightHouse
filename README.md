@@ -164,7 +164,10 @@ and then `INSERT … ON CONFLICT DO NOTHING`, so re-running is safe. Soft-delete
 rows are copied with their `deleted_at` intact. Stargate's equivalent is
 `make migrate-stargate` (see [`stargate/README.md`](stargate/README.md)).
 
-Status, verification and the known gaps are in [`docs/PORT_STATUS.md`](docs/PORT_STATUS.md).
+Deployment, the legacy-data migration and the cutover runbook — including
+everything that behaves differently from the C# services — are in
+[`DEPLOYMENT.md`](DEPLOYMENT.md). Status, verification and the known gaps are in
+[`docs/PORT_STATUS.md`](docs/PORT_STATUS.md).
 
 ## Compatibility notes
 
