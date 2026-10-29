@@ -42,13 +42,14 @@ Other features:
 app.solian.e2ee
 app.solian.admin
 app.solian.wellknown
+app.solian.wallet
 ```
 
 Integrations:
 
 ```text
 app.solian.drive
-app.solian.wallet
+app.solian.wallet.remote
 app.solian.pass
 app.solian.ring
 app.solian.blade
@@ -238,7 +239,7 @@ fails startup.
 | `files` | profiles, nfc | `app.solian.drive` |
 | `badges` | profiles, nfc | `app.solian.pass` |
 | `verification` | profiles, nfc | `app.solian.pass` |
-| `perks` | profiles | `app.solian.wallet` |
+| `perks` | profiles | `app.solian.wallet` (feature), `app.solian.wallet.remote` |
 | `email` | auth, spells, admin | `app.solian.ring` |
 | `push` | auth, admin, relationships | `app.solian.ring` |
 | `presence` | security, admin | `app.solian.blade` |
@@ -275,7 +276,8 @@ startup.
 | `app.solian.admin` | feature | `/api/admin/**`, actions/punishments | accounts | core tables |
 | `app.solian.wellknown` | feature | `/.well-known/*` docs | — | none |
 | `app.solian.drive` | integration | files port | — | none |
-| `app.solian.wallet` | integration | perks port | — | optional cache later |
+| `app.solian.wallet` | feature | `/api/wallets`, `/api/orders`, `/api/subscriptions`, `/api/merchants`, `/api/wallet-products`, wallet gRPC | auth | `wallets`, `payment_orders`, `payment_transactions`, `wallet_*`, `merchants`, `merchant_settlements` |
+| `app.solian.wallet.remote` | integration | perks port from an external wallet | — | none |
 | `app.solian.pass` | integration | badges/verification/nfcTokens | — | none |
 | `app.solian.ring` | integration | email/push | — | none |
 | `app.solian.blade` | integration | presence/discovery | — | none |
