@@ -73,6 +73,7 @@ func (PostEntity) TableName() string { return "posts" }
 
 // PostIndexEntity is the `post_indices` table.
 type PostIndexEntity struct {
+	EntityBase
 	ID         uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	PostID     uuid.UUID `gorm:"column:post_id;type:uuid"`
 	SourceHash string    `gorm:"column:source_hash"`
@@ -240,6 +241,7 @@ func (PostSponsorPlacementEntity) TableName() string { return "post_sponsor_plac
 
 // PostAggregatedStatsEntity is the `post_aggregated_stats` table.
 type PostAggregatedStatsEntity struct {
+	EntityBase
 	ID                uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
 	PostID            uuid.UUID  `gorm:"column:post_id;type:uuid"`
 	ActiveBidTotal    float64    `gorm:"column:active_bid_total"`
@@ -357,6 +359,11 @@ type PublisherMemberEntity struct {
 	AccountID   uuid.UUID  `gorm:"column:account_id;primaryKey;type:uuid"`
 	JoinedAt    *time.Time `gorm:"column:joined_at"`
 	Role        int        `gorm:"column:role"`
+	// SnPublisherMember derives from ModelBase in the C# service, so the
+	// legacy table carries the audit timestamps and a soft-delete marker.
+	CreatedAt time.Time      `gorm:"column:created_at"`
+	UpdatedAt time.Time      `gorm:"column:updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"column:deleted_at;index"`
 }
 
 func (PublisherMemberEntity) TableName() string { return "publisher_members" }
@@ -524,6 +531,7 @@ func (StickerPackOwnershipEntity) TableName() string { return "sticker_pack_owne
 
 // RealmPostModerationLogEntity is the `realm_post_moderation_logs` table.
 type RealmPostModerationLogEntity struct {
+	EntityBase
 	ID                 uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
 	RealmID            uuid.UUID  `gorm:"column:realm_id;type:uuid"`
 	PostID             uuid.UUID  `gorm:"column:post_id;type:uuid"`
@@ -595,6 +603,7 @@ func (FediverseKeyEntity) TableName() string { return "fediverse_keys" }
 
 // ActivityPubDeliveryEntity is the `activity_pub_deliveries` table.
 type ActivityPubDeliveryEntity struct {
+	EntityBase
 	ID                 uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
 	ActivityID         string     `gorm:"column:activity_id"`
 	ActivityType       string     `gorm:"column:activity_type"`

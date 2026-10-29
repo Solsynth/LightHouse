@@ -69,7 +69,7 @@ maxTake = 100
 
 [discovery]
 enabled = false
-target = "blade:9090"
+target = "blade:7001"
 registrationToken = ""
 service = "messager"
 instanceId = ""

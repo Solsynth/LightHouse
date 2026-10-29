@@ -4,6 +4,12 @@ How to run **sphere** and **messager** (the Go ports of `DysonNetwork.Sphere` an
 `DysonNetwork.Messager`), how to move the legacy data across, and what changes
 for the rest of the fleet when the C# services are retired.
 
+The repository is one workspace (`go.work`) over three Go modules: this module
+(sphere + messager), `stargate/` and `blade/`. Stargate is the identity service
+every authenticated request goes through, and Blade is the gateway that routes
+public traffic to sphere and messager — so a replacement touches all of them
+even though only sphere and messager are being ported here.
+
 Read §7 before you start a cutover: it lists everything that behaves differently
 from the C# services at runtime.
 
@@ -11,10 +17,16 @@ from the C# services at runtime.
 
 ## 1. What you are deploying
 
-| Service | Binary | HTTP | gRPC | Database | Default ports |
+| Service | Binary | HTTP | gRPC | Database | Config |
 |---|---|---|---|---|---|
-| Sphere | `bin/sphere` | `:5071` | `:7099` | `dyson_sphere` | `SPHERE_*` |
-| Messager | `bin/messager` | `:5072` | `:7100` | `dyson_messager` | `MESSAGER_*` |
+| Sphere | `bin/sphere` | `:5071` | `:7099` | `dyson_sphere` | `config/sphere.toml` |
+| Messager | `bin/messager` | `:5072` | `:7100` | `dyson_messager` | `config/messager.toml` |
+| Stargate | `bin/stargate` | `:8080` | `:9090` | `dyson_stargate` | `stargate/config.toml` |
+| Blade | `bin/blade` | `:6000` | `:7001` | – | `blade/configs/config.toml` |
+
+The sphere and messager port defaults match the C# services' `BaseUrl` and
+`Service:Url`. Blade's shipped upstream table uses different numbers (§6.1) —
+decide which side you align.
 
 They are separate processes with separate databases and separate module sets.
 They share only `internal/platform` code. Neither writes to the other's tables.
@@ -33,12 +45,16 @@ Images: `Dockerfile.sphere` and `Dockerfile.messager`. Both are
 take their config from `CONFIG_PATH`. No secrets are baked in — mount `Keys/`
 at deploy time.
 
-Build locally:
+Build locally (every target is workspace-aware; `./...` stops at a nested
+`go.mod`, so the Makefile builds each module in turn):
 
 ```sh
-make build            # bin/sphere and bin/messager
+make build            # sphere, messager, stargate, blade, relay
+make build-sphere     # just bin/sphere
 make run-sphere       # CONFIG_PATH=config/sphere.example.toml go run ./cmd/sphere
 make run-messager
+make run-stargate
+make run-blade
 ```
 
 ---
@@ -80,7 +96,8 @@ Chat's inbound websocket consumer needs JetStream enabled. See §7.7 and §7.8.
 
 ### Stargate and Passport
 
-Required for anything authenticated. Bearer tokens are validated by calling
+`stargate/` in this repo is the identity service. Required for anything
+authenticated. Bearer tokens are validated by calling
 Stargate's `DyAuthService.Authenticate` — the same contract as the C#
 `DysonTokenAuthHandler` — and `[AskPermission]` equivalents call
 `DyPermissionService.HasPermission`.
@@ -135,13 +152,13 @@ certFile = "Keys/server.crt"
 keyFile  = "Keys/server.key"
 
 [services]
-stargate = { grpc = "https://_grpc.stargate" }
-passport = { grpc = "https://_grpc.passport" }
-ring     = { grpc = "https://_grpc.ring" }
-drive    = { grpc = "https://_grpc.drive" }
-wallet   = { grpc = "https://_grpc.wallet" }
-blade    = { grpc = "http://blade" }        # plaintext h2c, like the C# fleet
-sphere   = { grpc = "https://_grpc.sphere" } # messager only
+stargate = { grpc = "stargate:9090" }
+passport = { grpc = "" }                    # empty = reuse stargate
+ring     = { grpc = "ring:7002" }
+drive    = { grpc = "drive:7004" }
+wallet   = { grpc = "wallet:7010" }
+blade    = { grpc = "http://blade:7001" }   # plaintext h2c
+sphere   = { grpc = "sphere:7099" }         # messager only
 
 [security]
 trustedProxyHops = 1     # Blade appends one X-Forwarded-For entry
@@ -153,7 +170,7 @@ disabled = []            # e.g. ["app.solian.sphere.fediverse"]
 
 [discovery]
 enabled = true
-target = "blade:9090"
+target = "blade:7001"
 registrationToken = "{{TOKEN}}"
 service = "sphere"
 ```
@@ -229,40 +246,73 @@ What is deliberately **not** copied:
 
 ## 6. Cutting over
 
-The Blade route table (from the fleet compose file) routes Sphere by path
-prefix:
+Blade is the gateway in this repo (`blade/configs/config.toml`). It has two
+things to change: the upstream table and the public route table.
 
-```
-REVERSEPROXY__ROUTES__route7__MATCH__PATH: /sphere/{**catch-all}
-REVERSEPROXY__ROUTES__route7__TRANSFORMS__0__PathRemovePrefix: /sphere
-REVERSEPROXY__ROUTES__route7__TRANSFORMS__1__PathPrefix: /api
-REVERSEPROXY__CLUSTERS__cluster_sphere__DESTINATIONS__…__ADDRESS: http://_http.sphere
+### 6.1 Point the upstreams at the Go services
+
+```toml
+[services]
+sphere   = { http = "http://sphere:5071",   grpc = "sphere:7099" }
+messager = { http = "http://messager:5072", grpc = "messager:7100" }
 ```
 
-So `GET https://api…/sphere/posts` becomes `GET /api/posts` on the Sphere HTTP
-endpoint. The Go service serves exactly those `/api/**` paths, so the route and
-its transforms stay as they are — only the destination and the gRPC endpoint
-change.
+The shipped table uses the C# fleet's container ports
+(`sphere = { http = "http://localhost:8004", grpc = "localhost:7005" }`,
+`messager = { http = "http://localhost:8008", grpc = "localhost:7009" }`).
+Either edit these two entries, or set `[http].port` / `[grpc].port` in the
+service configs to the old numbers. Whichever you pick, the HTTP and gRPC
+numbers must both be right — Blade health-checks the HTTP endpoint and proxies
+gRPC calls through the `grpc` address.
+
+### 6.2 Add the public routes
+
+Blade's route rule is `{ path, service, target, prefix }`. With `prefix = true`
+Blade strips the matched prefix and forwards `target` plus the remainder:
+
+```toml
+# /sphere/posts?take=3  →  GET http://sphere:5071/api/posts?take=3
+[[routes]]
+path = "/sphere"
+service = "sphere"
+target = "/api"
+prefix = true
+
+# Whatever public prefix Messager already uses; target is the internal path.
+[[routes]]
+path = "/im"
+service = "messager"
+target = "/api/chat"
+prefix = true
+```
+
+The shipped table only routes Stargate's `/.well-known/*` documents and
+Sphere's `/.well-known/webfinger`, `/activitypub` and `/api/activitypub` — the
+`/api/**` routes for posts, chat and the rest have to be added. Keep the
+`/.well-known/webfinger` rule: it targets `/fediverse/.well-known/webfinger`,
+which is the fediverse module's handler.
+
+### 6.3 Keep the fleet's gRPC names working
+
+Other services dial the logical name `https://_grpc.sphere`. Two ways to keep
+that resolving:
+
+- register the instance with Blade discovery — `[discovery] enabled = true`,
+  `target = "blade:7001"`, `service = "sphere"` (Blade's gRPC listener; HTTP is
+  `:6000`), or
+- change the callers' service address in their own configuration.
+
+### 6.4 The sequence
 
 1. **Run both fleets side by side.** Deploy sphere and messager against
    *copy* databases (`dyson_sphere_go`, `dyson_messager_go`) first, import, and
    verify (§8) while the C# services keep serving.
-2. **Register with Blade** (`[discovery] enabled = true`) so the logical names
-   `https://_grpc.sphere` / `https://_grpc.messager` resolve to the new
-   instances. Blade probes the registered HTTP endpoint's `/health`.
-3. **Repoint the HTTP clusters.** Point `cluster_sphere`'s destination at the
-   Sphere HTTP endpoint, and the cluster that serves Messager's chat routes at
-   the Messager HTTP endpoint (that route lives in the deployment's Blade
-   configuration, not in this repo).
-4. **Keep the ports.** The Go defaults (`5071`/`7099`, `5072`/`7100`) match the
-   C# `BaseUrl`/`Service:Url`, so a deployment that already dials those ports
-   needs no change; only the pod address changes.
-5. **Flip the databases.** When you are ready to make the Go databases the
-   primary ones, re-run the importer one last time (it is idempotent) with the
-   writes stopped, then switch the services' `[database] dsn` and restart.
-6. **Retire the C# services.** Leave their databases intact for rollback.
-
----
+2. **Add the Blade upstreams and routes above** but leave the C# entries in
+   place; switch the route `service` field (or the upstream address) when you
+   are ready.
+3. **Flip the databases.** Re-run the importer one last time with writes
+   stopped (it is idempotent), then switch `[database] dsn` and restart.
+4. **Retire the C# services.** Leave their databases intact for rollback.
 
 ## 7. Noticeable things when replacing
 
@@ -279,38 +329,40 @@ independent, and gRPC TLS is opt-in (`[grpc] useTLS`). The fleet dials
 `https://_grpc.sphere`, so leave `useTLS = true` with the fleet certificates —
 with it off, every `_grpc.sphere` caller fails the handshake.
 
-**7.3 The path transform matters.** The Go services serve `/api/**` internally.
-Blade must keep `PathRemovePrefix: /sphere` + `PathPrefix: /api`. Routing
-`/sphere/**` at the service without the transform makes every request 404.
+**7.3 The route target matters.** The Go services serve `/api/**` internally.
+With Blade's `prefix = true` rule the forwarded path is `target` + the remainder
+of the public path, so `path = "/sphere"`, `target = "/api"` maps
+`/sphere/posts` to `/api/posts`. A rule with `target = "/sphere"` (or no target
+at all) forwards `/sphere/posts` unchanged and every request 404s.
 
-**7.3b Two identity endpoints, not one.** The port reads auth/permissions
+**7.4 Two identity endpoints, not one.** The port reads auth/permissions
 /accounts from `[services].stargate` and profiles/realms/domain blocks from
 `[services].passport`. Setting only `stargate` works when both services are
 reached there; setting `stargate` but not `passport` in a fleet where Passport
 is a separate host makes realm lookups, profile hydration and domain-block
-checks fail (§7.5 turns that into 503s and skipped enrichment). Configure both.
+checks fail (§7.6 turns that into 503s and skipped enrichment). Configure both.
 
-**7.4 No auth service configured means 401, not a fallback.** With
+**7.5 No auth service configured means 401, not a fallback.** With
 `[services].stargate.grpc` empty, the service starts and serves anonymous
 routes, and every authenticated route answers
 `401 {"code":"UNAUTHORIZED",…}`. There is no "dev mode" that lets requests
 through.
 
-**7.5 Permission checks fail closed.** If the permission gRPC is unreachable,
+**7.6 Permission checks fail closed.** If the permission gRPC is unreachable,
 protected mutations answer `503 SERVICE_UNAVAILABLE` — they are never allowed
 through. The same is true for a post that claims a `realm_id` while the realm
 service or its membership API is down (`REALM_SERVICE_UNAVAILABLE`,
 `REALM_MEMBERSHIP_UNVERIFIED`). Expect 503s, not silent success, when a
 dependency is down.
 
-**7.6 Redis is optional but one replica.** Without Redis the session cache, the
+**7.7 Redis is optional but one replica.** Without Redis the session cache, the
 chat subscriber map, view dedupe and the various rate/interest caches are
 process-local. With one replica that is equivalent; with several it is not — a
 token revoked on one replica can stay valid on another for the cache TTL (1 h),
 and read receipts/subscriptions stop being shared. Configure Redis before
 scaling out.
 
-**7.7 NATS events are the settlement path.** Sphere consumes:
+**7.8 NATS events are the settlement path.** Sphere consumes:
 
 | Stream | Subject | Consumer |
 |---|---|---|
@@ -325,7 +377,7 @@ services already run consumers on `payment_events` under other names, both sets
 coexist — JetStream consumers are independent, and the Go service creates its
 own on first boot.
 
-**7.8 Chat realtime moved from core NATS to a JetStream consumer.** The
+**7.9 Chat realtime moved from core NATS to a JetStream consumer.** The
 Messager C# service consumed `WebSocketPacketEvent` on core NATS; the Go port
 consumes `websocket_messager` on the `websocket_events` stream through a durable
 consumer named `messager_websocket_packets`. That stream is created on first
@@ -334,19 +386,22 @@ envelope (`{event_id, timestamp, stream_name, account_id, device_id,
 packet_bytes}` with a base64 `WebSocketPacket`). Outbound fan-out is unchanged:
 the `websocket_push` subject and envelope are exactly as before.
 
-**7.9 Schema compatibility is one-way.** The port keeps every legacy table and
-column, so legacy rows import verbatim. It does not add new tables, so a
-rollback is safe. It *does* add columns where the C# model carried ModelBase on a
-composite-key table (`publisher_members`, `post_indices`) — those come from the
-entity definitions, and the importer leaves them defaulted.
+**7.10 Schema compatibility is one-way.** The port keeps every legacy table and
+column, so legacy rows import verbatim and a rollback to the C# services still
+finds its data. The tables the C# model declared through `ModelBase` carry the
+same `created_at`/`updated_at`/`deleted_at` columns here, including the ones
+built from raw DDL or a composite key (`post_indices`, `publisher_members`,
+`post_aggregated_stats`, `activity_pub_deliveries`,
+`realm_post_moderation_logs`). The importer only fills columns both sides have,
+so a table whose layout differs still copies.
 
-**7.10 Module flags unmount surfaces, they do not drop tables.** After
+**7.11 Module flags unmount surfaces, they do not drop tables.** After
 `[modules] disabled = ["app.solian.sphere.fediverse"]`, that module's HTTP
 routes answer 404 and its gRPC services answer `Unimplemented`, while its tables
 stay in place with their data. Re-enabling reuses them. Check `/api/modules`
 after every change — a silently disabled module looks exactly like a routing bug.
 
-**7.11 Scheduled work runs per replica.** The Quartz jobs became in-process
+**7.12 Scheduled work runs per replica.** The Quartz jobs became in-process
 goroutines (`0 0 0 * * ?` settlement, `0 0 6 * * ?` follow-request cleanup,
 `0 0 3 * * ?` delivery cleanup, `0 */5 * * * ?` delivery health,
 `0 0 * * * ?` sponsor auction, every 15 s scheduled publishing, every minute
@@ -356,7 +411,7 @@ replicas each replica runs every job. Scale background workers to a single
 replica, or accept duplicate runs (all of them are idempotent, but settlement
 and delivery retries would run N×).
 
-**7.12 The soft-delete recycling job is not ported.** The C# services
+**7.13 The soft-delete recycling job is not ported.** The C# services
 hard-deleted rows with `deleted_at` older than seven days on a daily schedule.
 The Go ports keep them forever, so:
 
@@ -365,29 +420,29 @@ The Go ports keep them forever, so:
 - if you later restore the C# services, they will find rows they expected to
   have been recycled.
 
-**7.13 Realm progression events are not published.** The C# Sphere published
+**7.14 Realm progression events are not published.** The C# Sphere published
 `realm_activity.post_created` on `realm_activity_events` (realm XP for posting).
 That publisher is not ported: realm XP stops advancing for new posts unless
 another producer emits the event.
 
-**7.14 Localization is gone.** Messages are English-only; the C# services
+**7.15 Localization is gone.** Messages are English-only; the C# services
 localized error text and chat notifications by culture.
 
-**7.15 Response-shape parity.** JSON is snake_case, enums are integers, times
+**7.16 Response-shape parity.** JSON is snake_case, enums are integers, times
 are UTC RFC3339 with seconds, nullable fields are emitted as `null`, and
 `ApiError.traceId` stays camelCase. Lists return a bare array with the total in
 `X-Total`. `take` above `[security].maxTake` (default 100) answers
 `PAGINATION_TAKE_EXCEEDED`; the chat message list is the documented exception
 (cap 1000).
 
-**7.16 Websocket packet surface.** Inbound chat packets (`messages.send`,
+**7.17 Websocket packet surface.** Inbound chat packets (`messages.send`,
 `messages.read`, `messages.typing`, `messages.subscribe`/`unsubscribe`,
 `messages.test`, placeholder update/finalize) are implemented, but packets are
 addressed per *account*, not per device: an ack reaches every device of the
 account instead of only the sending `device_id`, and read receipts cannot
 exclude a device.
 
-**7.17 Some C# features are documented gaps.** See
+**7.18 Some C# features are documented gaps.** See
 [`docs/PORT_STATUS.md`](docs/PORT_STATUS.md) for the honest list — semantic
 search, bot identities, ActivityPub HTML rendering, the realm role matrix,
 livestream award payout transfer, localization, action logs.
@@ -403,7 +458,7 @@ BASE=https://api…
 
 curl -sf  $BASE/health                      # 200
 curl -s  $BASE/api/modules | jq '.modules[].id'
-curl -s  "$BASE/sphere/posts?take=3"        # Blade transform → /api/posts
+curl -s  "$BASE/sphere/posts?take=3"        # Blade route → /api/posts
 curl -s  "$BASE/sphere/timeline?take=5"
 curl -s  "$BASE/sphere/publishers/search?query=<a known publisher>"
 curl -s  -o /dev/null -w '%{http_code}\n' "$BASE/sphere/posts/drafts"   # 401
@@ -428,13 +483,13 @@ Then, with a real account token:
 Nothing the port writes can damage the legacy state:
 
 1. The C# services and their databases are never written by the port.
-2. Re-point the Blade clusters and the `_grpc.sphere` / `_grpc.messager`
-   discovery registrations back at the C# pods.
+2. Point Blade's `[services]` upstreams (and the public routes, if you moved
+   them) back at the C# instances, and drop the `_grpc.sphere` /
+   `_grpc.messager` discovery registrations.
 3. Stop the Go replicas.
 
-If you had already switched the DSNs onto the Go databases, run the importer
-backwards is not possible (the Go schema is a superset in places), so keep the
-C# database dump until you are confident.
+The import is one-way — there is no reverse importer — so keep the C# database
+dump until you are confident in the new deployment.
 
 ---
 
@@ -447,6 +502,7 @@ C# database dump until you are confident.
 | Logs | stdout, `LOG_LEVEL` (`debug`/`info`/`warn`/`error`, default `info`) |
 | Schema | created on boot; modules own their tables; nothing is ever dropped |
 | Data import | `cmd/sphere-migrate`, `cmd/messager-migrate` (`--dry-run` first) |
-| Container build | `Dockerfile.sphere`, `Dockerfile.messager` |
+| Container build | `Dockerfile.sphere`, `Dockerfile.messager` (plus `stargate/`, `blade/` Dockerfiles) |
 | Local run | `make run-sphere`, `make run-messager` |
+| Whole workspace | `make build` builds sphere, messager, stargate, blade, relay |
 | Checks | `make test`, `make lint` |
