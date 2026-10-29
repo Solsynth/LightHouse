@@ -1,0 +1,145 @@
+siteUrl = "http://localhost:5173"
+
+[cache]
+serializer = "JSON"
+
+# Redis-backed service discovery. Services register their own leased instances
+# through Blade's gRPC endpoint. Set registrationToken before enabling outside
+# local development.
+[discovery]
+enabled = false
+prefix = "blade:discovery"
+leaseSeconds = 30
+leaderLeaseSeconds = 15
+registrationToken = ""
+# Registry service name under which L4 relays register; served at GET /relays.
+relayServiceName = "relay"
+
+[nats]
+url = "nats://nats:RE0zx7Qtady3Akyrn6eZXF@localhost:57132"
+websocketSubjectPrefix = "websocket_"
+
+[services]
+ring = { http = "http://localhost:8001", grpc = "localhost:7002" }
+passport = { http = "http://localhost:8002", grpc = "localhost:7003" }
+drive = { http = "http://localhost:8003", grpc = "localhost:7004" }
+sphere = { http = "http://localhost:8004", grpc = "localhost:7005" }
+develop = { http = "http://localhost:8005", grpc = "localhost:7006" }
+insight = { http = "http://localhost:8006", grpc = "localhost:7007" }
+zone = { http = "http://localhost:8007", grpc = "localhost:7008" }
+messager = { http = "http://localhost:8008", grpc = "localhost:7009" }
+wallet = { http = "http://localhost:8009", grpc = "localhost:7010" }
+padlock = { http = "http://localhost:8010", grpc = "localhost:7011" }
+stargate = { http = "http://localhost:8080", grpc = "localhost:9090" }
+
+[endpoints]
+serviceNames = [
+  "ring",
+  "passport",
+  "drive",
+  "sphere",
+  "develop",
+  "insight",
+  "zone",
+  "messager",
+  "wallet",
+  "padlock",
+  "stargate",
+]
+coreServiceNames = ["padlock", "passport", "drive", "sphere"]
+
+[rateLimit]
+requestsPerMinute = 120
+burstAllowance = 10
+
+[health]
+checkIntervalSeconds = 1000
+
+[server]
+port = "6000"
+readTimeout = 60
+writeTimeout = 60
+
+[proxy]
+# Number of trusted reverse proxies sitting in front of the gateway that append
+# to X-Forwarded-For. 0 means Blade is the edge and the client address is taken
+# from the connection. Behind Caddy only, set 1; behind Cloudflare -> Caddy, set
+# 2. Blade always strips client-supplied identity and forwarding headers and
+# rebuilds them, so this only controls which X-Forwarded-For hop it believes.
+trustedProxyHops = 0
+
+[grpc]
+enabled = true
+port = "7001"
+clientTlsSkipVerify = false
+
+[websocket]
+enabled = true
+path = "/ws"
+authService = "stargate"
+authUseTLS = true
+authTlsSkipVerify = true
+keepAliveSeconds = 60
+maxMessageBytes = 4096
+defaultNamespace = "dev.solsynth.solian"
+# At-least-once delivery for messages.* pushes: each frame carries an `_ack_id`,
+# stays in Redis until the client acks it, and is re-sent on a backoff. Needs
+# cache.redisUrl. Off = today's fire-and-forget behaviour.
+ackTracking = false
+ackRetrySeconds = 3        # re-send interval per unacknowledged frame
+ackRetentionSeconds = 600  # retry horizon; an unacked frame is dropped after it
+ackMaxPending = 256        # per-account buffer cap, oldest evicted first
+ackMaxAttempts = 20        # re-sends per frame before it is dropped
+
+[maintenance]
+enabled = false
+mode = "full"   # "full" blocks all proxied requests, "service" blocks only services listed below
+services = []   # only used when mode = "service"
+
+[[routes]]
+path = "/.well-known/openid-configuration"
+service = "stargate"
+target = "/.well-known/openid-configuration"
+prefix = false
+
+[[routes]]
+path = "/.well-known/jwks"
+service = "stargate"
+target = "/.well-known/jwks"
+prefix = false
+
+[[routes]]
+path = "/.well-known/webauthn"
+service = "stargate"
+target = "/.well-known/webauthn"
+prefix = false
+
+[[routes]]
+path = "/.well-known/permissions"
+service = "stargate"
+target = "/.well-known/permissions"
+prefix = false
+
+[[routes]]
+path = "/.well-known/error-codes"
+service = "stargate"
+target = "/.well-known/error-codes"
+prefix = false
+
+[[routes]]
+path = "/.well-known/webfinger"
+service = "sphere"
+target = "/fediverse/.well-known/webfinger"
+prefix = false
+
+[[routes]]
+path = "/activitypub"
+service = "sphere"
+target = "/activitypub"
+prefix = true
+
+[[routes]]
+path = "/api/activitypub"
+service = "sphere"
+target = "/activitypub"
+prefix = true
