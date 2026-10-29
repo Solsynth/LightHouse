@@ -9,8 +9,9 @@ modules, one workspace:
 - **messager** — the port of `DysonNetwork.Messager`: chat rooms, members,
   groups, messages, reactions, pins, voice clips and realtime calls.
 - **stargate** — the port of `DysonNetwork.Padlock` (auth, accounts, OIDC,
-  admin, E2EE/MLS) plus the Passport account/profile domain. Every other
-  service validates inbound tokens through it.
+  admin, E2EE/MLS), the Passport account/profile domain, and the ported
+  `DysonNetwork.Wallet` (wallets, ledger, orders, subscriptions, merchants) as
+  a module. Every other service validates inbound tokens through it.
 - **blade** — the API gateway: reverse proxy, health checks, gRPC service
   discovery, L4 TLS-SNI relays (`cmd/relay`) and the websocket gateway.
 - **filesystem** — DysonFS, the file service: uploads, media processing,

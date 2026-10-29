@@ -57,9 +57,12 @@ disabled = ["app.solian.e2ee", "app.solian.id.relationships"]
 ```
 
 Module IDs use reverse-DNS namespaces. Only `app.solian.id.auth` is required.
-Identity features live under `app.solian.id.*`; optional ecosystem adapters use
-`app.solian.drive`, `app.solian.wallet`, `app.solian.pass`, `app.solian.ring`,
-`app.solian.blade` and `app.solian.develop`.
+Identity features live under `app.solian.id.*`. The ported wallet service is
+`app.solian.wallet`; optional ecosystem adapters use `app.solian.drive`,
+`app.solian.wallet.remote`, `app.solian.pass`, `app.solian.ring`,
+`app.solian.blade` and `app.solian.develop`. The `.remote` suffix marks the
+adapter that dials an external wallet; when the local wallet module is enabled
+it provides the same `perks` port as a feature and the registry prefers it.
 
 Disabling a module unmounts its HTTP/gRPC/consumer surface and, on a fresh
 database, prevents its GORM models from being migrated. Existing tables are
@@ -75,6 +78,26 @@ Modules own their schema:
 - `app.solian.id.oauthapps` owns the OAuth/OIDC client registry
   (`oauth_apps`, `oauth_app_secrets`), so the provider does not need Develop.
   See [`docs/oauth-apps.md`](docs/oauth-apps.md).
+- `app.solian.wallet` owns the ported DysonNetwork.Wallet service: wallets,
+  pockets, the transaction ledger, orders, inbound provider orders,
+  subscriptions, gifts, coupons, merchants and settlements, under the legacy
+  table names (`wallets`, `payment_orders`, `payment_transactions`, ...). It
+  serves `/api/wallets`, `/api/orders`, `/api/subscriptions`,
+  `/api/merchants`, `/api/wallet-products` and the payment/subscription admin
+  routes, plus the `DyWalletService`, `DyPaymentService`,
+  `DySubscriptionService` and `DyMerchantService` gRPC surfaces.
+
+Wallet settings live under `[modules.settings."app.solian.wallet"]` (see
+[`config.example.toml`](config.example.toml)): `payment.auth.{paddle,afdian,appleStore}`
+hold the provider credentials, `subscriptionCatalog` seeds definitions, and
+`currencyExchange` sets the points/golds rates. Provider webhooks deduplicate
+through `inbound_orders`, so replayed callbacks are safe.
+
+Known differences from the C# service: realm-wallet membership needs a
+publisher directory Stargate does not have ported (realm wallets are
+superuser-only), notification copy is English and without localized topics,
+the subscription/perk cache is not resumed, and account hydration on admin
+listings is limited to the wallet database.
 
 `GET /api/modules` returns the resolved set and capabilities. The full design
 is in [`docs/module-system-plan.md`](docs/module-system-plan.md).

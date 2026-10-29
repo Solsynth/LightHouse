@@ -29,9 +29,11 @@ func Drive() module.Factory {
 	return integration("app.solian.drive", []module.PortID{ports.PortFiles})
 }
 
-// Wallet provides subscriptions/perks.
+// Wallet provides subscriptions/perks from a remote wallet service. When the
+// local app.solian.wallet module is enabled it provides the same port as a
+// feature, and the port registry prefers it over this adapter.
 func Wallet() module.Factory {
-	return integration("app.solian.wallet", []module.PortID{ports.PortPerks})
+	return integration("app.solian.wallet.remote", []module.PortID{ports.PortPerks})
 }
 
 // Pass provides badges, verification and remote NFC token validation.
@@ -78,7 +80,7 @@ func (i *instance) ProvidePorts(_ context.Context, host *module.Host) error {
 		if c.Clients != nil && c.Clients.Drive != nil {
 			module.Provide[ports.Files](host.Ports, ports.PortFiles, i.id, module.KindIntegration, &filesAdapter{client: c.Clients.Drive})
 		}
-	case "app.solian.wallet":
+	case "app.solian.wallet.remote":
 		if c.Clients != nil && c.Clients.Wallet != nil {
 			module.Provide[ports.Perks](host.Ports, ports.PortPerks, i.id, module.KindIntegration, &perksAdapter{client: c.Clients.Wallet})
 		}

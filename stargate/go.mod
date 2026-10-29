@@ -14,6 +14,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.2
 	github.com/pquerna/otp v1.4.0
 	github.com/redis/go-redis/v9 v9.19.0
+	github.com/shopspring/decimal v1.4.0
 	golang.org/x/crypto v0.51.0
 	google.golang.org/grpc v1.79.1
 	google.golang.org/protobuf v1.36.11

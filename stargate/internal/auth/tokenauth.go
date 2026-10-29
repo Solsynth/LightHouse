@@ -119,6 +119,15 @@ func (t *TokenAuthService) SetCustomAppProvider(provider CustomAppProvider) {
 	}
 }
 
+// SetPerkProvider replaces the perk source. The wallet module installs its
+// local subscription table here when the wallet runs in-process, so token
+// hydration does not depend on a remote wallet client.
+func (t *TokenAuthService) SetPerkProvider(provider PerkProvider) {
+	if provider != nil {
+		t.perk = provider
+	}
+}
+
 // TokenInfo carries an extracted token.
 type TokenInfo struct {
 	Token string

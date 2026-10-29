@@ -127,7 +127,7 @@ func Run(parent context.Context, log *slog.Logger, factories []module.Factory) e
 	defer clients.Close()
 	clients.FilterServices(map[string]bool{
 		"drive":   resolution.Enabled["app.solian.drive"],
-		"wallet":  resolution.Enabled["app.solian.wallet"],
+		"wallet":  resolution.Enabled["app.solian.wallet.remote"],
 		"pass":    resolution.Enabled["app.solian.pass"],
 		"ring":    resolution.Enabled["app.solian.ring"],
 		"blade":   resolution.Enabled["app.solian.blade"],

@@ -17,6 +17,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/internal/modules/relationships"
 	"src.solsynth.dev/sosys/stargate/internal/modules/social"
 	"src.solsynth.dev/sosys/stargate/internal/modules/spells"
+	walletmod "src.solsynth.dev/sosys/stargate/internal/modules/wallet"
 	"src.solsynth.dev/sosys/stargate/internal/modules/wellknown"
 )
 
@@ -38,6 +39,7 @@ func Modules() []module.Factory {
 		e2ee.Factory(),
 		admin.Factory(),
 		wellknown.Factory(),
+		walletmod.Factory(),
 
 		// Ecosystem adapters.
 		integrations.Drive(),

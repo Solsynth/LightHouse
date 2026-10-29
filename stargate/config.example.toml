@@ -22,6 +22,19 @@ disabled = []
 # [modules.settings."com.example.audit"]
 # level = "debug"
 
+# The ported wallet module (app.solian.wallet) reads its settings here. The
+# catalog seed keeps the C# appsettings shape; providers only accept payments
+# once their credentials are set.
+# [modules.settings."app.solian.wallet".payment.auth.paddle]
+# apiKey = "pdl_..."
+# webhookSecret = "replace-with-a-paddle-webhook-secret"
+# environment = "sandbox"
+# [modules.settings."app.solian.wallet".payment.auth.afdian]
+# credential = "..."
+# [modules.settings."app.solian.wallet".subscriptionCatalog]
+# settings = { defaultSubscriptionDurationDays = 30 }
+# definitions = []
+
 # Select a provider when more than one enabled module provides the same port.
 # [ports]
 # files = "app.solian.drive"
