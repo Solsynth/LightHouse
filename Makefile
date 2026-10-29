@@ -5,20 +5,24 @@ MESSAGER_CONFIG ?= config/messager.example.toml
 STARGATE_CONFIG ?= config.example.toml
 BLADE_CONFIG ?= configs/config.toml
 RELAY_CONFIG ?= configs/relay.toml
+FILESYSTEM_CONFIG ?= config.example.toml
 
-# Every target is workspace-aware (go.work). Directory patterns such as ./...
-# stop at a nested go.mod, so each module gets its own pass.
-MODULES := . stargate blade
+# filesystem/ is not in go.work (see go.work): it pins go1.26.2, and its
+# grpc/x-net pair does not compile under go1.27. Every filesystem command below
+# therefore runs outside the workspace with that toolchain.
+FS_GO := GOWORK=off GOTOOLCHAIN=go1.26.2 go
 
-.PHONY: all build build-sphere build-messager build-stargate build-blade build-relay \
-	run-sphere run-messager run-stargate run-blade run-relay \
-	web web-check web-dev web-test \
-	test test-sphere test-stargate test-blade lint tidy fmt \
-	migrate-sphere migrate-messager migrate-stargate stargate-hash-password stargate-module-import
+.PHONY: all build build-sphere build-messager build-stargate build-blade build-relay build-filesystem \
+	run-sphere run-messager run-stargate run-blade run-relay run-filesystem \
+	web-stargate web-stargate-check web-stargate-dev web-stargate-test \
+	web-filesystem web-filesystem-check web-filesystem-dev web-filesystem-test \
+	test test-sphere test-stargate test-blade test-filesystem lint tidy fmt \
+	migrate-sphere migrate-messager migrate-stargate migrate-filesystem-legacy \
+	stargate-hash-password stargate-module-import
 
 all: build
 
-build: build-sphere build-messager build-stargate build-blade build-relay
+build: build-sphere build-messager build-stargate build-blade build-relay build-filesystem
 
 build-sphere:
 	go build -o $(BIN_DIR)/sphere ./cmd/sphere
@@ -26,7 +30,8 @@ build-sphere:
 build-messager:
 	go build -o $(BIN_DIR)/messager ./cmd/messager
 
-# Built from inside the child module so relative config/web paths keep working.
+# Children are built from inside their module so relative config/web paths and
+# their own Makefile defaults keep working.
 build-stargate:
 	cd stargate && go build -o ../$(BIN_DIR)/stargate ./cmd/stargate
 
@@ -35,6 +40,9 @@ build-blade:
 
 build-relay:
 	cd blade && go build -o ../$(BIN_DIR)/relay ./cmd/relay
+
+build-filesystem:
+	cd filesystem && $(FS_GO) build -o ../$(BIN_DIR)/dysonfs ./cmd
 
 run-sphere:
 	CONFIG_PATH=$(SPHERE_CONFIG) go run ./cmd/sphere
@@ -51,19 +59,35 @@ run-blade:
 run-relay:
 	cd blade && RELAY_CONFIG_PATH=$(RELAY_CONFIG) go run ./cmd/relay
 
-# Stargate's SPA (stargate/web) — bun.
-web:
+run-filesystem:
+	cd filesystem && CONFIG_PATH=$(FILESYSTEM_CONFIG) $(FS_GO) run ./cmd --mode master
+
+# SPAs — bun, each in its child directory.
+web-stargate:
 	$(MAKE) -C stargate web
-web-check:
+
+web-stargate-check:
 	$(MAKE) -C stargate web-check
 
-web-dev:
+web-stargate-dev:
 	$(MAKE) -C stargate dev
 
-web-test:
+web-stargate-test:
 	$(MAKE) -C stargate web-test
 
-test: test-sphere test-stargate test-blade
+web-filesystem:
+	$(MAKE) -C filesystem web
+
+web-filesystem-check:
+	$(MAKE) -C filesystem web-check
+
+web-filesystem-dev:
+	$(MAKE) -C filesystem web-dev
+
+web-filesystem-test:
+	$(MAKE) -C filesystem web-test
+
+test: test-sphere test-stargate test-blade test-filesystem
 
 test-sphere:
 	go test ./...
@@ -75,18 +99,26 @@ test-stargate:
 test-blade:
 	cd blade && go test ./...
 
+# internal/service has two known failures inherited from the FileSystem repo
+# (TestOverwriteFileSwapsObjectAndDeletesDereferencedSource,
+# TestFastOverwriteFileUpdatesExistingObject).
+test-filesystem:
+	cd filesystem && $(FS_GO) test ./...
+
 lint:
 	go vet ./...
 	cd stargate && go vet ./...
 	cd blade && go vet ./...
+	cd filesystem && $(FS_GO) vet ./...
 
 tidy:
 	go mod tidy
 	cd stargate && go mod tidy
 	cd blade && go mod tidy
+	cd filesystem && $(FS_GO) mod tidy
 
 fmt:
-	gofmt -l -w cmd internal stargate blade
+	gofmt -l -w cmd internal stargate blade filesystem
 
 # Boot each service once before importing so the schema exists.
 migrate-sphere:
@@ -97,6 +129,10 @@ migrate-messager:
 
 migrate-stargate:
 	cd stargate && go run ./cmd/stargate-migrate
+
+# Imports the legacy C# drive database; set LEGACY_DATABASE_DSN.
+migrate-filesystem-legacy:
+	cd filesystem && CONFIG_PATH=$(FILESYSTEM_CONFIG) $(FS_GO) run ./cmd migrate-legacy
 
 stargate-hash-password:
 	cd stargate && go run ./cmd/stargate-hash-password

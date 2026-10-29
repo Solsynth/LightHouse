@@ -1,0 +1,55 @@
+name: DysonFS image
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "filesystem/**"
+      - ".github/workflows/filesystem.yml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "filesystem/**"
+      - ".github/workflows/filesystem.yml"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ vars.PACKAGE_OWNER }}/dfs
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          # Context is the child module: the image never sees go.work.
+          context: ./filesystem
+          file: ./filesystem/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          build-args: |
+            VERSION=${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
+            GIT_COMMIT=${{ github.sha }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest

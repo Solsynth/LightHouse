@@ -6,6 +6,11 @@ CONFIG ?= config.toml
 # up dependency breakage the project has not migrated to yet.
 GOTOOLCHAIN ?= go1.26.2
 export GOTOOLCHAIN
+# The monorepo's go.work selects go1.27, which this module does not build
+# under (see ../go.work); stay out of the workspace.
+GOWORK ?= off
+export GOWORK
+
 
 .PHONY: build run start dev web web-dev web-check web-test test lint tidy swagger migrate-legacy
 
