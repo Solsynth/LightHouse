@@ -1,0 +1,2572 @@
+// Package authctl ports Padlock's auth + account HTTP controllers
+// (AuthController, QrLoginController, CaptchaController,
+// AccountController, AccountCurrentController pin-status,
+// WebAuthnDiscoveryController) into Stargate. All routes live under
+// /api/... and mirror the C# path/method/error contract exactly.
+package authctl
+
+import (
+	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"math"
+	"math/big"
+	mathrand "math/rand/v2"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	gen "src.solsynth.dev/sosys/go/proto"
+
+	"src.solsynth.dev/sosys/go/pkg/errs"
+	"src.solsynth.dev/sosys/stargate/internal/auth"
+	"src.solsynth.dev/sosys/stargate/internal/config"
+	"src.solsynth.dev/sosys/stargate/internal/geo"
+	"src.solsynth.dev/sosys/stargate/internal/grpcclient"
+	"src.solsynth.dev/sosys/stargate/internal/localization"
+	"src.solsynth.dev/sosys/stargate/internal/middleware"
+	"src.solsynth.dev/sosys/stargate/internal/model"
+	"src.solsynth.dev/sosys/stargate/internal/ports"
+	"src.solsynth.dev/sosys/stargate/internal/redis"
+	"src.solsynth.dev/sosys/stargate/internal/risk"
+	"src.solsynth.dev/sosys/stargate/internal/spell"
+	"src.solsynth.dev/sosys/stargate/internal/store"
+)
+
+// Deps bundles the services authctl uses. Only fields consumed by these
+// controllers are included.
+type Deps struct {
+	Store   *store.Store
+	Redis   *redis.Client
+	Cfg     *config.Config
+	Token   *auth.TokenAuthService
+	Auth    *auth.AuthService
+	Geo     *geo.Service
+	Clients *grpcclient.Clients
+	Events  auth.EventBus
+	Spells  *spell.Service
+	Log     *slog.Logger
+	// SingleUser enables the minimal stateless auth surface.
+	SingleUser *auth.SingleUser
+	// Ports optionally provides NFC validation and notification adapters.
+	Ports *ports.Set
+}
+
+type handler struct {
+	d Deps
+}
+
+func (h *handler) requireCache(c *gin.Context) bool {
+	if h.d.Redis != nil && h.d.Redis.Available() {
+		return true
+	}
+	c.JSON(http.StatusServiceUnavailable, errs.New(
+		"SERVICE_UNAVAILABLE", "This feature requires the cache service.", http.StatusServiceUnavailable))
+	return false
+}
+
+// Register wires every Phase 4 auth/account route onto the /api group.
+func Register(api *gin.RouterGroup, d Deps) {
+	h := &handler{d: d}
+
+	if d.SingleUser != nil {
+		registerSingleUser(api, h)
+		return
+	}
+
+	authGroup := api.Group("/auth")
+	{
+		authGroup.POST("/challenge", h.createChallenge)
+		authGroup.GET("/challenge/:id", h.getChallenge)
+		authGroup.GET("/challenge/:id/factors", h.getChallengeFactors)
+		authGroup.POST("/challenge/:id/factors/:factorId", h.requestFactorCode)
+		authGroup.PATCH("/challenge/:id", h.doChallenge)
+		authGroup.POST("/challenge/:id/passkey/start", h.startPasskeyChallenge)
+		authGroup.POST("/challenge/:id/passkey/complete", h.completePasskeyChallenge)
+		authGroup.GET("/challenge/pending", middleware.RequireAuth(), middleware.RequireInteractive(), h.getPendingChallenges)
+		authGroup.POST("/challenge/:id/approve", middleware.RequireAuth(), middleware.RequireInteractive(), middleware.RequireSudo(), h.approveChallenge)
+		authGroup.POST("/challenge/:id/decline", middleware.RequireAuth(), middleware.RequireInteractive(), middleware.RequireSudo(), h.declineChallenge)
+		authGroup.POST("/passkey/start", h.startPasskeyLogin)
+		authGroup.POST("/passkey/:id/complete", h.completePasskeyLogin)
+		authGroup.POST("/token", h.exchangeToken)
+		authGroup.POST("/refresh", h.refreshToken)
+		authGroup.POST("/captcha", h.validateCaptcha)
+		authGroup.POST("/recover", h.recoverAccount)
+		authGroup.POST("/logout", middleware.RequireAuth(), middleware.RequireInteractive(), h.logout)
+		authGroup.POST("/login/session", middleware.RequireAuth(), middleware.RequireInteractive(), h.loginFromSession)
+		authGroup.GET("/me", middleware.RequireAuth(), h.getCurrentAuthIdentity)
+		authGroup.POST("/sudo", middleware.RequireAuth(), middleware.RequireInteractive(), h.createSudoChallenge)
+	}
+	// Cross-domain hand-off (single-use code exchange) for apps on other
+	// registrable domains; mounted only when clients are configured.
+	registerHandoff(authGroup, h)
+
+	qr := api.Group("/auth/qr")
+	{
+		qr.POST("/generate", h.generateQrChallenge)
+		qr.GET("/:id", h.getQrStatus)
+		qr.POST("/:id/scan", middleware.RequireAuth(), middleware.RequireInteractive(), h.scanQrChallenge)
+		qr.POST("/:id/approve", middleware.RequireAuth(), middleware.RequireInteractive(), h.approveQrChallenge)
+		qr.POST("/:id/decline", middleware.RequireAuth(), middleware.RequireInteractive(), h.declineQrChallenge)
+	}
+
+	captcha := api.Group("/auth/captcha")
+	{
+		captcha.POST("/verify", h.captchaVerify)
+		captcha.GET("", h.captchaGetConfig)
+	}
+
+	accounts := api.Group("/accounts")
+	{
+		accounts.POST("/validate", h.validateCreateAccount)
+		accounts.POST("", h.createAccount)
+		// POST /api/accounts/recovery/password (Passport AccountController):
+		// starts the password-reset flow against this service's spell store.
+		accounts.POST("/recovery/password", h.requestPasswordRecovery)
+	}
+
+	// AccountCurrentController: GET/PATCH /api/accounts/me are owned by
+	// profilectl (Phase 8 merged hydrated variant); only pin-status remains.
+	api.GET("/accounts/me/pin-status", middleware.RequireAuth(), h.getPinStatus)
+
+	// WebAuthnDiscoveryController (the /.well-known/webauthn route is
+	// registered engine-level via RegisterWellKnown).
+	api.GET("/auth/webauthn/config", h.webauthnConfig)
+	// The shared login page's hand-off policy (see signinconfig.go). Public,
+	// like the rest of /auth: the page that needs it has no session yet.
+	api.GET("/auth/sign-in/config", h.signInConfig)
+}
+
+// registerSingleUser mounts the minimal stateless auth surface.
+func registerSingleUser(api *gin.RouterGroup, h *handler) {
+	g := api.Group("/auth")
+	g.POST("/token", h.singleUserToken)
+	g.POST("/refresh", h.singleUserRefresh)
+	g.POST("/logout", h.singleUserLogout)
+	g.GET("/me", middleware.RequireAuth(), h.getCurrentAuthIdentity)
+	g.GET("/webauthn/config", h.webauthnConfig)
+	g.GET("/sign-in/config", h.signInConfig)
+}
+
+type singleUserCredentials struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+func (h *handler) singleUserToken(c *gin.Context) {
+	var req singleUserCredentials
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
+		return
+	}
+	if _, err := h.d.SingleUser.Authenticate(c.Request.Context(), req.Username, req.Password); err != nil {
+		c.JSON(http.StatusUnauthorized, errs.New("AUTH_INVALID_CREDENTIALS", "Invalid username or password.", http.StatusUnauthorized))
+		return
+	}
+	pair, _, err := h.d.SingleUser.IssueTokens(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, errs.New("AUTH_TOKEN_FAILED", "Failed to issue tokens.", http.StatusInternalServerError))
+		return
+	}
+	h.setSingleUserCookies(c, pair)
+	c.JSON(http.StatusOK, tokenExchangeBody(pair))
+}
+
+func (h *handler) singleUserRefresh(c *gin.Context) {
+	refresh := ""
+	var req tokenExchangeRequest
+	if err := c.ShouldBindJSON(&req); err == nil && req.RefreshToken != nil {
+		refresh = strings.TrimSpace(*req.RefreshToken)
+	}
+	if refresh == "" {
+		if cookie, err := c.Cookie("RefreshToken"); err == nil {
+			refresh = strings.TrimSpace(cookie)
+		}
+	}
+	if refresh == "" {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_REFRESH_TOKEN_REQUIRED", "Missing refresh token."))
+		return
+	}
+	pair, _, err := h.d.SingleUser.RefreshSessionAndIssueTokens(c.Request.Context(), refresh)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_REFRESH_FAILED", err.Error()))
+		return
+	}
+	h.setSingleUserCookies(c, pair)
+	c.JSON(http.StatusOK, tokenExchangeBody(pair))
+}
+
+func (h *handler) singleUserLogout(c *gin.Context) {
+	h.clearAuthCookies(c)
+	c.Status(http.StatusOK)
+}
+
+func (h *handler) setSingleUserCookies(c *gin.Context, pair *auth.TokenPair) {
+	domain := h.d.Cfg.Auth.CookieDomain
+	secure := h.d.Cfg.Auth.CookieSecure
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("AuthToken", pair.AccessToken, int(pair.AccessTokenExpiresAt.Sub(time.Now()).Seconds()), "/", domain, secure, true)
+	if pair.RefreshToken != "" {
+		c.SetCookie("RefreshToken", pair.RefreshToken, int(pair.RefreshTokenExpiresAt.Sub(time.Now()).Seconds()), "/", domain, secure, true)
+	}
+}
+
+// completableAuthFactors returns the enabled factors that can satisfy a step
+// of the username-challenge flow. PinCode/RecoveryCode/QrLogin/Passkey are
+// excluded (identical to detectChallengeRisk's historical filter), and so is
+// InAppCode: the in-app notification factor is no longer selectable —
+// cross-device approval is offered for every challenge instead (see
+// publishChallengePending in createChallenge). NfcToken counts, mirroring the
+// C# DetectChallengeRisk, now that its verification runs through Passport's
+// DyNfcService (see verifyNfcToken).
+func completableAuthFactors(factors []model.AuthFactor) []model.AuthFactor {
+	out := make([]model.AuthFactor, 0, len(factors))
+	for _, f := range factors {
+		ft := model.AuthFactorType(f.Type)
+		if f.EnabledAt != nil && ft != model.AuthFactorTypePinCode &&
+			ft != model.AuthFactorTypeRecoveryCode && ft != model.AuthFactorTypeQrLogin &&
+			ft != model.AuthFactorTypePasskey &&
+			ft != model.AuthFactorTypeInAppCode {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// allRequiredStepCount returns the number of completable auth factors for the
+// account, i.e. the maximum number of steps a challenge can be escalated to.
+func (h *handler) allRequiredStepCount(ctx context.Context, accountID string) (int, error) {
+	factors, err := h.d.Store.GetAuthFactors(ctx, uuid.MustParse(accountID))
+	if err != nil {
+		return 0, err
+	}
+	return len(completableAuthFactors(factors)), nil
+}
+
+// detectChallengeRisk ports AuthService.DetectChallengeRisk: it computes the
+// number of required authentication steps for a new challenge.
+//
+// Unlike the C# source, Passkey factors are excluded from the step count
+// alongside PinCode/RecoveryCode/QrLogin: passkeys are only offered to the
+// client through the separate discoverable-passkey flow (startPasskeyLogin),
+// which mints its own single-step challenge, so counting them produced
+// challenges whose StepTotal exceeded the factors the picker can complete,
+// stranding the login after the last usable factor with an empty picker.
+// InAppCode is excluded for the same reason — the picker no longer offers it
+// — with one exception: when it is the account's only enabled factor, the
+// challenge still counts one step, because a trusted session can satisfy it
+// by approving from another device.
+//
+// The score is a sum of ip/user-agent novelty, time since the last granted
+// login, recent failed attempts, factor strength and device age; under the
+// default (balanced) mode it is then scaled to a fraction of the account's
+// completable factors. A login completed inside
+// [security] recentLoginGrace from the same user agent cancels the
+// ip-novelty terms, so roaming clients are not re-challenged with MFA
+// seconds after a successful login. Lockdown and lockoff bypass the score
+// entirely (all factors / password only).
+func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress, userAgent string, mode model.SecurityMode) (int, error) {
+	factors, err := h.d.Store.GetAuthFactors(ctx, uuid.MustParse(accountID))
+	if err != nil {
+		return 0, err
+	}
+	enabledFactors := completableAuthFactors(factors)
+	maxSteps := len(enabledFactors)
+	if maxSteps == 0 {
+		// In-app-only accounts have no pickable factor left; cross-device
+		// approval is the sole way to satisfy their challenge.
+		for _, f := range factors {
+			if f.EnabledAt != nil && model.AuthFactorType(f.Type) == model.AuthFactorTypeInAppCode {
+				return 1, nil
+			}
+		}
+		return 0, errors.New("Account has no authentication factors configured.")
+	}
+	// If password is the only factor, skip the risk calculation.
+	allPassword := true
+	for _, f := range enabledFactors {
+		if model.AuthFactorType(f.Type) != model.AuthFactorTypePassword {
+			allPassword = false
+			break
+		}
+	}
+	if allPassword {
+		return 1, nil
+	}
+
+	// Per-account security mode overrides.
+	switch mode {
+	case model.SecurityModeLockdown:
+		return maxSteps, nil
+	case model.SecurityModeLockoff:
+		return 1, nil
+	}
+
+	riskScore := 0.0
+	recentSessions, err := h.d.Store.ListRecentSessions(ctx, accountID, 10)
+	if err != nil {
+		return 0, err
+	}
+	recentChallengeIDs := make([]uuid.UUID, 0, len(recentSessions))
+	for _, s := range recentSessions {
+		if s.ChallengeID != nil {
+			recentChallengeIDs = append(recentChallengeIDs, *s.ChallengeID)
+		}
+	}
+	recentChallenges, err := h.d.Store.ListChallengesByIDs(ctx, recentChallengeIDs)
+	if err != nil {
+		return 0, err
+	}
+	probesByChallenge := make(map[uuid.UUID]store.ChallengeProbe, len(recentChallenges))
+	for _, p := range recentChallenges {
+		probesByChallenge[p.ID] = p
+	}
+
+	if strings.TrimSpace(ipAddress) == "" {
+		riskScore += 10
+	} else {
+		ipPreviouslyUsed := false
+		for _, ch := range recentChallenges {
+			if ch.IpAddress != nil && *ch.IpAddress == ipAddress {
+				ipPreviouslyUsed = true
+				break
+			}
+		}
+		if !ipPreviouslyUsed {
+			riskScore += 8
+		}
+		var lastKnownIP *string
+		for _, ch := range recentChallenges {
+			if ch.IpAddress != nil && *ch.IpAddress != "" {
+				lastKnownIP = ch.IpAddress
+				break
+			}
+		}
+		if lastKnownIP != nil && *lastKnownIP != ipAddress {
+			riskScore += 6
+		}
+	}
+
+	if strings.TrimSpace(userAgent) == "" {
+		riskScore += 5
+	} else {
+		uaPreviouslyUsed := false
+		for _, ch := range recentChallenges {
+			if sameUserAgent(ch.UserAgent, userAgent) {
+				uaPreviouslyUsed = true
+				break
+			}
+		}
+		if !uaPreviouslyUsed {
+			riskScore += 4
+		}
+	}
+
+	now := time.Now().UTC()
+	if len(recentSessions) > 0 && recentSessions[0].LastGrantedAt != nil {
+		sinceLastLogin := now.Sub(recentSessions[0].LastGrantedAt.Time())
+		switch hoursSinceLastLogin := sinceLastLogin.Hours(); {
+		case hoursSinceLastLogin > 720:
+			riskScore += 9
+		case hoursSinceLastLogin > 168:
+			riskScore += 6
+		case hoursSinceLastLogin > 24:
+			riskScore += 3
+		}
+		// A login completed moments ago from the same client is the strongest
+		// trust signal available: the account just proved every factor it was
+		// asked for from this exact user agent, so a rotated IP — mobile NAT,
+		// IPv6 privacy addresses, a Wi-Fi/cellular switch — must not escalate
+		// the next challenge. Keyed on the user agent (not the IP) because an
+		// unrecognised client keeps its full IP score.
+		if sinceLastLogin <= h.d.Cfg.Security.RecentLoginGraceDuration() {
+			if challengeID := recentSessions[0].ChallengeID; challengeID != nil {
+				if probe, ok := probesByChallenge[*challengeID]; ok && sameUserAgent(probe.UserAgent, userAgent) {
+					riskScore -= recentLoginRiskCredit
+				}
+			}
+		}
+	} else {
+		riskScore += 7
+	}
+
+	recentFailed, err := h.d.Store.SumRecentFailedChallengeAttempts(ctx, accountID, now.Add(-time.Hour))
+	if err != nil {
+		return 0, err
+	}
+	if recentFailed > 0 {
+		riskScore += math.Min(float64(recentFailed)*2, 10)
+	}
+
+	totalAuthFactors := len(enabledFactors)
+	timedCodeEnabled := false
+	pinCodeEnabled := false
+	for _, f := range enabledFactors {
+		switch model.AuthFactorType(f.Type) {
+		case model.AuthFactorTypeTimedCode:
+			timedCodeEnabled = true
+		case model.AuthFactorTypePinCode:
+			pinCodeEnabled = true
+		}
+	}
+	if totalAuthFactors >= 2 {
+		riskScore -= 3
+	} else if totalAuthFactors == 1 {
+		riskScore -= 1
+	}
+	if timedCodeEnabled {
+		riskScore -= 2
+	}
+	if pinCodeEnabled {
+		riskScore -= 1
+	}
+
+	trustedDevice := false
+	for _, s := range recentSessions {
+		if s.ClientID != nil && s.CreatedAt.After(now.Add(-30*24*time.Hour)) {
+			trustedDevice = true
+			break
+		}
+	}
+	if trustedDevice {
+		riskScore -= 1
+	}
+
+	riskScore = math.Max(0, math.Min(riskScore, 20))
+	riskWeight := riskScore / 20.0
+	totalRequiredSteps := roundHalfToEven(float64(maxSteps) * riskWeight)
+	if totalRequiredSteps > maxSteps {
+		totalRequiredSteps = maxSteps
+	}
+	if totalRequiredSteps < 1 {
+		totalRequiredSteps = 1
+	}
+	return totalRequiredSteps, nil
+}
+
+// recentLoginRiskCredit cancels the IP-novelty terms (+8 for an unseen IP and
+// +6 for one differing from the last known IP) when the account completed a
+// login from the same user agent inside the configured recent-login grace.
+const recentLoginRiskCredit = 8.0
+
+// sameUserAgent reports a non-empty, case-insensitive user-agent match. An
+// absent user agent never matches: clients that send none must not look like
+// a known client.
+func sameUserAgent(stored *string, current string) bool {
+	return current != "" && stored != nil && *stored != "" && strings.EqualFold(*stored, current)
+}
+
+// roundHalfToEven mirrors Math.Round's default banker's rounding.
+func roundHalfToEven(x float64) int {
+	floor := math.Floor(x)
+	diff := x - floor
+	if diff > 0.5 {
+		return int(floor + 1)
+	}
+	if diff < 0.5 {
+		return int(floor)
+	}
+	if int(floor)%2 == 0 {
+		return int(floor)
+	}
+	return int(floor + 1)
+}
+
+// ---------------------------------------------------------------------------
+// Token exchange + cookies
+// ---------------------------------------------------------------------------
+
+// tokenExchangeResponse mirrors TokenExchangeResponse (AuthController.cs).
+type tokenExchangeResponse struct {
+	Token            string `json:"token"`
+	RefreshToken     string `json:"refresh_token"`
+	ExpiresIn        int64  `json:"expires_in"`
+	RefreshExpiresIn int64  `json:"refresh_expires_in"`
+}
+
+func tokenExchangeBody(pair *auth.TokenPair) tokenExchangeResponse {
+	now := time.Now()
+	return tokenExchangeResponse{
+		Token:            pair.AccessToken,
+		RefreshToken:     pair.RefreshToken,
+		ExpiresIn:        int64(math.Max(0, pair.AccessTokenExpiresAt.Sub(now).Seconds())),
+		RefreshExpiresIn: int64(math.Max(0, pair.RefreshTokenExpiresAt.Sub(now).Seconds())),
+	}
+}
+
+// setAuthCookies mirrors SetAuthCookies (HttpOnly, Secure, SameSite=Lax,
+// domain from AuthToken:CookieDomain).
+func (h *handler) setAuthCookies(c *gin.Context, pair *auth.TokenPair) {
+	domain := h.d.Cfg.Auth.CookieDomain
+	secure := h.d.Cfg.Auth.CookieSecure
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("AuthToken", pair.AccessToken, int(pair.AccessTokenExpiresAt.Sub(time.Now()).Seconds()), "/", domain, secure, true)
+	c.SetCookie("RefreshToken", pair.RefreshToken, int(pair.RefreshTokenExpiresAt.Sub(time.Now()).Seconds()), "/", domain, secure, true)
+}
+
+func (h *handler) clearAuthCookies(c *gin.Context) {
+	domain := h.d.Cfg.Auth.CookieDomain
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("AuthToken", "", -1, "/", domain, false, true)
+	c.SetCookie("RefreshToken", "", -1, "/", domain, false, true)
+}
+
+// ---------------------------------------------------------------------------
+// AuthController: challenge lifecycle
+// ---------------------------------------------------------------------------
+
+// challengeRequest mirrors ChallengeRequest.
+type challengeRequest struct {
+	Platform   model.ClientPlatform `json:"platform"`
+	Account    string               `json:"account"`
+	DeviceId   string               `json:"device_id"`
+	DeviceName *string              `json:"device_name"`
+	Audiences  []string             `json:"audiences"`
+	Scopes     []string             `json:"scopes"`
+}
+
+func (h *handler) createChallenge(c *gin.Context) {
+	ctx := c.Request.Context()
+	var req challengeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
+		return
+	}
+
+	account, err := h.d.Store.LookupAccount(ctx, req.Account)
+	if err != nil || account == nil {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_ACCOUNT_NOT_FOUND", "Account was not found.", http.StatusNotFound))
+		return
+	}
+
+	punishment, err := h.d.Store.GetActivePunishmentOverview(ctx, account.Id)
+	if err != nil {
+		h.logError("load punishment overview", err)
+	}
+	if punishment != nil && (punishment.Type == model.PunishmentDisableAccount || punishment.Type == model.PunishmentBlockLogin) {
+		c.JSON(http.StatusLocked, &errs.ApiError{
+			Code:    "ACCOUNT_LOCKED",
+			Message: "Account is locked due to a punishment.",
+			Detail:  &punishment.Reason,
+			Status:  http.StatusLocked,
+		})
+		return
+	}
+
+	factors, err := h.d.Store.GetAuthFactors(ctx, uuid.MustParse(account.Id))
+	if err != nil {
+		h.logError("load auth factors", err)
+	}
+	hasAuthFactors := false
+	for _, f := range factors {
+		if f.EnabledAt != nil && model.AuthFactorType(f.Type) != model.AuthFactorTypeRecoveryCode {
+			hasAuthFactors = true
+			break
+		}
+	}
+	if !hasAuthFactors {
+		c.JSON(http.StatusForbidden, errs.New("NO_AUTH_FACTORS", "Account has no authentication factors configured.", http.StatusForbidden))
+		return
+	}
+
+	now := time.Now().UTC()
+	ipAddress := middleware.ClientIP(c.Request)
+	userAgent := c.Request.UserAgent()
+	deviceName := userAgent
+	if req.DeviceName != nil {
+		deviceName = *req.DeviceName
+	}
+
+	// Rate limits run before the live-challenge reuse branch: an IP that is
+	// fail2banned (or over its new-challenge quota) must not answer 200 by
+	// handing back a challenge it already holds.
+	if !risk.IPAllowed(ctx, h.d.Redis, h.d.Cfg, ipAddress) {
+		c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+			"Too many failed sign-in attempts. Try again later.", http.StatusTooManyRequests))
+		return
+	}
+
+	// Per-IP new-challenge quota. The slot is claimed before any further work
+	// and released once the challenge mints a session, so successful logins
+	// never count against the limit.
+	challengeID := uuid.NewString()
+	if !risk.ChallengeAllowed(ctx, h.d.Redis, h.d.Cfg, ipAddress, challengeID) {
+		c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+			"Too many sign-in attempts from this network. Try again later.", http.StatusTooManyRequests))
+		return
+	}
+
+	existing, err := h.d.Store.FindLiveChallenge(ctx, account.Id, ipAddress, userAgent, req.DeviceId)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		h.logError("find live challenge", err)
+	}
+	if existing != nil {
+		// Reuse mints no new challenge, so return the quota slot this request
+		// just claimed.
+		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
+		c.JSON(http.StatusOK, existing)
+		return
+	}
+
+	mode, err := h.d.Store.GetSecurityMode(ctx, account.Id)
+	if err != nil {
+		mode = model.SecurityModeDefault // degrade: never fail login on a preference-read error
+	}
+
+	steps, err := h.detectChallengeRisk(ctx, account.Id, ipAddress, userAgent, mode)
+	if err != nil {
+		c.JSON(http.StatusForbidden, errs.New("NO_AUTH_FACTORS", "Account has no authentication factors configured.", http.StatusForbidden))
+		return
+	}
+
+	challenge := &model.AuthChallenge{
+		Id:         challengeID,
+		ExpiredAt:  model.NewTime(now.Add(time.Hour)),
+		StepTotal:  steps,
+		StepRemain: steps,
+		Audiences:  req.Audiences,
+		Scopes:     req.Scopes,
+		IpAddress:  &ipAddress,
+		UserAgent:  &userAgent,
+		Location:   h.d.Geo.GetPointFromIp(ipAddress),
+		DeviceId:   req.DeviceId,
+		DeviceName: &deviceName,
+		Platform:   req.Platform,
+		AccountId:  account.Id,
+		CreatedAt:  model.NewTime(now),
+		UpdatedAt:  model.NewTime(now),
+	}
+	if err := h.d.Store.CreateAuthChallenge(ctx, challenge); err != nil {
+		h.logError("create challenge", err)
+		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challenge.Id)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+	// Every challenge is pushed to the account's other devices so a trusted
+	// session can approve or decline it — the replacement for the removed
+	// in-app notification factor. Mirrors the other challenge handlers
+	// (doChallenge, approve/decline), which publish before responding.
+	h.publishChallengePending(ctx, challenge) // WS auth.challenge.pending + Ring auth.login_attempt
+	c.JSON(http.StatusOK, challenge)
+}
+
+func (h *handler) getChallenge(c *gin.Context) {
+	id, ok := parseUUIDParam(c, "id")
+	if !ok {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	challenge, err := h.d.Store.GetAuthChallenge(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	c.JSON(http.StatusOK, challenge)
+}
+
+// elevationCallerAllowed reports whether the request carries the session an
+// elevation challenge is bound to. Elevation is granted to that session, so
+// acting on the challenge requires holding it.
+//
+// Login challenges get no such check: the factor surface is part of the
+// anonymous login flow, which runs before any session exists. The challenge id
+// is a random v4 UUID handed only to the creator, so it is itself the bearer
+// credential. Binding the read to the caller's derived client IP and user agent
+// instead made the endpoint answer 404 — indistinguishable from a missing
+// challenge — to legitimate clients whose address or agent moved between the
+// two requests (a dual-stack `localhost` flip, a mobile-network rebind, a
+// client that sends no User-Agent at all, which could then never read its own
+// factors). The id stays secret; the disclosure this guard was written against
+// is an unguessable id, not a leaked one.
+func (h *handler) elevationCallerAllowed(c *gin.Context, challenge *model.AuthChallenge) bool {
+	if challenge.SessionId == nil || *challenge.SessionId == "" {
+		return false
+	}
+	session := middleware.CurrentSession(c.Request.Context())
+	return session != nil && session.Id == *challenge.SessionId
+}
+
+func (h *handler) getChallengeFactors(c *gin.Context) {
+	id, ok := parseUUIDParam(c, "id")
+	if !ok {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	challenge, err := h.d.Store.GetAuthChallenge(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	// An elevation challenge belongs to the session that requested it; a login
+	// challenge is served to whoever holds its id.
+	if challenge.Purpose == model.AuthChallengePurposeSudo && !h.elevationCallerAllowed(c, challenge) {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	factors, err := h.d.Store.GetAuthFactors(c.Request.Context(), uuid.MustParse(challenge.AccountId))
+	if err != nil {
+		h.logError("load challenge factors", err)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+	result := make([]model.AuthFactor, 0, len(factors))
+	for _, f := range factors {
+		if f.EnabledAt != nil && f.Trustworthy >= 1 &&
+			model.AuthFactorType(f.Type) != model.AuthFactorTypeRecoveryCode &&
+			model.AuthFactorType(f.Type) != model.AuthFactorTypeInAppCode &&
+			model.AuthFactorType(f.Type) != model.AuthFactorTypeQrLogin {
+			result = append(result, f)
+		}
+	}
+	// An elevation challenge with the emailed fallback armed advertises one
+	// synthetic factor whose id is the challenge id: requesting its code
+	// emails a fallback code and verifying it decrements by 2.
+	if challenge.Purpose == model.AuthChallengePurposeSudo && challenge.ExtraFactorType != nil {
+		result = append(result, model.AuthFactor{
+			Id:          challenge.Id,
+			Type:        model.AuthFactorType(*challenge.ExtraFactorType),
+			Trustworthy: 2,
+			EnabledAt:   challenge.CreatedAt,
+			AccountId:   challenge.AccountId,
+		})
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+// performChallengeRequest mirrors PerformChallengeRequest.
+type performChallengeRequest struct {
+	FactorId string `json:"factor_id"`
+	Password string `json:"password"`
+}
+
+func (h *handler) requestFactorCode(c *gin.Context) {
+	ctx := c.Request.Context()
+	id, ok := parseUUIDParam(c, "id")
+	if !ok {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	factorID, ok := parseUUIDParam(c, "factorId")
+	if !ok {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_FACTOR_NOT_FOUND", "Auth factor was not found.", http.StatusNotFound))
+		return
+	}
+	challenge, err := h.d.Store.GetAuthChallenge(ctx, id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	// Elevation challenges admit the session they are bound to; their
+	// synthetic emailed fallback (id == challenge id) issues its code here.
+	if challenge.Purpose == model.AuthChallengePurposeSudo {
+		if !h.elevationCallerAllowed(c, challenge) {
+			c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+			return
+		}
+		if factorID == id && challenge.ExtraFactorType != nil {
+			account, err := h.d.Store.GetAccountByID(ctx, uuid.MustParse(challenge.AccountId))
+			if err != nil {
+				c.JSON(http.StatusNotFound, errs.New("AUTH_ACCOUNT_NOT_FOUND", "Account was not found.", http.StatusNotFound))
+				return
+			}
+			if err := h.sendSudoFallbackCode(ctx, account, challenge); err != nil {
+				c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_SEND_FAILED", err.Error()))
+				return
+			}
+			c.Status(http.StatusOK)
+			return
+		}
+	}
+	factor, err := h.d.Store.GetAuthFactorByID(ctx, challenge.AccountId, factorID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_FACTOR_NOT_FOUND", "Auth factor was not found.", http.StatusNotFound))
+		return
+	}
+	account, err := h.d.Store.GetAccountByID(ctx, uuid.MustParse(challenge.AccountId))
+	if err != nil {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_ACCOUNT_NOT_FOUND", "Account was not found.", http.StatusNotFound))
+		return
+	}
+	// The in-app notification factor no longer issues a code: its approval
+	// prompt is published when the challenge is created, and completed by a
+	// trusted session via POST /auth/challenge/{id}/approve.
+	if model.AuthFactorType(factor.Type) == model.AuthFactorTypeInAppCode {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_SUPPORTED",
+			"The in-app notification factor is no longer supported. Approve this login from a trusted device instead."))
+		return
+	}
+	if err := h.sendFactorCode(ctx, account, factor, challenge); err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_SEND_FAILED", err.Error()))
+		return
+	}
+	c.Status(http.StatusOK)
+}
+
+// doChallenge ports PATCH /api/auth/challenge/{id}.
+func (h *handler) doChallenge(c *gin.Context) {
+	ctx := c.Request.Context()
+	id, ok := parseUUIDParam(c, "id")
+	if !ok {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	var req performChallengeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
+		return
+	}
+	challenge, err := h.d.Store.GetAuthChallenge(ctx, id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	// Elevation challenges are acted on by the session they are bound to. The
+	// synthetic emailed fallback (factor id == challenge id) verifies against
+	// its Redis code and drops the demand by 2; anything else falls through to
+	// the ordinary factor path below.
+	if challenge.Purpose == model.AuthChallengePurposeSudo {
+		if !h.elevationCallerAllowed(c, challenge) {
+			c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+			return
+		}
+		if req.FactorId == challenge.Id && challenge.ExtraFactorType != nil {
+			h.doChallengeSudoFallback(c, challenge, req.Password)
+			return
+		}
+	}
+	factorID, err := uuid.Parse(req.FactorId)
+	if err != nil {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_FACTOR_NOT_FOUND", "Auth factor was not found.", http.StatusNotFound))
+		return
+	}
+	factor, err := h.d.Store.GetAuthFactorByID(ctx, challenge.AccountId, factorID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_FACTOR_NOT_FOUND", "Auth factor was not found.", http.StatusNotFound))
+		return
+	}
+	if factor.EnabledAt == nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_ENABLED", "Auth factor is not enabled."))
+		return
+	}
+	if factor.Trustworthy <= 0 {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_TRUSTWORTHY", "Auth factor is not trustworthy."))
+		return
+	}
+
+	if challenge.StepRemain == 0 {
+		c.JSON(http.StatusOK, challenge)
+		return
+	}
+
+	now := time.Now().UTC()
+	if challenge.ExpiredAt != nil && now.After(challenge.ExpiredAt.Time()) {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_EXPIRED", "Auth challenge has expired."))
+		return
+	}
+	if containsString(challenge.BlacklistFactors, factor.Id) {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_ALREADY_USED", "Auth factor already used."))
+		return
+	}
+
+	// Throttle credential submission: every verified guess inside a live
+	// challenge is otherwise unbounded. The IP block reflects the failures
+	// risk.RecordFailure charged below, and the per-challenge cap stops a
+	// caller that keeps a blocked IP's counter below the fail2ban threshold
+	// (or is spread across addresses) from grinding one challenge forever.
+	if cfg := h.d.Cfg; cfg != nil {
+		if !risk.IPAllowed(ctx, h.d.Redis, cfg, derefStr(challenge.IpAddress)) {
+			c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+				"Too many failed sign-in attempts. Try again later.", http.StatusTooManyRequests))
+			return
+		}
+		if maxAttempts := cfg.Security.MaxChallengeAttempts; maxAttempts > 0 && challenge.FailedAttempts >= maxAttempts {
+			c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+				"Too many failed attempts for this sign-in attempt. Start a new one.", http.StatusTooManyRequests))
+			return
+		}
+	}
+
+	okVerify, _ := h.verifyFactorCode(ctx, factor, req.Password)
+	if !okVerify {
+		challenge.FailedAttempts++
+		challenge.UpdatedAt = model.NewTime(now)
+		_ = h.d.Store.UpdateAuthChallenge(ctx, challenge)
+		risk.RecordFailure(ctx, h.d.Redis, h.d.Cfg, derefStr(challenge.IpAddress))
+		_ = h.maybeEscalateFailure(ctx, challenge)
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_PASSWORD", "Invalid password."))
+		return
+	}
+
+	// One verified factor settles one step regardless of its strength score:
+	// the elevation demanded one step per factor, so anything more would let a
+	// strong factor cover steps it was never counted for.
+	challenge.StepRemain--
+	if challenge.StepRemain < 0 {
+		challenge.StepRemain = 0
+	}
+	challenge.BlacklistFactors = append(challenge.BlacklistFactors, factor.Id)
+	challenge.UpdatedAt = model.NewTime(now)
+	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
+		h.logError("update challenge", err)
+	}
+
+	if challenge.StepRemain == 0 {
+		if challenge.Purpose == model.AuthChallengePurposeSudo {
+			if err := h.completeSudoElevation(ctx, challenge); err != nil {
+				h.logError("grant sudo elevation", err)
+				c.JSON(http.StatusServiceUnavailable, errs.New("SERVICE_UNAVAILABLE", "Elevation could not be verified.", http.StatusServiceUnavailable))
+				return
+			}
+		} else {
+			h.pushLoginNotification(ctx, challenge, true)
+		}
+	}
+	c.JSON(http.StatusOK, challenge)
+}
+
+// doChallengeSudoFallback verifies the synthetic emailed fallback step of an
+// elevation challenge (factor id == challenge id). On success it drops the
+// demand by 2 and, when the challenge completes, grants the elevation.
+func (h *handler) doChallengeSudoFallback(c *gin.Context, challenge *model.AuthChallenge, code string) {
+	ctx := c.Request.Context()
+	if challenge.StepRemain == 0 {
+		c.JSON(http.StatusOK, challenge)
+		return
+	}
+	now := time.Now().UTC()
+	if challenge.ExpiredAt != nil && now.After(challenge.ExpiredAt.Time()) {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_EXPIRED", "Auth challenge has expired."))
+		return
+	}
+	if containsString(challenge.BlacklistFactors, challenge.Id) {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_ALREADY_USED", "Auth factor already used."))
+		return
+	}
+	if cfg := h.d.Cfg; cfg != nil {
+		if !risk.IPAllowed(ctx, h.d.Redis, cfg, derefStr(challenge.IpAddress)) {
+			c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+				"Too many failed sign-in attempts. Try again later.", http.StatusTooManyRequests))
+			return
+		}
+		if maxAttempts := cfg.Security.MaxChallengeAttempts; maxAttempts > 0 && challenge.FailedAttempts >= maxAttempts {
+			c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+				"Too many failed attempts for this sign-in attempt. Start a new one.", http.StatusTooManyRequests))
+			return
+		}
+	}
+	if !h.verifySudoFallbackCode(ctx, challenge, code) {
+		challenge.FailedAttempts++
+		challenge.UpdatedAt = model.NewTime(now)
+		_ = h.d.Store.UpdateAuthChallenge(ctx, challenge)
+		risk.RecordFailure(ctx, h.d.Redis, h.d.Cfg, derefStr(challenge.IpAddress))
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_PASSWORD", "Invalid password."))
+		return
+	}
+	// The fallback is armed only when it is the challenge's sole step (no
+	// pickable factor on the account), so verifying it settles that one step.
+	challenge.StepRemain--
+	if challenge.StepRemain < 0 {
+		challenge.StepRemain = 0
+	}
+	challenge.BlacklistFactors = append(challenge.BlacklistFactors, challenge.Id)
+	challenge.UpdatedAt = model.NewTime(now)
+	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
+		h.logError("update challenge", err)
+	}
+	if challenge.StepRemain == 0 {
+		if err := h.completeSudoElevation(ctx, challenge); err != nil {
+			h.logError("grant sudo elevation", err)
+			c.JSON(http.StatusServiceUnavailable, errs.New("SERVICE_UNAVAILABLE", "Elevation could not be verified.", http.StatusServiceUnavailable))
+			return
+		}
+	}
+	c.JSON(http.StatusOK, challenge)
+}
+
+// maybeEscalateFailure checks whether a challenge's failure count warrants
+// increasing its step count. Already-completed factors (in BlacklistFactors)
+// are preserved.
+func (h *handler) maybeEscalateFailure(ctx context.Context, challenge *model.AuthChallenge) error {
+	mode, err := h.d.Store.GetSecurityMode(ctx, challenge.AccountId)
+	if err != nil {
+		mode = model.SecurityModeDefault
+	}
+	if mode == model.SecurityModeLockoff {
+		return nil // Lockoff skips escalation
+	}
+	if challenge.FailedAttempts <= h.d.Cfg.Security.ChallengeFailEscalateAfter {
+		return nil
+	}
+	maxSteps, err := h.allRequiredStepCount(ctx, challenge.AccountId)
+	if err != nil {
+		return err
+	}
+	if maxSteps <= challenge.StepTotal {
+		return nil // cannot get harder
+	}
+	now := time.Now().UTC()
+	challenge.StepTotal = maxSteps
+	remaining := maxSteps - len(challenge.BlacklistFactors)
+	if remaining < 1 {
+		remaining = 1
+	}
+	challenge.StepRemain = remaining
+	challenge.UpdatedAt = model.NewTime(now)
+	return h.d.Store.UpdateAuthChallenge(ctx, challenge)
+}
+
+// ---------------------------------------------------------------------------
+// Factor verification (mirrors AccountService.VerifyFactorCode + SendFactorCode)
+// ---------------------------------------------------------------------------
+
+const (
+	authFactorCodePrefix = "authfactor:"
+	// sudoFallbackCodePrefix keys the emailed fallback code of an elevation
+	// challenge: sudoFallbackCodePrefix + challenge id + ":code".
+	sudoFallbackCodePrefix = "authsudo:"
+)
+
+func (h *handler) verifyFactorCode(ctx context.Context, factor *model.AuthFactor, code string) (bool, error) {
+	switch model.AuthFactorType(factor.Type) {
+	case model.AuthFactorTypeEmailCode:
+		if h.d.Redis == nil || !h.d.Redis.Available() {
+			return false, nil
+		}
+		var cached string
+		found, err := h.d.Redis.Cache.Get(ctx, authFactorCodePrefix+factor.Id+":code", &cached)
+		if err != nil || !found || cached != code {
+			return false, nil
+		}
+		_ = h.d.Redis.Cache.Remove(ctx, authFactorCodePrefix+factor.Id+":code")
+		return true, nil
+	case model.AuthFactorTypePassword, model.AuthFactorTypePinCode, model.AuthFactorTypeTimedCode:
+		return auth.VerifyFactorPassword(factor, code)
+	case model.AuthFactorTypeNfcToken:
+		return h.verifyNfcToken(ctx, factor.AccountId, code), nil
+	default:
+		// Passkey flows use their own endpoints. In-app code factors are
+		// rejected before reaching here — their approval prompt is published
+		// when the challenge is created.
+		return false, nil
+	}
+}
+
+// verifyNfcToken ports AccountService.VerifyNfcToken. The client submits
+// "<tag hardware uid>:<nfc payload>" where the payload is the SUN URL read off
+// the tag (solian://phpass?picc_data=...&e=...&cmac=...); Passport validates
+// the token and reports the tag's owner. A tag that verifies but belongs to
+// another account must not satisfy this challenge, so the owner is matched
+// against the factor's account.
+func (h *handler) verifyNfcToken(ctx context.Context, accountID, code string) bool {
+	if len(code) < 32 {
+		return false
+	}
+	separator := strings.IndexByte(code, ':')
+	if separator <= 0 || separator >= len(code)-1 {
+		return false
+	}
+	tagUID, uidHex := code[:separator], code[separator+1:]
+
+	if h.d.Ports != nil && h.d.Ports.NfcTokens != nil && h.d.Ports.NfcTokens.Available() {
+		tokenCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		defer cancel()
+		owner, _, err := h.d.Ports.NfcTokens.Validate(tokenCtx, tagUID, uidHex)
+		if err != nil {
+			h.logError("validate nfc token", err)
+			return false
+		}
+		return strings.EqualFold(owner, accountID)
+	}
+
+	if h.d.Clients == nil || h.d.Clients.Nfc == nil {
+		return false
+	}
+	rpcCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	response, err := h.d.Clients.Nfc.ValidateNfcToken(rpcCtx, &gen.DyValidateNfcTokenRequest{
+		TagUid: tagUID,
+		UidHex: uidHex,
+	})
+	if err != nil {
+		h.logError("validate nfc token", err)
+		return false
+	}
+	if response == nil || !response.GetIsValid() {
+		return false
+	}
+	return strings.EqualFold(response.GetAccountId(), accountID)
+}
+
+func (h *handler) sendFactorCode(ctx context.Context, account *model.Account, factor *model.AuthFactor, challenge *model.AuthChallenge) error {
+	code := fmt.Sprintf("%06d", mathrand.IntN(900000)+100000)
+	switch model.AuthFactorType(factor.Type) {
+	case model.AuthFactorTypeInAppCode:
+		// Unreachable: requestFactorCode rejects the in-app factor, whose
+		// prompt is now published at challenge creation.
+		return errors.New("The in-app notification factor is no longer supported.")
+	case model.AuthFactorTypeEmailCode:
+		if h.d.Redis == nil || !h.d.Redis.Available() {
+			return errors.New("email factor code service is unavailable")
+		}
+		var cached string
+		if found, _ := h.d.Redis.Cache.Get(ctx, authFactorCodePrefix+factor.Id+":code", &cached); found && cached != "" {
+			return errors.New("A factor code has been sent and in active duration.")
+		}
+		contact, err := h.d.Store.GetEmailContactForNotify(ctx, account.Id, true)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				if h.d.Log != nil {
+					h.d.Log.Warn("email factor code not sent: no verified email contact",
+						"factor_id", factor.Id, "account_id", account.Id)
+				}
+				// No code was sent, so the caller must not answer success:
+				// the client would otherwise wait for a code that can never
+				// arrive.
+				return errors.New("Account has no verified email contact that can receive a code.")
+			}
+			return err
+		}
+		if h.d.Spells == nil {
+			return errors.New("email factor code delivery is not configured")
+		}
+		if err := h.d.Spells.SendFactorCodeEmail(ctx, account, contact.Content, code); err != nil {
+			return err
+		}
+		return h.d.Redis.Cache.Set(ctx, authFactorCodePrefix+factor.Id+":code", code, 30*time.Minute)
+	default:
+		return nil
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Passkey assertion (ports AccountService.GeneratePasskeyAssertionChallengeAsync
+// + VerifyPasskeyAssertionAsync with the P-256/ES256 verification)
+// ---------------------------------------------------------------------------
+
+// passkeyCredentialDescriptor mirrors AccountService.PasskeyCredentialDescriptor.
+type passkeyCredentialDescriptor struct {
+	Type       string   `json:"type"`
+	Id         string   `json:"id"`
+	Transports []string `json:"transports"`
+}
+
+// passkeyAuthenticationStartResponse mirrors PasskeyAuthenticationStartResponse.
+type passkeyAuthenticationStartResponse struct {
+	Challenge        string                        `json:"challenge"`
+	RpId             string                        `json:"rp_id"`
+	AllowCredentials []passkeyCredentialDescriptor `json:"allow_credentials"`
+	Timeout          int                           `json:"timeout"`
+	UserVerification string                        `json:"user_verification"`
+}
+
+// passkeyLoginStartResponse mirrors PasskeyLoginStartResponse.
+type passkeyLoginStartResponse struct {
+	passkeyAuthenticationStartResponse
+	AuthChallengeId string `json:"auth_challenge_id"`
+}
+
+// passkeyAuthenticationCompleteRequest mirrors PasskeyAuthenticationCompleteRequest.
+type passkeyAuthenticationCompleteRequest struct {
+	CredentialId      string  `json:"credential_id"`
+	ClientDataJson    string  `json:"client_data_json"`
+	AuthenticatorData string  `json:"authenticator_data"`
+	Signature         string  `json:"signature"`
+	UserHandle        *string `json:"user_handle"`
+}
+
+func decodeBase64OrBase64Url(value string) ([]byte, error) {
+	if b, err := base64.StdEncoding.DecodeString(value); err == nil {
+		return b, nil
+	}
+	normalized := strings.ReplaceAll(strings.ReplaceAll(value, "-", "+"), "_", "/")
+	if pad := len(normalized) % 4; pad != 0 {
+		normalized += strings.Repeat("=", 4-pad)
+	}
+	return base64.StdEncoding.DecodeString(normalized)
+}
+
+func normalizePasskeyCredentialId(value string) (string, bool) {
+	raw, err := decodeBase64OrBase64Url(value)
+	if err != nil {
+		return "", false
+	}
+	return base64.StdEncoding.EncodeToString(raw), true
+}
+
+func parsePasskeyCredential(credentialJSON string) *model.PasskeyCredential {
+	var cred model.PasskeyCredential
+	if err := json.Unmarshal([]byte(credentialJSON), &cred); err != nil {
+		return nil
+	}
+	return &cred
+}
+
+func (h *handler) generatePasskeyAssertionChallenge(ctx context.Context, challengeID string) (string, error) {
+	if h.d.Redis == nil || !h.d.Redis.Available() {
+		return "", errors.New("passkey service is unavailable")
+	}
+	challengeBytes := make([]byte, 32)
+	if _, err := rand.Read(challengeBytes); err != nil {
+		return "", err
+	}
+	challenge := base64.RawURLEncoding.EncodeToString(challengeBytes)
+	if err := h.d.Redis.Cache.Set(ctx, "passkey:assertion:"+challengeID, challenge, 5*time.Minute); err != nil {
+		return "", err
+	}
+	return challenge, nil
+}
+
+func (h *handler) verifyPasskeyAssertion(ctx context.Context, cred *model.PasskeyCredential, challengeID, credentialID, clientDataJson, authenticatorData, signature string) bool {
+	if h.d.Redis == nil || !h.d.Redis.Available() {
+		return false
+	}
+	var storedChallenge string
+	found, err := h.d.Redis.Cache.Get(ctx, "passkey:assertion:"+challengeID, &storedChallenge)
+	if err != nil || !found || storedChallenge == "" {
+		return false
+	}
+	if !verifyPasskeyAssertionSignature(cred, credentialID, clientDataJson, authenticatorData, signature, storedChallenge) {
+		return false
+	}
+	_ = h.d.Redis.Cache.Remove(ctx, "passkey:assertion:"+challengeID)
+	return true
+}
+
+// verifyPasskeyAssertionSignature checks the browser's assertion against the
+// stored challenge without touching Redis, mirroring webauthn §7.2:
+//
+//   - the credential id must match the registered credential;
+//   - the authenticatorData must carry the UserPresent flag (UP bit);
+//   - the signature must verify over authenticatorData[:37] ||
+//     SHA-256(clientDataJSON) — the digest, not the raw bytes — with the
+//     registered ES256 public key (DER, with a raw 64-byte r||s fallback);
+//   - clientDataJSON must be a webauthn.get ceremony echoing the stored
+//     challenge.
+func verifyPasskeyAssertionSignature(cred *model.PasskeyCredential, credentialID, clientDataJson, authenticatorData, signature, storedChallenge string) bool {
+	if cred.CredentialId != credentialID {
+		return false
+	}
+	authData, err := decodeBase64OrBase64Url(authenticatorData)
+	if err != nil || len(authData) < 37 {
+		return false
+	}
+	if authData[32]&0x01 == 0 {
+		return false
+	}
+
+	clientDataBytes, err := decodeClientDataJsonBytes(clientDataJson)
+	if err != nil {
+		return false
+	}
+	// WebAuthn §7.2 Step 16: the signature covers the 32-byte digest
+	//   SHA-256(authenticatorData || SHA-256(clientDataJSON))
+	// over the FULL authenticator data — not a 37-byte prefix, and not the raw
+	// concatenation (ecdsa.VerifyASN1 takes a digest, not a message). This
+	// mirrors go-webauthn's webauthncose.EC2PublicKeyData.Verify, which hashes
+	// authData || SHA-256(clientDataJSON) before ecdsa.Verify. The earlier
+	// code passed the unhashed concat as the digest, so every real assertion
+	// failed ("Invalid passkey assertion") while the self-consistent unit
+	// test passed.
+	clientDataHash := sha256.Sum256(clientDataBytes)
+	signedData := make([]byte, 0, len(authData)+len(clientDataHash))
+	signedData = append(signedData, authData...)
+	signedData = append(signedData, clientDataHash[:]...)
+	digest := sha256.Sum256(signedData)
+
+	sig, err := decodeBase64OrBase64Url(signature)
+	if err != nil {
+		return false
+	}
+	pub := &ecdsa.PublicKey{
+		Curve: elliptic.P256(),
+		X:     new(big.Int).SetBytes(cred.PublicKeyX),
+		Y:     new(big.Int).SetBytes(cred.PublicKeyY),
+	}
+	// WebAuthn signatures are DER-encoded (ASN.1 SEQUENCE of r,s); try that
+	// first, then fall back to the raw 64-byte r||s layout used by some
+	// authenticators.
+	if !ecdsa.VerifyASN1(pub, digest[:], sig) {
+		if len(sig) != 64 {
+			return false
+		}
+		r := new(big.Int).SetBytes(sig[:32])
+		s := new(big.Int).SetBytes(sig[32:])
+		if !ecdsa.Verify(pub, digest[:], r, s) {
+			return false
+		}
+	}
+
+	var clientData struct {
+		Type      string `json:"type"`
+		Challenge string `json:"challenge"`
+	}
+	if err := json.Unmarshal(clientDataBytes, &clientData); err != nil {
+		return false
+	}
+	if clientData.Type != "webauthn.get" {
+		return false
+	}
+	if clientData.Challenge != storedChallenge {
+		return false
+	}
+	return true
+}
+
+func decodeClientDataJsonBytes(value string) ([]byte, error) {
+	b, err := decodeBase64OrBase64Url(value)
+	if err != nil {
+		return []byte(value), nil
+	}
+	return b, nil
+}
+
+// ---------------------------------------------------------------------------
+// Challenge passkey endpoints
+// ---------------------------------------------------------------------------
+
+func (h *handler) startPasskeyChallenge(c *gin.Context) {
+	ctx := c.Request.Context()
+	id, ok := parseUUIDParam(c, "id")
+	if !ok {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	challenge, err := h.d.Store.GetAuthChallenge(ctx, id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	if challenge.Purpose == model.AuthChallengePurposeSudo && !h.elevationCallerAllowed(c, challenge) {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	factors, err := h.d.Store.GetAuthFactors(ctx, uuid.MustParse(challenge.AccountId))
+	if err != nil {
+		h.logError("load factors", err)
+	}
+	var passkeyFactor *model.AuthFactor
+	for i := range factors {
+		f := &factors[i]
+		if model.AuthFactorType(f.Type) == model.AuthFactorTypePasskey && f.EnabledAt != nil &&
+			f.Trustworthy > 0 && !containsString(challenge.BlacklistFactors, f.Id) {
+			passkeyFactor = f
+			break
+		}
+	}
+	if passkeyFactor == nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_PASSKEY_FACTOR_NOT_AVAILABLE", "No available passkey factor was found."))
+		return
+	}
+	if challenge.StepRemain == 0 {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_ALREADY_COMPLETED", "Auth challenge already completed."))
+		return
+	}
+	now := time.Now().UTC()
+	if challenge.ExpiredAt != nil && now.After(challenge.ExpiredAt.Time()) {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_EXPIRED", "Auth challenge has expired."))
+		return
+	}
+	passkeys, err := h.d.Store.ListPasskeys(ctx, challenge.AccountId)
+	if err != nil {
+		h.logError("list passkeys", err)
+	}
+	if len(passkeys) == 0 {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_NO_PASSKEYS_REGISTERED", "No passkeys are registered for this account."))
+		return
+	}
+	assertionChallenge, err := h.generatePasskeyAssertionChallenge(ctx, challenge.Id)
+	if err != nil {
+		h.logError("generate passkey assertion challenge", err)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+	credentials := make([]passkeyCredentialDescriptor, 0, len(passkeys))
+	for _, pk := range passkeys {
+		credentials = append(credentials, passkeyCredentialDescriptor{
+			Type:       "public-key",
+			Id:         pk.CredentialId,
+			Transports: []string{"internal", "hybrid", "usb", "nfc", "ble"},
+		})
+	}
+	c.JSON(http.StatusOK, passkeyAuthenticationStartResponse{
+		Challenge:        assertionChallenge,
+		RpId:             h.passkeyRpId(c),
+		AllowCredentials: credentials,
+		Timeout:          60000,
+		UserVerification: "preferred",
+	})
+}
+
+func (h *handler) completePasskeyChallenge(c *gin.Context) {
+	ctx := c.Request.Context()
+	id, ok := parseUUIDParam(c, "id")
+	if !ok {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	var req passkeyAuthenticationCompleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
+		return
+	}
+	challenge, err := h.d.Store.GetAuthChallenge(ctx, id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	if challenge.Purpose == model.AuthChallengePurposeSudo && !h.elevationCallerAllowed(c, challenge) {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	factor, err := h.d.Store.GetAuthFactorByType(ctx, challenge.AccountId, model.AuthFactorTypePasskey)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_PASSKEY_FACTOR_NOT_ENABLED", "Passkey factor is not enabled."))
+		return
+	}
+	if factor.EnabledAt == nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_ENABLED", "Auth factor is not enabled."))
+		return
+	}
+	if factor.Trustworthy <= 0 {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_TRUSTWORTHY", "Auth factor is not trustworthy."))
+		return
+	}
+	if challenge.StepRemain == 0 {
+		c.JSON(http.StatusOK, challenge)
+		return
+	}
+	now := time.Now().UTC()
+	if challenge.ExpiredAt != nil && now.After(challenge.ExpiredAt.Time()) {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_EXPIRED", "Auth challenge has expired."))
+		return
+	}
+	if containsString(challenge.BlacklistFactors, factor.Id) {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_ALREADY_USED", "Auth factor already used."))
+		return
+	}
+	credentialID, ok := normalizePasskeyCredentialId(req.CredentialId)
+	if !ok {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_PASSKEY_CREDENTIAL_INVALID", "Passkey credential ID is invalid."))
+		return
+	}
+	passkey, err := h.d.Store.GetPasskeyByAccountAndCredentialID(ctx, challenge.AccountId, credentialID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_PASSKEY_NOT_REGISTERED", "Passkey is not registered for this account."))
+		return
+	}
+	credential := parsePasskeyCredential(passkey.Credential)
+	if credential == nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_PASSKEY_INVALID", "Passkey is invalid."))
+		return
+	}
+
+	isFirstFactor := len(challenge.BlacklistFactors) == 0
+
+	if !h.verifyPasskeyAssertion(ctx, credential, challenge.Id, credentialID,
+		req.ClientDataJson, req.AuthenticatorData, req.Signature) {
+		challenge.FailedAttempts++
+		challenge.UpdatedAt = model.NewTime(now)
+		_ = h.d.Store.UpdateAuthChallenge(ctx, challenge)
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_PASSKEY_ASSERTION", "Invalid passkey assertion."))
+		return
+	}
+
+	// A passkey assertion settles one step, like any other factor (see
+	// doChallenge): a passkey-only elevation costs exactly the one step it
+	// demanded.
+	challenge.StepRemain--
+	if challenge.StepRemain < 0 {
+		challenge.StepRemain = 0
+	}
+	challenge.BlacklistFactors = append(challenge.BlacklistFactors, factor.Id)
+	challenge.UpdatedAt = model.NewTime(now)
+	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
+		h.logError("update challenge", err)
+	}
+
+	if isFirstFactor && challenge.StepRemain > 0 {
+		h.publishChallengePending(ctx, challenge)
+	}
+	if challenge.StepRemain == 0 {
+		if challenge.Purpose == model.AuthChallengePurposeSudo {
+			if err := h.completeSudoElevation(ctx, challenge); err != nil {
+				h.logError("grant sudo elevation", err)
+				c.JSON(http.StatusServiceUnavailable, errs.New("SERVICE_UNAVAILABLE", "Elevation could not be verified.", http.StatusServiceUnavailable))
+				return
+			}
+		} else {
+			h.pushLoginNotification(ctx, challenge, true)
+		}
+	}
+	c.JSON(http.StatusOK, challenge)
+}
+
+// passkeyLoginStartRequest mirrors PasskeyLoginStartRequest.
+type passkeyLoginStartRequest struct {
+	Platform   model.ClientPlatform `json:"platform"`
+	DeviceId   string               `json:"device_id"`
+	DeviceName *string              `json:"device_name"`
+	Audiences  []string             `json:"audiences"`
+	Scopes     []string             `json:"scopes"`
+}
+
+func (h *handler) startPasskeyLogin(c *gin.Context) {
+	ctx := c.Request.Context()
+	var req passkeyLoginStartRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
+		return
+	}
+	now := time.Now().UTC()
+	ipAddress := middleware.ClientIP(c.Request)
+	userAgent := c.Request.UserAgent()
+	deviceName := userAgent
+	if req.DeviceName != nil {
+		deviceName = *req.DeviceName
+	}
+	// Per-IP new-challenge quota (see createChallenge): the slot is released
+	// once the passkey challenge mints a session.
+	challengeID := uuid.NewString()
+	if !risk.ChallengeAllowed(ctx, h.d.Redis, h.d.Cfg, ipAddress, challengeID) {
+		c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+			"Too many sign-in attempts from this network. Try again later.", http.StatusTooManyRequests))
+		return
+	}
+	challenge := &model.AuthChallenge{
+		Id:         challengeID,
+		StepTotal:  1,
+		StepRemain: 1,
+		DeviceId:   req.DeviceId,
+		DeviceName: &deviceName,
+		Platform:   req.Platform,
+		IpAddress:  &ipAddress,
+		UserAgent:  &userAgent,
+		Location:   h.d.Geo.GetPointFromIp(ipAddress),
+		Audiences:  req.Audiences,
+		Scopes:     req.Scopes,
+		AccountId:  uuid.Nil.String(),
+		ExpiredAt:  model.NewTime(now.Add(5 * time.Minute)),
+		CreatedAt:  model.NewTime(now),
+		UpdatedAt:  model.NewTime(now),
+	}
+	if err := h.d.Store.CreateAuthChallenge(ctx, challenge); err != nil {
+		h.logError("create passkey challenge", err)
+		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challenge.Id)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+	assertionChallenge, err := h.generatePasskeyAssertionChallenge(ctx, challenge.Id)
+	if err != nil {
+		h.logError("generate passkey assertion challenge", err)
+		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challenge.Id)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+	c.JSON(http.StatusOK, passkeyLoginStartResponse{
+		passkeyAuthenticationStartResponse: passkeyAuthenticationStartResponse{
+			Challenge:        assertionChallenge,
+			RpId:             h.passkeyRpId(c),
+			AllowCredentials: []passkeyCredentialDescriptor{},
+			Timeout:          60000,
+			UserVerification: "preferred",
+		},
+		AuthChallengeId: challenge.Id,
+	})
+}
+
+func (h *handler) completePasskeyLogin(c *gin.Context) {
+	ctx := c.Request.Context()
+	id, ok := parseUUIDParam(c, "id")
+	if !ok {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	var req passkeyAuthenticationCompleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
+		return
+	}
+	challenge, err := h.d.Store.GetAuthChallenge(ctx, id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	if challenge.AccountId != uuid.Nil.String() || challenge.StepRemain == 0 {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_NOT_PENDING", "Auth challenge is no longer pending."))
+		return
+	}
+	now := time.Now().UTC()
+	if challenge.ExpiredAt != nil && now.After(challenge.ExpiredAt.Time()) {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_EXPIRED", "Auth challenge has expired."))
+		return
+	}
+	credentialID, ok := normalizePasskeyCredentialId(req.CredentialId)
+	if !ok {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_PASSKEY_CREDENTIAL_INVALID", "Passkey credential ID is invalid."))
+		return
+	}
+	passkey, err := h.d.Store.GetPasskeyByCredentialID(ctx, credentialID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_PASSKEY_NOT_FOUND", "Passkey was not found."))
+		return
+	}
+	factor, err := h.d.Store.GetAuthFactorByType(ctx, passkey.AccountId, model.AuthFactorTypePasskey)
+	if err != nil || factor.EnabledAt == nil || factor.Trustworthy <= 0 {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_PASSKEY_FACTOR_NOT_ENABLED", "Passkey factor is not enabled for this account."))
+		return
+	}
+	credential := parsePasskeyCredential(passkey.Credential)
+	if credential == nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_PASSKEY_INVALID", "Passkey is invalid."))
+		return
+	}
+	if !h.verifyPasskeyAssertion(ctx, credential, challenge.Id, credentialID,
+		req.ClientDataJson, req.AuthenticatorData, req.Signature) {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_PASSKEY_ASSERTION", "Invalid passkey assertion."))
+		return
+	}
+
+	challenge.AccountId = passkey.AccountId
+	challenge.StepRemain = 0
+	challenge.UpdatedAt = model.NewTime(now)
+	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
+		h.logError("update challenge", err)
+	}
+	c.JSON(http.StatusOK, challenge)
+}
+
+// requireTrusted reports whether the session qualifies for challenge
+// approval/decline. Degrades to not-trusted on store errors (safe default).
+func (h *handler) requireTrusted(ctx context.Context, session *model.AuthSession) bool {
+	trusted, err := h.d.Store.IsTrustedSession(ctx, session, h.d.Cfg.Security.TrustedSessionMaxGapDuration())
+	if err != nil {
+		h.logError("trusted session check", err)
+	}
+	return trusted
+}
+
+// ---------------------------------------------------------------------------
+// Pending / approve / decline
+// ---------------------------------------------------------------------------
+
+// escalateChallenge handles a decline of a cross-device approval. It escalates
+// the challenge to require every enabled (completable) factor. For a
+// single-factor account there is no higher level, so the decline is terminal:
+// DeclinedAt is set and the challenge dies.
+func (h *handler) escalateChallenge(ctx context.Context, challenge *model.AuthChallenge) error {
+	maxSteps, err := h.allRequiredStepCount(ctx, challenge.AccountId)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	challenge.UpdatedAt = model.NewTime(now)
+	if maxSteps <= 1 {
+		// Single-factor account: cannot get harder than one factor → terminal decline.
+		challenge.DeclinedAt = model.NewTime(now)
+		return h.d.Store.UpdateAuthChallenge(ctx, challenge)
+	}
+	challenge.StepTotal = maxSteps
+	challenge.StepRemain = maxSteps
+	challenge.BlacklistFactors = []string{}
+	challenge.DeclinedAt = model.NewTime(now)
+	return h.d.Store.UpdateAuthChallenge(ctx, challenge)
+}
+
+func (h *handler) getPendingChallenges(c *gin.Context) {
+	user := middleware.CurrentUser(c.Request.Context())
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, errs.New("AUTH_UNAUTHORIZED", "Authentication is required.", http.StatusUnauthorized))
+		return
+	}
+	challenges, err := h.d.Store.ListPendingChallenges(c.Request.Context(), user.Id)
+	if err != nil {
+		h.logError("list pending challenges", err)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+	if challenges == nil {
+		challenges = []model.AuthChallenge{}
+	}
+	c.JSON(http.StatusOK, challenges)
+}
+
+func (h *handler) approveChallenge(c *gin.Context) {
+	ctx := c.Request.Context()
+	user := middleware.CurrentUser(ctx)
+	session := middleware.CurrentSession(ctx)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, errs.New("AUTH_UNAUTHORIZED", "Authentication is required.", http.StatusUnauthorized))
+		return
+	}
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, errs.New("AUTH_SESSION_REQUIRED", "A valid session is required.", http.StatusUnauthorized))
+		return
+	}
+	if !h.requireTrusted(ctx, session) {
+		c.JSON(http.StatusForbidden, errs.New("AUTH_SESSION_NOT_TRUSTED",
+			"Only trusted sessions can approve or decline login attempts.", http.StatusForbidden))
+		return
+	}
+	// Elevation is enforced by middleware.RequireSudo on this route; approve
+	// and decline no longer accept a PIN.
+	id, ok := parseUUIDParam(c, "id")
+	if !ok {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	challenge, err := h.d.Store.GetAuthChallenge(ctx, id)
+	if err != nil || challenge.AccountId != user.Id {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	now := time.Now().UTC()
+	if challenge.ExpiredAt != nil && now.After(challenge.ExpiredAt.Time()) {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_EXPIRED", "Auth challenge has expired."))
+		return
+	}
+	if challenge.ApprovedAt != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_ALREADY_APPROVED", "Challenge already approved."))
+		return
+	}
+	if challenge.DeclinedAt != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_ALREADY_DECLINED", "Challenge already declined."))
+		return
+	}
+
+	challenge.StepRemain = 0
+	challenge.ApprovedAt = model.NewTime(now)
+	challenge.ApprovedBySessionId = &session.Id
+	challenge.UpdatedAt = model.NewTime(now)
+	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
+		h.logError("update challenge", err)
+	}
+
+	h.publishWS(ctx, user.Id, "auth.challenge.approved", map[string]any{
+		"challenge_id":       challenge.Id,
+		"approved_by_device": session.Id,
+	})
+	deviceName := "unknown"
+	if challenge.DeviceName != nil && *challenge.DeviceName != "" {
+		deviceName = *challenge.DeviceName
+	}
+	h.pushNotification(ctx, user.Id, "auth.challenge_approved",
+		localization.Localize(user.Language, "loginApprovedTitle", nil),
+		localization.Localize(user.Language, "loginApprovedBody", map[string]string{"deviceName": deviceName}), false)
+	c.Status(http.StatusOK)
+}
+
+func (h *handler) declineChallenge(c *gin.Context) {
+	ctx := c.Request.Context()
+	user := middleware.CurrentUser(ctx)
+	session := middleware.CurrentSession(ctx)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, errs.New("AUTH_UNAUTHORIZED", "Authentication is required.", http.StatusUnauthorized))
+		return
+	}
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, errs.New("AUTH_SESSION_REQUIRED", "A valid session is required.", http.StatusUnauthorized))
+		return
+	}
+	if !h.requireTrusted(ctx, session) {
+		c.JSON(http.StatusForbidden, errs.New("AUTH_SESSION_NOT_TRUSTED",
+			"Only trusted sessions can approve or decline login attempts.", http.StatusForbidden))
+		return
+	}
+	// Elevation is enforced by middleware.RequireSudo on this route; approve
+	// and decline no longer accept a PIN.
+	id, ok := parseUUIDParam(c, "id")
+	if !ok {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	challenge, err := h.d.Store.GetAuthChallenge(ctx, id)
+	if err != nil || challenge.AccountId != user.Id {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	now := time.Now().UTC()
+	if challenge.ExpiredAt != nil && now.After(challenge.ExpiredAt.Time()) {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_EXPIRED", "Auth challenge has expired."))
+		return
+	}
+	if challenge.ApprovedAt != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_ALREADY_APPROVED", "Challenge already approved."))
+		return
+	}
+	if challenge.DeclinedAt != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_ALREADY_DECLINED", "Challenge already declined."))
+		return
+	}
+
+	if err := h.escalateChallenge(ctx, challenge); err != nil {
+		h.logError("escalate challenge", err)
+	}
+
+	// A decline is charged to the IP that started the login, so an IP that
+	// keeps requesting challenges for an account whose owner keeps declining
+	// them gets fail2banned (see risk.RecordDecline).
+	risk.RecordDecline(ctx, h.d.Redis, h.d.Cfg, derefStr(challenge.IpAddress))
+
+	h.publishWS(ctx, user.Id, "auth.challenge.declined", map[string]any{
+		"challenge_id":       challenge.Id,
+		"declined_by_device": session.Id,
+	})
+	deviceName := "unknown"
+	if challenge.DeviceName != nil && *challenge.DeviceName != "" {
+		deviceName = *challenge.DeviceName
+	}
+	h.pushNotification(ctx, user.Id, "auth.challenge_declined",
+		localization.Localize(user.Language, "loginDeclinedTitle", nil),
+		localization.Localize(user.Language, "loginDeclinedBody", map[string]string{"deviceName": deviceName}), false)
+	c.Status(http.StatusOK)
+}
+
+// ---------------------------------------------------------------------------
+// Token exchange, refresh, recover, logout, login/session, me, sudo
+// ---------------------------------------------------------------------------
+
+// tokenExchangeRequest mirrors TokenExchangeRequest.
+type tokenExchangeRequest struct {
+	GrantType    string  `json:"grant_type"`
+	RefreshToken *string `json:"refresh_token"`
+	Code         *string `json:"code"`
+}
+
+func (h *handler) exchangeToken(c *gin.Context) {
+	ctx := c.Request.Context()
+	var req tokenExchangeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
+		return
+	}
+	switch req.GrantType {
+	case "authorization_code":
+		challengeID, err := uuid.Parse(derefStr(req.Code))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_CODE", "Invalid or missing authorization code."))
+			return
+		}
+		challenge, err := h.d.Store.GetAuthChallenge(ctx, challengeID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Authorization code not found or expired.", http.StatusBadRequest))
+			return
+		}
+		// An elevation challenge grants sudo to the session it is bound to; it
+		// must never be exchanged into a login session.
+		if challenge.Purpose == model.AuthChallengePurposeSudo {
+			c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_CODE", "Invalid or missing authorization code."))
+			return
+		}
+		punishment, err := h.d.Store.GetActivePunishmentOverview(ctx, challenge.AccountId)
+		if err != nil {
+			h.logError("load punishment overview", err)
+		}
+		if punishment != nil && (punishment.Type == model.PunishmentDisableAccount || punishment.Type == model.PunishmentBlockLogin) {
+			c.JSON(http.StatusLocked, &errs.ApiError{
+				Code:    "ACCOUNT_LOCKED",
+				Message: "Account is locked due to a punishment.",
+				Detail:  &punishment.Reason,
+				Status:  http.StatusLocked,
+			})
+			return
+		}
+		// The challenge is the credential: an IP that has been fail2banned for
+		// failed attempts must not be able to redeem it (a blocked caller
+		// otherwise keeps exchanging completed challenges into sessions).
+		if cfg := h.d.Cfg; cfg != nil && !risk.IPAllowed(ctx, h.d.Redis, cfg, derefStr(challenge.IpAddress)) {
+			c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+				"Too many failed sign-in attempts. Try again later.", http.StatusTooManyRequests))
+			return
+		}
+		pair, err := h.d.Auth.CreateSessionAndIssueTokens(ctx, challenge)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CREATE_SESSION_FAILED", err.Error()))
+			return
+		}
+		h.setAuthCookies(c, pair)
+		c.JSON(http.StatusOK, tokenExchangeBody(pair))
+	case "refresh_token":
+		submitted := derefStr(req.RefreshToken)
+		if strings.TrimSpace(submitted) == "" {
+			if cookie, err := c.Cookie("RefreshToken"); err == nil {
+				submitted = cookie
+			}
+		}
+		if strings.TrimSpace(submitted) == "" {
+			c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_REFRESH_TOKEN_REQUIRED", "Missing refresh token."))
+			return
+		}
+		pair, _, err := h.d.Auth.RefreshSessionAndIssueTokens(ctx, submitted)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_REFRESH_FAILED", err.Error()))
+			return
+		}
+		h.setAuthCookies(c, pair)
+		c.JSON(http.StatusOK, tokenExchangeBody(pair))
+	default:
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_UNSUPPORTED_GRANT_TYPE", "Unsupported grant type."))
+	}
+}
+
+func (h *handler) refreshToken(c *gin.Context) {
+	ctx := c.Request.Context()
+	refreshToken, err := c.Cookie("RefreshToken")
+	if err != nil || strings.TrimSpace(refreshToken) == "" {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_REFRESH_TOKEN_REQUIRED", "Missing refresh token."))
+		return
+	}
+	pair, _, err := h.d.Auth.RefreshSessionAndIssueTokens(ctx, refreshToken)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_REFRESH_FAILED", err.Error()))
+		return
+	}
+	h.setAuthCookies(c, pair)
+	c.JSON(http.StatusOK, tokenExchangeBody(pair))
+}
+
+// validateCaptcha ports POST /api/auth/captcha (raw JSON string token body).
+func (h *handler) validateCaptcha(c *gin.Context) {
+	ctx := c.Request.Context()
+	raw, err := c.GetRawData()
+	if err != nil {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+	var token string
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &token); err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+	}
+	valid, err := h.d.Auth.ValidateCaptcha(ctx, token)
+	if err != nil || !valid {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+	c.Status(http.StatusOK)
+}
+
+// recoveryRequest mirrors RecoveryRequest.
+type recoveryRequest struct {
+	Account      string               `json:"account"`
+	RecoveryCode string               `json:"recovery_code"`
+	CaptchaToken string               `json:"captcha_token"`
+	DeviceId     string               `json:"device_id"`
+	DeviceName   *string              `json:"device_name"`
+	Platform     model.ClientPlatform `json:"platform"`
+}
+
+func (h *handler) recoverAccount(c *gin.Context) {
+	ctx := c.Request.Context()
+	var req recoveryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
+		return
+	}
+	valid, err := h.d.Auth.ValidateCaptcha(ctx, req.CaptchaToken)
+	if err != nil {
+		h.logError("validate captcha", err)
+	}
+	if !valid {
+		c.JSON(http.StatusBadRequest, validationError(map[string][]string{
+			"captcha_token": {"Invalid captcha token."},
+		}))
+		return
+	}
+	account, err := h.d.Store.LookupAccount(ctx, req.Account)
+	if err != nil || account == nil {
+		c.JSON(http.StatusBadRequest, &errs.ApiError{
+			Code:    "NOT_FOUND",
+			Message: "Unable to find the account.",
+			Detail:  &req.Account,
+			Status:  http.StatusBadRequest,
+		})
+		return
+	}
+	pair, err := h.d.Auth.RecoverAccountWithRecoveryCode(ctx, account.Id, req.RecoveryCode,
+		req.DeviceId, req.Platform, req.DeviceName, middleware.ClientIP(c.Request), c.Request.UserAgent())
+	if err != nil {
+		c.JSON(http.StatusBadRequest, &errs.ApiError{
+			Code:    "RECOVERY_FAILED",
+			Message: err.Error(),
+			Status:  http.StatusBadRequest,
+		})
+		return
+	}
+	h.setAuthCookies(c, pair)
+	c.JSON(http.StatusOK, tokenExchangeBody(pair))
+}
+
+// passwordResetRequest mirrors AccountController.RecoveryPasswordRequest.
+type passwordResetRequest struct {
+	Account      string `json:"account"`
+	CaptchaToken string `json:"captcha_token"`
+}
+
+// passwordResetSpellLifetime is the reset-link validity (24h, mirroring
+// AccountService.RequestPasswordReset).
+const passwordResetSpellLifetime = 24 * time.Hour
+
+// requestPasswordRecovery ports POST /api/accounts/recovery/password
+// (Passport AccountController.RequestResetPassword). It mints an
+// AuthPasswordReset magic spell through the same store spellctl reads, so the
+// client flow — POST here, then GET /spells/{word}, then
+// POST /spells/{word}/apply — works against a single database, and emails the
+// reset link with internal/spell's PasswordReset template.
+//
+// Response parity with the C# controller is deliberate: 400 with
+// PASSPORT_ACCOUNT_NOT_FOUND for an unknown account, 400 with
+// PASSPORT_ACCOUNT_NO_CONTACT_METHOD when no email contact can receive the
+// link, 400 VALIDATION_ERROR for a bad captcha token, 200 on success.
+func (h *handler) requestPasswordRecovery(c *gin.Context) {
+	ctx := c.Request.Context()
+	var req passwordResetRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
+		return
+	}
+
+	// Captcha first, fail-closed: an unconfigured verifier rejects the
+	// request (AuthService.ValidateCaptcha / config.CaptchaRequired) instead
+	// of letting it through unchecked.
+	valid, err := h.d.Auth.ValidateCaptcha(ctx, req.CaptchaToken)
+	if err != nil {
+		h.logError("validate captcha", err)
+	}
+	if !valid {
+		c.JSON(http.StatusBadRequest, validationError(map[string][]string{
+			"captcha_token": {"Invalid captcha token."},
+		}))
+		return
+	}
+
+	account, err := h.d.Store.LookupAccount(ctx, req.Account)
+	if err != nil || account == nil {
+		c.JSON(http.StatusBadRequest, &errs.ApiError{
+			Code:    "PASSPORT_ACCOUNT_NOT_FOUND",
+			Message: "Unable to find the account.",
+			Detail:  &req.Account,
+			Status:  http.StatusBadRequest,
+		})
+		return
+	}
+
+	// The spell is only useful when a link can actually reach the account.
+	// This mirrors the contact lookup NotifyMagicSpell performs (bypassVerify
+	// = true, i.e. any email contact) so the C# 400 survives.
+	if _, err := h.d.Store.GetEmailContactForNotify(ctx, account.Id, false); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			c.JSON(http.StatusBadRequest, &errs.ApiError{
+				Code:    "PASSPORT_ACCOUNT_NO_CONTACT_METHOD",
+				Message: "This account has no email contact available for password reset.",
+				Status:  http.StatusBadRequest,
+			})
+			return
+		}
+		h.logError("load password reset contact", err)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+
+	if h.d.Spells == nil {
+		h.logError("password reset spells are not configured", errors.New("spell service is not configured"))
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+
+	// preventRepeat: a live reset spell is reused rather than duplicated
+	// (MagicSpellService.CreateMagicSpell semantics). The pre-lookup tells the
+	// rollback below whether this request created the spell.
+	prior, err := h.d.Store.FindLiveMagicSpell(ctx, account.Id, model.MagicSpellTypeAuthPasswordReset)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		h.logError("find live password reset spell", err)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+
+	expiresAt := time.Now().UTC().Add(passwordResetSpellLifetime)
+	resetSpell, err := h.d.Spells.CreateMagicSpell(ctx, account.Id, model.MagicSpellTypeAuthPasswordReset,
+		map[string]any{}, spell.CreateOptions{ExpiresAt: &expiresAt, PreventRepeat: true})
+	if err != nil {
+		h.logError("create password reset spell", err)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+
+	// A lost email must not look like success — the user is waiting for a link
+	// that will never arrive. Roll back a spell this request created and let
+	// the caller retry.
+	if err := h.d.Spells.NotifyMagicSpellStrict(ctx, resetSpell, true); err != nil {
+		h.logError("send password reset spell", err)
+		if prior == nil {
+			if delErr := h.d.Store.DeleteMagicSpell(ctx, resetSpell.Id); delErr != nil {
+				h.logError("roll back unsent password reset spell", delErr)
+			}
+		}
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+	c.Status(http.StatusOK)
+}
+
+func (h *handler) logout(c *gin.Context) {
+	ctx := c.Request.Context()
+	session := middleware.CurrentSession(ctx)
+	if session != nil {
+		_, _ = h.d.Auth.RevokeSession(ctx, uuid.MustParse(session.Id))
+		_ = h.d.Token.RevokeJti(ctx, session.Id)
+	}
+	h.clearAuthCookies(c)
+	c.Status(http.StatusOK)
+}
+
+// newSessionRequest mirrors NewSessionRequest.
+type newSessionRequest struct {
+	DeviceId   string               `json:"device_id"`
+	DeviceName *string              `json:"device_name"`
+	Platform   model.ClientPlatform `json:"platform"`
+	ExpiredAt  *model.Time          `json:"expired_at"`
+}
+
+func (h *handler) loginFromSession(c *gin.Context) {
+	ctx := c.Request.Context()
+	user := middleware.CurrentUser(ctx)
+	session := middleware.CurrentSession(ctx)
+	if user == nil || session == nil {
+		c.JSON(http.StatusUnauthorized, errs.New("AUTH_UNAUTHORIZED", "Authentication is required.", http.StatusUnauthorized))
+		return
+	}
+	var req newSessionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
+		return
+	}
+	var expiredAt *time.Time
+	if req.ExpiredAt != nil {
+		t := req.ExpiredAt.Time()
+		expiredAt = &t
+	}
+	newSession, err := h.d.Auth.CreateSessionFromParent(ctx, session, req.DeviceId, req.DeviceName, req.Platform, expiredAt)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CREATE_SESSION_FAILED", err.Error()))
+		return
+	}
+	pair, err := h.d.Auth.CreateTokenPair(ctx, newSession)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CREATE_SESSION_FAILED", err.Error()))
+		return
+	}
+	h.setAuthCookies(c, pair)
+	c.JSON(http.StatusOK, tokenExchangeBody(pair))
+}
+
+func tokenTypeName(t auth.TokenType) string {
+	switch t {
+	case auth.TokenTypeAuthKey:
+		return "AuthKey"
+	case auth.TokenTypeApiKey:
+		return "ApiKey"
+	case auth.TokenTypeOidcKey:
+		return "OidcKey"
+	default:
+		return "Unknown"
+	}
+}
+
+// getCurrentAuthIdentity ports GET /api/auth/me (auth-only identity).
+func (h *handler) getCurrentAuthIdentity(c *gin.Context) {
+	user := middleware.CurrentUser(c.Request.Context())
+	session := middleware.CurrentSession(c.Request.Context())
+	if user == nil || session == nil {
+		c.JSON(http.StatusUnauthorized, errs.New("AUTH_UNAUTHORIZED", "Authentication is required.", http.StatusUnauthorized))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"id":           user.Id,
+		"name":         user.Name,
+		"nick":         user.Nick,
+		"language":     user.Language,
+		"region":       user.Region,
+		"is_superuser": user.IsSuperuser,
+		"activated_at": user.ActivatedAt,
+		"session_id":   session.Id,
+		"token_type":   tokenTypeName(middleware.CurrentTokenType(c.Request.Context())),
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+// validationError mirrors ApiError.Validation with the C# default message.
+func validationError(errors map[string][]string) *errs.ApiError {
+	return &errs.ApiError{
+		Code:    "VALIDATION_ERROR",
+		Message: "One or more validation errors occurred.",
+		Status:  http.StatusBadRequest,
+		Errors:  errors,
+	}
+}
+
+func parseUUIDParam(c *gin.Context, name string) (uuid.UUID, bool) {
+	id, err := uuid.Parse(c.Param(name))
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+func containsString(list []string, target string) bool {
+	for _, v := range list {
+		if v == target {
+			return true
+		}
+	}
+	return false
+}
+
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func platformName(p model.ClientPlatform) string {
+	switch p {
+	case model.ClientPlatformWeb:
+		return "Web"
+	case model.ClientPlatformIos:
+		return "Ios"
+	case model.ClientPlatformAndroid:
+		return "Android"
+	case model.ClientPlatformMacOs:
+		return "MacOs"
+	case model.ClientPlatformWindows:
+		return "Windows"
+	case model.ClientPlatformLinux:
+		return "Linux"
+	default:
+		return "Unidentified"
+	}
+}
+
+func (h *handler) passkeyRpId(c *gin.Context) string {
+	if h.d.Cfg.WebAuthn.RpId != "" {
+		return h.d.Cfg.WebAuthn.RpId
+	}
+	return c.Request.Host
+}
+
+// publishChallengePending mirrors the ws + ring side effects of the first
+// (pending) factor step in DoChallenge / CompletePasskeyChallenge.
+func (h *handler) publishChallengePending(ctx context.Context, challenge *model.AuthChallenge) {
+	h.publishWS(ctx, challenge.AccountId, "auth.challenge.pending", map[string]any{
+		"challenge_id": challenge.Id,
+		"device_name":  challenge.DeviceName,
+		"ip_address":   challenge.IpAddress,
+		"platform":     platformName(challenge.Platform),
+		"created_at":   challenge.CreatedAt,
+	})
+	account, err := h.d.Store.GetAccountByID(ctx, uuid.MustParse(challenge.AccountId))
+	if err != nil {
+		return
+	}
+	deviceName := "unknown"
+	if challenge.DeviceName != nil && *challenge.DeviceName != "" {
+		deviceName = *challenge.DeviceName
+	}
+	ipAddress := "unknown"
+	if challenge.IpAddress != nil && *challenge.IpAddress != "" {
+		ipAddress = *challenge.IpAddress
+	}
+	h.pushNotification(ctx, account.Id, "auth.login_attempt",
+		localization.Localize(account.Language, "loginAttemptTitle", nil),
+		localization.Localize(account.Language, "loginAttemptBody", map[string]string{
+			"deviceName": deviceName,
+			"ipAddress":  ipAddress,
+		}), true)
+}
+
+// pushLoginNotification mirrors the auth.login ring notification when a
+// challenge finishes.
+func (h *handler) pushLoginNotification(ctx context.Context, challenge *model.AuthChallenge, _ bool) {
+	account, err := h.d.Store.GetAccountByID(ctx, uuid.MustParse(challenge.AccountId))
+	if err != nil {
+		return
+	}
+	deviceName := "unknown"
+	if challenge.DeviceName != nil && *challenge.DeviceName != "" {
+		deviceName = *challenge.DeviceName
+	}
+	ipAddress := "unknown"
+	if challenge.IpAddress != nil && *challenge.IpAddress != "" {
+		ipAddress = *challenge.IpAddress
+	}
+	h.pushNotification(ctx, account.Id, "auth.login",
+		localization.Localize(account.Language, "newLoginTitle", nil),
+		localization.Localize(account.Language, "newLoginBody", map[string]string{
+			"deviceName": deviceName,
+			"ipAddress":  ipAddress,
+		}), true)
+}
+
+func (h *handler) publishWS(ctx context.Context, target, event string, payload any) {
+	if h.d.Events == nil {
+		return
+	}
+	if err := h.d.Events.PublishWS(ctx, target, event, payload); err != nil && h.d.Log != nil {
+		h.d.Log.Warn("publish ws event", "event", event, "error", err)
+	}
+}
+
+func (h *handler) pushNotification(ctx context.Context, userID, topic, title, body string, savable bool) {
+	_ = h.pushNotificationErr(ctx, userID, topic, title, body, savable)
+}
+
+// pushNotificationErr mirrors pushNotification but surfaces delivery failures
+// (Ring unavailable, RPC error) instead of swallowing them.
+func (h *handler) pushNotificationErr(ctx context.Context, userID, topic, title, body string, savable bool) error {
+	if h.d.Clients == nil || h.d.Clients.Ring == nil {
+		return errors.New("ring service is not configured")
+	}
+	pushCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	_, err := h.d.Clients.Ring.SendPushNotificationToUser(pushCtx, &gen.DySendPushNotificationToUserRequest{
+		UserId: userID,
+		Notification: &gen.DyPushNotification{
+			Topic:     topic,
+			Title:     title,
+			Body:      body,
+			IsSavable: savable,
+		},
+	})
+	return err
+}
+
+func (h *handler) logError(msg string, err error) {
+	if h.d.Log != nil {
+		h.d.Log.Warn(msg, "error", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Elevation ("sudo") challenges
+// ---------------------------------------------------------------------------
+
+// sudoChallengeLifetime is how long an elevation challenge (and its emailed
+// fallback code) stays valid.
+func (h *handler) sudoChallengeLifetime() time.Duration {
+	if h.d.Cfg == nil {
+		return 10 * time.Minute
+	}
+	return h.d.Cfg.Security.SudoChallengeLifetimeDuration()
+}
+
+// sudoFallbackKey is the Redis key holding an elevation challenge's emailed
+// fallback code.
+func sudoFallbackKey(challengeID string) string {
+	return sudoFallbackCodePrefix + challengeID + ":code"
+}
+
+// sendSudoFallbackCode emails a 6-digit fallback code for an elevation
+// challenge and stores it in Redis. A live code is never replaced (a resend is
+// refused, mirroring sendFactorCode); a missing verified contact is an error
+// (no code can arrive).
+func (h *handler) sendSudoFallbackCode(ctx context.Context, account *model.Account, challenge *model.AuthChallenge) error {
+	if h.d.Redis == nil || !h.d.Redis.Available() {
+		return errors.New("email factor code service is unavailable")
+	}
+	key := sudoFallbackKey(challenge.Id)
+	var cached string
+	if found, _ := h.d.Redis.Cache.Get(ctx, key, &cached); found && cached != "" {
+		return errors.New("A factor code has been sent and in active duration.")
+	}
+	contact, err := h.d.Store.GetEmailContactForNotify(ctx, account.Id, true)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return errors.New("Account has no verified email contact that can receive a code.")
+		}
+		return err
+	}
+	if h.d.Spells == nil {
+		return errors.New("email factor code delivery is not configured")
+	}
+	code := fmt.Sprintf("%06d", mathrand.IntN(900000)+100000)
+	if err := h.d.Spells.SendFactorCodeEmail(ctx, account, contact.Content, code); err != nil {
+		return err
+	}
+	return h.d.Redis.Cache.Set(ctx, key, code, h.sudoChallengeLifetime())
+}
+
+// verifySudoFallbackCode checks a submitted fallback code against Redis and
+// consumes it on success.
+func (h *handler) verifySudoFallbackCode(ctx context.Context, challenge *model.AuthChallenge, code string) bool {
+	if h.d.Redis == nil || !h.d.Redis.Available() {
+		return false
+	}
+	key := sudoFallbackKey(challenge.Id)
+	var cached string
+	found, err := h.d.Redis.Cache.Get(ctx, key, &cached)
+	if err != nil || !found || cached == "" || cached != code {
+		return false
+	}
+	_ = h.d.Redis.Cache.Remove(ctx, key)
+	return true
+}
+
+// completeSudoElevation grants the elevation to the challenge's bound session,
+// records the action log and publishes the completion event. No tokens are
+// minted.
+func (h *handler) completeSudoElevation(ctx context.Context, challenge *model.AuthChallenge) error {
+	sessionID := derefStr(challenge.SessionId)
+	if sessionID == "" {
+		return errors.New("elevation challenge is not bound to a session")
+	}
+	until, err := h.d.Auth.GrantSudo(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	challenge.SudoUntil = model.NewTime(until)
+	challenge.UpdatedAt = model.NewTime(time.Now().UTC())
+	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
+		h.logError("update elevation challenge", err)
+	}
+	h.d.Auth.RecordSudoElevated(ctx, challenge)
+	// A completed elevation releases its per-IP new-challenge quota slot,
+	// mirroring a completed login.
+	risk.ReleaseChallenge(ctx, h.d.Redis, derefStr(challenge.IpAddress), challenge.Id)
+	// The bound session's client polls the challenge document (it carries
+	// sudo_until); the event lets the account's other devices observe the
+	// elevation. Mirrors the challenge-completion side effects of the login
+	// flow.
+	h.publishWS(ctx, challenge.AccountId, "auth.challenge.completed", map[string]any{
+		"challenge_id": challenge.Id,
+		"purpose":      challenge.Purpose,
+		"sudo_until":   challenge.SudoUntil,
+	})
+	return nil
+}
+
+// createSudoChallenge ports POST /api/auth/sudo: it mints an elevation
+// challenge for the caller's own account, bound to the current session, IP and
+// user agent. Completing it (doChallenge) sets the session's elevation flag;
+// no tokens or sessions are minted.
+func (h *handler) createSudoChallenge(c *gin.Context) {
+	ctx := c.Request.Context()
+	if !h.requireCache(c) {
+		return
+	}
+	user := middleware.CurrentUser(ctx)
+	session := middleware.CurrentSession(ctx)
+	if user == nil || session == nil {
+		c.JSON(http.StatusUnauthorized, errs.New("AUTH_UNAUTHORIZED", "Authentication is required.", http.StatusUnauthorized))
+		return
+	}
+
+	now := time.Now().UTC()
+	ipAddress := middleware.ClientIP(c.Request)
+	userAgent := c.Request.UserAgent()
+
+	// Rate limits mirror createChallenge: a fail2banned IP is refused, and the
+	// per-IP new-challenge quota is claimed before any further work (released
+	// once the elevation completes).
+	if !risk.IPAllowed(ctx, h.d.Redis, h.d.Cfg, ipAddress) {
+		c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+			"Too many failed sign-in attempts. Try again later.", http.StatusTooManyRequests))
+		return
+	}
+	challengeID := uuid.NewString()
+	if !risk.ChallengeAllowed(ctx, h.d.Redis, h.d.Cfg, ipAddress, challengeID) {
+		c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+			"Too many sign-in attempts from this network. Try again later.", http.StatusTooManyRequests))
+		return
+	}
+
+	factors, err := h.d.Store.GetAuthFactors(ctx, uuid.MustParse(user.Id))
+	if err != nil {
+		h.logError("sudo factors", err)
+		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+	// The elevation costs one step per factor the client can present as a
+	// pickable factor, and each verified factor settles exactly one step —
+	// never its Trustworthy score. A password-only account therefore elevates
+	// with its password; an account with password + TOTP still needs both. The
+	// demanded step count equals what it actually costs to satisfy, so it can
+	// never strand the challenge on an unreachable last step.
+	steps := len(auth.SudoPickableFactorTypes(factors))
+	fallbackArmed := false
+	switch {
+	case steps > 0:
+		// Covered by the pickable factors.
+	case len(auth.SudoAssertableFactorTypes(factors)) > 0:
+		// A passkey is presented through its own assertion endpoint rather
+		// than the picker, but it satisfies a step just the same.
+		steps = len(auth.SudoAssertableFactorTypes(factors))
+	default:
+		// Nothing presentable is enabled: the emailed fallback is the only way
+		// to re-authenticate, and it settles the single step.
+		_, cerr := h.d.Store.GetEmailContactForNotify(ctx, user.Id, true)
+		if cerr == nil {
+			steps = 1
+			fallbackArmed = true
+		} else if !errors.Is(cerr, store.ErrNotFound) {
+			h.logError("sudo fallback contact", cerr)
+			risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
+			c.JSON(http.StatusServiceUnavailable, errs.New("SERVICE_UNAVAILABLE", "An internal server error occurred.", http.StatusServiceUnavailable))
+			return
+		}
+	}
+	// Fail closed: an account with nothing to present and no verified email
+	// cannot re-authenticate at all, so it must not start an elevation.
+	if steps < 1 {
+		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
+		c.JSON(http.StatusForbidden, errs.New("AUTH_NO_AUTH_FACTORS",
+			"Account has no authentication factors that can satisfy re-authentication.", http.StatusForbidden))
+		return
+	}
+
+	deviceName := userAgent
+	challenge := &model.AuthChallenge{
+		Id:         challengeID,
+		ExpiredAt:  model.NewTime(now.Add(h.sudoChallengeLifetime())),
+		StepTotal:  steps,
+		StepRemain: steps,
+		Audiences:  []string{},
+		Scopes:     []string{},
+		IpAddress:  &ipAddress,
+		UserAgent:  &userAgent,
+		Location:   h.d.Geo.GetPointFromIp(ipAddress),
+		DeviceId:   session.Id,
+		DeviceName: &deviceName,
+		Platform:   model.ClientPlatformUnidentified,
+		AccountId:  user.Id,
+		Purpose:    model.AuthChallengePurposeSudo,
+		SessionId:  &session.Id,
+		CreatedAt:  model.NewTime(now),
+		UpdatedAt:  model.NewTime(now),
+	}
+	if fallbackArmed {
+		ftype := int(model.AuthFactorTypeEmailCode)
+		challenge.ExtraFactorType = &ftype
+	}
+	if err := h.d.Store.CreateAuthChallenge(ctx, challenge); err != nil {
+		h.logError("create elevation challenge", err)
+		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+	c.JSON(http.StatusOK, challenge)
+}

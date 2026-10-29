@@ -1,0 +1,25 @@
+# VCS/editor noise
+.git
+.gitignore
+.github
+.vscode
+
+# Go build output
+bin
+stargate
+stargate-migrate
+*.test
+
+# Secrets and runtime assets (mounted at deploy time)
+Keys
+config.toml
+dump.rdb
+*.rdb
+
+# SPA dependencies and build output (rebuilt inside the image)
+web/node_modules
+web/dist
+web/dist-ssr
+web/coverage
+web/.eslintcache
+web/node_modules/.tmp

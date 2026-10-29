@@ -1,0 +1,760 @@
+@import 'tailwindcss';
+
+@plugin 'daisyui' {
+  themes: false;
+}
+
+/* Solarpass console — Solian's own neutral ramp, so the two surfaces of the
+   product read as one. The tones are the ones Solian derives from its default
+   indigo seed (`_seedPaper` in Solian's `core/theme.dart`): a near-neutral
+   lavender-gray at chroma ~3.5, not blue-gray and not warm. Indigo is the
+   signal the interface spends by default; semantic color appears only when
+   state needs it. */
+@plugin 'daisyui/theme' {
+  name: 'stargate';
+  default: true;
+  color-scheme: dark;
+
+  --color-base-100: #171618;
+  --color-base-200: #1d1d20;
+  --color-base-300: #2e2e31;
+  --color-base-content: #edeaee;
+
+  --console-line: #4b4b4f;
+  --console-line-soft: #2a2a2d;
+  --console-faint: #97959b;
+  --console-dim: #c8c5ca;
+
+  --color-primary: #bac3ff;
+  --color-primary-content: #222c61;
+  --color-secondary: #c3c5dd;
+  --color-secondary-content: #2d2f42;
+  --color-accent: #d9bfcf;
+  --color-accent-content: #3a2b35;
+  --color-neutral: #242326;
+  --color-neutral-content: #c8c5ca;
+
+  --color-info: #a1cce8;
+  --color-info-content: #171618;
+  --color-success: #a8d1a8;
+  --color-success-content: #171618;
+  --color-warning: #fdba55;
+  --color-warning-content: #171618;
+  --color-error: #ffb4ab;
+  --color-error-content: #171618;
+
+  --radius-selector: 4px;
+  --radius-field: 20px;
+  --radius-box: 12px;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+
+  /* Field tones. A field is a tonal well, not an outlined box: the fill alone
+     defines it at rest, the tone steps up under the pointer, and the bottom
+     indicator is the only line. Three explicit steps beat one color with
+     alpha, because a field sits on the page, a panel and a `.well` alike and
+     a translucent fill would read as three different shades. */
+  --field-fill: #232326;
+  --field-fill-hover: #28282c;
+  --field-fill-focus: #2d2d32;
+  --field-line: #3c3c40;
+}
+
+/* Daylight console: the same ramp read at the light end. Solian derives the
+   light field from the same indigo seed rather than inverting the dark one,
+   so the two themes stay one family. */
+@plugin 'daisyui/theme' {
+  name: 'stargate-light';
+  default: false;
+  color-scheme: light;
+
+  --color-base-100: #faf7f9;
+  --color-base-200: #f6f2f6;
+  --color-base-300: #e4e1e5;
+  --color-base-content: #1f1f22;
+
+  --console-line: #d3d1d5;
+  --console-line-soft: #e9e6ea;
+  --console-faint: #636367;
+  --console-dim: #4b4b4f;
+
+  --color-primary: #515b92;
+  --color-primary-content: #ffffff;
+  --color-secondary: #5b5d72;
+  --color-secondary-content: #ffffff;
+  --color-accent: #6d5966;
+  --color-accent-content: #ffffff;
+  --color-neutral: #e4e1e5;
+  --color-neutral-content: #2a2a2d;
+
+  --color-info: #2d5f79;
+  --color-info-content: #ffffff;
+  --color-success: #315936;
+  --color-success-content: #ffffff;
+  --color-warning: #6f4800;
+  --color-warning-content: #ffffff;
+  --color-error: #9f352d;
+  --color-error-content: #ffffff;
+
+  --radius-selector: 4px;
+  --radius-field: 20px;
+  --radius-box: 12px;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+
+  --field-fill: #efeaf0;
+  --field-fill-hover: #eae4eb;
+  --field-fill-focus: #e4dee6;
+  --field-line: #cbc5cc;
+}
+
+@theme {
+  /* Nunito is Solian's default face (`inUseFonts` falls back to it), so the
+     console speaks in the same voice as the app. Mono is no longer the body
+     default: it is kept for machine-printed data only — secrets, slugs,
+     tokens, one-time codes — where a fixed-width glyph is what makes the
+     string checkable by eye. */
+  --font-sans: 'Nunito', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Console chrome colors resolve through the active daisyUI theme, so a
+     theme swap repaints borders and secondary text without duplicating
+     utilities. */
+  --color-line: var(--console-line);
+  --color-line-soft: var(--console-line-soft);
+  --color-faint: var(--console-faint);
+  --color-dim: var(--console-dim);
+  --text-2xs: 0.6875rem;
+
+  /* Corner radius: a tighter reading of Solian's scale. The app's generous
+     corners suit a phone held at arm's length; the console is read on a
+     desktop at a fraction of that distance, where a 20 px corner on a 40 px
+     control reads as a bubble rather than an edge. Every step drops one rank
+     — card 12, field 8, chip 6, inline mark 4, sheet 16 — so the family is
+     preserved and only the amplitude changes.
+
+     Controls are a 6 px rounded rectangle, not a capsule: at 40 px tall a
+     capsule removes the corner entirely and the button stops reading as a
+     surface. `--radius-control` is the one value a button uses. */
+  --radius-mark: 4px;
+  --radius-chip: 6px;
+  --radius-input: 20px;
+  --radius-control: 6px;
+  --radius-card: 12px;
+  --radius-sheet: 16px;
+
+  /* Spacing. One 4 px unit, with the named steps the layout actually uses.
+     Solian's scale (`SolSpace`) stops at 40; the console adds `section` for
+     the gap between major regions and `page` for the content gutter. */
+  --spacing-page: 1.25rem;
+  --spacing-page-wide: 2rem;
+  --spacing-section: 1.5rem;
+  --spacing-card: 1.25rem;
+  --spacing-field: 0.75rem;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    background: var(--color-base-100);
+  }
+
+  html[data-theme='stargate-light'] {
+    color-scheme: light;
+  }
+
+  /* Solian sets body at 1.45–1.5 leading; Nunito's rounded bowls sit a touch
+     smaller than the mono face this replaced, so the console gains half a
+     point and a little leading to keep the same optical size. */
+  body {
+    @apply bg-base-100 font-sans text-[13.5px] leading-[1.55] text-base-content antialiased;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-primary) 30%, transparent);
+    color: var(--color-base-content);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  a {
+    text-underline-offset: 3px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line);
+    border: 3px solid var(--color-base-100);
+    border-radius: 99px;
+  }
+}
+
+@layer components {
+  .eyebrow {
+    @apply text-2xs uppercase tracking-[0.14em] text-faint;
+  }
+
+  /* Human voice: guidance and empty states. Sans is the default face now, so
+     this only marks a passage as explanation — one step dimmer and larger
+     than the interface text around it. */
+  .voice {
+    @apply font-sans text-[14px] leading-relaxed text-dim;
+  }
+
+  .hairline {
+    @apply border-line;
+  }
+
+  /* Terminal listing: no zebra, hairline rows, hover only tints the row. */
+  .ledger {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+  }
+
+  .ledger th {
+    padding: 0 14px 8px 0;
+    border-bottom: 1px solid var(--color-line);
+    color: var(--color-faint);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .ledger td {
+    padding: 11px 14px 11px 0;
+    border-bottom: 1px solid var(--color-line-soft);
+    vertical-align: middle;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Figures that are read as a column line up when they share a width; the
+     proportional figures Nunito ships suit prose better, so tabular is opt-in
+     rather than the body default. */
+  .numeric {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ledger tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .ledger tbody tr:hover td {
+    background: color-mix(in oklab, var(--color-base-200) 55%, transparent);
+  }
+
+  /* Full-bleed ledger: cancels the panel body's horizontal padding so row
+     hairlines meet the card edge, while cell text keeps the panel rhythm.
+     The offsets mirror `ConsolePanel`'s 24 px (`px-6`) body inset — keep the
+     two in step, or the table stops short of the edge it is meant to reach. */
+  .table-bleed {
+    margin-inline: -1.5rem;
+  }
+
+  .table-bleed .ledger th:first-child,
+  .table-bleed .ledger td:first-child {
+    padding-left: 1.5rem;
+  }
+
+  .table-bleed .ledger th:last-child,
+  .table-bleed .ledger td:last-child {
+    padding-right: 1.5rem;
+  }
+
+  .ledger td:first-child,
+  .ledger th:first-child {
+    padding-left: 8px;
+  }
+
+  .ledger td:last-child,
+  .ledger th:last-child {
+    padding-right: 8px;
+    text-align: right;
+  }
+
+  /* ── Fields ────────────────────────────────────────────────────────────
+     One shape for every control, matching Solian's input theme: a filled,
+     fully rounded outline. The outline is the whole edge — there is no
+     underline and no accent bar — so focus is read as the border thickening
+     to 2 px and taking the signal colour, and an error keeps that same edge
+     in the error tone.
+
+     The radius is Solian's `SolRadius.input` (20 px). At the console's 40–44 px
+     control height that resolves to a capsule, which is what the app's own
+     fields look like; a textarea keeps the same corner and reads as a soft
+     rounded box.
+
+     The label is animated rather than static: at rest it sits where the value
+     will be, so an empty form still reads as a list of questions; on focus or
+     a value it rises into a caption. A control with no caption reserves no
+     caption line, so a label-less row keeps its natural height.
+
+     Sizes are named after the buttons they sit beside, so a row of field and
+     button lines up without a per-row height override:
+       md 44 px (btn)   sm 40 px (btn-sm)   xs 32 px (btn-xs) */
+  .field {
+    display: block;
+    min-inline-size: 0;
+  }
+
+  /* The box is the positioned ancestor: the caption and the indicator belong
+     to the control's edge, not to the field plus its helper text. */
+  .field-box {
+    position: relative;
+  }
+
+  .field-control {
+    display: block;
+    inline-size: 100%;
+    width: 100%;
+    border: 1px solid var(--field-line);
+    border-radius: var(--radius-input);
+    background-color: var(--field-fill);
+    color: var(--color-base-content);
+    font-family: var(--font-sans);
+    font-size: 13.5px;
+    line-height: 1.35;
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease,
+      box-shadow 150ms ease;
+  }
+
+  .field-control:hover:not(:disabled):not(:focus) {
+    background-color: var(--field-fill-hover);
+    border-color: color-mix(in oklab, var(--field-line) 65%, var(--color-base-content));
+  }
+
+  /* Focus is the border itself, thickened to 2 px with an inset ring so the
+     box does not move by a pixel the way a real border-width change would.
+     The global focus outline is suppressed for the same reason: it would draw
+     a second edge a few pixels outside this one. */
+  .field-control:focus,
+  .field-control:focus-visible {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: inset 0 0 0 1px var(--color-primary);
+    background-color: var(--field-fill-focus);
+  }
+
+  /* Invalid fields keep the error edge whether or not they hold focus. */
+  .field.is-invalid .field-control {
+    border-color: var(--color-error);
+  }
+
+  .field.is-invalid .field-control:focus,
+  .field.is-invalid .field-control:focus-visible {
+    box-shadow: inset 0 0 0 1px var(--color-error);
+  }
+
+  .field-control:disabled {
+    cursor: not-allowed;
+    color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
+    background-color: color-mix(in oklab, var(--field-fill) 60%, var(--color-base-100));
+  }
+
+  .field-control::placeholder {
+    color: transparent;
+  }
+
+  .field:focus-within .field-control::placeholder,
+  .field-bare .field-control::placeholder {
+    color: color-mix(in oklab, var(--color-faint) 80%, transparent);
+  }
+
+  /* Sizes: height, horizontal inset, and the two label positions. */
+  .field-md {
+    --field-height: 44px;
+    --field-inset: 16px;
+    --field-label-rest: 13.5px;
+    --field-label-float: 10px;
+    --field-label-top: 5px;
+    --field-text-top: 18px;
+  }
+
+  .field-sm {
+    --field-height: 40px;
+    --field-inset: 15px;
+    --field-label-rest: 13px;
+    --field-label-float: 9.5px;
+    --field-label-top: 4px;
+    --field-text-top: 15px;
+  }
+
+  .field-xs {
+    --field-height: 32px;
+    --field-inset: 12px;
+    --field-label-rest: 12px;
+    --field-label-float: 9px;
+    --field-label-top: 4px;
+    --field-text-top: 12px;
+  }
+
+  .field-control {
+    block-size: var(--field-height);
+    min-block-size: var(--field-height);
+    padding: 0 var(--field-inset);
+  }
+
+  /* A labelled field reserves the caption line, so the value sits low enough
+     for the risen label to have its own room. The paddings are tuned so the
+     natural height meets `--field-height`: a field and the button beside it
+     then line up without a per-row override. */
+  .field:not(.field-bare) .field-control {
+    block-size: auto;
+    padding: var(--field-text-top) var(--field-inset) 4px;
+  }
+
+  .field textarea.field-control {
+    min-block-size: calc(var(--field-height) * 2);
+    padding-block: var(--field-text-top) 10px;
+    line-height: 1.5;
+    resize: vertical;
+  }
+
+  /* A select keeps its own arrow, drawn here because the native control is
+     reset. The extra right inset keeps the text clear of it. */
+  .field select.field-control {
+    appearance: none;
+    padding-inline-end: calc(var(--field-inset) + 20px);
+    background-image:
+      linear-gradient(45deg, transparent 50%, currentColor 50%),
+      linear-gradient(135deg, currentColor 50%, transparent 50%);
+    /* The arrow is positioned from the box's own bottom-right corner, so it
+       follows the field's height instead of the fill's centre. */
+    background-position:
+      calc(100% - 15px) calc(50% + 1px),
+      calc(100% - 10px) calc(50% + 1px);
+    background-size:
+      5px 5px,
+      5px 5px;
+    background-repeat: no-repeat;
+  }
+
+  .field-label-float {
+    position: absolute;
+    z-index: 1;
+    inset-inline-start: var(--field-inset);
+    inset-block-start: 50%;
+    translate: 0 -50%;
+    color: var(--color-faint);
+    font-size: var(--field-label-rest);
+    font-weight: 500;
+    line-height: 1.1;
+    pointer-events: none;
+    transform-origin: left center;
+    transition:
+      inset-block-start 160ms cubic-bezier(0.2, 0.7, 0.2, 1),
+      translate 160ms cubic-bezier(0.2, 0.7, 0.2, 1),
+      font-size 160ms cubic-bezier(0.2, 0.7, 0.2, 1),
+      letter-spacing 160ms ease,
+      color 160ms ease;
+  }
+
+  /* The caption rises for a value, and also for focus: an empty focused field
+     shows its placeholder, so leaving the caption on the value line would
+     print the two on top of each other. */
+  .field.is-floated .field-label-float,
+  .field:focus-within .field-label-float {
+    inset-block-start: var(--field-label-top);
+    translate: 0 0;
+    font-size: var(--field-label-float);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+
+  .field:focus-within .field-label-float {
+    color: var(--color-primary);
+  }
+
+  .field.is-invalid .field-label-float,
+  .field.is-invalid:focus-within .field-label-float {
+    color: var(--color-error);
+  }
+
+  .field-hint {
+    margin-block-start: 6px;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--color-faint);
+  }
+
+  .field-hint-error {
+    color: var(--color-error);
+  }
+
+  .field-hint-warning {
+    color: var(--color-warning);
+  }
+
+  /* A trailing control inside the field, e.g. the password reveal. */
+  .field-action {
+    position: absolute;
+    inset-inline-end: 6px;
+    inset-block-start: 50%;
+    translate: 0 -50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    block-size: 28px;
+    inline-size: 28px;
+    border-radius: var(--radius-chip);
+    color: var(--color-faint);
+    transition:
+      color 150ms ease,
+      background-color 150ms ease;
+  }
+
+  .field-action:hover {
+    color: var(--color-base-content);
+    background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+  }
+
+  .field:has(.field-action) .field-control {
+    padding-inline-end: calc(var(--field-inset) + 30px);
+  }
+
+  /* Checkbox and radio: Material's square mark, on the same 4 px unit as the
+     rest of the geometry. */
+  .checkbox,
+  .radio {
+    border-color: var(--field-line);
+  }
+
+  .checkbox:checked,
+  .radio:checked {
+    border-color: var(--color-primary);
+    background-color: var(--color-primary);
+    color: var(--color-primary-content);
+  }
+
+  /* Display: page titles only. Nunito's bold is heavy enough to carry a
+     headline without a second family, and the negative tracking keeps a
+     rounded face from looking soft at 24 px. */
+  .title {
+    @apply font-sans font-bold tracking-[-0.01em];
+  }
+
+  /* The brand mark is masked rather than drawn, so it takes the theme's text
+     color: a white glyph would vanish on the light field. */
+  .brand-mark {
+    background-color: currentColor;
+    -webkit-mask: url('/icon-outline.svg') center / contain no-repeat;
+    mask: url('/icon-outline.svg') center / contain no-repeat;
+  }
+
+  .btn {
+    @apply border-line font-sans text-[13px] font-semibold tracking-[0.005em];
+    border-radius: var(--radius-control);
+    box-shadow: none;
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease,
+      color 150ms ease;
+  }
+
+  /* Square buttons follow the same corner rather than becoming circles: a
+     circle is a different shape language, and at 6 px the icon tiles read as
+     part of the same family as the fields. */
+  .btn-square,
+  .btn-circle {
+    border-radius: var(--radius-control);
+  }
+
+  .btn-ghost {
+    @apply text-dim;
+  }
+
+  .btn-ghost:hover {
+    @apply bg-base-300 text-base-content;
+  }
+
+  .btn-primary {
+    @apply border-primary;
+  }
+
+  .btn-error {
+    @apply border-error/60;
+  }
+
+  .link-quiet {
+    @apply text-dim underline decoration-line underline-offset-4 transition-colors;
+  }
+  .link-quiet:hover {
+    @apply text-base-content decoration-faint;
+  }
+
+  /* Status note: the one shape for an inline error, confirmation, or warning.
+     A tinted block carries the tone, so a message reads as an object rather
+     than as a stray sentence with a bar beside it. */
+  .note {
+    @apply rounded-chip border px-3.5 py-2.5 text-xs leading-relaxed;
+  }
+
+  .note-error {
+    @apply border-error/40 bg-error/10 text-error;
+  }
+
+  .note-success {
+    @apply border-success/40 bg-success/10 text-success;
+  }
+
+  .note-warning {
+    @apply border-warning/40 bg-warning/10 text-warning;
+  }
+
+  /* Grouping surface: the page card sits on `base-100`, and every region
+     inside it is a tonal plate with the same corner as the panel token. */
+  .plate {
+    @apply rounded-card border border-line bg-base-200/30;
+  }
+
+  /* A field or option block nested inside a plate, one step tighter. */
+  .well {
+    @apply rounded-card border border-line bg-base-200/40;
+  }
+
+  .dot {
+    @apply inline-block size-[6px] shrink-0 rounded-full;
+  }
+
+  /* Loading placeholder: a single soft sweep replaces a "reading…" line, so a
+     surface that has not resolved yet still shows its layout. It carries no
+     information and must never be announced as content. */
+  .skeleton {
+    @apply block rounded-chip bg-base-300/70;
+    animation: skeleton-sweep 1.4s ease-in-out infinite;
+  }
+
+  @keyframes skeleton-sweep {
+    0%,
+    100% {
+      opacity: 0.55;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@layer components {
+  /* Motion is short and only explains a change: a step swapping in, a row
+     resolving, a notice appearing, or the card growing to hold new content. */
+  .page-region {
+    overflow: hidden;
+    transition: height 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+
+  .step-enter-active,
+  .step-leave-active,
+  .row-enter-active,
+  .row-leave-active,
+  .notice-enter-active,
+  .notice-leave-active {
+    transition:
+      opacity 160ms ease,
+      transform 160ms ease;
+  }
+
+  .step-enter-from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  .step-leave-to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  .row-enter-from,
+  .row-leave-to {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  .row-leave-active {
+    position: absolute;
+    width: 100%;
+  }
+
+  .notice-enter-from,
+  .notice-leave-to {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+
+  .text-error {
+    animation: note-in 160ms ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .page-region {
+      transition: none;
+    }
+
+    .step-enter-active,
+    .step-leave-active,
+    .row-enter-active,
+    .row-leave-active,
+    .notice-enter-active,
+    .notice-leave-active {
+      transition: none;
+    }
+
+    .text-error {
+      animation: none;
+    }
+  }
+}
+
+@keyframes note-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+
+/* The footer language picker is inline, not a full-width form field, and it
+   is the one field that sits in the page chrome rather than a form. */
+.footer-locale {
+  inline-size: auto;
+  width: auto;
+}
+
+.footer-locale .field-control {
+  block-size: 1.75rem;
+  min-block-size: 1.75rem;
+  padding: 0 1.5rem 0 0.5rem;
+  font-size: 0.6875rem;
+  background-position:
+    calc(100% - 11px) calc(50% + 1px),
+    calc(100% - 7px) calc(50% + 1px);
+}

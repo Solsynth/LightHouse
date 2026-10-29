@@ -1,0 +1,760 @@
+# Solarpass console design system
+
+The console in `web/` is the account surface for Solar Network: sign-in,
+recovery, profile, security, developer apps, activity, and administration. It
+is served by Stargate itself, so the same document describes the deployment
+and the development server.
+
+This is the working reference for anyone adding a screen. It documents the
+choices already encoded in `web/src/assets/main.css`,
+`web/src/locales/`, and the shared components — not an aspirational style.
+
+## 1. Principles
+
+1. **A calm instrument, not a dashboard.** The interface reports state and
+   gets out of the way. No hero metrics, no decorative gradients, no chrome
+   that does not carry information.
+2. **One signal color.** Indigo (`primary`) marks the action or current
+   location. Semantic colors appear only when state needs them; the seed's
+   tertiary (`accent`) marks privilege and secondary emphasis.
+3. **Machine data and human explanation are typeset differently.** Nunito is
+   the interface and the voice — labels, guidance, titles, buttons. Monospace
+   is reserved for strings whose characters are checked one at a time:
+   secrets, slugs, tokens, one-time codes.
+4. **Blocks, not rules.** Content areas are separated by surface color and
+   spacing. Horizontal hairlines survive only where they encode structure:
+   the shell's chrome bands, ledger rows, table headers, modal sections, and
+   the segmented tab rail.
+5. **Boldness in one place.** The centered card, the shared neutral ramp, and
+   the Nunito typography carry the identity. Everything else stays quiet.
+6. **Shared geometry with the Flutter app.** Corner radii come from Solian's
+   `SolRadius` scale read one rank tighter for a desktop viewing distance, and
+   the palette from Solian's own seed-derived ramp, so a console surface and a
+   Solian screen of the same role belong to the same family without pretending
+   to be the same size. Roundness is a family, not a per-page choice.
+7. **A field is one rounded outline.** Every control is a filled, fully
+   rounded shape drawn by a single border on all four sides — never an
+   underline or a bar beneath it. Focus is that same border thickening and
+   taking the signal colour; an error is that border in the error tone.
+
+## 2. Color
+
+daisyUI themes are declared in `web/src/assets/main.css`:
+
+| Theme | Selector | Scheme |
+| --- | --- | --- |
+| `stargate` (default) | `data-theme="stargate"` | dark |
+| `stargate-light` | `data-theme="stargate-light"` | light |
+
+### Surfaces and text
+
+| Role | Token | Dark | Light |
+| --- | --- | --- | --- |
+| Page | `--color-base-100` | `#171618` | `#faf7f9` |
+| Panel | `--color-base-200` | `#1d1d20` | `#f6f2f6` |
+| Raised | `--color-base-300` | `#2e2e31` | `#e4e1e5` |
+| Text | `--color-base-content` | `#edeaee` | `#1f1f22` |
+| Hairline | `--console-line` | `#4b4b4f` | `#d3d1d5` |
+| Soft hairline | `--console-line-soft` | `#2a2a2d` | `#e9e6ea` |
+| Secondary text | `--console-dim` | `#c8c5ca` | `#4b4b4f` |
+| Faint text | `--console-faint` | `#97959b` | `#636367` |
+
+`line`, `line-soft`, `faint`, and `dim` are exposed to Tailwind as
+`border-line`, `border-line-soft`, `text-faint`, and `text-dim`. They resolve
+through the active theme, so shared components never hardcode a theme color.
+
+### Signal and state
+
+| Role | Dark | Light | Use |
+| --- | --- | --- | --- |
+| `primary` | `#bac3ff` | `#515b92` | primary action, current tab, focus ring |
+| `accent` | `#d9bfcf` | `#6d5966` | elevated sessions, trusted state |
+| `success` | `#a8d1a8` | `#315936` | `OK` status, verified state |
+| `warning` | `#fdba55` | `#6f4800` | pending or expiring state |
+| `error` | `#ffb4ab` | `#9f352d` | destructive action, `ERROR` status |
+| `info` | `#a1cce8` | `#2d5f79` | neutral live indicator |
+
+The ramp is Solian's, not an invented one. Solian seeds a Material color
+scheme from `Colors.indigo` and then replaces the neutrals with `_seedPaper`,
+which keeps the seed's hue at a chroma of about 3.5 — a near-neutral
+lavender-gray, neither blue-gray nor warm. The console uses the tones that
+function produces at each end: `surface` for the page, `surfaceContainerLow`
+for panels, `surfaceContainerHigh` for raised regions. Because the hue comes
+from the seed, the ground moves with the accent instead of sitting on a fixed
+beige. Accent is the seed's tertiary rather than a warm brass, so state color
+stays in the same family as the ground.
+
+Contrast (WCAG 2.1, dark / light): body `15.12:1` / `15.45:1`, dim
+`10.56:1` / `8.16:1`, faint `6.09:1` / `5.62:1`, primary button text
+`7.71:1` / `6.44:1`. Every one is measured against `base-300` as well, the
+highest surface text can sit on: faint `4.57:1` / `4.61:1`. Faint is the floor
+for small text — Solian's own outline tone lands at `3.94:1` on light
+`base-300`, so the console's light faint is one tone darker than the app's.
+
+Theme choice follows the OS on first visit, then persists in
+`localStorage['solarpass.theme']`. The toggle lives in the header on every
+page. `theme-color` and `color-scheme` are declared for both schemes, so
+browser chrome and native form controls follow the chosen theme rather than
+staying dark.
+
+## 3. Typography
+
+| Face | Weights | Role |
+| --- | --- | --- |
+| Nunito | 400, 600, 700 | everything: interface, labels, prose, titles, buttons |
+| IBM Plex Mono | 400, 500 | machine-printed data only — secrets, slugs, tokens, one-time codes |
+
+Nunito is Solian's default face: `inUseFonts` in `core/theme.dart` falls back
+to it when the user has set no custom font. The console therefore speaks in
+the app's voice instead of the terminal one it used before.
+
+| Token | Size | Use |
+| --- | --- | --- |
+| page title | 24 px (20 px on mobile), 700 | one per route, `h1.title` |
+| title | 13 px / 600 | modal and header names |
+| body | 13.5 px / 1.55 | default |
+| voice | 14 px | descriptions, hints, empty states |
+| small | 12 px | dense prose in footers |
+| `text-2xs` | 11 px | labels, chips, metadata, table headers |
+
+Labels use uppercase, `0.1em` tracking, faint color, and semibold. Table
+headers use uppercase `10.5 px` at `0.1em` tracking. Nunito ships
+proportional figures, which suit prose; columns that are read as numbers opt
+into `tabular-nums` — the `.numeric` utility, and ledger cells, which get it
+by default. Identifiers are truncated in dense tables and expose the full
+value through `title`.
+
+Mono is no longer the default face. It is reserved for strings whose
+characters are checked one at a time — an API secret, an app slug, a device
+code — where a fixed width is what makes the value readable. Everything a
+person reads as language is set in Nunito.
+
+## 3.1 Geometry and corner radius
+
+Radii are a scale, not a per-page choice. The tokens in
+`web/src/assets/main.css` mirror Solian's `SolRadius`
+(`Solian/lib/core/theme.dart`) but read one rank tighter: the app's generous
+corners suit a phone held at arm's length, while the console is read on a
+desktop at a fraction of that distance, where a 20 px corner on a 40 px
+control reads as a bubble instead of an edge. The family is the same; only the
+amplitude changes. Use the token; never write a raw `rounded-[Npx]` in a view.
+
+| Token | Value | Tailwind | Use |
+| --- | --- | --- | --- |
+| `--radius-mark` | 4 px | `rounded-mark` | app marks, small inline art |
+| `--radius-chip` | 6 px | `rounded-chip` | chips, status notes, skeletons |
+| `--radius-input` | 20 px | `rounded-input` / `--radius-field` | inputs, selects, textareas |
+| `--radius-control` | 6 px | `rounded-control` | buttons, tab rail, segmented controls |
+| `--radius-card` | 12 px | `rounded-card` / `--radius-box` | panels, menus, wells, option blocks |
+| `--radius-sheet` | 16 px | `rounded-sheet` | the page card, dialogs |
+
+Fields are the exception to the tight scale: they keep Solian's
+`SolRadius.input` (20 px), which at the console's 40–44 px control height
+resolves to a capsule. That is what the app's own fields look like, and a
+field is a different object from the surfaces around it.
+
+Controls are a **6 px rounded rectangle**, not a capsule. At 40 px tall a
+capsule removes the corner entirely and the button stops reading as a surface;
+`--radius-control` is the one value a button, a tab, and a segmented control
+share. A square button keeps that corner rather than becoming a circle, so
+icon tiles stay in the same shape family as the fields beside them.
+
+Two shared surfaces are available so views do not re-implement them:
+
+| Class | Shape | Use |
+| --- | --- | --- |
+| `.well` | 12 px, hairline, `base-200/40` | a form or block inset inside a panel |
+| `.note` + `.note-error` / `-success` / `-warning` | 6 px tinted block | the one inline status message |
+
+Status notes replaced the left-rule `border-l` paragraphs. The tinted block
+carries the tone, so a message reads as an object instead of a stray sentence
+with a bar beside it. Keep the spacing utility (`mt-4`, `mb-5`) and drop the
+duplicate `text-*`: the `.note-*` class supplies size and color.
+
+## 4. Layout
+
+The shell is one centered card; the page has no separate sidebar or top-level
+chrome beyond the card header.
+
+```
+┌─ viewport ───────────────────────────────────────────┐
+│        ┌─ card (width by route) ──────────────────┐  │
+│        │ brand · language · theme · identity      │  │
+│        ├──────────────────────────────────────────┤  │
+│        │ nav (signed in)                          │  │
+│        ├──────────────────────────────────────────┤  │
+│        │ page header (title, description, action) │  │
+│        │                                          │  │
+│        │ panels / forms / ledgers                 │  │
+│        │                                          │  │
+│        │ status bar (OK/ERROR + message)          │  │
+│        └──────────────────────────────────────────┘  │
+│        © 2026 Solar Network        [☾]  [Language ▾]  │
+└──────────────────────────────────────────────────────┘
+```
+
+Width tiers are decided by route metadata in `web/src/router/index.ts`:
+
+| Tier | Width | Routes |
+| --- | --- | --- |
+| flow | 460 px | sign-in, create account, recovery, captcha, provider callback, sudo, magic spell, device authorization |
+| consent | 880 px | OAuth authorize (the app rail beside its request) |
+| account | 880 px | profile, factors, passkeys, contacts, linked identities, security mode, public profiles |
+| wide | 1120 px | sessions, devices, friends, developers, OAuth app, activity |
+| full | viewport (full bleed) | all admin pages |
+
+Admin routes set `meta.fullBleed`. The shell then drops its 20 px gutter and
+card border so the admin surface reaches the viewport edges, while the header,
+page padding, and footer keep their normal spacing.
+
+Public profiles set `meta.edgeToEdge`: the shell keeps the card but drops the
+page content padding, so the profile banner runs to the card's inner edges.
+The profile view reapplies 20 px padding to the avatar and panels.
+
+`/auth/sudo` renders the same factor flow as the elevation modal, so another
+client can open it in a browser or popup, elevate the session, and return.
+It accepts only same-origin `next` paths and posts `solarpass:sudo` to the
+opener on success.
+
+The card floats in a 20 px viewport gutter (`px-page`), widening to 32 px
+(`px-page-wide`) from the `sm` breakpoint. Content padding is 20 px, 32 px from
+`sm`, and panel padding is 24 px horizontally and 20 px vertically. The 4 px
+spacing unit is used throughout; prefer gaps over nested borders. The named
+steps are exposed as `--spacing-page`, `--spacing-page-wide`,
+`--spacing-section`, `--spacing-card`, and `--spacing-field`, so a view writes
+`px-page` / `gap-section` instead of repeating a pixel value.
+
+Public profiles (`/@name`) stay on the 880 px card and hide the nav tabs; the
+profile background is a banner that runs to the card's inner edges above the
+avatar, while the name and panels keep the normal 20 px inset. The site keeps
+the card shell everywhere except admin pages.
+
+When the signed-in account has a profile background, it is painted as a fixed
+backdrop behind the shell: cover-scaled, blurred 40 px, at 40% opacity under a
+55% base scrim. It is never fetched when the profile has no background, and a
+failed load falls back to the plain base surface. The blur is deliberately
+shallow: the backdrop is atmosphere, and past ~40 px it stops reading as the
+person's own art and starts reading as a gradient.
+On the consent screen the backdrop belongs to the app being authorized instead:
+that view publishes the client's own background to `ui.appBackdrop` and clears
+it on unmount, and the shell prefers it over the account's. A page that lends a
+backdrop owns its lifetime; leaving one set would paint a third-party app
+behind every later page.
+
+**The page card is opaque** (`bg-base-200`, radius 16 px). It is the reading
+surface, so text never sits over a blurred image; the backdrop is only visible
+in the gutter around the card. Do not reintroduce a translucent card.
+
+**Never nest a bordered card inside the page card.** Content sits directly on
+the page surface; panels use `bg-base-200/30` at radius 12 px to group a
+region, and the status bar and table footers are separated by spacing, not
+rules.
+
+## 5. Components
+
+### Header
+
+Brand mark is a CSS mask over `currentColor` (so it repaints with the theme),
+then `SOLARPASS`, then `Solar Network` on wider screens. With a session, the
+right side holds the 24 px account avatar (no border; falls back to a person
+glyph when no picture exists) and the elevated indicator. The avatar is a
+dropdown with **Public Profile** and **Sign Out**; it closes on select, Escape,
+or an outside click. Signed out the header is just the brand.
+
+### Footer
+
+The footer sits outside the card, aligned to the card's current width, and
+holds the copyright (`© {year} Solar Network`), the theme toggle, and the
+language dropdown. Language is a native `<select>` styled as a compact inline
+field: the catalog will grow beyond two entries, and a select scales without
+redesigning the header. It is present on every page, signed in or not.
+
+### Navigation
+
+The main nav is a single horizontal line of 11 px links with a Carbon 16 icon.
+The active section is `text-base-content`; the rest are `text-faint`. The
+account-settings entry is labelled **Settings** with the sliders icon; its
+contained tabs are Sessions, Devices, Sign-In Factors, Passkeys, Contacts,
+Linked Identities, and Security Mode.
+
+`SecurityNav` is a segmented tab rail: a 12 px container holding 6 px tabs,
+the active tab filled `base-300` and inactive tabs faint with a hover tint.
+Tabs are separated by padding rather than dividers, so the rail carries no
+internal rules. It uses `aria-current="page"`. Do not use underlined tabs.
+
+`TabBox` carries that strip as a component, so a page whose tabs switch state
+instead of routes uses one control and not a second style. A tab with `to` is a
+`RouterLink` and keeps `aria-current="page"`; one without is a button carrying
+`aria-pressed`.
+
+### Friends
+
+`/account/relationships` (SPA route `relationships`, wide card) is the signed-in
+social graph: Friends, Requests, Close Friends, Blocked, and Muted in one
+`TabBox`, a search panel that sends requests, and the sent-request list. The
+path is the one Stargate puts in friend-request pushes and the fleet declares
+as an app link, so a notification lands here.
+
+The list endpoint pages over every non-pending row, so the tabs filter what has
+been loaded rather than asking for a per-tab page; a footer button appends the
+next page. Requests are split by direction: incoming ones are actionable in the
+tab, sent ones sit in the sidebar with a cancel action.
+
+The alias is the name in these lists, with the account's own display name
+underneath; the other side never sees it. Removal, blocking, and declining
+confirm first — declining blocks the sender as part of the decline, so the
+dialog says so.
+
+Presence comes from `GET /api/friends/overview` and is a last-seen heuristic
+(online within five minutes). The server sends an English label; the console
+reads the booleans and translates them, so a Chinese catalog never prints an
+English word.
+
+### Public profile
+
+`GET /@name` (SPA route `public-profile`) renders the public projection:
+background banner, avatar, display name and handle, bio, public contacts,
+links, and pronouns/location/time zone/join date.
+The nav tabs are hidden; the page keeps the 880 px card, with the background
+banner running to the card's inner edges and the avatar and panels inset by
+20 px. A missing account gets the not-found header rather than a blank page.
+
+### Page header
+
+`PageHeader` renders the route title, an optional description in the voice
+face, and an actions slot. It has no bottom rule; spacing separates it from
+the content.
+
+### ConsolePanel
+
+`section` with `border border-line bg-base-200/30`, a title/note header, a
+body, and an optional footer for pagination or notes. Header, body, and footer
+share a 24 px horizontal inset; header and footer have no horizontal rules. Use it for every grouped region; do not re-implement its
+shell inline.
+
+### Ledger
+
+`table.ledger` is the only table style: hairline row separators, a stronger
+header rule, no zebra striping, hover tinting the row, right-aligned last
+column. First and last cells carry 8 px outer padding by default. Wrap tables
+in `.table-bleed` inside a panel to let row rules meet the panel edge; cell
+text then keeps 20 px to match the panel body. Every table inside a
+`ConsolePanel` is bled — a table whose rules stop short of the panel edge
+reads as a nested card, which the layout does not allow.
+
+### Loading
+
+`LoadingSkeleton` stands in for content that has not resolved: the same row
+height, column count and spacing as the loaded state, so the reader sees that
+something is arriving and the real content lands where the placeholder was.
+
+| Variant | Shape |
+| --- | --- |
+| `columns` (default) | table row: one bar per column, split by `:columns` ratios |
+| `rows` | list row: title plus chips, then a description line |
+
+Set `header` for tables so the column labels have a shorter bar. Bars are
+`aria-hidden`, and the sweep is one opacity animation that the reduced-motion
+rule already neutralizes. While a surface is loading, a count or page range is
+not a fact: gate the panel `note` and the pager label on `!loading` rather than
+printing `0 total` or `Page 1 of 1`.
+
+### Forms
+
+Every field is `TextField`. It renders a filled, fully rounded control in the
+style of Solian's input theme: one 1 px outline on all four sides, a 20 px
+radius (a capsule at control height), and a caption that animates between two
+positions. At rest the caption sits on the value line, so an empty form still
+reads as a list of questions; on focus or a value it rises into a small
+caption above the value and stays there. Focus thickens the outline to 2 px in
+the signal colour using an inset ring, so the box never shifts by a pixel. An
+invalid field keeps that outline in the error tone, with or without focus.
+
+There is no underline and no accent bar. Do not add one.
+
+Do not hand-write `<input class="input">`, `<select class="select">`, or
+`<label class="field-label">` in a view. The one exception is a section heading
+above a group of controls (a captcha, a scope list); that is a `<p
+class="field-label">`, not a field label.
+
+| Prop | Meaning |
+| --- | --- |
+| `label` | the visible caption; omit for a label-less row |
+| `as` | `input` (default), `textarea`, `select` |
+| `size` | `md` (44 px), `sm` (40 px, default), `xs` (32 px) — matches the button beside it |
+| `bare` | no caption and no reserved caption line, for chrome-level controls; name it with `aria-label` |
+| `invalid` / `hint` | error tone on the outline and caption, helper text below |
+| `hintTone` | `warning` tints a hint without marking the field invalid |
+| `controlClass` | classes for the control itself, e.g. `font-mono` |
+| `rootClass` | classes for the wrapper, for layout spacing at the call site |
+
+A field without a `label` reserves no caption line and is exactly `size` tall,
+the same height as the button beside it — that is why the inline verify rows
+work without a height override. A labelled field reserves the caption line
+inside the same height, so labelled and label-less controls still line up.
+
+Attributes fall through to the control, not the wrapper: `id`, `type`,
+`inputmode`, `autocomplete`, `pattern`, `required`, `@keydown`, and `aria-*`
+behave exactly as written. A caller's `id` is kept, so an existing `<label
+for>` keeps pointing at the control. `v-model.number` works on a select,
+because the component re-applies the modifier it would otherwise lose.
+
+Placeholders are only for examples (`name@example.com`) or format hints
+(`6-digit code`); they appear once the caption has risen, so a placeholder
+never repeats the label.
+
+When a field sits in a row with a button, wrap both in `flex items-start gap-2`
+and give the field `root-class="min-w-0 flex-1"`; do not stretch the field with
+a bare `class`, which lands on the control instead of the wrapper.
+
+### Factors and passkeys
+
+The factor picker offers only types that are not already configured; the API
+also rejects a second factor of the same type. Passkeys are credentials rather
+than a single factor: the Passkeys tab lists any number of them with add,
+rename, and delete, while the passkey method's enable/disable toggle stays in
+Sign-In Factors. A passkey can only be registered after the passkey factor and
+a recovery code are enabled.
+
+### Devices
+
+`/security/devices` (SPA route `devices`, wide card) lists the auth clients —
+one per browser or app install — that `GET /api/devices` returns, each with the
+sessions bound to it. The Sessions tab answers "which credentials are live";
+this one answers "where", which is the question people ask before revoking
+something they do not recognise.
+
+The device key is the identity: renaming and deleting both address
+`device_id`, not the row's client id, and the row's platform picks a Carbon
+glyph (web, phone, mobile, laptop, screen, terminal) with `devices` as the
+fallback for an unidentified platform. The label wins over the client-declared
+name, matching the fleet's `device_label ?? device_name` rule.
+
+Three signals decide what the row may do. A row whose `device_id` matches the
+one this browser stores (`localStorage['stargate.device']`) is "this device";
+a row holding the console's own `session_id` is treated the same way, because
+an older login may have bound the session to a different key. Neither can be
+revoked — the request would sign the page out mid-flight — and they are the
+only rows that can be renamed through `PATCH /api/devices/current/label`.
+Everything else uses the per-device routes, which need an elevated session.
+
+Session rows inside a device are the server's `sessions` array; the console
+shows only the ones still live, since a revoked session lingers in the row
+until it falls off the page. Each carries its own revoke action (the plain
+session route), so revoking one credential does not take the device with it.
+The `trusted` chip on a device comes from native login sessions only: OAuth
+devices can never be trusted.
+
+### Sign-in methods
+
+The account field and its primary action come first. Below it, `Or continue
+with` is two tiers: the console's own ways in — passkey and QR — share one
+two-column row of labelled tiles, and each social provider is a 40 px
+icon-only tile in a wrapped row beneath. The mark is the label; `title` and
+`aria-label` ("Continue with GitHub") carry the name for hover and screen
+readers, and brand names are not translated while the sentence around them is.
+
+The split states ownership. Passkey and QR are this deployment's sign-in
+methods and read as actions; a provider is somebody else's identity, and a row
+of marks is the shape people already recognise. Keeping the provider row
+icon-only also means nine providers cost one row instead of five.
+
+`ProviderMark` draws a provider's brand silhouette from
+`web/src/lib/providers.ts` in `currentColor`, so it repaints with the theme and
+never ships a second color. A provider with no mark in the catalog — including
+one a newer server lists — falls back to its initial, so the row never has a
+blank tile.
+
+The provider list comes from `GET /api/auth/providers`, which answers only the
+providers whose credentials are configured and only when the social module is
+mounted. The console therefore never offers a button that ends in an error.
+
+### Shared sign-in and the hand-off target
+
+Any other app reuses this page instead of shipping its own login form: it opens
+`{siteUrl}/sign-in?redirectUri={its callback}` (a page of this console uses
+`?next={path}`). It gets the session back one of two ways, decided by where it
+lives.
+
+An app on the cookie domain shares it directly: `[auth] cookieDomain` scopes
+the session cookie, so a subdomain has it before the page even renders.
+`POST /api/auth/callback/{provider}` also accepts the return URL, which is how
+a provider round-trip started from the shared page gets back to the app.
+
+An app on another registrable domain cannot, because a cookie carries one
+Domain attribute and a browser refuses one that does not match the request
+host (RFC 6265 §4.1.2.3). It is handed a single-use code instead:
+
+| Step | Who | What |
+| --- | --- | --- |
+| 1 | console | `POST /api/auth/handoff/session {redirect_uri}` — mints a code bound to the session, the app, and the validated target |
+| 2 | browser | navigates to `{redirect_uri}?code=…` |
+| 3 | app's server | `POST /api/auth/handoff/redeem {client_id, code, client_secret}` — trades it for a token pair |
+| 4 | app's server | sets its own session cookie on its own domain |
+
+The console never names a client id: the issuer resolves the app from the
+target host, so only a host a client is registered for (`[auth.handoffClients]`)
+earns a code. The code is single-use, expires in 60s, and is redeemable only by
+the app it was issued to — a secret for a confidential client, PKCE for a
+public one. The app's refresh token is traded at `POST /api/auth/handoff/renew`
+so the session outlives the short access-token lifetime, and it stays bound to
+the same session: revoking that session revokes the app's too.
+
+The address is written by the caller — and therefore by anyone who can write a
+link — so it is a policy decision, made on the server:
+
+- `GET /api/auth/sign-in/config` publishes `cookie_hosts` (the cookie domain and
+  its subdomains, plus the site host), `handoff_hosts` (registered clients whose
+  hosts no cookie can reach), and `require_https` (the Secure flag on the
+  cookie). The console refuses a target those rules refuse before navigating
+  away, and it picks the trip from the list the host is in: a cookie host gets a
+  plain navigation, a hand-off host gets a minted code. The distinction is not
+  cosmetic — an app on the cookie domain, `web.solian.app` under
+  `cookieDomain = ".solian.app"` for instance, is already signed in on arrival,
+  and asking the issuer to mint a code for it fails because no client is
+  registered for that host.
+- `GET /api/auth/login/{provider}?flow=login&returnUrl=…` drops a return URL
+  that names anything else and falls back to `{siteUrl}/auth/success`.
+- A refused target never blocks the sign-in: the console says once that the
+  link points somewhere it cannot sign you in, and continues to `/account`. A
+  refused hand-off is treated the same way, rather than navigating away to
+  arrive signed out.
+
+The create-account and reset-password links carry the same parameters through,
+so a person who arrives without an account still lands back in the app that
+sent them.
+
+### QR sign-in
+
+The QR step replaces the form inside the same flow card. The code is rendered
+locally from the server's `qr_data` payload, never through an image service:
+the payload is a bearer credential and a third-party rasterizer would see it.
+The tile stays white with dark modules in both themes because a camera reads
+the code, not the theme.
+
+While it waits, the panel reports one state at a time — waiting, scanned,
+declined, expired — with a countdown beside it. Approval is the only state that
+redeems the challenge, and the watcher stops before the exchange so a second
+poll can never spend the same code twice.
+
+### OAuth consent
+
+`/auth/authorize` is the provider's consent screen. It reads the request from
+`GET /api/auth/open/authorize` and is a request, not a settings page: the app
+introduces itself in a left rail (mark, name, client id, policy and terms
+links) while its scopes and the approve/deny decision sit opposite, so the two
+halves read as one question. That two-column request is why the route takes the
+880 px card instead of the flow width.
+
+The app's mark comes from `AppMark`, which renders the stored Drive picture and
+falls back to a monogram of the app name, then to a neutral glyph. A client
+whose picture has been deleted therefore never leaves a hole; the failure latch
+is keyed on the file id, so a replaced picture gets a fresh chance to load.
+
+The scopes are listed verbatim (the wire value in mono, the explanation in the
+voice face) rather than folded into a sentence: a consent decision is a list of
+capabilities, and `*` must be legible as full access. The page also lends the
+client's background to the shell backdrop (see §4).
+
+### Device authorization
+
+`/auth/device` is the verification URI the device flow mints
+(`{siteUrl}/auth/device?code=XXXX-XXXX`). The user code is the entire state, so
+the page opens on it when the address carries one and otherwise asks for it;
+looking it up moves the code into the address, which keeps the page
+reload-safe and shareable within its short lifetime.
+
+`GET /api/auth/open/device/code/{code}` answers `pending`, `approved`,
+`declined`, or `expired`, and only `pending` can be acted on. The page renders
+exactly one of four things — the code form, the device request with
+approve/deny, the terminal state, or nothing found — and never offers a button
+for a code that is no longer pending, because the server would refuse it.
+Approval binds the code to the signed-in session, so the page requires a
+session while the status lookup does not.
+
+### OAuth apps
+
+`/developers` carries the registrations this account owns; `/developers/apps/:appId`
+is one of them. The two halves of the developer surface are deliberately
+separate panels: authorized apps are who holds access to you, OAuth apps are who
+you are the identity provider for.
+
+Creating a registration asks only for a name, a slug, and a description, then
+opens the app with the standard scope set so the client works immediately.
+Everything else lives on the app: redirect URIs (one per line, since a client
+has several), scopes and grant types as checkboxes over a known vocabulary plus
+a free-form field for a deployment's own scopes, the three client flags, links,
+and the client secrets.
+
+A secret's plaintext is shown once, in a warning-toned block above the list,
+and the list itself is metadata only. Creating, rotating, or deleting a
+secret — and deleting the app — need an elevated session, which the console
+raises through the elevation sheet like any other gated call.
+
+Art is a Drive file id per app (`picture_id`, `background_id`), resolved by the
+server so the stored reference carries the file's own url and dimensions.
+Those two fields and the redirect list are the only ones with a validation
+warning on the page: an empty picture is a monogram, an empty redirect list on
+a production client cannot be saved.
+
+### Linked identities
+
+The Connections panel lists what is already attached. A second panel,
+**Available Providers**, offers the rest: `POST`-free links to
+`/api/auth/login/{provider}?flow=connect&returnUrl=…`, which the API reads as
+"link this identity to the signed-in account" rather than "sign in". A linked
+provider disappears from that panel, and the return trip lands on the same page
+with the connection already listed and one `OK` line naming it.
+
+### Magic spell links
+
+Stargate emails `{siteUrl}/spells/{word}` for contact verification and
+password resets, so that path is a console route, not an API one. The word in the
+address is the credential: never rendered, never stored, and handed only to the
+API that issued it. `GET /api/spells/{word}` decides the page — a reset spell
+asks for a new password, a verification spell asks for nothing but a click —
+while a 404 says the word is wrong or already spent and a 410 says its 24-hour
+lifetime has run out.
+
+A dead or unusable link renders a sentence and no form: offering a submit that
+cannot succeed is worse than saying so. Only the expired state has an action
+worth showing ("Request a new link"); every other dead end is complete as one
+sentence.
+
+### Buttons
+
+| Class | Use |
+| --- | --- |
+| `btn btn-primary` | the single committing action on a surface |
+| `btn btn-outline` | alternative flows (passkey, provider) |
+| `btn btn-ghost` | secondary/cancel |
+| `btn btn-error` | destructive confirmation |
+
+All buttons are 6 px rounded rectangles (`--radius-control`), sans, 13 px, no
+shadow. A square button keeps the same corner rather than becoming a circle.
+One primary action per view.
+
+### IconButton
+
+`IconButton` is the standard row/list action: 26 × 24 px, Carbon 16 icon,
+`text-dim`, hover to `base-content`, danger tone to `error`. It requires a
+`label`, used for both `aria-label` and `title` (the native tooltip). Use it
+for table rows, list items, and panel header refresh actions. Text actions are
+reserved for forms and first-class choices.
+
+### CopyButton
+
+A compact chip with only an icon and a tooltip; it swaps to a checkmark after
+copying. The accessible name includes what is being copied.
+
+### Status bar
+
+The footer of the shell, rendered after any notice: uppercase `OK` in
+`text-success` or `ERROR` in `text-error`, followed by the message in `dim`.
+Never lowercase the marker.
+
+### Modals
+
+`ConfirmAction` and `ElevationSheet` are the only surfaces that keep internal
+horizontal rules: a header block, body, and an action footer. They are modal,
+so their boundaries are functional. Both are 16 px radius (Solian's
+`dialog`/`sheet` token, read one rank tighter) with `overflow-hidden`, so a
+header or footer rule meets the rounded edge instead of running past it. Body
+and header padding is 24 px horizontally, 20 px vertically.
+
+## 6. Motion
+
+Motion explains a change, never decorates:
+
+| Motion | Duration | Where |
+| --- | --- | --- |
+| step swap | 160 ms, 6 px rise | sign-in identify ↔ challenge |
+| row enter/leave | 160 ms | factor rows |
+| notice | 160 ms | status bar |
+| card height | 220 ms | shell region resize |
+
+All of it is disabled under `prefers-reduced-motion: reduce`. Do not add
+scroll-triggered animation or ambient movement.
+
+## 7. Iconography
+
+Carbon 16 icons only, inheriting `currentColor`. Icons are `aria-hidden` and
+always paired with text or an `IconButton` label. New icons must be added to
+`web/src/types/carbon-icons-vue.d.ts`, which types only the glyphs the console
+imports.
+
+## 8. Language and copy
+
+Locales: English (`en`) and Simplified Chinese (`zh-CN`). Catalogs live in
+`web/src/locales/<locale>/<area>.ts`; each module exports unique top-level
+namespaces, merged by `import.meta.glob` in `web/src/lib/i18n.ts`. Return
+the reader to the same screen with the same state when switching languages.
+
+- The locale follows the browser on first visit, then persists in
+  `localStorage['solarpass.locale']`. The footer dropdown is the switch.
+- `html lang` and the document title update with the locale.
+- Use `useI18n()` in components; `translate()` only outside setup.
+- Formatters (`relative`, `remaining`, `compactNumber`, enum labels) are
+  locale-aware. Do not format dates or numbers by hand.
+- Literal `@`, `|`, and braces are message syntax in vue-i18n. Escape an email
+  placeholder as `name{'@'}example.com`.
+
+### Voice
+
+Write from the reader's side of the screen. Name what a control does, keep the
+same verb through the flow, and state outcomes plainly.
+
+- Sentence case in English; full-width punctuation in Chinese sentences.
+- No trailing punctuation on labels, buttons, or tabs.
+- Errors say what happened and what to do next; they do not apologize.
+- Empty states invite the next action.
+- Do not expose implementation details in user copy. Say "signed out", not
+  "cookies cleared"; "verification code", not "token"; "this browser", not
+  "this session's JWT".
+- Terminology: account 账号, sign in 登录, sign out 退出登录, session 会话,
+  passkey 通行密钥, verification code 验证码, elevated 已提权.
+
+## 9. Accessibility
+
+- Visible `:focus-visible` outline in primary, 2 px offset.
+- Icon-only controls carry both `aria-label` and `title`.
+- Active tabs use `aria-current="page"`; modal dialogs use `aria-modal` and a
+  labelled title.
+- Tables use `scope="col"` and a screen-reader-only actions header.
+- Body text is 13 px; the smallest text (11 px) is limited to labels and
+  metadata and meets 4.5:1 on both themes.
+- Hit targets are at least 24 px; row actions are spaced in a 26 px control.
+- Layout works from 360 px wide; tables scroll horizontally rather than
+  crushing columns.
+
+## 10. Implementation map
+
+| Concern | File |
+| --- | --- |
+| tokens, themes, base chrome | `web/src/assets/main.css` |
+| theme/locale persistence | `web/src/lib/prefs.ts`, `web/src/stores/ui.ts` |
+| i18n instance and helpers | `web/src/lib/i18n.ts` |
+| message catalogs | `web/src/locales/{en,zh-CN}/*.ts` |
+| date/number/enum presentation | `web/src/lib/format.ts`, `web/src/lib/enums.ts` |
+| shell and status bar | `web/src/App.vue` |
+| width tiers and titles | `web/src/router/index.ts` |
+| shared surfaces | `web/src/components/` |
+| every form control | `web/src/components/TextField.vue` |
+
+## 11. Adding a screen
+
+1. Register the route with a `titleKey` and the right width tier (`narrow`,
+   `wide`, or `full`; default is account width).
+2. Build the page from `PageHeader` and `ConsolePanel`; do not add a nested
+   bordered card.
+3. Use the ledger for tabular data and `.table-bleed` inside panels.
+4. Use `TextField` for every field, and `IconButton` with a label for row
+   actions; use native `title` for tooltips.
+5. Add copy to both locale modules with identical key shapes; run the
+   formatters instead of hand-formatting values.
+6. Gate a route on the module that serves it (`meta.modules`) and hide its nav
+   entry with the same list, so a deployment without that module never offers
+   the link.
+7. Give tables a periodic pager (icon buttons) when the API supports
+   `take`/`offset`; show the page count and live total.
+8. Run `make -C web check` (type check, lint, tests, production build).

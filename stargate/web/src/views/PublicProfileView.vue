@@ -1,0 +1,267 @@
+<script setup lang="ts">
+import { UserAvatar32 } from '@carbon/icons-vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
+
+import ConsolePanel from '@/components/ConsolePanel.vue'
+import PageHeader from '@/components/PageHeader.vue'
+import { accountApi } from '@/lib/api'
+import { StargateError } from '@/lib/api/client'
+import type { Account, RelationshipSummary } from '@/lib/api/types'
+import { contactTypeLabel } from '@/lib/enums'
+import { utcStamp } from '@/lib/format'
+import { MODULES } from '@/lib/modules'
+import { useModulesStore } from '@/stores/modules'
+
+const { t, locale } = useI18n()
+const route = useRoute()
+const modules = useModulesStore()
+const showRelationships = computed(() => modules.hasAll([MODULES.relationships]))
+
+const name = computed(() => String(route.params.name ?? ''))
+const account = ref<Account | null>(null)
+const summary = ref<RelationshipSummary | null>(null)
+const loading = ref(true)
+const notFound = ref(false)
+const avatarFailed = ref(false)
+const bannerFailed = ref(false)
+
+const profile = computed(() => account.value?.profile)
+const displayName = computed(() => {
+  const value = account.value
+  if (!value) return ''
+  const parts = [value.profile?.first_name, value.profile?.middle_name, value.profile?.last_name]
+    .filter(Boolean)
+    .join(' ')
+  return value.nick || parts || value.name
+})
+const canonicalName = computed(() => account.value?.name ?? name.value)
+const pictureUrl = computed(
+  () =>
+    profile.value?.picture?.url ||
+    `/api/accounts/${encodeURIComponent(canonicalName.value)}/picture`,
+)
+const backgroundUrl = computed(
+  () =>
+    profile.value?.background?.url ||
+    `/api/accounts/${encodeURIComponent(canonicalName.value)}/background`,
+)
+const hasPicture = computed(() => Boolean(profile.value?.picture))
+const hasBackground = computed(() => Boolean(profile.value?.background))
+const publicContacts = computed(() =>
+  (account.value?.contacts ?? []).filter((contact) => contact.is_public),
+)
+const joined = computed(() => profile.value?.created_at ?? account.value?.created_at)
+const hasDetails = computed(() =>
+  Boolean(
+    profile.value?.pronouns || profile.value?.location || profile.value?.time_zone || joined.value,
+  ),
+)
+
+const hasMutual = computed(() => {
+  const mutual = summary.value?.mutual_friends
+  return mutual !== undefined && mutual > 0
+})
+
+let loadId = 0
+
+function updateTitle() {
+  const suffix = 'Solarpass'
+  document.title = account.value
+    ? `${displayName.value} (@${account.value.name}) · ${suffix}`
+    : `${t('publicProfile.notFoundTitle')} · ${suffix}`
+}
+
+async function load() {
+  const id = ++loadId
+  loading.value = true
+  notFound.value = false
+  avatarFailed.value = false
+  bannerFailed.value = false
+  summary.value = null
+
+  try {
+    const loaded = await accountApi.byName(name.value)
+    if (id !== loadId) return
+    account.value = loaded
+    // The social totals come from the relationships module; a deployment
+    // without it serves no summary at all, so skip the call entirely. A
+    // failure here leaves the counts at zero instead of failing the profile.
+    if (showRelationships.value) {
+      try {
+        summary.value = await accountApi.relationshipSummary(loaded.name)
+      } catch {
+        summary.value = null
+      }
+    }
+  } catch (error) {
+    if (id !== loadId) return
+    account.value = null
+    notFound.value = error instanceof StargateError && error.status === 404
+  }
+
+  loading.value = false
+  updateTitle()
+}
+
+onMounted(load)
+watch(name, load)
+watch([locale, () => account.value?.name], updateTitle)
+</script>
+
+<template>
+  <div>
+    <div v-if="loading" aria-hidden="true">
+      <div class="h-36 bg-base-300/50" />
+      <div class="px-5 pb-6">
+        <div class="relative z-10 flex flex-wrap items-end gap-4">
+          <span class="skeleton -mt-8 h-[72px] w-[72px] rounded-full" />
+          <div class="min-w-0 space-y-2 pb-1">
+            <span class="skeleton h-4 w-40" />
+            <span class="skeleton h-2 w-24" />
+          </div>
+        </div>
+        <div class="mt-6 space-y-3">
+          <span class="skeleton h-2 w-16" />
+          <span class="skeleton h-3 w-full max-w-2xl" />
+          <span class="skeleton h-3 w-4/5 max-w-xl" />
+        </div>
+      </div>
+    </div>
+
+    <template v-else-if="!account">
+      <div class="px-5 py-10">
+        <PageHeader
+          :title="t('publicProfile.notFoundTitle')"
+          :description="t(notFound ? 'publicProfile.notFoundBody' : 'publicProfile.errorLoad')"
+        />
+        <RouterLink to="/" class="link-quiet text-xs">
+          {{ t('publicProfile.goHome') }}
+        </RouterLink>
+      </div>
+    </template>
+
+    <template v-else>
+      <section class="bg-base-200/30">
+        <div class="relative h-36 overflow-hidden bg-base-300/50">
+          <img
+            v-if="hasBackground && !bannerFailed"
+            :src="backgroundUrl"
+            alt=""
+            class="h-full w-full object-cover"
+            @error="bannerFailed = true"
+          />
+        </div>
+
+        <div class="relative px-5 pb-6">
+          <div class="relative z-10 flex flex-wrap items-end gap-4">
+            <div
+              class="-mt-8 h-[72px] w-[72px] shrink-0 overflow-hidden rounded-full border-2 border-base-100 bg-base-300"
+            >
+              <img
+                v-if="hasPicture && !avatarFailed"
+                :src="pictureUrl"
+                alt=""
+                class="h-full w-full object-cover"
+                @error="avatarFailed = true"
+              />
+              <span v-else class="flex h-full w-full items-center justify-center text-faint">
+                <UserAvatar32 aria-hidden="true" />
+              </span>
+            </div>
+            <div class="min-w-0 pb-1">
+              <h1 class="title text-xl text-base-content">{{ displayName }}</h1>
+              <p class="mt-1 text-2xs text-faint">@{{ account.name }}</p>
+            </div>
+          </div>
+
+          <dl
+            v-if="showRelationships && summary"
+            class="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-1 text-xs"
+          >
+            <div class="flex items-baseline gap-1.5">
+              <dt class="text-faint">{{ t('publicProfile.followers') }}</dt>
+              <dd class="tabular-nums text-dim">{{ summary.followers }}</dd>
+            </div>
+            <div class="flex items-baseline gap-1.5">
+              <dt class="text-faint">{{ t('publicProfile.following') }}</dt>
+              <dd class="tabular-nums text-dim">{{ summary.following }}</dd>
+            </div>
+            <div v-if="hasMutual" class="flex items-baseline gap-1.5">
+              <dt class="text-faint">{{ t('publicProfile.mutualFriends') }}</dt>
+              <dd class="tabular-nums text-dim">{{ summary.mutual_friends }}</dd>
+            </div>
+          </dl>
+
+          <div
+            class="mt-6 grid gap-6"
+            :class="hasDetails ? 'lg:grid-cols-[minmax(0,1fr)_320px]' : ''"
+          >
+            <div class="space-y-6">
+              <ConsolePanel :title="t('publicProfile.about')">
+                <p class="voice max-w-2xl whitespace-pre-line">
+                  {{ profile?.bio || t('publicProfile.noBio') }}
+                </p>
+              </ConsolePanel>
+
+              <ConsolePanel v-if="profile?.links?.length" :title="t('publicProfile.links')">
+                <ul class="space-y-3 text-xs">
+                  <li
+                    v-for="link in profile.links"
+                    :key="link.url"
+                    class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
+                  >
+                    <span class="text-faint">{{ link.name }}</span>
+                    <a
+                      :href="link.url"
+                      class="link-quiet max-w-full truncate"
+                      target="_blank"
+                      rel="noopener noreferrer nofollow"
+                    >
+                      {{ link.url }}
+                    </a>
+                  </li>
+                </ul>
+              </ConsolePanel>
+
+              <ConsolePanel v-if="publicContacts.length" :title="t('publicProfile.contacts')">
+                <ul class="space-y-3 text-xs">
+                  <li
+                    v-for="contact in publicContacts"
+                    :key="contact.id"
+                    class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
+                  >
+                    <span class="text-faint">{{ contactTypeLabel(contact.type) }}</span>
+                    <span class="break-all text-dim">{{ contact.content }}</span>
+                  </li>
+                </ul>
+              </ConsolePanel>
+            </div>
+
+            <ConsolePanel v-if="hasDetails" :title="t('publicProfile.details')">
+              <dl class="space-y-3 text-xs">
+                <div v-if="profile?.pronouns" class="flex items-baseline justify-between gap-4">
+                  <dt class="text-faint">{{ t('publicProfile.pronouns') }}</dt>
+                  <dd class="text-dim">{{ profile.pronouns }}</dd>
+                </div>
+                <div v-if="profile?.location" class="flex items-baseline justify-between gap-4">
+                  <dt class="text-faint">{{ t('publicProfile.location') }}</dt>
+                  <dd class="text-dim">{{ profile.location }}</dd>
+                </div>
+                <div v-if="profile?.time_zone" class="flex items-baseline justify-between gap-4">
+                  <dt class="text-faint">{{ t('publicProfile.timeZone') }}</dt>
+                  <dd class="text-dim">{{ profile.time_zone }}</dd>
+                </div>
+                <div v-if="joined" class="flex items-baseline justify-between gap-4">
+                  <dt class="text-faint">{{ t('publicProfile.joined') }}</dt>
+                  <dd class="tabular-nums text-dim">{{ utcStamp(joined).slice(0, 10) }}</dd>
+                </div>
+              </dl>
+            </ConsolePanel>
+          </div>
+        </div>
+      </section>
+    </template>
+  </div>
+</template>

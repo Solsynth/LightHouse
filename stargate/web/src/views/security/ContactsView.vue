@@ -1,0 +1,251 @@
+<script setup lang="ts">
+import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { Checkmark16, Favorite16, TrashCan16, View16, ViewOff16 } from '@carbon/icons-vue'
+
+import { useNoticeStore } from '@/stores/notice'
+import { securityApi } from '@/lib/api'
+import { StargateError } from '@/lib/api/client'
+import type { Contact } from '@/lib/api/types'
+import { contactTypeLabel } from '@/lib/enums'
+import { relative, utcStamp } from '@/lib/format'
+import PageHeader from '@/components/PageHeader.vue'
+import ConsolePanel from '@/components/ConsolePanel.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
+import ConfirmAction from '@/components/ConfirmAction.vue'
+import IconButton from '@/components/IconButton.vue'
+import SecurityNav from '@/components/SecurityNav.vue'
+import TextField from '@/components/TextField.vue'
+
+const { t } = useI18n()
+const notice = useNoticeStore()
+
+const contacts = ref<Contact[]>([])
+const loading = ref(true)
+const error = ref('')
+const busy = ref(false)
+const pendingDelete = ref<Contact | null>(null)
+
+const type = ref(0)
+const content = ref('')
+
+async function load() {
+  loading.value = true
+  error.value = ''
+  try {
+    contacts.value = await securityApi.contacts()
+  } catch (caught) {
+    error.value = caught instanceof StargateError ? caught.message : t('contacts.errorLoad')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function add() {
+  if (!content.value.trim()) return
+  busy.value = true
+  error.value = ''
+  try {
+    await securityApi.createContact(type.value, content.value.trim())
+    content.value = ''
+    notice.ok(t('contacts.noticeAdded'))
+    await load()
+  } catch (caught) {
+    error.value = caught instanceof StargateError ? caught.message : t('contacts.errorAdd')
+  } finally {
+    busy.value = false
+  }
+}
+
+async function verify(contact: Contact) {
+  busy.value = true
+  try {
+    await securityApi.verifyContact(contact.id)
+    notice.ok(t('contacts.noticeVerificationSent'))
+    await load()
+  } catch (caught) {
+    notice.fail(caught instanceof Error ? caught.message : t('contacts.errorVerify'))
+  } finally {
+    busy.value = false
+  }
+}
+
+async function makePrimary(contact: Contact) {
+  busy.value = true
+  try {
+    await securityApi.setPrimaryContact(contact.id)
+    notice.ok(t('contacts.noticePrimary'))
+    await load()
+  } catch (caught) {
+    notice.fail(caught instanceof Error ? caught.message : t('contacts.errorPrimary'))
+  } finally {
+    busy.value = false
+  }
+}
+
+async function togglePublic(contact: Contact) {
+  busy.value = true
+  try {
+    await securityApi.setContactPublic(contact.id, !contact.is_public)
+    notice.ok(
+      contact.is_public ? t('contacts.noticeHidden') : t('contacts.noticeShown'),
+    )
+    await load()
+  } catch (caught) {
+    notice.fail(caught instanceof Error ? caught.message : t('contacts.errorVisibility'))
+  } finally {
+    busy.value = false
+  }
+}
+
+async function remove() {
+  const target = pendingDelete.value
+  if (!target) return
+  busy.value = true
+  try {
+    await securityApi.deleteContact(target.id)
+    notice.ok(t('contacts.noticeDeleted'))
+    pendingDelete.value = null
+    await load()
+  } catch (caught) {
+    notice.fail(caught instanceof Error ? caught.message : t('contacts.errorDelete'))
+  } finally {
+    busy.value = false
+  }
+}
+
+onMounted(load)
+</script>
+
+<template>
+  <div>
+    <PageHeader
+      :title="t('contacts.title')"
+      :description="t('contacts.description')"
+    />
+
+    <SecurityNav />
+
+    <p v-if="error" class="note note-error mb-4">{{ error }}</p>
+
+    <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <ConsolePanel :title="t('contacts.contacts')" :note="loading ? undefined : t('contacts.totalNote', { n: contacts.length })">
+        <LoadingSkeleton v-if="loading" variant="rows" :rows="4" />
+
+        <p v-else-if="!contacts.length" class="voice py-6">
+          {{ t('contacts.empty') }}
+        </p>
+
+        <ul v-else>
+          <li
+            v-for="contact in contacts"
+            :key="contact.id"
+            class="flex flex-wrap items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
+          >
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="break-all text-xs text-base-content">{{ contact.content }}</span>
+                <span class="chip">{{ contactTypeLabel(contact.type) }}</span>
+                <span v-if="contact.is_primary" class="chip text-primary">{{ t('contacts.primary') }}</span>
+                <span v-if="contact.is_public" class="chip text-accent">{{ t('contacts.public') }}</span>
+                <span
+                  class="chip"
+                  :class="contact.verified_at ? 'text-success' : 'text-warning'"
+                >
+                  {{ contact.verified_at ? t('contacts.verified') : t('contacts.unverified') }}
+                </span>
+              </div>
+              <p class="mt-1 text-2xs text-faint">
+                {{ t('contacts.added', { time: relative(contact.created_at) }) }}
+                <template v-if="contact.verified_at">
+                  · {{ t('contacts.verifiedAt', { date: utcStamp(contact.verified_at).slice(0, 10) }) }}
+                </template>
+              </p>
+            </div>
+            <div class="flex items-center gap-1">
+              <IconButton
+                v-if="!contact.verified_at"
+                :label="t('contacts.verify')"
+                :disabled="busy"
+                @click="verify(contact)"
+              >
+                <Checkmark16 aria-hidden="true" />
+              </IconButton>
+              <IconButton
+                v-if="!contact.is_primary"
+                :label="t('contacts.makePrimary')"
+                :disabled="busy"
+                @click="makePrimary(contact)"
+              >
+                <Favorite16 aria-hidden="true" />
+              </IconButton>
+              <IconButton
+                :label="contact.is_public ? t('contacts.hide') : t('contacts.showPublicly')"
+                :disabled="busy"
+                @click="togglePublic(contact)"
+              >
+                <ViewOff16 v-if="contact.is_public" aria-hidden="true" />
+                <View16 v-else aria-hidden="true" />
+              </IconButton>
+              <IconButton
+                :label="t('common.delete')"
+                tone="danger"
+                :disabled="busy"
+                @click="pendingDelete = contact"
+              >
+                <TrashCan16 aria-hidden="true" />
+              </IconButton>
+            </div>
+          </li>
+        </ul>
+      </ConsolePanel>
+
+      <ConsolePanel :title="t('contacts.addContact')">
+        <TextField
+          id="contact-type"
+          v-model.number="type"
+          as="select"
+          :label="t('contacts.type')"
+        >
+          <option :value="0">{{ contactTypeLabel(0) }}</option>
+          <option :value="1">{{ contactTypeLabel(1) }}</option>
+          <option :value="2">{{ contactTypeLabel(2) }}</option>
+        </TextField>
+
+        <TextField
+          id="contact-content"
+          v-model="content"
+          root-class="mt-4"
+          :label="t('contacts.value')"
+          :placeholder="type === 0 ? t('contacts.emailPlaceholder') : t('contacts.valuePlaceholder')"
+          autocapitalize="off"
+          spellcheck="false"
+        />
+
+        <button
+          type="button"
+          class="btn btn-primary btn-sm mt-4 w-full"
+          :disabled="busy || !content.trim()"
+          @click="add"
+        >
+          {{ t('contacts.addAction') }}
+        </button>
+
+        <p class="mt-3 voice text-[12px] text-faint">
+          {{ t('contacts.elevatedHint') }}
+        </p>
+      </ConsolePanel>
+    </div>
+
+    <ConfirmAction
+      v-if="pendingDelete"
+      :title="t('contacts.deleteTitle')"
+      :body="t('contacts.deleteBody', { contact: pendingDelete.content })"
+      :action="t('contacts.deleteAction')"
+      tone="error"
+      :busy="busy"
+      @cancel="pendingDelete = null"
+      @confirm="remove"
+    />
+  </div>
+</template>

@@ -1,0 +1,206 @@
+package spell
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	"src.solsynth.dev/sosys/stargate/internal/model"
+)
+
+func TestRenderEmailTemplate(t *testing.T) {
+	body, err := renderEmailTemplate("ContactVerification", "en", map[string]string{
+		"nick": "Alice",
+		"link": "http://localhost:3000/spells/abc",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body, "Dear Alice,") {
+		t.Errorf("body missing nick substitution: %s", body)
+	}
+	if !strings.Contains(body, `href="http://localhost:3000/spells/abc"`) {
+		t.Errorf("body missing link substitution: %s", body)
+	}
+}
+
+func TestRenderEmailTemplateEscapesHTML(t *testing.T) {
+	body, err := renderEmailTemplate("Welcome", "en", map[string]string{
+		"nick":           `<script>alert("x")</script>`,
+		"activation_url": "http://localhost:3000/accounts/me/activation",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(body, "<script>") {
+		t.Errorf("value was not HTML-escaped: %s", body)
+	}
+	if !strings.Contains(body, "&lt;script&gt;") {
+		t.Errorf("expected escaped value in body: %s", body)
+	}
+}
+
+func TestRenderEmailTemplateLocaleFallback(t *testing.T) {
+	// Unknown locale falls back to English (a zh-hans template exists, but a
+	// never-seen locale must not fail).
+	body, err := renderEmailTemplate("ContactVerification", "ja-jp", map[string]string{
+		"nick": "Taro",
+		"link": "http://x/spells/y",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body, "Dear Taro,") {
+		t.Errorf("fallback body missing substitution: %s", body)
+	}
+}
+
+func TestRenderEmailTemplateUnknownName(t *testing.T) {
+	if _, err := renderEmailTemplate("DoesNotExist", "en", nil); err == nil {
+		t.Fatal("expected error for unknown template")
+	}
+}
+
+func TestGenerateSpellWord(t *testing.T) {
+	word := generateSpellWord(128)
+	if len(word) != 128 {
+		t.Fatalf("length = %d, want 128", len(word))
+	}
+	for _, r := range word {
+		if !strings.ContainsRune(spellWordCharset, r) {
+			t.Fatalf("unexpected character %q", r)
+		}
+	}
+	if generateSpellWord(128) == word {
+		t.Fatal("two generated words are identical")
+	}
+}
+
+func TestNormalizeLocale(t *testing.T) {
+	cases := map[string]string{
+		"":        "en",
+		"en-US":   "en",
+		"en":      "en",
+		"zh-hans": "zh-hans",
+		"zh-CN":   "zh-hans",
+		"de-DE":   "en",
+		"unknown": "en",
+	}
+	for in, want := range cases {
+		if got := normalizeLocale(in); got != want {
+			t.Errorf("normalizeLocale(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSubjectFallback(t *testing.T) {
+	if got := subject("en", "contractMethodVerificationTitle"); got != "Verify your contact method" {
+		t.Errorf("en subject = %q", got)
+	}
+	if got := subject("zh-hans", "welcomeEmailTitle"); got != "欢迎加入 Solar Network" {
+		t.Errorf("zh-hans subject = %q", got)
+	}
+	if got := subject("de", "passwordResetTitle"); got != "Reset your password" {
+		t.Errorf("fallback subject = %q", got)
+	}
+}
+
+func TestRenderFactorCodeEmail(t *testing.T) {
+	// The factor-code email carries the one-time code prominently.
+	body, err := renderEmailTemplate("FactorCode", "en", map[string]string{"nick": "Alice", "code": "123456"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body, "Dear Alice,") {
+		t.Errorf("body missing nick substitution: %s", body)
+	}
+	if !strings.Contains(body, "123456") {
+		t.Errorf("body missing code substitution: %s", body)
+	}
+	if !strings.Contains(body, "expire in 30 minutes") {
+		t.Errorf("body missing expiry notice: %s", body)
+	}
+}
+
+func TestSubjectFactorCodeTitle(t *testing.T) {
+	if got := subject("en", "codeEmailTitle"); got != "Your email verification code" {
+		t.Errorf("en codeEmailTitle = %q", got)
+	}
+	if got := subject("zh-hans", "codeEmailTitle"); got != "您的邮箱验证码" {
+		t.Errorf("zh-hans codeEmailTitle = %q", got)
+	}
+}
+
+func TestSpellLink(t *testing.T) {
+	s := &Service{siteURL: "http://localhost:3000/"}
+	spell := &model.MagicSpell{Spell: "abcXYZ123"}
+	if got := s.spellLink(spell); got != "http://localhost:3000/spells/abcXYZ123" {
+		t.Errorf("spellLink = %q", got)
+	}
+}
+
+// TestRenderPasswordResetTemplate pins the password-reset email: the template ships in every
+// supported locale and interpolates the recipient name and the /spells/<word>
+// link the reset flow hands the user.
+func TestRenderPasswordResetTemplate(t *testing.T) {
+	for _, locale := range []string{"en", "zh-hans"} {
+		body, err := renderEmailTemplate("PasswordReset", locale, map[string]string{
+			"nick": "Alice",
+			"link": "http://localhost:3000/spells/abc",
+		})
+		if err != nil {
+			t.Fatalf("%s: render PasswordReset: %v", locale, err)
+		}
+		if !strings.Contains(body, "Alice") {
+			t.Errorf("%s: body missing nick substitution: %s", locale, body)
+		}
+		if !strings.Contains(body, "http://localhost:3000/spells/abc") {
+			t.Errorf("%s: body missing link substitution: %s", locale, body)
+		}
+	}
+}
+
+// TestExpired pins the lifetime rule every redeem path re-checks. A reset link
+// is a bearer credential: once its 24 hours are up it must stop working, and a
+// spell minted without a deadline must keep working forever.
+func TestExpired(t *testing.T) {
+	past := model.NewTime(time.Now().UTC().Add(-time.Minute))
+	future := model.NewTime(time.Now().UTC().Add(time.Minute))
+
+	cases := []struct {
+		name string
+		at   *model.Time
+		want bool
+	}{
+		{"no deadline never expires", nil, false},
+		{"future deadline is live", future, false},
+		{"past deadline is dead", past, true},
+	}
+	for _, tc := range cases {
+		if got := Expired(&model.MagicSpell{ExpiresAt: tc.at}); got != tc.want {
+			t.Errorf("%s: Expired = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestApplyRefusesExpiredSpell: both redeem paths refuse a dead spell before
+// touching the account, so an expired word cannot verify a contact or replace a
+// password even if a caller forgot to check first.
+func TestApplyRefusesExpiredSpell(t *testing.T) {
+	s := &Service{}
+	spell := &model.MagicSpell{
+		Type:      model.MagicSpellTypeAuthPasswordReset,
+		AccountId: "11111111-1111-1111-1111-111111111111",
+		Meta:      map[string]any{"contact_id": "22222222-2222-2222-2222-222222222222"},
+		ExpiresAt: model.NewTime(time.Now().UTC().Add(-time.Hour)),
+	}
+
+	if err := s.ApplyMagicSpell(context.Background(), spell); !errors.Is(err, ErrSpellExpired) {
+		t.Errorf("ApplyMagicSpell error = %v, want ErrSpellExpired", err)
+	}
+	if err := s.ApplyPasswordReset(context.Background(), spell, "hunter2"); !errors.Is(err, ErrSpellExpired) {
+		t.Errorf("ApplyPasswordReset error = %v, want ErrSpellExpired", err)
+	}
+}

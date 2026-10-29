@@ -1,0 +1,261 @@
+// Package store centralizes persistence queries and maps database entities to
+// the API/domain model types.
+package store
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"reflect"
+	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+
+	"src.solsynth.dev/sosys/stargate/internal/model"
+)
+
+func accountColsPrefixed(alias string) string {
+	return alias + `.id, ` + alias + `.name, ` + alias + `.nick, ` + alias + `.language, ` + alias + `.region, ` + alias + `.activated_at, ` + alias + `.is_superuser, ` + alias + `.automated_id, ` + alias + `.created_at, ` + alias + `.updated_at, ` + alias + `.deleted_at`
+}
+
+var ErrNotFound = errors.New("not found")
+
+// Store wraps the shared GORM handle. Callers intentionally share this handle
+// so service-level transactions can span store and runtime consumer writes.
+type Store struct {
+	DB *gorm.DB
+}
+
+func New(database any) *Store {
+	if handle, ok := database.(*gorm.DB); ok {
+		return &Store{DB: handle}
+	}
+	value := reflect.ValueOf(database)
+	configMethod := value.MethodByName("Config")
+	if configMethod.IsValid() {
+		results := configMethod.Call(nil)
+		if len(results) == 1 {
+			config := results[0]
+			connConfig := config.Elem().FieldByName("ConnConfig")
+			if connConfig.IsValid() {
+				connString := connConfig.MethodByName("ConnString")
+				if connString.IsValid() {
+					dsn := connString.Call(nil)[0].String()
+					handle, err := gorm.Open(postgres.Open(dsn), &gorm.Config{SkipDefaultTransaction: true})
+					if err == nil {
+						return &Store{DB: handle}
+					}
+				}
+			}
+		}
+	}
+	panic("store.New requires *gorm.DB")
+}
+
+func isNotFound(err error) bool { return errors.Is(err, gorm.ErrRecordNotFound) }
+
+func mapNotFound(err error) error {
+	if isNotFound(err) {
+		return ErrNotFound
+	}
+	return err
+}
+
+func timePtr(value *time.Time) *model.Time {
+	if value == nil {
+		return nil
+	}
+	return model.NewTime(*value)
+}
+
+func timeValue(value *model.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	result := time.Time(*value)
+	return &result
+}
+
+func deletedTime(value gorm.DeletedAt) *model.Time {
+	if !value.Valid {
+		return nil
+	}
+	return model.NewTime(value.Time)
+}
+
+func uuidPtrStr(id *uuid.UUID) *string {
+	if id == nil {
+		return nil
+	}
+	value := id.String()
+	return &value
+}
+
+func ParseUUID(value string) (uuid.UUID, error) {
+	id, err := uuid.Parse(value)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("invalid uuid %q: %w", value, err)
+	}
+	return id, nil
+}
+
+func accountFromEntity(entity *AccountEntity) *model.Account {
+	if entity == nil {
+		return nil
+	}
+	return &model.Account{
+		Id: entity.ID.String(), Name: entity.Name, Nick: entity.Nick,
+		Language: entity.Language, Region: entity.Region,
+		ActivatedAt: timePtr(entity.ActivatedAt), IsSuperuser: entity.IsSuperuser,
+		AutomatedId: uuidPtrStr(entity.AutomatedID), CreatedAt: timePtr(&entity.CreatedAt),
+		UpdatedAt: timePtr(&entity.UpdatedAt), DeletedAt: deletedTime(entity.DeletedAt),
+	}
+}
+
+func sessionFromEntity(entity *AuthSessionEntity) *model.AuthSession {
+	if entity == nil {
+		return nil
+	}
+	session := &model.AuthSession{
+		Id: entity.ID.String(), Type: model.SessionType(entity.Type),
+		LastGrantedAt: timePtr(entity.LastGrantedAt), ExpiredAt: timePtr(entity.ExpiredAt),
+		RefreshedAt: timePtr(entity.RefreshedAt),
+		AccountId:   entity.AccountID.String(), IpAddress: entity.IPAddress,
+		UserAgent: entity.UserAgent, CreatedAt: timePtr(&entity.CreatedAt),
+		UpdatedAt: timePtr(&entity.UpdatedAt), DeletedAt: deletedTime(entity.DeletedAt),
+		ClientId: uuidPtrStr(entity.ClientID), ParentSessionId: uuidPtrStr(entity.ParentSessionID),
+		ChallengeId: uuidPtrStr(entity.ChallengeID), AppId: uuidPtrStr(entity.AppID),
+		Epoch: entity.Epoch,
+	}
+	_ = decodeJSONValue(entity.Audiences, &session.Audiences)
+	_ = decodeJSONValue(entity.Scopes, &session.Scopes)
+	_ = decodeJSON(entity.Location, &session.Location)
+	return session
+}
+
+func authClientFromEntity(entity *AuthClientEntity) model.AuthClient {
+	return model.AuthClient{Id: entity.ID.String(), DeviceId: entity.DeviceID,
+		DeviceName: entity.DeviceName, DeviceLabel: entity.DeviceLabel,
+		AccountId: entity.AccountID.String(), Platform: model.ClientPlatform(entity.Platform),
+		CreatedAt: timePtr(&entity.CreatedAt), UpdatedAt: timePtr(&entity.UpdatedAt),
+		DeletedAt: deletedTime(entity.DeletedAt)}
+}
+
+func factorFromEntity(entity *AuthFactorEntity) model.AuthFactor {
+	factor := model.AuthFactor{Id: entity.ID.String(), Type: model.AuthFactorType(entity.Type),
+		Trustworthy: entity.Trustworthy, AccountId: entity.AccountID.String(),
+		EnabledAt: timePtr(entity.EnabledAt), ExpiredAt: timePtr(entity.ExpiredAt),
+		CreatedAt: timePtr(&entity.CreatedAt), UpdatedAt: timePtr(&entity.UpdatedAt),
+		DeletedAt: deletedTime(entity.DeletedAt)}
+	if entity.Secret != nil {
+		factor.Secret = *entity.Secret
+	}
+	_ = decodeJSON(entity.Config, &factor.Config)
+	return factor
+}
+
+func contactFromEntity(entity *ContactEntity) model.Contact {
+	return model.Contact{
+		Id: entity.ID.String(), Type: entity.Type, VerifiedAt: timePtr(entity.VerifiedAt),
+		IsPrimary: entity.IsPrimary, IsPublic: entity.IsPublic, Content: entity.Content,
+		AccountId: entity.AccountID.String(),
+		CreatedAt: timePtr(&entity.CreatedAt), UpdatedAt: timePtr(&entity.UpdatedAt),
+		DeletedAt: deletedTime(entity.DeletedAt),
+	}
+}
+
+func (s *Store) TouchLastActive(ctx context.Context, accountID, sessionID string, seenAt time.Time) error {
+	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if accountID != "" {
+			if err := tx.Model(&ProfileEntity{}).Where("account_id = ?", accountID).Updates(map[string]any{
+				"last_seen_at": seenAt, "updated_at": seenAt,
+			}).Error; err != nil {
+				return err
+			}
+		}
+		if sessionID != "" {
+			if err := tx.Model(&AuthSessionEntity{}).Where("id = ?", sessionID).Update("last_granted_at", seenAt).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&AuthSessionEntity{}).Where("id = ? AND expired_at IS NOT NULL", sessionID).
+				Update("expired_at", gorm.Expr("?::timestamptz + interval '7 days'", seenAt)).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (s *Store) GetAccountByID(ctx context.Context, id uuid.UUID) (*model.Account, error) {
+	var entity AccountEntity
+	if err := s.DB.WithContext(ctx).First(&entity, "id = ?", id).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	return accountFromEntity(&entity), nil
+}
+
+func (s *Store) GetAccountByName(ctx context.Context, name string) (*model.Account, error) {
+	var entity AccountEntity
+	if err := s.DB.WithContext(ctx).Where("name = ?", name).First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	return accountFromEntity(&entity), nil
+}
+
+func (s *Store) GetAccountWithProfile(ctx context.Context, id uuid.UUID) (*model.Account, error) {
+	account, err := s.GetAccountByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	profile, err := s.loadProfileForAccount(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	account.Profile = profile
+	return account, nil
+}
+
+func (s *Store) GetAccountWithProfileByName(ctx context.Context, name string) (*model.Account, error) {
+	account, err := s.GetAccountByName(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	accountID, err := uuid.Parse(account.Id)
+	if err != nil {
+		return nil, err
+	}
+	profile, err := s.loadProfileForAccount(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	account.Profile = profile
+	return account, nil
+}
+
+func (s *Store) GetSessionWithAccount(ctx context.Context, id uuid.UUID) (*model.AuthSession, error) {
+	var entity AuthSessionEntity
+	if err := s.DB.WithContext(ctx).First(&entity, "id = ?", id).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	session := sessionFromEntity(&entity)
+	account, err := s.GetAccountByID(ctx, entity.AccountID)
+	if err != nil {
+		return nil, err
+	}
+	session.Account = account
+	return session, nil
+}
+
+func (s *Store) GetAuthFactors(ctx context.Context, accountID uuid.UUID) ([]model.AuthFactor, error) {
+	var entities []AuthFactorEntity
+	if err := s.DB.WithContext(ctx).Where("account_id = ?", accountID).Order("created_at").Find(&entities).Error; err != nil {
+		return nil, err
+	}
+	factors := make([]model.AuthFactor, 0, len(entities))
+	for i := range entities {
+		factors = append(factors, factorFromEntity(&entities[i]))
+	}
+	return factors, nil
+}

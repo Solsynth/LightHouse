@@ -1,0 +1,617 @@
+package store
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+)
+
+// EntityBase is embedded by every soft-deletable persisted entity.
+type EntityBase struct {
+	CreatedAt time.Time      `gorm:"column:created_at"`
+	UpdatedAt time.Time      `gorm:"column:updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"column:deleted_at;index"`
+}
+
+type AccountEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	ActivatedAt *time.Time `gorm:"column:activated_at"`
+	AutomatedID *uuid.UUID `gorm:"column:automated_id"`
+	IsSuperuser bool       `gorm:"column:is_superuser"`
+	Language    string     `gorm:"column:language"`
+	Name        string     `gorm:"column:name"`
+	Nick        string     `gorm:"column:nick"`
+	Region      string     `gorm:"column:region"`
+}
+
+func (AccountEntity) TableName() string { return "accounts" }
+
+type PermissionGroupEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	Key string `gorm:"column:key"`
+}
+
+func (PermissionGroupEntity) TableName() string { return "permission_groups" }
+
+type AuthClientEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID   uuid.UUID `gorm:"column:account_id"`
+	DeviceID    string    `gorm:"column:device_id"`
+	DeviceLabel *string   `gorm:"column:device_label"`
+	DeviceName  string    `gorm:"column:device_name"`
+	Platform    int       `gorm:"column:platform"`
+}
+
+func (AuthClientEntity) TableName() string { return "auth_clients" }
+
+type AuthSessionEntity struct {
+	ID              uuid.UUID       `gorm:"column:id;primaryKey"`
+	CreatedAt       time.Time       `gorm:"column:created_at"`
+	UpdatedAt       time.Time       `gorm:"column:updated_at"`
+	DeletedAt       gorm.DeletedAt  `gorm:"column:deleted_at;index"`
+	AccountID       uuid.UUID       `gorm:"column:account_id"`
+	AppID           *uuid.UUID      `gorm:"column:app_id"`
+	Audiences       datatypes.JSON  `gorm:"column:audiences;type:jsonb"`
+	ChallengeID     *uuid.UUID      `gorm:"column:challenge_id"`
+	ClientID        *uuid.UUID      `gorm:"column:client_id"`
+	Epoch           int             `gorm:"column:epoch"`
+	ExpiredAt       *time.Time      `gorm:"column:expired_at"`
+	IPAddress       *string         `gorm:"column:ip_address"`
+	LastGrantedAt   *time.Time      `gorm:"column:last_granted_at"`
+	RefreshedAt     *time.Time      `gorm:"column:refreshed_at"`
+	Location        *datatypes.JSON `gorm:"column:location;type:jsonb"`
+	ParentSessionID *uuid.UUID      `gorm:"column:parent_session_id"`
+	Scopes          datatypes.JSON  `gorm:"column:scopes;type:jsonb"`
+	Type            int             `gorm:"column:type"`
+	UserAgent       *string         `gorm:"column:user_agent"`
+}
+
+func (AuthSessionEntity) TableName() string { return "auth_sessions" }
+
+type APIKeyEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID uuid.UUID  `gorm:"column:account_id"`
+	AppID     *uuid.UUID `gorm:"column:app_id"`
+	Label     string     `gorm:"column:label"`
+	SessionID uuid.UUID  `gorm:"column:session_id"`
+}
+
+func (APIKeyEntity) TableName() string { return "api_keys" }
+
+type AuthFactorEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID   uuid.UUID       `gorm:"column:account_id"`
+	Config      *datatypes.JSON `gorm:"column:config;type:jsonb"`
+	EnabledAt   *time.Time      `gorm:"column:enabled_at"`
+	ExpiredAt   *time.Time      `gorm:"column:expired_at"`
+	Secret      *string         `gorm:"column:secret"`
+	Trustworthy int             `gorm:"column:trustworthy"`
+	Type        int             `gorm:"column:type"`
+}
+
+func (AuthFactorEntity) TableName() string { return "account_auth_factors" }
+
+type ContactEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID  uuid.UUID  `gorm:"column:account_id"`
+	Content    string     `gorm:"column:content"`
+	IsPrimary  bool       `gorm:"column:is_primary"`
+	IsPublic   bool       `gorm:"column:is_public"`
+	Type       int        `gorm:"column:type"`
+	VerifiedAt *time.Time `gorm:"column:verified_at"`
+}
+
+func (ContactEntity) TableName() string { return "account_contacts" }
+
+type ConnectionEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccessToken        *string        `gorm:"column:access_token"`
+	AccountID          uuid.UUID      `gorm:"column:account_id"`
+	IsPublic           bool           `gorm:"column:is_public"`
+	LastUsedAt         *time.Time     `gorm:"column:last_used_at"`
+	Meta               datatypes.JSON `gorm:"column:meta;type:jsonb"`
+	ProvidedIdentifier string         `gorm:"column:provided_identifier"`
+	Provider           string         `gorm:"column:provider"`
+	RefreshToken       *string        `gorm:"column:refresh_token"`
+	RegisteredAt       *time.Time     `gorm:"column:registered_at"`
+}
+
+func (ConnectionEntity) TableName() string { return "account_connections" }
+
+type PasskeyEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID    uuid.UUID      `gorm:"column:account_id"`
+	Credential   datatypes.JSON `gorm:"column:credential;type:jsonb"`
+	CredentialID string         `gorm:"column:credential_id"`
+	Label        string         `gorm:"column:label"`
+}
+
+func (PasskeyEntity) TableName() string { return "account_passkeys" }
+
+type PunishmentEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID          uuid.UUID       `gorm:"column:account_id"`
+	BlockedPermissions *datatypes.JSON `gorm:"column:blocked_permissions;type:jsonb"`
+	CreatorID          *uuid.UUID      `gorm:"column:creator_id"`
+	ExpiredAt          *time.Time      `gorm:"column:expired_at"`
+	Reason             string          `gorm:"column:reason"`
+	Type               int             `gorm:"column:type"`
+}
+
+func (PunishmentEntity) TableName() string { return "punishments" }
+
+type AuthorizedAppEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID        uuid.UUID      `gorm:"column:account_id"`
+	AppID            uuid.UUID      `gorm:"column:app_id"`
+	AppName          *string        `gorm:"column:app_name"`
+	AppSlug          *string        `gorm:"column:app_slug"`
+	LastAuthorizedAt time.Time      `gorm:"column:last_authorized_at"`
+	LastUsedAt       *time.Time     `gorm:"column:last_used_at"`
+	Scopes           datatypes.JSON `gorm:"column:scopes;type:jsonb"`
+	Type             int            `gorm:"column:type"`
+}
+
+func (AuthorizedAppEntity) TableName() string { return "authorized_apps" }
+
+type ActionLogEntity struct {
+	ID        uuid.UUID       `gorm:"column:id;primaryKey"`
+	CreatedAt time.Time       `gorm:"column:created_at"`
+	UpdatedAt time.Time       `gorm:"column:updated_at"`
+	DeletedAt gorm.DeletedAt  `gorm:"column:deleted_at;index"`
+	AccountID uuid.UUID       `gorm:"column:account_id"`
+	Action    string          `gorm:"column:action"`
+	IPAddress *string         `gorm:"column:ip_address"`
+	Location  *datatypes.JSON `gorm:"column:location;type:jsonb"`
+	Meta      datatypes.JSON  `gorm:"column:meta;type:jsonb"`
+	SessionID *uuid.UUID      `gorm:"column:session_id"`
+	UserAgent *string         `gorm:"column:user_agent"`
+}
+
+func (ActionLogEntity) TableName() string { return "action_logs" }
+
+type ChallengeEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID           *uuid.UUID      `gorm:"column:account_id"`
+	ApprovedAt          *time.Time      `gorm:"column:approved_at"`
+	ApprovedBySessionID *uuid.UUID      `gorm:"column:approved_by_session_id"`
+	Audiences           datatypes.JSON  `gorm:"column:audiences;type:jsonb"`
+	BlacklistFactors    datatypes.JSON  `gorm:"column:blacklist_factors;type:jsonb"`
+	DeclinedAt          *time.Time      `gorm:"column:declined_at"`
+	DeviceID            string          `gorm:"column:device_id"`
+	DeviceName          *string         `gorm:"column:device_name"`
+	ExpiredAt           *time.Time      `gorm:"column:expired_at"`
+	FailedAttempts      int             `gorm:"column:failed_attempts"`
+	IPAddress           *string         `gorm:"column:ip_address"`
+	Location            *datatypes.JSON `gorm:"column:location;type:jsonb"`
+	Nonce               *string         `gorm:"column:nonce"`
+	Platform            int             `gorm:"column:platform"`
+	Scopes              datatypes.JSON  `gorm:"column:scopes;type:jsonb"`
+	StepRemain          int             `gorm:"column:step_remain"`
+	StepTotal           int             `gorm:"column:step_total"`
+	UserAgent           *string         `gorm:"column:user_agent"`
+	// Elevation ("sudo") challenge columns: NULL for ordinary challenges.
+	Purpose         *string    `gorm:"column:purpose"`
+	SessionID       *uuid.UUID `gorm:"column:session_id"`
+	SudoUntil       *time.Time `gorm:"column:sudo_until"`
+	ExtraFactorType *int       `gorm:"column:extra_factor_type"`
+}
+
+func (ChallengeEntity) TableName() string { return "auth_challenges" }
+
+type E2EEDeviceEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID    uuid.UUID  `gorm:"column:account_id"`
+	DeviceID     string     `gorm:"column:device_id"`
+	DeviceLabel  *string    `gorm:"column:device_label"`
+	IsRevoked    bool       `gorm:"column:is_revoked"`
+	LastBundleAt *time.Time `gorm:"column:last_bundle_at"`
+	RevokedAt    *time.Time `gorm:"column:revoked_at"`
+}
+
+func (E2EEDeviceEntity) TableName() string { return "e2ee_devices" }
+
+type E2EEKeyBundleEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID             uuid.UUID       `gorm:"column:account_id"`
+	Algorithm             string          `gorm:"column:algorithm"`
+	DeviceID              string          `gorm:"column:device_id"`
+	IdentityKey           []byte          `gorm:"column:identity_key"`
+	Meta                  *datatypes.JSON `gorm:"column:meta;type:jsonb"`
+	SignedPreKey          []byte          `gorm:"column:signed_pre_key"`
+	SignedPreKeyExpiresAt *time.Time      `gorm:"column:signed_pre_key_expires_at"`
+	SignedPreKeyID        *int            `gorm:"column:signed_pre_key_id"`
+	SignedPreKeySignature []byte          `gorm:"column:signed_pre_key_signature"`
+}
+
+func (E2EEKeyBundleEntity) TableName() string { return "e2ee_key_bundles" }
+
+type E2EEOneTimePreKeyEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID          uuid.UUID  `gorm:"column:account_id"`
+	ClaimedAt          *time.Time `gorm:"column:claimed_at"`
+	ClaimedByAccountID *uuid.UUID `gorm:"column:claimed_by_account_id"`
+	DeviceID           string     `gorm:"column:device_id"`
+	IsClaimed          bool       `gorm:"column:is_claimed"`
+	KeyBundleID        uuid.UUID  `gorm:"column:key_bundle_id"`
+	KeyID              int        `gorm:"column:key_id"`
+	PublicKey          []byte     `gorm:"column:public_key"`
+}
+
+func (E2EEOneTimePreKeyEntity) TableName() string { return "e2ee_one_time_pre_keys" }
+
+type E2EESessionEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountAID    uuid.UUID       `gorm:"column:account_a_id"`
+	AccountBID    uuid.UUID       `gorm:"column:account_b_id"`
+	Hint          *string         `gorm:"column:hint"`
+	InitiatedByID uuid.UUID       `gorm:"column:initiated_by_id"`
+	LastMessageAt *time.Time      `gorm:"column:last_message_at"`
+	Meta          *datatypes.JSON `gorm:"column:meta;type:jsonb"`
+}
+
+func (E2EESessionEntity) TableName() string { return "e2ee_sessions" }
+
+type E2EEEnvelopeEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AckedAt             *time.Time      `gorm:"column:acked_at"`
+	Ciphertext          []byte          `gorm:"column:ciphertext"`
+	ClientMessageID     *string         `gorm:"column:client_message_id"`
+	DeliveredAt         *time.Time      `gorm:"column:delivered_at"`
+	DeliveryStatus      int             `gorm:"column:delivery_status"`
+	ExpiresAt           *time.Time      `gorm:"column:expires_at"`
+	GroupID             *string         `gorm:"column:group_id"`
+	Header              []byte          `gorm:"column:header"`
+	LegacyAccountScoped bool            `gorm:"column:legacy_account_scoped"`
+	Meta                *datatypes.JSON `gorm:"column:meta;type:jsonb"`
+	RecipientAccountID  uuid.UUID       `gorm:"column:recipient_account_id"`
+	RecipientDeviceID   *string         `gorm:"column:recipient_device_id"`
+	RecipientID         uuid.UUID       `gorm:"column:recipient_id"`
+	SenderDeviceID      *string         `gorm:"column:sender_device_id"`
+	SenderID            uuid.UUID       `gorm:"column:sender_id"`
+	Sequence            int64           `gorm:"column:sequence"`
+	SessionID           *uuid.UUID      `gorm:"column:session_id"`
+	Signature           []byte          `gorm:"column:signature"`
+	Type                int             `gorm:"column:type"`
+}
+
+func (E2EEEnvelopeEntity) TableName() string { return "e2ee_envelopes" }
+
+type MLSKeyPackageEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID           uuid.UUID       `gorm:"column:account_id"`
+	Ciphersuite         string          `gorm:"column:ciphersuite"`
+	ConsumedAt          *time.Time      `gorm:"column:consumed_at"`
+	ConsumedByAccountID *uuid.UUID      `gorm:"column:consumed_by_account_id"`
+	DeviceID            string          `gorm:"column:device_id"`
+	DeviceLabel         *string         `gorm:"column:device_label"`
+	IsConsumed          bool            `gorm:"column:is_consumed"`
+	KeyPackage          []byte          `gorm:"column:key_package"`
+	Meta                *datatypes.JSON `gorm:"column:meta;type:jsonb"`
+}
+
+func (MLSKeyPackageEntity) TableName() string { return "mls_key_packages" }
+
+type MLSGroupStateEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	Epoch        int64           `gorm:"column:epoch"`
+	GroupInfo    []byte          `gorm:"column:group_info"`
+	LastCommitAt *time.Time      `gorm:"column:last_commit_at"`
+	Meta         *datatypes.JSON `gorm:"column:meta;type:jsonb"`
+	MLSGroupID   string          `gorm:"column:mls_group_id"`
+	RatchetTree  []byte          `gorm:"column:ratchet_tree"`
+	StateVersion int64           `gorm:"column:state_version"`
+}
+
+func (MLSGroupStateEntity) TableName() string { return "mls_group_states" }
+
+type MLSDeviceMembershipEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID              uuid.UUID  `gorm:"column:account_id"`
+	DeviceID               string     `gorm:"column:device_id"`
+	JoinedEpoch            int64      `gorm:"column:joined_epoch"`
+	LastReshareCompletedAt *time.Time `gorm:"column:last_reshare_completed_at"`
+	LastReshareRequiredAt  *time.Time `gorm:"column:last_reshare_required_at"`
+	LastSeenEpoch          *int64     `gorm:"column:last_seen_epoch"`
+	MLSGroupID             string     `gorm:"column:mls_group_id"`
+}
+
+func (MLSDeviceMembershipEntity) TableName() string { return "mls_device_memberships" }
+
+type PermissionGroupMemberEntity struct {
+	GroupID uuid.UUID `gorm:"column:group_id;primaryKey"`
+	Actor   string    `gorm:"column:actor;primaryKey"`
+	EntityBase
+	AffectedAt *time.Time `gorm:"column:affected_at"`
+	ExpiredAt  *time.Time `gorm:"column:expired_at"`
+}
+
+func (PermissionGroupMemberEntity) TableName() string { return "permission_group_members" }
+
+type PermissionNodeEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	Actor      string         `gorm:"column:actor"`
+	AffectedAt *time.Time     `gorm:"column:affected_at"`
+	ExpiredAt  *time.Time     `gorm:"column:expired_at"`
+	GroupID    *uuid.UUID     `gorm:"column:group_id"`
+	Key        string         `gorm:"column:key"`
+	Type       int            `gorm:"column:type"`
+	Value      datatypes.JSON `gorm:"column:value;type:jsonb"`
+}
+
+func (PermissionNodeEntity) TableName() string { return "permission_nodes" }
+
+type ProfileEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID     uuid.UUID       `gorm:"column:account_id"`
+	ActiveBadge   *datatypes.JSON `gorm:"column:active_badge;type:jsonb"`
+	Background    *datatypes.JSON `gorm:"column:background;type:jsonb"`
+	Bio           *string         `gorm:"column:bio"`
+	Birthday      *time.Time      `gorm:"column:birthday"`
+	Experience    int             `gorm:"column:experience"`
+	FirstName     *string         `gorm:"column:first_name"`
+	Gender        *string         `gorm:"column:gender"`
+	LastName      *string         `gorm:"column:last_name"`
+	LastSeenAt    *time.Time      `gorm:"column:last_seen_at"`
+	Links         *datatypes.JSON `gorm:"column:links;type:jsonb"`
+	Location      *string         `gorm:"column:location"`
+	MiddleName    *string         `gorm:"column:middle_name"`
+	Picture       *datatypes.JSON `gorm:"column:picture;type:jsonb"`
+	Pronouns      *string         `gorm:"column:pronouns"`
+	SocialCredits float64         `gorm:"column:social_credits"`
+	TimeZone      *string         `gorm:"column:time_zone"`
+	UsernameColor *datatypes.JSON `gorm:"column:username_color;type:jsonb"`
+	Verification  *datatypes.JSON `gorm:"column:verification;type:jsonb"`
+}
+
+func (ProfileEntity) TableName() string { return "account_profiles" }
+
+type RelationshipEntity struct {
+	AccountID uuid.UUID `gorm:"column:account_id;primaryKey"`
+	RelatedID uuid.UUID `gorm:"column:related_id;primaryKey"`
+	EntityBase
+	Alias           *string    `gorm:"column:alias"`
+	DegradeToStatus *int16     `gorm:"column:degrade_to_status"`
+	ExpiredAt       *time.Time `gorm:"column:expired_at"`
+	Status          int16      `gorm:"column:status"`
+}
+
+func (RelationshipEntity) TableName() string { return "account_relationships" }
+
+type AccountNameHistoryEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID uuid.UUID `gorm:"column:account_id"`
+	Name      string    `gorm:"column:name"`
+}
+
+func (AccountNameHistoryEntity) TableName() string { return "account_name_history" }
+
+type MagicSpellEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	Spell      string         `gorm:"column:spell"`
+	Type       int            `gorm:"column:type"`
+	ExpiresAt  *time.Time     `gorm:"column:expires_at"`
+	AffectedAt *time.Time     `gorm:"column:affected_at"`
+	Meta       datatypes.JSON `gorm:"column:meta;type:jsonb;default:{}"`
+	AccountID  *uuid.UUID     `gorm:"column:account_id"`
+}
+
+func (MagicSpellEntity) TableName() string { return "magic_spells" }
+
+type AffiliationSpellEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	Spell      string         `gorm:"column:spell"`
+	Type       int            `gorm:"column:type"`
+	ExpiresAt  *time.Time     `gorm:"column:expires_at"`
+	AffectedAt *time.Time     `gorm:"column:affected_at"`
+	Meta       datatypes.JSON `gorm:"column:meta;type:jsonb;default:{}"`
+	AccountID  *uuid.UUID     `gorm:"column:account_id"`
+}
+
+func (AffiliationSpellEntity) TableName() string { return "affiliation_spells" }
+
+type AffiliationResultEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	ResourceIdentifier string    `gorm:"column:resource_identifier"`
+	SpellID            uuid.UUID `gorm:"column:spell_id"`
+}
+
+// ---------------------------------------------------------------------------
+// Account statuses and presence activities (moved from Passport).
+// Column names, types and nullability mirror the EF Core snapshot exactly.
+// ---------------------------------------------------------------------------
+
+type AccountStatusEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID     uuid.UUID       `gorm:"column:account_id"`
+	AppIdentifier *string         `gorm:"column:app_identifier"`
+	Attitude      int             `gorm:"column:attitude"`
+	Background    *datatypes.JSON `gorm:"column:background;type:jsonb"`
+	ClearedAt     *time.Time      `gorm:"column:cleared_at"`
+	Icon          *datatypes.JSON `gorm:"column:icon;type:jsonb"`
+	IsAutomated   bool            `gorm:"column:is_automated"`
+	Label         *string         `gorm:"column:label"`
+	Meta          *datatypes.JSON `gorm:"column:meta;type:jsonb"`
+	Symbol        *string         `gorm:"column:symbol"`
+	Type          int             `gorm:"column:type"`
+}
+
+func (AccountStatusEntity) TableName() string { return "account_statuses" }
+
+type PresenceActivityEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID      uuid.UUID       `gorm:"column:account_id"`
+	Caption        *string         `gorm:"column:caption"`
+	CatalogID      *uuid.UUID      `gorm:"column:catalog_id"`
+	EndedAt        *time.Time      `gorm:"column:ended_at"`
+	LargeImage     *string         `gorm:"column:large_image"`
+	LeaseExpiresAt time.Time       `gorm:"column:lease_expires_at"`
+	LeaseMinutes   int             `gorm:"column:lease_minutes"`
+	ManualID       *string         `gorm:"column:manual_id"`
+	Meta           *datatypes.JSON `gorm:"column:meta;type:jsonb"`
+	Provider       *string         `gorm:"column:provider"`
+	QueryableTerms datatypes.JSON  `gorm:"column:queryable_terms;type:jsonb"`
+	ReferenceID    *string         `gorm:"column:reference_id"`
+	SmallImage     *string         `gorm:"column:small_image"`
+	StartedAt      *time.Time      `gorm:"column:started_at"`
+	Subtitle       *string         `gorm:"column:subtitle"`
+	SubtitleURL    *string         `gorm:"column:subtitle_url"`
+	Title          *string         `gorm:"column:title"`
+	TitleURL       *string         `gorm:"column:title_url"`
+	Type           *string         `gorm:"column:type"`
+	Visibility     int             `gorm:"column:visibility"`
+}
+
+func (PresenceActivityEntity) TableName() string { return "presence_activities" }
+
+// PresenceActivityTagEntity is a plain join row: no created_at/updated_at/
+// deleted_at columns, keyed by (activity_id, slug).
+type PresenceActivityTagEntity struct {
+	ActivityID uuid.UUID `gorm:"column:activity_id;primaryKey"`
+	Slug       string    `gorm:"column:slug;primaryKey"`
+	Name       *string   `gorm:"column:name"`
+}
+
+func (PresenceActivityTagEntity) TableName() string { return "presence_activity_tags" }
+
+type PresenceCatalogItemEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	AccountID      uuid.UUID      `gorm:"column:account_id"`
+	Caption        *string        `gorm:"column:caption"`
+	CatalogKey     *string        `gorm:"column:catalog_key"`
+	LargeImage     *string        `gorm:"column:large_image"`
+	LastActiveAt   *time.Time     `gorm:"column:last_active_at"`
+	Meta           datatypes.JSON `gorm:"column:meta;type:jsonb"`
+	Name           *string        `gorm:"column:name"`
+	Provider       *string        `gorm:"column:provider"`
+	QueryableTerms datatypes.JSON `gorm:"column:queryable_terms;type:jsonb"`
+	ReferenceID    *string        `gorm:"column:reference_id"`
+	SessionCount   int            `gorm:"column:session_count"`
+	SmallImage     *string        `gorm:"column:small_image"`
+	Subtitle       *string        `gorm:"column:subtitle"`
+	SubtitleURL    *string        `gorm:"column:subtitle_url"`
+	TitleURL       *string        `gorm:"column:title_url"`
+	TotalSeconds   int64          `gorm:"column:total_seconds"`
+	Visibility     int            `gorm:"column:visibility"`
+}
+
+func (PresenceCatalogItemEntity) TableName() string { return "presence_catalog_items" }
+
+type PresenceCatalogTagEntity struct {
+	CatalogID uuid.UUID `gorm:"column:catalog_id;primaryKey"`
+	Slug      string    `gorm:"column:slug;primaryKey"`
+	Name      *string   `gorm:"column:name"`
+}
+
+func (PresenceCatalogTagEntity) TableName() string { return "presence_catalog_tags" }
+
+// ---------------------------------------------------------------------------
+// Module-owned: app.solian.id.oauthapps (OAuth/OIDC client registrations).
+// Migrated only while that module is enabled; core code never queries it.
+// ---------------------------------------------------------------------------
+
+// OAuthAppEntity is the OAuth client (Stargate-side registration) of an
+// OIDC app. It mirrors SnCustomApp's oauth-relevant subset: the client
+// metadata the provider needs plus the links it exposes on the consent
+// screen.
+type OAuthAppEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	Slug        string `gorm:"column:slug"`
+	Name        string `gorm:"column:name"`
+	Description string `gorm:"column:description"`
+	// Status mirrors CustomAppStatus: 0 developing, 1 staging,
+	// 2 production, 3 suspended. Only production enforces redirect URIs.
+	Status int `gorm:"column:status"`
+	// Exactly one of ProjectID and AccountID is set. A project-linked app
+	// is managed by its developer team; an individually owned app needs no
+	// Develop service deployment.
+	ProjectID *uuid.UUID `gorm:"column:project_id"`
+	AccountID *uuid.UUID `gorm:"column:account_id"`
+
+	OauthConfig OAuthAppOauthConfigEntity `gorm:"column:oauth_config;type:jsonb;serializer:json"`
+	Links       OAuthAppLinksEntity       `gorm:"column:links;type:jsonb;serializer:json"`
+	// Picture and Background are nullable jsonb file references, exactly as
+	// account_profiles stores them: a nil pointer is SQL NULL (no art), so a
+	// cleared reference is distinguishable from a stored object.
+	Picture    *datatypes.JSON `gorm:"column:picture;type:jsonb"`
+	Background *datatypes.JSON `gorm:"column:background;type:jsonb"`
+}
+
+func (OAuthAppEntity) TableName() string { return "oauth_apps" }
+
+// OAuthAppOauthConfigEntity mirrors SnCustomAppOauthConfig.
+type OAuthAppOauthConfigEntity struct {
+	ClientUri              string   `json:"client_uri,omitempty"`
+	RedirectUris           []string `json:"redirect_uris"`
+	PostLogoutRedirectUris []string `json:"post_logout_redirect_uris,omitempty"`
+	AllowedScopes          []string `json:"allowed_scopes"`
+	AllowedGrantTypes      []string `json:"allowed_grant_types"`
+	RequirePkce            bool     `json:"require_pkce"`
+	AllowOfflineAccess     bool     `json:"allow_offline_access"`
+	IsPublicClient         bool     `json:"is_public_client"`
+}
+
+// OAuthAppLinksEntity mirrors SnCustomAppLinks.
+type OAuthAppLinksEntity struct {
+	HomePage       string `json:"home_page,omitempty"`
+	PrivacyPolicy  string `json:"privacy_policy,omitempty"`
+	TermsOfService string `json:"terms_of_service,omitempty"`
+}
+
+// OAuthAppSecretEntity mirrors SnCustomAppSecret. The secret is stored in
+// plaintext, exactly as Develop does: verification compares the stored value
+// against the presented one. is_oidc distinguishes an OIDC client secret
+// from an app API key.
+type OAuthAppSecretEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	EntityBase
+	Secret      string     `gorm:"column:secret"`
+	Description string     `gorm:"column:description"`
+	ExpiredAt   *time.Time `gorm:"column:expired_at"`
+	IsOidc      bool       `gorm:"column:is_oidc"`
+	AppID       uuid.UUID  `gorm:"column:app_id"`
+}
+
+func (OAuthAppSecretEntity) TableName() string { return "oauth_app_secrets" }
+
+type SchemaMigrationEntity struct {
+	Version   string    `gorm:"column:version;primaryKey"`
+	AppliedAt time.Time `gorm:"column:applied_at"`
+}
+
+func (SchemaMigrationEntity) TableName() string { return "schema_migrations" }
+
+var allEntityTables = []string{
+	"accounts", "permission_groups", "auth_clients", "auth_sessions", "api_keys", "account_auth_factors", "account_contacts", "account_connections", "account_passkeys", "punishments", "authorized_apps", "action_logs", "auth_challenges", "e2ee_devices", "e2ee_key_bundles", "e2ee_one_time_pre_keys", "e2ee_sessions", "e2ee_envelopes", "mls_key_packages", "mls_group_states", "mls_device_memberships", "permission_group_members", "permission_nodes", "account_profiles", "account_name_history", "magic_spells", "affiliation_spells", "affiliation_results", "account_statuses", "presence_activities", "presence_activity_tags", "presence_catalog_items", "presence_catalog_tags",
+}

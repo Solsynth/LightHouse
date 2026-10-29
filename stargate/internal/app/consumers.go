@@ -1,0 +1,345 @@
+package app
+
+import (
+	"context"
+	"encoding/json"
+	"log/slog"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+
+	"src.solsynth.dev/sosys/stargate/internal/core"
+	"src.solsynth.dev/sosys/stargate/internal/model"
+	"src.solsynth.dev/sosys/stargate/internal/nats"
+	"src.solsynth.dev/sosys/stargate/internal/permission"
+	redisclient "src.solsynth.dev/sosys/stargate/internal/redis"
+	"src.solsynth.dev/sosys/stargate/internal/relationship"
+	"src.solsynth.dev/sosys/stargate/internal/store"
+)
+
+// consumeAccountActivated mirrors Padlock's AccountActivatedEvent consumer:
+// it sets activated_at, grants the `verified` group and clears the
+// permission cache. Runs until ctx is cancelled. Malformed events are acked
+// (they can never succeed on redelivery), mirroring the C# behavior; DB
+// errors leave the message unacked for redelivery.
+func consumeAccountActivated(ctx context.Context, nc *nats.Client, st *store.Store, rc *redisclient.Client, log *slog.Logger) {
+	if err := nc.ConsumeAccountEvents(ctx, "accounts.activated", "stargate_accountactivatedevent_consumer", func(payload []byte) error {
+		var ev nats.AccountActivatedEvent
+		if err := json.Unmarshal(payload, &ev); err != nil {
+			log.Warn("malformed accounts.activated event", "error", err)
+			return nil
+		}
+		id, err := uuid.Parse(ev.AccountID)
+		if err != nil {
+			log.Warn("accounts.activated event has invalid account id", "account_id", ev.AccountID, "payload", string(payload))
+			return nil
+		}
+		activated, err := st.ActivateAccountAndGrantVerified(ctx, id, ev.ActivatedAt)
+		if err != nil {
+			return err
+		}
+		if !activated {
+			log.Warn("accounts.activated for missing or already-activated account", "account_id", ev.AccountID)
+			return nil
+		}
+		rc.ClearActorPermissionCache(ctx, ev.AccountID)
+		log.Info("activated account from accounts.activated", "account_id", ev.AccountID)
+		return nil
+	}); err != nil {
+		log.Warn("accounts.activated consumer stopped", "error", err)
+	}
+}
+
+// consumeTestPassedGroupGrant mirrors Padlock's
+// AccountTestPassedPermissionGroupEvent consumer: it grants the account the
+// permission group a passed test configured and clears the permission cache.
+func consumeTestPassedGroupGrant(ctx context.Context, nc *nats.Client, perm *permission.Service, rc *redisclient.Client, log *slog.Logger) {
+	if err := nc.ConsumeAccountEvents(ctx, "accounts.tests.permission-group-granted", "stargate_accounttestpassedpermissiongroupevent_consumer", func(payload []byte) error {
+		var ev nats.AccountTestPassedPermissionGroupEvent
+		if err := json.Unmarshal(payload, &ev); err != nil {
+			log.Warn("malformed accounts.tests.permission-group-granted event", "error", err)
+			return nil
+		}
+		id, err := uuid.Parse(ev.AccountID)
+		if err != nil {
+			log.Warn("accounts.tests.permission-group-granted event has invalid account id", "account_id", ev.AccountID, "payload", string(payload))
+			return nil
+		}
+		granted, err := perm.GrantPermissionGroup(ctx, id, ev.PermissionGroupKey)
+		if err != nil {
+			return err
+		}
+		if !granted {
+			log.Warn("permission group not found for passed test",
+				"account_id", ev.AccountID, "group_key", ev.PermissionGroupKey, "test_id", ev.TestID)
+			return nil
+		}
+		rc.ClearActorPermissionCache(ctx, ev.AccountID)
+		log.Info("granted permission group from passed test",
+			"account_id", ev.AccountID, "group_key", ev.PermissionGroupKey, "test_id", ev.TestID)
+		return nil
+	}); err != nil {
+		log.Warn("accounts.tests.permission-group-granted consumer stopped", "error", err)
+	}
+}
+
+// consumeProfileFieldUpdated applies Passport-published profile field patches
+// (last_seen touches, XP deltas, social-credit recomputes, active badge and
+// verification changes) to Stargate's account_profiles after the profile
+// table moved here. Malformed events are acked; DB errors redeliver.
+func consumeProfileFieldUpdated(ctx context.Context, nc *nats.Client, st *store.Store, log *slog.Logger) {
+	if err := nc.ConsumeAccountEvents(ctx, "accounts.profile_updated", "stargate_profilefieldupdatedevent_consumer", func(payload []byte) error {
+		var ev nats.ProfileFieldUpdatedEvent
+		if err := json.Unmarshal(payload, &ev); err != nil {
+			log.Warn("malformed accounts.profile_updated event", "error", err)
+			return nil
+		}
+		id, err := uuid.Parse(ev.AccountID)
+		if err != nil {
+			log.Warn("accounts.profile_updated event has invalid account id", "account_id", ev.AccountID, "payload", string(payload))
+			return nil
+		}
+		patch := &store.ProfileFieldPatch{
+			LastSeenAt:      ev.LastSeenAt,
+			Experience:      ev.Experience,
+			ExperienceDelta: ev.ExperienceDelta,
+			SocialCredits:   ev.SocialCredits,
+		}
+		if len(ev.ActiveBadge) > 0 {
+			patch.HasActiveBadge = true
+			if string(ev.ActiveBadge) != "null" {
+				var value any
+				if err := json.Unmarshal(ev.ActiveBadge, &value); err != nil {
+					log.Warn("accounts.profile_updated event has malformed active_badge", "account_id", ev.AccountID, "error", err)
+					return nil
+				}
+				patch.ActiveBadge = value
+			}
+		}
+		if len(ev.Verification) > 0 {
+			patch.HasVerification = true
+			if string(ev.Verification) != "null" {
+				var mark model.SnVerificationMark
+				if err := json.Unmarshal(ev.Verification, &mark); err != nil {
+					log.Warn("accounts.profile_updated event has malformed verification", "account_id", ev.AccountID, "error", err)
+					return nil
+				}
+				patch.Verification = &mark
+			}
+		}
+		if err := st.ApplyProfileFieldPatch(ctx, id, patch); err != nil {
+			return err
+		}
+		log.Debug("applied accounts.profile_updated patch", "account_id", ev.AccountID)
+		return nil
+	}); err != nil {
+		log.Warn("accounts.profile_updated consumer stopped", "error", err)
+	}
+}
+
+// consumeLastActive applies the fleet's last-active signals (published by the
+// shared DysonTokenAuthHandler on accounts.last_active): profile last_seen_at
+// plus the session last_granted_at/keep-alive. Malformed events are acked;
+// DB errors redeliver.
+func consumeLastActive(ctx context.Context, nc *nats.Client, st *store.Store, log *slog.Logger) {
+	if err := nc.ConsumeAccountEvents(ctx, "accounts.last_active", "stargate_lastactiveevent_consumer", func(payload []byte) error {
+		var ev nats.LastActiveEvent
+		if err := json.Unmarshal(payload, &ev); err != nil {
+			log.Warn("malformed accounts.last_active event", "error", err)
+			return nil
+		}
+		if _, err := uuid.Parse(ev.AccountID); err != nil {
+			log.Warn("accounts.last_active event has invalid account id", "account_id", ev.AccountID, "payload", string(payload))
+			return nil
+		}
+		sessionID := ""
+		if ev.SessionID != "" {
+			if _, err := uuid.Parse(ev.SessionID); err == nil {
+				sessionID = ev.SessionID
+			}
+		}
+		if err := st.TouchLastActive(ctx, ev.AccountID, sessionID, ev.SeenAt); err != nil {
+			return err
+		}
+		log.Debug("applied accounts.last_active", "account_id", ev.AccountID)
+		return nil
+	}); err != nil {
+		log.Warn("accounts.last_active consumer stopped", "error", err)
+	}
+}
+
+// consumeAccountRemoval drops the removed account's relationship rows.
+//
+// The table moved to Stargate, so Passport's removal flow no longer deletes
+// the rows itself (MagicSpellService.ExecuteSpellAccountRemoval used to) and
+// publishes accounts.removal.confirmed instead. Without this consumer the
+// account's id keeps appearing in its friends' and followers' lists, and each
+// row keeps satisfying HasExistingRelationship, which is what a re-registered
+// account would collide with. Malformed events are acked; DB errors redeliver.
+func consumeAccountRemoval(ctx context.Context, nc *nats.Client, rel *relationship.Service, log *slog.Logger) {
+	if err := nc.ConsumeAccountEvents(ctx, "accounts.removal.confirmed", "stargate_accountremovalconfirmedevent_consumer", func(payload []byte) error {
+		var ev nats.AccountRemovalConfirmedEvent
+		if err := json.Unmarshal(payload, &ev); err != nil {
+			log.Warn("malformed accounts.removal.confirmed event", "error", err)
+			return nil
+		}
+		id, err := uuid.Parse(ev.AccountID)
+		if err != nil {
+			log.Warn("accounts.removal.confirmed event has invalid account id",
+				"account_id", ev.AccountID, "payload", string(payload))
+			return nil
+		}
+		removed, err := rel.PurgeAccount(ctx, id)
+		if err != nil {
+			return err
+		}
+		log.Info("purged relationships for removed account", "account_id", ev.AccountID, "rows", removed)
+		return nil
+	}); err != nil {
+		log.Warn("accounts.removal.confirmed consumer stopped", "error", err)
+	}
+}
+
+// websocket connection subjects and consumer names. Blade's gateway publishes
+// `websocket_connected` / `websocket_disconnected` on the websocket_connections
+// JetStream stream; relayed client packets arrive on core NATS
+// `websocket_passport`. The consumer names match the C# listeners so the fleet
+// keeps a single durable position per subject during the cutover.
+const (
+	websocketConnectedSubject    = "websocket_connected"
+	websocketDisconnectedSubject = "websocket_disconnected"
+	websocketPassportSubject     = "websocket_passport"
+
+	websocketConnectedConsumer    = "stargate_websocket_connected_status"
+	websocketDisconnectedConsumer = "stargate_websocket_disconnected_status"
+)
+
+// consumeWebSocketConnected mirrors Passport's WebSocketConnectedEvent
+// listener: mark the device connected with no idle state, then broadcast the
+// account's status if it changed. Malformed events are acked; store errors
+// redeliver.
+func consumeWebSocketConnected(ctx context.Context, nc *nats.Client, services *core.Services, log *slog.Logger) {
+	if err := nc.ConsumeWebSocketConnections(ctx, websocketConnectedSubject, websocketConnectedConsumer, func(payload []byte) error {
+		ev, ok := parseWebSocketConnectionEvent(payload, websocketConnectedSubject, log)
+		if !ok {
+			return nil
+		}
+		connected := true
+		if err := services.PresenceResolver.UpdateWebSocketConnectionState(ctx, ev.accountID, ev.deviceID, &connected, nil, true); err != nil {
+			return err
+		}
+		return broadcastWebSocketStatus(ctx, services, ev, log)
+	}); err != nil {
+		log.Warn("websocket_connected consumer stopped", "error", err)
+	}
+}
+
+// consumeWebSocketDisconnected mirrors Passport's WebSocketDisconnectedEvent
+// listener: an event that did not take the account offline (a device hand-off)
+// is ignored entirely; otherwise the device is dropped from the idle state and
+// the status broadcast runs.
+func consumeWebSocketDisconnected(ctx context.Context, nc *nats.Client, services *core.Services, log *slog.Logger) {
+	if err := nc.ConsumeWebSocketConnections(ctx, websocketDisconnectedSubject, websocketDisconnectedConsumer, func(payload []byte) error {
+		ev, ok := parseWebSocketConnectionEvent(payload, websocketDisconnectedSubject, log)
+		if !ok {
+			return nil
+		}
+		if !ev.isOffline {
+			return nil
+		}
+		disconnected := false
+		if err := services.PresenceResolver.UpdateWebSocketConnectionState(ctx, ev.accountID, ev.deviceID, &disconnected, nil, false); err != nil {
+			return err
+		}
+		return broadcastWebSocketStatus(ctx, services, ev, log)
+	}); err != nil {
+		log.Warn("websocket_disconnected consumer stopped", "error", err)
+	}
+}
+
+// consumeWebSocketPassportPackets mirrors Passport's WebSocketPacketEvent
+// listener on `websocket_passport`: only `status.idle` packets matter, and
+// they refine the device's idle state before the status broadcast runs. The
+// subscription is core NATS, so there is no ack to leave unacked.
+func consumeWebSocketPassportPackets(ctx context.Context, nc *nats.Client, services *core.Services, log *slog.Logger) {
+	if err := nc.SubscribeWebSocketPackets(ctx, websocketPassportSubject, func(payload []byte) {
+		var ev nats.WebSocketPacketEvent
+		if err := json.Unmarshal(payload, &ev); err != nil {
+			log.Warn("malformed websocket_passport event", "error", err)
+			return
+		}
+		packetType, data, err := nats.ParseWebSocketPacket(ev.PacketBytes)
+		if err != nil {
+			log.Warn("malformed websocket_passport packet", "account_id", ev.AccountID, "error", err)
+			return
+		}
+		if packetType != "status.idle" {
+			return
+		}
+		accountID, err := uuid.Parse(ev.AccountID)
+		if err != nil {
+			log.Warn("websocket_passport event has invalid account id",
+				"account_id", ev.AccountID, "payload", string(payload))
+			return
+		}
+		at := ev.Timestamp.UTC()
+		if ev.Timestamp.IsZero() {
+			at = time.Now().UTC()
+		}
+		connected := true
+		idleSince := nats.ResolveIdleSince(data, at)
+		if err := services.PresenceResolver.UpdateWebSocketConnectionState(ctx, accountID, ev.DeviceID, &connected, idleSince, true); err != nil {
+			log.Warn("update idle state from status.idle",
+				"account_id", ev.AccountID, "device_id", ev.DeviceID, "error", err)
+			return
+		}
+		if err := services.Broadcast.WebSocketStatusChanged(ctx, accountID, ev.DeviceID, at); err != nil {
+			log.Warn("broadcast status after status.idle",
+				"account_id", ev.AccountID, "device_id", ev.DeviceID, "error", err)
+		}
+	}); err != nil {
+		log.Warn("websocket_passport subscription stopped", "error", err)
+	}
+}
+
+// websocketConnectionEvent is a parsed connection event with the account id
+// already validated.
+type websocketConnectionEvent struct {
+	accountID uuid.UUID
+	deviceID  string
+	at        time.Time
+	isOffline bool
+}
+
+func parseWebSocketConnectionEvent(payload []byte, subject string, log *slog.Logger) (websocketConnectionEvent, bool) {
+	var ev nats.WebSocketConnectionEvent
+	if err := json.Unmarshal(payload, &ev); err != nil {
+		log.Warn("malformed "+subject+" event", "error", err)
+		return websocketConnectionEvent{}, false
+	}
+	accountID, err := uuid.Parse(ev.AccountID)
+	if err != nil {
+		log.Warn(subject+" event has invalid account id",
+			"account_id", ev.AccountID, "payload", string(payload))
+		return websocketConnectionEvent{}, false
+	}
+	at := ev.Timestamp.UTC()
+	if ev.Timestamp.IsZero() {
+		at = time.Now().UTC()
+	}
+	return websocketConnectionEvent{
+		accountID: accountID,
+		deviceID:  strings.TrimSpace(ev.DeviceID),
+		at:        at,
+		isOffline: ev.IsOffline,
+	}, true
+}
+
+func broadcastWebSocketStatus(ctx context.Context, services *core.Services, ev websocketConnectionEvent, log *slog.Logger) error {
+	if err := services.Broadcast.WebSocketStatusChanged(ctx, ev.accountID, ev.deviceID, ev.at); err != nil {
+		log.Warn("broadcast status after websocket connection change",
+			"account_id", ev.accountID.String(), "device_id", ev.deviceID, "error", err)
+	}
+	return nil
+}
