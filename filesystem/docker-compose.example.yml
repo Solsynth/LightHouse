@@ -1,0 +1,24 @@
+services:
+  master:
+    image: ghcr.io/YOUR_OWNER/dyson-filesystem:latest
+    command: ["--mode", "master", "--config", "/etc/dyson/config.toml"]
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    environment:
+      CONFIG_PATH: /etc/dyson/config.toml
+    volumes:
+      - ./config.example.toml:/etc/dyson/config.toml:ro
+      - dyson-shared:/var/lib/dyson-drive
+
+  worker:
+    image: ghcr.io/YOUR_OWNER/dyson-filesystem:latest
+    command: ["--mode", "worker", "--config", "/etc/dyson/config.toml"]
+    environment:
+      CONFIG_PATH: /etc/dyson/config.toml
+    volumes:
+      - ./config.example.toml:/etc/dyson/config.toml:ro
+      - dyson-shared:/var/lib/dyson-drive
+
+volumes:
+  dyson-shared:

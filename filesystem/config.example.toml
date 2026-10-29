@@ -1,0 +1,162 @@
+app = { name = "DysonFileSystem" }
+
+[http]
+port = "8080"
+
+[grpc]
+port = "9090"
+useTLS = false
+certFile = ""
+keyFile = ""
+
+[database]
+dsn = "host=postgres port=5432 user=dyson password=dyson dbname=dyson_drive sslmode=disable"
+
+[redis]
+addr = "redis:6379"
+db = 0
+
+[nats]
+url = "nats://nats:4222"
+
+[storage]
+tempDir = "/var/lib/dyson-drive/tmp"
+localDir = "/var/lib/dyson-drive/data"
+
+[bundled]
+enable = false
+worker_num = 1
+
+[auth]
+# Stargate gRPC endpoint (DyAuthService + DyPermissionService; took over the
+# Padlock auth surface). It authenticates requests and authorizes uploads with
+# the files.upload permission node. Stargate serves the fleet self-signed cert.
+#
+# Leave target empty for a standalone deployment: the auth module then
+# synthesizes one account, every request belongs to it, and every permission
+# check is skipped. See docs/module-system.md.
+target = "stargate:9090"
+useTLS = true
+tlsSkipVerify = true
+# Identity used when target = "". Keep the id stable so file ownership survives
+# a later move to Stargate.
+syntheticAccountId = "00000000-0000-0000-0000-000000000001"
+syntheticAccountName = "dyson"
+syntheticAccountNick = "Dyson"
+
+[modules]
+# Which compiled-in modules run. Empty enabled = every module whose default is
+# on. See docs/module-system.md for the inventory.
+enabled = []
+# Modules to leave out. Dependents are removed automatically and logged.
+# Disabling a required module (auth, core) fails startup.
+disabled = []
+# Per-module settings, addressed by module ID:
+# [modules.settings."app.solian.files.media"]
+# cacheControlMaxAge = "1h"
+
+[ports]
+# Only needed when two enabled modules provide the same port. One provider is
+# selected automatically; a feature provider beats an integration provider.
+# files = "app.solian.files.s3"
+
+[workspace]
+# WattEngine DyWorkspaceService endpoint. Required for workspace uploads.
+target = ""
+useTLS = false
+tlsSkipVerify = false
+
+[quota.leveling]
+level1 = 512
+level10 = 1024
+level60 = 5120
+level120 = 10240
+
+[mode]
+master = true
+worker = true
+storage = false
+
+[files]
+preferredStorage = "local"
+gatewayUrl = "http://localhost:8080"
+accessSecret = "change-me"
+
+[web]
+# Built web console served by the master at /. Build it with `make web`.
+# Set to "" to disable the console and keep JSON 404s for unknown paths.
+staticDir = "web/dist"
+
+[wopi]
+enabled = false
+publicUrl = "https://files.example.com"
+collaboraUrl = "https://collabora.example.com"
+tokenTtl = "15m"
+requireProof = false
+proofCacheTtl = "1h"
+
+[media]
+enable = true
+maxSourceBytes = 10485760
+maxWidth = 4096
+maxHeight = 4096
+qualityMin = 40
+qualityMax = 90
+defaultQuality = 80
+allowedFormats = ["jpeg", "png", "webp", "avif"]
+
+[media.cache]
+kind = "disk" # none | memory | disk | s3
+dir = "/var/lib/dyson-drive/media-cache" # required when kind = "disk"
+# poolId = "01CACHEPOOL0000000000000000000" # file pool id, required when kind = "s3"
+maxBytes = 10737418240
+ttl = "0s" # 0 = never expire by time; eviction is budget-driven (maxBytes)
+
+# Dedicated object-storage cache pool for kind = "s3". Reference it from
+# [media.cache] poolId. Hidden pools are internal-only: never listed, never a
+# user upload destination. This pool must NOT be the default pool — uploads
+# without an explicit pool_id route to the default pool, and server-staged
+# uploads always write to the default pool's backend. Presigned URLs require
+# real credentials. If uploads and cache share one bucket, the uploads/ and
+# media-cache/ prefixes keep them apart; scope lifecycle rules to media-cache/.
+# [[pools]]
+# id = "01CACHEPOOL0000000000000000000"
+# name = "media-cache"
+# hidden = true
+# [pools.storage]
+# enableSigned = false
+# endpoint = "https://s3.example.com"
+# bucket = "dyson-media-cache"
+# secretId = "CACHE_ACCESS_KEY"
+# secretKey = "CACHE_SECRET_KEY"
+# [pools.billing]
+# [pools.policy]
+
+[media.presets.thumb]
+width = 256
+height = 256
+fit = "inside" # scale down to fit the box, preserving aspect ratio; never crops
+format = "jpeg"
+quality = 75
+
+[media.presets.avatar]
+width = 128
+height = 128
+fit = "inside"
+format = "webp"
+
+[[pools]]
+id = "01SYSTEMPOOLID00000000000000000"
+name = "system"
+default = true
+hidden = false # hidden pools are internal-only (e.g. media cache) and unusable for user uploads
+
+[pools.storage]
+enableSigned = true
+endpoint = "/var/lib/dyson-drive/data"
+bucket = "local"
+
+[pools.billing]
+
+[pools.policy]
+publicUsable = true

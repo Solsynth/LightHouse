@@ -1,0 +1,739 @@
+# DysonFS
+
+aka. Dyson Network File System
+
+Go implementation of the Dyson Network file service.
+
+## Modes
+
+- `master`: HTTP API, gRPC, uploads, file serving, health check
+- `worker`: post-upload media processing, derived file generation, cleanup
+- `storage`: optional local storage node for filesystem-backed deployments
+
+## Modules
+
+DysonFS is built from compile-time modules selected at runtime by config, the
+same way Stargate is. Authentication, content editing, per-kind file analysis,
+preview derivatives, media transforms, WebDAV, WOPI and both S3 gateways are
+each an optional module: leaving one out of the build registers no routes and
+owns no tables.
+
+Running without Stargate is a supported mode — set `[auth] target = ""` and
+every request belongs to one synthesized account with all permission checks
+skipped:
+
+```toml
+[auth]
+target = ""
+
+[modules]
+# Empty enabled = every module whose default is on.
+enabled = []
+disabled = ["app.solian.files.media"]
+```
+
+Overrides: `DYSONFS_MODULES_ENABLED` / `DYSONFS_MODULES_DISABLED`.
+
+`GET /api/modules` reports what this build resolved. Full inventory, schema
+ownership and the extension guide: [docs/module-system.md](docs/module-system.md).
+
+## CLI
+
+Use the first positional argument as the command.
+
+```bash
+go run ./cmd master
+go run ./cmd migrate-legacy --config ./config.toml --legacy-dsn "$LEGACY_DATABASE_DSN"
+go run ./cmd reanalyze-missing --config ./config.toml
+go run ./cmd validate-storage --config ./config.toml
+```
+
+## Logging
+
+- `ZEROLOG_PRETTY=true` enables console-style pretty logs
+- `LOG_LEVEL=debug|info|warn|error` sets the log level
+
+## Run
+
+```bash
+go run ./cmd master
+```
+
+### Web console
+
+The Vue console lives in `web/`. The master serves its build output from
+`web.staticDir` (default `web/dist`) at `/`, on the same origin as the API so
+the auth cookie stays first-party. Unknown paths fall back to `index.html` for
+client-side routing; unknown `/api` paths still return JSON 404s. Set
+`web.staticDir = ""` to disable the console.
+
+```bash
+make web     # bun install --frozen-lockfile && bun run build
+make start   # build the console and the service, then run the master on :8080
+make dev     # Go master on :8080 + Vite on :5173 with /api proxied
+```
+
+The Docker image builds the console in a Bun stage and copies `dist/` into the
+runtime image, so `docker run` serves the console without extra setup.
+
+### Legacy migration
+
+Use the one-shot migrator to import data from the old C# database into the new schema:
+
+```bash
+go run ./cmd migrate-legacy --config ./config.toml --legacy-dsn "$LEGACY_DATABASE_DSN"
+```
+
+Flags:
+
+- `--dry-run` to simulate without writing
+- `--skip-derived` to skip thumbnail/compression child reconstruction
+- `--batch-size` to tune import batch size
+- `--continue-on-error` to keep going after row-level failures
+
+### Metadata reanalysis
+
+Repair missing image/video metadata from stored source files:
+
+```bash
+go run ./cmd reanalyze-missing --config ./config.toml
+```
+
+It shows a preview first, then asks for confirmation before changing anything.
+
+Flags:
+
+- `--reanalyze-limit` to cap the preview/repair batch size
+- `--file-id` to target one or more file IDs, comma-separated
+- `--preview-count` to control how many candidates are shown first
+- `--yes` to skip the confirmation prompt
+
+### Upload API
+
+Both direct upload and chunked upload creation accept the same metadata payload:
+
+```json
+{
+  "hash": "...",
+  "file_name": "clip.mov",
+  "file_size": 12345,
+  "content_type": "video/quicktime",
+  "pool_id": "...",
+  "workspace_id": "...",
+  "expired_at": "2026-05-17T12:34:56Z",
+  "chunk_size": 5242880,
+  "parent_id": "...",
+  "overwrite_id": "...",
+  "fast_mode": true,
+  "usage": "...",
+  "application_type": "...",
+  "index": true
+}
+```
+
+- `direct` upload uses multipart form data with the same field names, plus `file`
+- `index` controls whether the file is indexed; defaults to `false`, but automatically becomes `true` when `parent_id` points to an indexed folder
+- `parent_id` is optional and can still be resolved server-side when omitted
+- `workspace_id` is optional; when provided, the uploader must be an active workspace member (role `Member` or higher), the resulting file is owned by that workspace, and the workspace plan's storage limit is used instead of the uploader's personal quota. An individual workspace's limit is the owner's account quota, and its charged pool is that owner's personal files plus every file in the workspace, whichever member uploaded it
+- workspace uploads require the `workspace.target` WattEngine gRPC configuration
+- `overwrite_id` is optional; when set, the upload replaces the content of an existing file instead of creating a new `cloud_files` row
+- `fast_mode` is optional; when used with `overwrite_id`, the server tries to overwrite the existing backing object in place
+- fast mode is applied only when the target `object_id` is referenced by exactly one live file
+- if the target object is shared, fast mode automatically falls back to recreate-and-swap behavior
+- overwrite keeps the existing file record and swaps in a new `file_object` after analysis completes
+- overwrite deletes stale derived children so thumbnails/compressed variants can be regenerated from the new source
+- `hash` is stored on the created file/task when provided
+- upload quota is checked before task creation or direct upload processing
+- quota refusal returns `403 Forbidden`
+- if `pool_id` is omitted, the quota check uses the resolved default pool
+
+Direct overwrite example:
+
+```bash
+curl -X POST "http://localhost:8080/api/files/upload/direct" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -F "file=@./edited.txt" \
+  -F "overwrite_id=FILE_ID" \
+  -F "fast_mode=true"
+```
+
+Chunked overwrite task creation example:
+
+```json
+{
+  "overwrite_id": "FILE_ID",
+  "fast_mode": true,
+  "file_name": "ignored-on-overwrite",
+  "file_size": 12345,
+  "content_type": "text/plain",
+  "chunk_size": 5242880
+}
+```
+
+Fast mode notes:
+
+- in fast mode, the existing `file_object` record is updated in place instead of creating a new one
+- the server updates `hash`, `size`, `mime_type`, and analyzed metadata on that existing object
+- stale derived children are removed before worker regeneration
+
+### File List Filters
+
+These endpoints share the same list query parser:
+
+- `GET /api/files/me`
+- `GET /api/files/root/children`
+- `GET /api/files/:id/children`
+- `GET /api/files/unindexed`
+
+Base query params:
+
+- `offset`
+- `take`
+- `order`: `date`, `name`, `size`
+- `orderDesc`: `true|false` or `1|0`
+- `query`: case-insensitive substring match on file name
+- `name`: exact file name match
+- `extension`: file extension, with or without the leading `.`
+- `usage`
+- `application_type`
+- `content_type`: exact response MIME type match
+- `mime_type`: alias of `content_type`
+- `pool_id`
+- `parent_id`
+- `indexed`: `true|false` or `1|0`
+- `recycled`: `true|false` or `1|0`
+- `is_folder`: `true|false` or `1|0`
+- `has_thumbnail`: `true|false` or `1|0`
+- `has_compression`: `true|false` or `1|0`
+- `min_size`
+- `max_size`
+- `created_after`: RFC3339 or `YYYY-MM-DD`
+- `created_before`: RFC3339 or `YYYY-MM-DD`
+- `updated_after`: RFC3339 or `YYYY-MM-DD`
+- `updated_before`: RFC3339 or `YYYY-MM-DD`
+
+Notes:
+
+- `content_type` / `mime_type` matches the file response MIME type, which comes from the backing object or the folder sentinel type
+- `/api/files/unindexed` also accepts `pool` as an alias of `pool_id`
+- `/api/files/unindexed` defaults to `recycled=false` when the query param is omitted
+- size filters use the backing object size in bytes
+
+Example:
+
+```bash
+curl "http://localhost:8080/api/files/me?content_type=image/png&extension=png&has_thumbnail=1&min_size=1024"
+```
+
+### WOPI / Collabora CODE
+
+DysonFS can expose WOPI host endpoints for Collabora Online / CODE.
+
+Config:
+
+```toml
+[wopi]
+enabled = true
+publicUrl = "https://files.example.com"
+collaboraUrl = "https://collabora.example.com"
+tokenTtl = "15m"
+requireProof = false
+proofCacheTtl = "1h"
+```
+
+Notes:
+
+- `publicUrl` must be the externally reachable DysonFS base URL used by Collabora for WOPI callbacks
+- DysonFS builds the WOPI callback base directly from `publicUrl`, for example `https://files.example.com/wopi/files/:id`
+- `collaboraUrl` must point at the Collabora server base URL
+- proof validation is not implemented yet; keep `requireProof = false`
+
+Launch endpoint:
+
+- `POST /api/files/:id/edit` creates a WOPI-backed editing session for the authenticated user
+- the response includes `action_url`, `method`, `form_fields`, and `wopi_src`
+- the client should POST `form_fields` to `action_url`, typically into an iframe or popup
+- Collabora callbacks may authenticate with either `access_token` form/query parameters or `Authorization: Bearer <access_token>`
+
+Example response:
+
+```json
+{
+  "action_url": "https://collabora.example.com/browser/edit?WOPISrc=https%3A%2F%2Ffiles.example.com%2Fwopi%2Ffiles%2FFILE_ID",
+  "action": "edit",
+  "method": "POST",
+  "form_fields": {
+    "access_token": "TOKEN",
+    "access_token_ttl": "1770000000000"
+  },
+  "wopi_src": "https://files.example.com/wopi/files/FILE_ID",
+  "expires_at": "2026-05-29T12:00:00Z"
+}
+```
+
+Example client flow:
+
+```html
+<iframe id="collabora-frame" name="collabora-frame"></iframe>
+<script>
+  async function openEditor(fileId, token) {
+    const response = await fetch(`/api/files/${fileId}/edit`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) throw new Error("failed to create edit session");
+
+  const session = await response.json();
+  const form = document.createElement("form");
+  form.method = session.method || "POST";
+  form.action = session.action_url;
+  form.target = "collabora-frame";
+
+  for (const [key, value] of Object.entries(session.form_fields || {})) {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = key;
+      input.value = value;
+      form.appendChild(input);
+    }
+
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
+  }
+</script>
+```
+
+WOPI endpoints:
+
+- `GET /wopi/files/:id`
+- `GET /wopi/files/:id/contents`
+- `POST /wopi/files/:id/contents`
+- `POST /wopi/files/:id`
+
+### Media transforms
+
+The content routes (`GET /api/files/:id` and `GET /api/files/:id/open`) can
+serve on-the-fly image derivatives instead of a storage redirect. Enable with
+the `[media]` config section; without it, transform query parameters are
+ignored and the routes keep their redirect behavior.
+
+Transform query params (all optional):
+
+- `width`, `height`: target box; scale-down by default, `contain`/`outside`/
+  `fill` may enlarge
+- `fit`: `cover` (default; crop to fill) | `contain` (fit, may enlarge) |
+  `fill` (stretch) | `inside` (fit, never enlarge; preserves aspect ratio) |
+  `outside` (cover, may enlarge)
+- `gravity`: `center` (default) | `top` | `bottom` | `left` | `right` |
+  `entropy` — crop anchor for `cover`
+- `format`: `jpeg` (or `jpg`) | `png` | `webp` | `avif`; defaults to the
+  source's own format (fallback `webp`)
+- `quality`: within `qualityMin..qualityMax`; defaults to `defaultQuality`
+  (ignored for PNG)
+- `preset`: named preset from `[media.presets.*]`; explicit query values
+  override preset fields
+
+Behavior:
+
+- images only: non-image sources return `415`
+- sources above `maxSourceBytes` or `maxPixels` return `413`
+- animated (multi-page) sources return `415`
+- when the requested size exceeds the selected source and
+  `escalateToOriginal = true`, the parent original is used instead (once)
+- output is streamed with `ETag`/`Last-Modified`/`Range`/`304` support and
+  `Cache-Control: public` — except the `"s3"` cache tier, which 307-redirects
+  to a presigned object URL instead
+- the compressed derivative (`system.compression.low`) is the transform source
+  by default for images; `?original=1` selects the original
+
+Config:
+
+```toml
+[media]
+enable = true
+maxSourceBytes = 10485760
+maxWidth = 4096
+maxHeight = 4096
+qualityMin = 40
+qualityMax = 90
+defaultQuality = 80
+allowedFormats = ["jpeg", "png", "webp", "avif"]
+
+[media.cache]
+kind = "disk" # none | memory | disk | s3
+dir = "/var/lib/dyson-drive/media-cache" # required when kind = "disk"
+# poolId = "01CACHEPOOL0000000000000000000" # file pool id, required when kind = "s3"
+maxBytes = 10737418240
+ttl = "0s" # 0 = never expire by time; eviction is budget-driven (maxBytes)
+
+[media.presets.thumb]
+width = 256
+height = 256
+fit = "inside" # scale down to fit the box, preserving aspect ratio; never crops
+format = "jpeg"
+quality = 75
+```
+
+- `media.cache.kind = "none"` (default) disables server-side caching; HTTP
+  headers still apply
+- `"memory"` keeps an in-process LRU bounded by `media.cache.maxBytes`; tune
+  `maxBytes` to available RAM
+- `"disk"` keeps an LRU on disk at `media.cache.dir`
+- `"s3"` stores derivatives in a file pool's bucket under the `media-cache/`
+  prefix and serves them via **presigned-URL 307 redirects** — derivative bytes
+  never pass through DysonFS. Reference the pool's id via `media.cache.poolId`;
+  the pool's storage credentials sign the URLs
+
+Bucket namespaces (safe to share one bucket between uploads and the cache):
+
+- user files (sources + thumbnails/compressed variants) live under `uploads/`
+- media transform derivatives live under `media-cache/`
+- cache code never reads or writes outside `media-cache/`; the disk sweeper is
+  scoped to `media.cache.dir`, and the s3 tier has no code eviction — if you
+  add bucket lifecycle rules, **scope them to the `media-cache/` prefix only**
+  so source files are never deleted
+- the cache pool should be `hidden = true` and **must not be `default = true`**:
+  uploads without an explicit `pool_id` route to the default pool, and the pool
+  that is named is the pool the bytes are written to — an upload, a staged
+  gRPC upload, an S3-API object, or a derivative always resolves its backend
+  from the target file's pool, never from whatever backend happens to be ambient
+- hidden pools are internal-only: never listed to users and never usable as an
+  upload destination (refused by the upload flows and `CanUsePool`)
+- cache entries never expire by time (`media.cache.ttl = "0s"`, the default);
+  eviction is budget-driven — the disk/memory sweeps drop the
+  least-recently-used entries once `media.cache.maxBytes` is exceeded. Set
+  `ttl` to a positive duration to also expire entries idle past that window
+
+Example:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  'http://localhost:8080/api/files/<ID>?width=200&format=png' -o thumb.png
+```
+
+### Quota And Billing
+
+Quota values are reported in MB.
+
+Base quota is the sum of:
+
+- leveling quota
+- perk quota
+
+Leveling quota uses `account.profile.level`, clamped to `0..120`, with these milestones:
+
+- `Lv0`: `512MB`
+- `Lv10`: `1GB`
+- `Lv60`: `5GB`
+- `Lv120`: `10GB`
+
+Between those milestones, the quota is interpolated piecewise.
+
+Perk quota is added on top of leveling quota:
+
+- perk `1`: `10GB`
+- perk `2`: `25GB`
+- perk `3`: `50GB`
+
+The account quota (leveling + perk + extra) is owned and computed by the
+WattEngine Valve service; DysonFS surfaces it through the account's individual
+workspace plan quota when the workspace endpoint is configured, falling back to
+the local leveling+perk calculation (without extra quota, which lives in Valve)
+when it is unavailable. Extra-quota purchase and admin grants are served by
+Valve's billing API.
+
+`GET /api/billing/quota` returns:
+
+```json
+{
+  "based_quota": 15360,
+  "extra_quota": 25,
+  "total_quota": 15385
+}
+```
+
+`GET /api/billing/usage` returns:
+
+```json
+{
+  "used_quota": 300,
+  "total_quota": 15385,
+  "total_file_count": 2,
+  "total_usage_bytes": 209715200
+}
+```
+
+Usage accounting rules:
+
+- `used_quota` is billable usage in MB, not raw bytes
+- `used_quota` covers the same pool the upload checks enforce: the account's
+  files (personal + every workspace it uploaded to) plus files other members
+  stored in the account's own individual workspace
+- raw file bytes are returned separately as `total_usage_bytes`
+- pool billing `cost_multiplier` affects billable usage and quota checks
+- the multiplier is applied per file based on the file's pool
+
+### Folders
+
+Folders are created with `POST /folders`.
+
+Request body:
+
+```json
+{
+  "name": "Projects",
+  "parent_id": "..."
+}
+```
+
+- A folder is stored as a `cloud_files` row with `is_folder = true` and `indexed = true`
+- `parent_id` is optional
+- The current implementation does not yet validate that the parent exists or is a folder
+- Root folders automatically get a private read permission record, and
+  children inherit it, so a folder tree is owner-only even inside a shared pool
+- Root-level uploads into an owned pool seed the same record; uploads into a
+  shared (account-less) pool seed nothing, because the pool already exposes
+  them
+
+### Permission Management
+
+Files expose read/write/manage permissions through `GET /files/:id/permissions` and `PUT /files/:id/permissions`.
+
+- Access is deny-by-default: a file with no permission row in its ancestor chain is readable only by its owner (and superusers), unless it lives in a shared pool
+- A pool with no owning account (`account_id` unset) is shared fleet-wide storage: every file inside it is readable by everyone, anonymous callers included, and hidden pools are never shared
+- A `public` permission row publishes a file (and its descendants) to anonymous callers
+- A `private` permission row with `read` keeps a file owner-only and overrides the shared pool default, so unpublishing a file in a shared pool still works
+- File rows written before pool attribution carry no `pool_id` and are attributed to the configured default pool
+- Permission checks inherit from ancestor folders
+- `PUT /files/:id/permissions` replaces the full permission set in one batch
+- Anonymous requests to `GET /api/files/:id`, `GET /api/files/:id/open`, `GET /api/files/:id/info` and `GET /api/files/meta` are refused with `401` unless the file is public; authenticated callers get `403` instead
+- `GET /api/pools` and `GET /api/pools/:id` require an authenticated account, and pool responses never carry storage credentials (`secret_id`/`secret_key` are stripped and omitted from the JSON)
+
+Request body:
+
+```json
+{
+  "items": [
+    {
+      "id": "...",
+      "file_id": "...",
+      "subject_type": "account",
+      "subject_id": "...",
+      "permission": "read"
+    },
+    {
+      "id": "...",
+      "file_id": "...",
+      "subject_type": "scope",
+      "subject_id": "files.manage",
+      "permission": "manage"
+    }
+  ]
+}
+```
+
+- `subject_type` can be `public`, `private`, `account`, or `scope`
+- `permission` is typically `read`, `write`, or `manage`
+- Send the full desired list; omitted rows are removed
+
+### File Update Operations
+
+Rename a file with `PATCH /api/files/:id`:
+
+```json
+{
+  "name": "renamed-file.txt"
+}
+```
+
+- rename updates only the file name
+- rename currently requires the file owner or a superuser
+
+Replace a file's contents with `PUT /api/files/:id/content`:
+
+```bash
+curl -X PUT 'https://files.example.com/api/files/FILE_ID/content' \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: text/plain' \
+  --data-binary @./notes.md
+```
+
+- the request body is the raw new content; a String/binary body is stored as-is
+- the backing object is overwritten in place, so the file keeps its id, name,
+  parent and permissions, and no new `FileObject` is created
+- the object is flagged `needs_rehash`, so hash, MIME type and derived content
+  (thumbnails, compression) are refreshed by the worker afterwards
+- writes need `write` access (`CanAccessFile`); a folder target is a `400`
+- a file locked by another editor (`WOPI`/`WebDAV` lock) is refused with `423`
+  and the current lock echoed in the `X-Lock-Token` response header; send the
+  matching `X-Lock-Token` request header to overwrite through your own lock
+- for binary diffs of an already locked file, use `PATCH /api/files/:id/content`
+  (bsdiff body) instead
+- success returns the refreshed file record, the same shape as `GET /api/files/:id/info`
+
+### Batch File Operations
+
+Batch operations use `POST /api/files/<operation>/batch` with a JSON body.
+
+Recycle files:
+
+```json
+{
+  "file_ids": ["file-id-1", "file-id-2"]
+}
+```
+
+Restore files:
+
+```json
+{
+  "file_ids": ["file-id-1", "file-id-2"]
+}
+```
+
+Purge files:
+
+```json
+{
+  "file_ids": ["file-id-1", "file-id-2"]
+}
+```
+
+Move files into a parent:
+
+```json
+{
+  "file_ids": ["file-id-1", "file-id-2"],
+  "parent_id": "...",
+  "indexed": true
+}
+```
+
+Available operations:
+
+- `POST /api/files/recycle/batch`
+- `POST /api/files/restore/batch`
+- `POST /api/files/delete/batch`
+- `POST /api/files/move/batch`
+
+Notes:
+
+- `file_ids` is required for every batch operation
+- `parent_id` is optional for `move`; omit it or set it to `null` to move files back to the root
+- `indexed` is optional for `move`; set to `true` to mark files as indexed, `false` to mark as unindexed, or omit to leave unchanged
+
+### File Listings
+
+Files have an `indexed` flag that controls visibility in the file tree:
+
+- **Indexed files** appear in `GET /api/files/root/children` and `GET /api/files/:id/children` (the normal folder browse experience)
+- **Unindexed files** only appear in `GET /api/files/unindexed` (a flat listing of orphaned uploads)
+- Folders are always indexed
+- The `indexed` flag can be set at upload time via the `index` field, or changed later via the move batch endpoint
+
+List responses include extra metadata for navigation and access UI:
+
+- `children_count` for immediate child count
+- `permission_status` for current access state
+
+Performance notes:
+
+- Child counts and inherited permission status are resolved in batches for list responses to avoid per-file query fan-out.
+- Postgres should have a composite index on `cloud_files(parent_id, deleted_at)` so `children_count` lookups do not fall back to full table scans.
+- Postgres should have a composite index on `file_permissions(file_id, permission, deleted_at)` so inherited permission-source lookups stay index-backed.
+- These indexes are declared in the GORM models and are created by `AutoMigrate`, but existing deployments need a restart or migration run before the new indexes appear.
+- If file-list or permission logs still show slow SQL after rollout, verify the indexes exist with `pg_indexes` and inspect the hot queries with `EXPLAIN (ANALYZE, BUFFERS)`.
+
+Example:
+
+```json
+"permission_status": {
+  "readable": true,
+  "writable": false,
+  "manageable": false,
+  "visibility": "private",
+  "inherited_from": "..."
+}
+```
+
+### Storage validation
+
+Validate `file_objects.storage_key` against remote S3 objects and clean up orphans:
+
+```bash
+go run ./cmd validate-storage --config ./config.toml --yes
+```
+
+It snapshots remote keys first, then compares the snapshot against the database in batches.
+
+Flags:
+
+- `--validate-snapshot` to choose the snapshot file path
+- `--validate-prefix` to limit the remote listing prefix
+- `--validate-batch` to control DB batch size
+- `--yes` to skip the confirmation prompt
+
+## Config
+
+Use `--config` or `CONFIG_PATH` for a TOML config file.
+
+Key settings:
+
+- `app.name`
+- `database.dsn`
+- `http.port`
+- `grpc.port`
+- `grpc.useTLS`
+- `grpc.certFile`
+- `grpc.keyFile`
+- `storage.tempDir`
+- `storage.localDir`
+- `web.staticDir`
+- `auth.target`
+- `auth.target` also supplies the Padlock permission service; uploads require
+  the `files.upload` permission node (or superuser access)
+- `auth.useTLS`
+- `passport.target`
+- `passport.useTLS`
+- `quota.leveling.level1`
+- `quota.leveling.level10`
+- `quota.leveling.level60`
+- `quota.leveling.level120`
+- `nats.url`
+- `mode.master`
+- `mode.worker`
+- `mode.storage`
+
+Pool storage is configured with `[[pools]]` and seeded into the database at startup.
+
+Example:
+
+```toml
+[[pools]]
+id = "500e5ed8-bd44-4359-bc0a-ec85e2adf447"
+name = "Default"
+default = true
+hidden = false
+
+[pools.storage]
+endpoint = "http://minio:9000"
+bucket = "dyson-files"
+enableSigned = true
+enableSsl = false
+secretId = "minio"
+secretKey = "minio123"
+```
+
+## Notes
+
+- Files are private by default; files in a shared (account-less) pool are the
+  exception and stay publicly readable.
+- Explicit ACL rows win over that pool default.
+- `master` resolves storage from pool config stored in the database.
+- `worker` listens for file upload events and builds thumbnails, blurhash, and other derived artifacts.
+- `master` can use S3 directly; local storage is still supported.
+- The Docker image expects `ffmpeg` and `libvips` runtime packages.
+- The E2EE file route has been removed.
