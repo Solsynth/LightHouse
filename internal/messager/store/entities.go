@@ -17,7 +17,7 @@ type EntityBase struct {
 
 // ChatRoomEntity is the `chat_rooms` table.
 type ChatRoomEntity struct {
-	ID                   uuid.UUID      `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Name                 *string        `gorm:"column:name"`
 	Description          *string        `gorm:"column:description"`
@@ -39,7 +39,7 @@ func (ChatRoomEntity) TableName() string { return "chat_rooms" }
 
 // ChatMemberEntity is the `chat_members` table.
 type ChatMemberEntity struct {
-	ID           uuid.UUID      `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	ChatRoomID   uuid.UUID      `gorm:"column:chat_room_id;type:uuid"`
 	AccountID    uuid.UUID      `gorm:"column:account_id;type:uuid"`
@@ -61,7 +61,7 @@ func (ChatMemberEntity) TableName() string { return "chat_members" }
 
 // ChatGroupEntity is the `chat_groups` table.
 type ChatGroupEntity struct {
-	ID        uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	AccountID uuid.UUID `gorm:"column:account_id;type:uuid"`
 	Name      string    `gorm:"column:name"`
@@ -74,7 +74,7 @@ func (ChatGroupEntity) TableName() string { return "chat_groups" }
 
 // ChatMessageEntity is the `chat_messages` table.
 type ChatMessageEntity struct {
-	ID                 uuid.UUID      `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	RoomSequence       int64          `gorm:"column:room_sequence"`
 	Type               string         `gorm:"column:type"`
@@ -98,7 +98,7 @@ func (ChatMessageEntity) TableName() string { return "chat_messages" }
 
 // ChatReactionEntity is the `chat_reactions` table.
 type ChatReactionEntity struct {
-	ID        uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	MessageID uuid.UUID `gorm:"column:message_id;type:uuid"`
 	SenderID  uuid.UUID `gorm:"column:sender_id;type:uuid"`
@@ -110,7 +110,7 @@ func (ChatReactionEntity) TableName() string { return "chat_reactions" }
 
 // ChatMessagePinEntity is the `chat_message_pins` table.
 type ChatMessagePinEntity struct {
-	ID               uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	MessageID        uuid.UUID  `gorm:"column:message_id;type:uuid"`
 	ChatRoomID       uuid.UUID  `gorm:"column:chat_room_id;type:uuid"`
@@ -130,7 +130,7 @@ func (ChatRoomCounterEntity) TableName() string { return "chat_room_counters" }
 
 // RealtimeCallEntity is the `chat_realtime_call` table.
 type RealtimeCallEntity struct {
-	ID           uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	EndedAt      *time.Time `gorm:"column:ended_at"`
 	SenderID     uuid.UUID  `gorm:"column:sender_id;type:uuid"`
@@ -144,7 +144,7 @@ func (RealtimeCallEntity) TableName() string { return "chat_realtime_call" }
 
 // ChatVoiceClipEntity is the `chat_voice_clips` table.
 type ChatVoiceClipEntity struct {
-	ID               uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	ChatRoomID       uuid.UUID `gorm:"column:chat_room_id;type:uuid"`
 	SenderID         uuid.UUID `gorm:"column:sender_id;type:uuid"`

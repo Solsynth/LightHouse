@@ -33,12 +33,12 @@ type visibilityFilter struct {
 
 // feedQuery is the shared post query shape both feed entry points build.
 type feedQuery struct {
-	cursor             *time.Time
+	cursor               *time.Time
 	filteredPublisherIDs []uuid.UUID
-	realmIDs           []uuid.UUID
-	scopedPublisherID  *uuid.UUID
-	scopedCollectionID *uuid.UUID
-	limit              int
+	realmIDs             []uuid.UUID
+	scopedPublisherID    *uuid.UUID
+	scopedCollectionID   *uuid.UUID
+	limit                int
 }
 
 // buildPostsQuery mirrors TimelineService.BuildPostsQuery.

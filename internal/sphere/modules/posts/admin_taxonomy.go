@@ -15,9 +15,9 @@ import (
 )
 
 type adminCreateTagRequest struct {
-	Slug            string  `json:"slug"`
-	Name            *string `json:"name"`
-	Description     *string `json:"description"`
+	Slug             string     `json:"slug"`
+	Name             *string    `json:"name"`
+	Description      *string    `json:"description"`
 	OwnerPublisherID *uuid.UUID `json:"ownerPublisherId"`
 }
 

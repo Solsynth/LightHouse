@@ -94,16 +94,16 @@ func (c *livekitClient) serverToken() (string, error) {
 		"sub": c.apiKey,
 		"jti": uuid.NewString(),
 		"video": map[string]any{
-			"roomCreate":      true,
-			"roomList":        true,
-			"roomAdmin":       true,
-			"roomRecord":      true,
-			"ingressAdmin":    true,
-			"canPublish":      true,
-			"canSubscribe":    true,
-			"canPublishData":  true,
-			"hidden":          false,
-			"recorder":        false,
+			"roomCreate":     true,
+			"roomList":       true,
+			"roomAdmin":      true,
+			"roomRecord":     true,
+			"ingressAdmin":   true,
+			"canPublish":     true,
+			"canSubscribe":   true,
+			"canPublishData": true,
+			"hidden":         false,
+			"recorder":       false,
 		},
 	}, c.apiSecret)
 }
@@ -126,11 +126,11 @@ func (c *livekitClient) clientToken(room, identity, name string, canPublish, can
 		"sub": identity,
 		"jti": uuid.NewString(),
 		"video": map[string]any{
-			"roomJoin":        true,
-			"room":            room,
-			"canPublish":      canPublish,
-			"canSubscribe":    canSubscribe,
-			"canPublishData":  canPublishData,
+			"roomJoin":       true,
+			"room":           room,
+			"canPublish":     canPublish,
+			"canSubscribe":   canSubscribe,
+			"canPublishData": canPublishData,
 		},
 	}
 	if name != "" {

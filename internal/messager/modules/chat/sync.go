@@ -149,9 +149,9 @@ func (i *instance) markAllRead(c *gin.Context) {
 // --- subscriptions --------------------------------------------------------
 
 const (
-	subscriptionPrefix      = "chatroom:subs:"
+	subscriptionPrefix        = "chatroom:subs:"
 	accountSubscriptionPrefix = "chatroom:acctsubs:"
-	subscriptionTTL         = 5 * time.Minute
+	subscriptionTTL           = 5 * time.Minute
 )
 
 type cachedDevice struct {
@@ -400,12 +400,12 @@ func (i *instance) getMyChatStatus(c *gin.Context) {
 			})
 		}
 		subscriptions = append(subscriptions, subscriptionRoomStatus{
-			RoomID:                    roomID.String(),
-			MemberID:                  memberID,
-			Room:                      rooms[0],
-			IsSubscribed:              true,
+			RoomID:                      roomID.String(),
+			MemberID:                    memberID,
+			Room:                        rooms[0],
+			IsSubscribed:                true,
 			PushNotificationsSuppressed: true,
-			Devices:                   statuses,
+			Devices:                     statuses,
 		})
 	}
 	httpx.OK(c, accountStatusResponse{

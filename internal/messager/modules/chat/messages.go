@@ -566,8 +566,8 @@ func (i *instance) reactMessage(c *gin.Context) {
 		return
 	}
 	meta := map[string]any{
-		"message_id":      messageID.String(),
-		"symbol":          reaction.Symbol,
+		"message_id": messageID.String(),
+		"symbol":     reaction.Symbol,
 		"reaction": map[string]any{
 			"id":         reaction.ID.String(),
 			"symbol":     reaction.Symbol,

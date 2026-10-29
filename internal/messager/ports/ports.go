@@ -17,11 +17,11 @@ var ErrUnavailable = errors.New("port provider unavailable")
 
 // Port IDs.
 const (
-	PortAccounts  = "accounts"
-	PortFiles     = "files"
-	PortNotify    = "notify"
-	PortRealtime  = "realtime"
-	PortSphere = "sphere"
+	PortAccounts = "accounts"
+	PortFiles    = "files"
+	PortNotify   = "notify"
+	PortRealtime = "realtime"
+	PortSphere   = "sphere"
 	// PortRealms resolves realm snapshots for realm chat.
 	PortRealms = "realms"
 )

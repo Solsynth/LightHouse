@@ -137,12 +137,12 @@ func (s *server) collect(ctx context.Context, accountID string, start, end time.
 
 	// Most popular post by upvotes.
 	var popular struct {
-		ID         string  `gorm:"column:id"`
-		Title      *string `gorm:"column:title"`
-		Slug       *string `gorm:"column:slug"`
-		Content    *string `gorm:"column:content"`
-		Upvotes    int     `gorm:"column:upvotes"`
-		PublisherID string `gorm:"column:publisher_id"`
+		ID          string  `gorm:"column:id"`
+		Title       *string `gorm:"column:title"`
+		Slug        *string `gorm:"column:slug"`
+		Content     *string `gorm:"column:content"`
+		Upvotes     int     `gorm:"column:upvotes"`
+		PublisherID string  `gorm:"column:publisher_id"`
 	}
 	if err := db.Raw(
 		`SELECT id::text AS id, title, slug, content, upvotes, publisher_id::text AS publisher_id

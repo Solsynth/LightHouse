@@ -36,10 +36,10 @@ func Factory() module.Factory[core.Services] {
 			{ID: ports.PortPostSignals, Optional: true},
 			{ID: ports.PortRealms, Optional: true},
 		},
-		Models:         []any{store.PostInterestProfileEntity{}, store.DiscoveryPreferenceEntity{}},
-		SQL:            []module.SchemaHook{indexHook},
-		Capabilities:   []string{"timeline", "timeline.discovery"},
-		New:            func() module.Instance[core.Services] { return &instance{} },
+		Models:       []any{store.PostInterestProfileEntity{}, store.DiscoveryPreferenceEntity{}},
+		SQL:          []module.SchemaHook{indexHook},
+		Capabilities: []string{"timeline", "timeline.discovery"},
+		New:          func() module.Instance[core.Services] { return &instance{} },
 	}
 }
 

@@ -61,11 +61,11 @@ func (s *server) GetRewindEvent(ctx context.Context, req *gen.DyRequestRewindEve
 	start, end := yearWindow(int(req.GetYear()))
 
 	data := map[string]any{
-		"most_messaged_chat":        nil,
-		"most_messaged_direct_chat": nil,
-		"most_called_chat":          nil,
+		"most_messaged_chat":           nil,
+		"most_messaged_direct_chat":    nil,
+		"most_called_chat":             nil,
 		"most_called_chat_top_members": []any{},
-		"most_called_accounts":      []any{},
+		"most_called_accounts":         []any{},
 	}
 	if s.core != nil && s.core.DB != nil {
 		if err := s.collect(ctx, accountID, start, end, data); err != nil {

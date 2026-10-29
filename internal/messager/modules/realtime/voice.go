@@ -52,14 +52,14 @@ func invalidVoice(message string) error {
 // voiceMimeExtensions is the accepted audio allow-list, mirroring the C#
 // ChatVoiceService MimeToExtension table.
 var voiceMimeExtensions = map[string]string{
-	"audio/webm": ".webm",
-	"audio/ogg":  ".ogg",
-	"audio/mpeg": ".mp3",
-	"audio/mp4":  ".m4a",
-	"audio/wav":  ".wav",
+	"audio/webm":  ".webm",
+	"audio/ogg":   ".ogg",
+	"audio/mpeg":  ".mp3",
+	"audio/mp4":   ".m4a",
+	"audio/wav":   ".wav",
 	"audio/x-wav": ".wav",
-	"audio/aac":  ".aac",
-	"audio/flac": ".flac",
+	"audio/aac":   ".aac",
+	"audio/flac":  ".flac",
 }
 
 // voiceService owns voice clip storage, validation and retention.

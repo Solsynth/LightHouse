@@ -26,66 +26,66 @@ type TimestampBase struct {
 
 // PostEntity is the `posts` table.
 type PostEntity struct {
-	ID                uuid.UUID      `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
-	Title             *string        `gorm:"column:title"`
-	Description       *string        `gorm:"column:description"`
-	Slug              *string        `gorm:"column:slug"`
-	EditedAt          *time.Time     `gorm:"column:edited_at"`
-	DraftedAt         *time.Time     `gorm:"column:drafted_at"`
-	PublishedAt       *time.Time     `gorm:"column:published_at"`
-	PublishNotifiedAt *time.Time     `gorm:"column:publish_notified_at"`
-	Visibility        int            `gorm:"column:visibility"`
-	Content           *string        `gorm:"column:content"`
-	ContentType       int            `gorm:"column:content_type"`
-	Type              int            `gorm:"column:type"`
-	PinMode           *int           `gorm:"column:pin_mode"`
-	Metadata          datatypes.JSON `gorm:"column:metadata;type:jsonb"`
-	SensitiveMarks    datatypes.JSON `gorm:"column:sensitive_marks;type:jsonb"`
-	EmbedView         datatypes.JSON `gorm:"column:embed_view;type:jsonb"`
-	FediverseURI      *string        `gorm:"column:fediverse_uri"`
-	FediverseType     *int           `gorm:"column:fediverse_type"`
-	Language          *string        `gorm:"column:language"`
-	Mentions          datatypes.JSON `gorm:"column:mentions;type:jsonb"`
-	BoostCount        int            `gorm:"column:boost_count"`
-	ViewsUnique       int            `gorm:"column:views_unique"`
-	ViewsTotal        int            `gorm:"column:views_total"`
-	Upvotes           int            `gorm:"column:upvotes"`
-	Downvotes         int            `gorm:"column:downvotes"`
-	AwardedScore      float64        `gorm:"column:awarded_score"`
-	RepliesCount      int            `gorm:"column:replies_count"`
-	ReactionScore     int            `gorm:"column:reaction_score"`
-	RepliedGone       bool           `gorm:"column:replied_gone"`
-	ForwardedGone     bool           `gorm:"column:forwarded_gone"`
-	RepliedPostID     *uuid.UUID     `gorm:"column:replied_post_id;type:uuid"`
-	ForwardedPostID   *uuid.UUID     `gorm:"column:forwarded_post_id;type:uuid"`
-	ChainedPostID     *uuid.UUID     `gorm:"column:chained_post_id;type:uuid"`
-	QuoteAuthorizationID *uuid.UUID  `gorm:"column:quote_authorization_id;type:uuid"`
-	RealmID           *uuid.UUID     `gorm:"column:realm_id;type:uuid"`
-	Attachments       datatypes.JSON `gorm:"column:attachments;type:jsonb"`
-	PublisherID       uuid.UUID      `gorm:"column:publisher_id;type:uuid"`
-	ShadowbanReason   *int           `gorm:"column:shadowban_reason"`
-	ShadowbannedAt    *time.Time     `gorm:"column:shadowbanned_at"`
-	LockedAt          *time.Time     `gorm:"column:locked_at"`
+	Title                *string        `gorm:"column:title"`
+	Description          *string        `gorm:"column:description"`
+	Slug                 *string        `gorm:"column:slug"`
+	EditedAt             *time.Time     `gorm:"column:edited_at"`
+	DraftedAt            *time.Time     `gorm:"column:drafted_at"`
+	PublishedAt          *time.Time     `gorm:"column:published_at"`
+	PublishNotifiedAt    *time.Time     `gorm:"column:publish_notified_at"`
+	Visibility           int            `gorm:"column:visibility"`
+	Content              *string        `gorm:"column:content"`
+	ContentType          int            `gorm:"column:content_type"`
+	Type                 int            `gorm:"column:type"`
+	PinMode              *int           `gorm:"column:pin_mode"`
+	Metadata             datatypes.JSON `gorm:"column:metadata;type:jsonb"`
+	SensitiveMarks       datatypes.JSON `gorm:"column:sensitive_marks;type:jsonb"`
+	EmbedView            datatypes.JSON `gorm:"column:embed_view;type:jsonb"`
+	FediverseURI         *string        `gorm:"column:fediverse_uri"`
+	FediverseType        *int           `gorm:"column:fediverse_type"`
+	Language             *string        `gorm:"column:language"`
+	Mentions             datatypes.JSON `gorm:"column:mentions;type:jsonb"`
+	BoostCount           int            `gorm:"column:boost_count"`
+	ViewsUnique          int            `gorm:"column:views_unique"`
+	ViewsTotal           int            `gorm:"column:views_total"`
+	Upvotes              int            `gorm:"column:upvotes"`
+	Downvotes            int            `gorm:"column:downvotes"`
+	AwardedScore         float64        `gorm:"column:awarded_score"`
+	RepliesCount         int            `gorm:"column:replies_count"`
+	ReactionScore        int            `gorm:"column:reaction_score"`
+	RepliedGone          bool           `gorm:"column:replied_gone"`
+	ForwardedGone        bool           `gorm:"column:forwarded_gone"`
+	RepliedPostID        *uuid.UUID     `gorm:"column:replied_post_id;type:uuid"`
+	ForwardedPostID      *uuid.UUID     `gorm:"column:forwarded_post_id;type:uuid"`
+	ChainedPostID        *uuid.UUID     `gorm:"column:chained_post_id;type:uuid"`
+	QuoteAuthorizationID *uuid.UUID     `gorm:"column:quote_authorization_id;type:uuid"`
+	RealmID              *uuid.UUID     `gorm:"column:realm_id;type:uuid"`
+	Attachments          datatypes.JSON `gorm:"column:attachments;type:jsonb"`
+	PublisherID          uuid.UUID      `gorm:"column:publisher_id;type:uuid"`
+	ShadowbanReason      *int           `gorm:"column:shadowban_reason"`
+	ShadowbannedAt       *time.Time     `gorm:"column:shadowbanned_at"`
+	LockedAt             *time.Time     `gorm:"column:locked_at"`
 }
 
 func (PostEntity) TableName() string { return "posts" }
 
 // PostIndexEntity is the `post_indices` table.
 type PostIndexEntity struct {
-	ID         uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
-	PostID     uuid.UUID  `gorm:"column:post_id;type:uuid"`
-	SourceHash string     `gorm:"column:source_hash"`
-	SourceText string     `gorm:"column:source_text"`
-	Embedding  *string    `gorm:"column:embedding"`
-	IndexedAt  time.Time  `gorm:"column:indexed_at"`
+	ID         uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
+	PostID     uuid.UUID `gorm:"column:post_id;type:uuid"`
+	SourceHash string    `gorm:"column:source_hash"`
+	SourceText string    `gorm:"column:source_text"`
+	Embedding  *string   `gorm:"column:embedding"`
+	IndexedAt  time.Time `gorm:"column:indexed_at"`
 }
 
 func (PostIndexEntity) TableName() string { return "post_indices" }
 
 // PostReactionEntity is the `post_reactions` table.
 type PostReactionEntity struct {
-	ID           uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Symbol       string     `gorm:"column:symbol"`
 	Attitude     int        `gorm:"column:attitude"`
@@ -100,7 +100,7 @@ func (PostReactionEntity) TableName() string { return "post_reactions" }
 
 // PostBookmarkEntity is the `post_bookmarks` table.
 type PostBookmarkEntity struct {
-	ID        uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	PostID    uuid.UUID `gorm:"column:post_id;type:uuid"`
 	AccountID uuid.UUID `gorm:"column:account_id;type:uuid"`
@@ -110,7 +110,7 @@ func (PostBookmarkEntity) TableName() string { return "post_bookmarks" }
 
 // PostWatchPreferenceEntity is the `post_watch_preferences` table.
 type PostWatchPreferenceEntity struct {
-	ID              uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	AccountID       uuid.UUID `gorm:"column:account_id;type:uuid"`
 	Source          int       `gorm:"column:source"`
@@ -125,7 +125,7 @@ func (PostWatchPreferenceEntity) TableName() string { return "post_watch_prefere
 
 // PostAwardEntity is the `post_awards` table.
 type PostAwardEntity struct {
-	ID        uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Amount    float64    `gorm:"column:amount"`
 	Attitude  int        `gorm:"column:attitude"`
@@ -139,7 +139,7 @@ func (PostAwardEntity) TableName() string { return "post_awards" }
 
 // PostTagEntity is the `post_tags` table.
 type PostTagEntity struct {
-	ID               uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Slug             string     `gorm:"column:slug"`
 	Name             *string    `gorm:"column:name"`
@@ -154,10 +154,10 @@ func (PostTagEntity) TableName() string { return "post_tags" }
 
 // PostCategoryEntity is the `post_categories` table.
 type PostCategoryEntity struct {
-	ID        uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
-	Slug      string  `gorm:"column:slug"`
-	Name      *string `gorm:"column:name"`
+	Slug string  `gorm:"column:slug"`
+	Name *string `gorm:"column:name"`
 }
 
 func (PostCategoryEntity) TableName() string { return "post_categories" }
@@ -180,7 +180,7 @@ func (PostCategoryLink) TableName() string { return "post_category_links" }
 
 // PostCollectionEntity is the `post_collections` table.
 type PostCollectionEntity struct {
-	ID          uuid.UUID      `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Slug        string         `gorm:"column:slug"`
 	Name        *string        `gorm:"column:name"`
@@ -194,7 +194,7 @@ func (PostCollectionEntity) TableName() string { return "post_collections" }
 
 // PostCollectionItemEntity is the `post_collection_items` table.
 type PostCollectionItemEntity struct {
-	ID           uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	CollectionID uuid.UUID `gorm:"column:collection_id;type:uuid"`
 	PostID       uuid.UUID `gorm:"column:post_id;type:uuid"`
@@ -205,7 +205,7 @@ func (PostCollectionItemEntity) TableName() string { return "post_collection_ite
 
 // PostFeaturedRecordEntity is the `post_featured_records` table.
 type PostFeaturedRecordEntity struct {
-	ID            uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	PostID        uuid.UUID  `gorm:"column:post_id;type:uuid"`
 	FeaturedAt    *time.Time `gorm:"column:featured_at"`
@@ -216,7 +216,7 @@ func (PostFeaturedRecordEntity) TableName() string { return "post_featured_recor
 
 // PostSponsorBidEntity is the `post_sponsor_bids` table.
 type PostSponsorBidEntity struct {
-	ID        uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	PostID    uuid.UUID `gorm:"column:post_id;type:uuid"`
 	AccountID uuid.UUID `gorm:"column:account_id;type:uuid"`
@@ -228,7 +228,7 @@ func (PostSponsorBidEntity) TableName() string { return "post_sponsor_bids" }
 
 // PostSponsorPlacementEntity is the `post_sponsor_placements` table.
 type PostSponsorPlacementEntity struct {
-	ID          uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	PostID      uuid.UUID `gorm:"column:post_id;type:uuid"`
 	TotalAmount float64   `gorm:"column:total_amount"`
@@ -253,7 +253,7 @@ func (PostAggregatedStatsEntity) TableName() string { return "post_aggregated_st
 
 // PostCategorySubscriptionEntity is the `post_category_subscriptions` table.
 type PostCategorySubscriptionEntity struct {
-	ID           uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	AccountID    uuid.UUID  `gorm:"column:account_id;type:uuid"`
 	CategoryID   *uuid.UUID `gorm:"column:category_id;type:uuid"`
@@ -265,7 +265,7 @@ func (PostCategorySubscriptionEntity) TableName() string { return "post_category
 
 // PostInterestProfileEntity is the `post_interest_profiles` table.
 type PostInterestProfileEntity struct {
-	ID               uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	AccountID        uuid.UUID  `gorm:"column:account_id;type:uuid"`
 	Kind             int        `gorm:"column:kind"`
@@ -280,7 +280,7 @@ func (PostInterestProfileEntity) TableName() string { return "post_interest_prof
 
 // DiscoveryPreferenceEntity is the `discovery_preferences` table.
 type DiscoveryPreferenceEntity struct {
-	ID          uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	AccountID   uuid.UUID  `gorm:"column:account_id;type:uuid"`
 	Kind        int        `gorm:"column:kind"`
@@ -295,58 +295,58 @@ func (DiscoveryPreferenceEntity) TableName() string { return "discovery_preferen
 // PublishingSettingsEntity is the `publishing_settings` table. Its updated_at
 // is nullable, unlike ModelBase.
 type PublishingSettingsEntity struct {
-	ID                          uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
-	CreatedAt                   time.Time  `gorm:"column:created_at"`
-	UpdatedAt                   *time.Time `gorm:"column:updated_at"`
+	ID                          uuid.UUID      `gorm:"column:id;primaryKey;type:uuid"`
+	CreatedAt                   time.Time      `gorm:"column:created_at"`
+	UpdatedAt                   *time.Time     `gorm:"column:updated_at"`
 	DeletedAt                   gorm.DeletedAt `gorm:"column:deleted_at;index"`
-	AccountID                   uuid.UUID  `gorm:"column:account_id;type:uuid"`
-	DefaultPostingPublisherID   *uuid.UUID `gorm:"column:default_posting_publisher_id;type:uuid"`
-	DefaultReplyPublisherID     *uuid.UUID `gorm:"column:default_reply_publisher_id;type:uuid"`
-	DefaultFediversePublisherID *uuid.UUID `gorm:"column:default_fediverse_publisher_id;type:uuid"`
+	AccountID                   uuid.UUID      `gorm:"column:account_id;type:uuid"`
+	DefaultPostingPublisherID   *uuid.UUID     `gorm:"column:default_posting_publisher_id;type:uuid"`
+	DefaultReplyPublisherID     *uuid.UUID     `gorm:"column:default_reply_publisher_id;type:uuid"`
+	DefaultFediversePublisherID *uuid.UUID     `gorm:"column:default_fediverse_publisher_id;type:uuid"`
 }
 
 func (PublishingSettingsEntity) TableName() string { return "publishing_settings" }
 
 // PublisherEntity is the `publishers` table.
 type PublisherEntity struct {
-	ID              uuid.UUID      `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
-	Type            int            `gorm:"column:type"`
-	Name            string         `gorm:"column:name"`
-	Nick            string         `gorm:"column:nick"`
-	Bio             *string        `gorm:"column:bio"`
-	Picture         datatypes.JSON `gorm:"column:picture;type:jsonb"`
-	Background      datatypes.JSON `gorm:"column:background;type:jsonb"`
-	Verification    datatypes.JSON `gorm:"column:verification;type:jsonb"`
-	Meta            datatypes.JSON `gorm:"column:meta;type:jsonb"`
-	Metadata        datatypes.JSON `gorm:"column:metadata;type:jsonb"`
-	URI             *string        `gorm:"column:uri"`
-	ActorType       *string        `gorm:"column:actor_type"`
-	Username        *string        `gorm:"column:username"`
-	InstanceID      *uuid.UUID     `gorm:"column:instance_id;type:uuid"`
-	InstanceDomain  *string        `gorm:"column:instance_domain"`
-	InboxURI        *string        `gorm:"column:inbox_uri"`
-	OutboxURI       *string        `gorm:"column:outbox_uri"`
-	FollowersURI    *string        `gorm:"column:followers_uri"`
-	FollowingURI    *string        `gorm:"column:following_uri"`
-	FeaturedURI     *string        `gorm:"column:featured_uri"`
-	PublicKeyID     *string        `gorm:"column:public_key_id"`
-	PublicKey       *string        `gorm:"column:public_key"`
-	IsBot           bool           `gorm:"column:is_bot"`
-	IsLocked        bool           `gorm:"column:is_locked"`
-	IsDiscoverable  bool           `gorm:"column:is_discoverable"`
-	IsCommunity     bool           `gorm:"column:is_community"`
-	LastFetchedAt   *time.Time     `gorm:"column:last_fetched_at"`
-	LastActivityAt  *time.Time     `gorm:"column:last_activity_at"`
-	OutboxFetchedAt *time.Time     `gorm:"column:outbox_fetched_at"`
-	AccountID       *uuid.UUID     `gorm:"column:account_id;type:uuid"`
-	RealmID         *uuid.UUID     `gorm:"column:realm_id;type:uuid"`
-	PayoutWalletID  *uuid.UUID     `gorm:"column:payout_wallet_id;type:uuid"`
-	ShadowbanReason *int           `gorm:"column:shadowban_reason"`
-	ShadowbannedAt  *time.Time     `gorm:"column:shadowbanned_at"`
-	GatekeptFollows *bool          `gorm:"column:gatekept_follows"`
-	ModerateSubscription *bool     `gorm:"column:moderate_subscription"`
-	Rating          float64        `gorm:"column:rating"`
+	Type                 int            `gorm:"column:type"`
+	Name                 string         `gorm:"column:name"`
+	Nick                 string         `gorm:"column:nick"`
+	Bio                  *string        `gorm:"column:bio"`
+	Picture              datatypes.JSON `gorm:"column:picture;type:jsonb"`
+	Background           datatypes.JSON `gorm:"column:background;type:jsonb"`
+	Verification         datatypes.JSON `gorm:"column:verification;type:jsonb"`
+	Meta                 datatypes.JSON `gorm:"column:meta;type:jsonb"`
+	Metadata             datatypes.JSON `gorm:"column:metadata;type:jsonb"`
+	URI                  *string        `gorm:"column:uri"`
+	ActorType            *string        `gorm:"column:actor_type"`
+	Username             *string        `gorm:"column:username"`
+	InstanceID           *uuid.UUID     `gorm:"column:instance_id;type:uuid"`
+	InstanceDomain       *string        `gorm:"column:instance_domain"`
+	InboxURI             *string        `gorm:"column:inbox_uri"`
+	OutboxURI            *string        `gorm:"column:outbox_uri"`
+	FollowersURI         *string        `gorm:"column:followers_uri"`
+	FollowingURI         *string        `gorm:"column:following_uri"`
+	FeaturedURI          *string        `gorm:"column:featured_uri"`
+	PublicKeyID          *string        `gorm:"column:public_key_id"`
+	PublicKey            *string        `gorm:"column:public_key"`
+	IsBot                bool           `gorm:"column:is_bot"`
+	IsLocked             bool           `gorm:"column:is_locked"`
+	IsDiscoverable       bool           `gorm:"column:is_discoverable"`
+	IsCommunity          bool           `gorm:"column:is_community"`
+	LastFetchedAt        *time.Time     `gorm:"column:last_fetched_at"`
+	LastActivityAt       *time.Time     `gorm:"column:last_activity_at"`
+	OutboxFetchedAt      *time.Time     `gorm:"column:outbox_fetched_at"`
+	AccountID            *uuid.UUID     `gorm:"column:account_id;type:uuid"`
+	RealmID              *uuid.UUID     `gorm:"column:realm_id;type:uuid"`
+	PayoutWalletID       *uuid.UUID     `gorm:"column:payout_wallet_id;type:uuid"`
+	ShadowbanReason      *int           `gorm:"column:shadowban_reason"`
+	ShadowbannedAt       *time.Time     `gorm:"column:shadowbanned_at"`
+	GatekeptFollows      *bool          `gorm:"column:gatekept_follows"`
+	ModerateSubscription *bool          `gorm:"column:moderate_subscription"`
+	Rating               float64        `gorm:"column:rating"`
 }
 
 func (PublisherEntity) TableName() string { return "publishers" }
@@ -363,7 +363,7 @@ func (PublisherMemberEntity) TableName() string { return "publisher_members" }
 
 // PublisherSubscriptionEntity is the `publisher_subscriptions` table.
 type PublisherSubscriptionEntity struct {
-	ID                  uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	AccountID           *uuid.UUID `gorm:"column:account_id;type:uuid"`
 	FollowerPublisherID *uuid.UUID `gorm:"column:follower_publisher_id;type:uuid"`
@@ -387,7 +387,7 @@ func (PublisherSubscriptionEntity) TableName() string { return "publisher_subscr
 
 // PublisherFeatureEntity is the `publisher_features` table.
 type PublisherFeatureEntity struct {
-	ID          uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Flag        string     `gorm:"column:flag"`
 	ExpiredAt   *time.Time `gorm:"column:expired_at"`
@@ -398,7 +398,7 @@ func (PublisherFeatureEntity) TableName() string { return "publisher_features" }
 
 // PublisherRatingRecordEntity is the `publisher_rating_records` table.
 type PublisherRatingRecordEntity struct {
-	ID          uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	ReasonType  string    `gorm:"column:reason_type"`
 	Reason      string    `gorm:"column:reason"`
@@ -410,7 +410,7 @@ func (PublisherRatingRecordEntity) TableName() string { return "publisher_rating
 
 // PublisherVerifiedDomainEntity is the `publisher_verified_domains` table.
 type PublisherVerifiedDomainEntity struct {
-	ID             uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	PublisherID    uuid.UUID  `gorm:"column:publisher_id;type:uuid"`
 	Domain         string     `gorm:"column:domain"`
@@ -425,7 +425,7 @@ func (PublisherVerifiedDomainEntity) TableName() string { return "publisher_veri
 
 // SurveyEntity is the `surveys` table.
 type SurveyEntity struct {
-	ID                uuid.UUID      `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Title             *string        `gorm:"column:title"`
 	Description       *string        `gorm:"column:description"`
@@ -443,7 +443,7 @@ func (SurveyEntity) TableName() string { return "surveys" }
 
 // SurveyQuestionEntity is the `survey_questions` table.
 type SurveyQuestionEntity struct {
-	ID            uuid.UUID      `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Type          int            `gorm:"column:type"`
 	Options       datatypes.JSON `gorm:"column:options;type:jsonb"`
@@ -463,7 +463,7 @@ func (SurveyQuestionEntity) TableName() string { return "survey_questions" }
 
 // SurveyAnswerEntity is the `survey_answers` table.
 type SurveyAnswerEntity struct {
-	ID        uuid.UUID      `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Answer    datatypes.JSON `gorm:"column:answer;type:jsonb"`
 	AccountID uuid.UUID      `gorm:"column:account_id;type:uuid"`
@@ -474,7 +474,7 @@ func (SurveyAnswerEntity) TableName() string { return "survey_answers" }
 
 // SurveySubscriptionEntity is the `survey_subscriptions` table.
 type SurveySubscriptionEntity struct {
-	ID        uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	AccountID uuid.UUID `gorm:"column:account_id;type:uuid"`
 	SurveyID  uuid.UUID `gorm:"column:survey_id;type:uuid"`
@@ -484,22 +484,22 @@ func (SurveySubscriptionEntity) TableName() string { return "survey_subscription
 
 // StickerEntity is the `stickers` table.
 type StickerEntity struct {
-	ID        uuid.UUID      `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
-	Slug      string         `gorm:"column:slug"`
-	Name      string         `gorm:"column:name"`
-	Image     datatypes.JSON `gorm:"column:image;type:jsonb"`
-	Size      int            `gorm:"column:size"`
-	Mode      int            `gorm:"column:mode"`
-	Order     int            `gorm:"column:order"`
-	PackID    uuid.UUID      `gorm:"column:pack_id;type:uuid"`
+	Slug   string         `gorm:"column:slug"`
+	Name   string         `gorm:"column:name"`
+	Image  datatypes.JSON `gorm:"column:image;type:jsonb"`
+	Size   int            `gorm:"column:size"`
+	Mode   int            `gorm:"column:mode"`
+	Order  int            `gorm:"column:order"`
+	PackID uuid.UUID      `gorm:"column:pack_id;type:uuid"`
 }
 
 func (StickerEntity) TableName() string { return "stickers" }
 
 // StickerPackEntity is the `sticker_packs` table.
 type StickerPackEntity struct {
-	ID          uuid.UUID      `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Icon        datatypes.JSON `gorm:"column:icon;type:jsonb"`
 	Name        string         `gorm:"column:name"`
@@ -513,7 +513,7 @@ func (StickerPackEntity) TableName() string { return "sticker_packs" }
 
 // StickerPackOwnershipEntity is the `sticker_pack_ownerships` table.
 type StickerPackOwnershipEntity struct {
-	ID        uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	PackID    uuid.UUID `gorm:"column:pack_id;type:uuid"`
 	AccountID uuid.UUID `gorm:"column:account_id;type:uuid"`
@@ -536,7 +536,7 @@ func (RealmPostModerationLogEntity) TableName() string { return "realm_post_mode
 
 // FediverseInstanceEntity is the `fediverse_instances` table.
 type FediverseInstanceEntity struct {
-	ID                     uuid.UUID      `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Domain                 string         `gorm:"column:domain"`
 	Name                   *string        `gorm:"column:name"`
@@ -561,7 +561,7 @@ func (FediverseInstanceEntity) TableName() string { return "fediverse_instances"
 
 // FediverseModerationRuleEntity is the `fediverse_moderation_rules` table.
 type FediverseModerationRuleEntity struct {
-	ID              uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Name            string     `gorm:"column:name"`
 	Description     *string    `gorm:"column:description"`
@@ -581,7 +581,7 @@ func (FediverseModerationRuleEntity) TableName() string { return "fediverse_mode
 
 // FediverseKeyEntity is the `fediverse_keys` table.
 type FediverseKeyEntity struct {
-	ID            uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	KeyID         string     `gorm:"column:key_id"`
 	KeyPEM        string     `gorm:"column:key_pem"`
@@ -630,7 +630,7 @@ func (DeliveryDeadLetterEntity) TableName() string { return "delivery_dead_lette
 
 // BoostEntity is the `boosts` table.
 type BoostEntity struct {
-	ID             uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	PostID         uuid.UUID  `gorm:"column:post_id;type:uuid"`
 	PublisherID    uuid.UUID  `gorm:"column:publisher_id;type:uuid"`
@@ -644,7 +644,7 @@ func (BoostEntity) TableName() string { return "boosts" }
 
 // QuoteAuthorizationEntity is the `quote_authorizations` table.
 type QuoteAuthorizationEntity struct {
-	ID                   uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	FediverseURI         *string    `gorm:"column:fediverse_uri"`
 	PublisherID          uuid.UUID  `gorm:"column:publisher_id;type:uuid"`
@@ -660,7 +660,7 @@ func (QuoteAuthorizationEntity) TableName() string { return "quote_authorization
 
 // LiveStreamEntity is the `live_streams` table.
 type LiveStreamEntity struct {
-	ID                     uuid.UUID      `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Title                  *string        `gorm:"column:title"`
 	Description            *string        `gorm:"column:description"`
@@ -691,7 +691,7 @@ func (LiveStreamEntity) TableName() string { return "live_streams" }
 
 // LiveStreamChatMessageEntity is the `live_stream_chat_messages` table.
 type LiveStreamChatMessageEntity struct {
-	ID           uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	LiveStreamID uuid.UUID  `gorm:"column:live_stream_id;type:uuid"`
 	SenderID     uuid.UUID  `gorm:"column:sender_id;type:uuid"`
@@ -704,7 +704,7 @@ func (LiveStreamChatMessageEntity) TableName() string { return "live_stream_chat
 
 // LiveStreamAwardEntity is the `live_stream_awards` table.
 type LiveStreamAwardEntity struct {
-	ID           uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Amount       float64   `gorm:"column:amount"`
 	Attitude     int       `gorm:"column:attitude"`
@@ -718,7 +718,7 @@ func (LiveStreamAwardEntity) TableName() string { return "live_stream_awards" }
 
 // AutomodRuleEntity is the `automod_rules` table.
 type AutomodRuleEntity struct {
-	ID            uuid.UUID  `gorm:"column:id;primaryKey;type:uuid"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Name          string     `gorm:"column:name"`
 	Description   *string    `gorm:"column:description"`
@@ -736,17 +736,17 @@ func (AutomodRuleEntity) TableName() string { return "automod_rules" }
 
 // RealmRolePermissionEntity is the `sn_realm_role_permission` table.
 type RealmRolePermissionEntity struct {
-	ID                 uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
-	RealmID            uuid.UUID `gorm:"column:realm_id;type:uuid"`
-	RoleLevel          int       `gorm:"column:role_level"`
-	CanChat            bool      `gorm:"column:can_chat"`
-	CanComment         bool      `gorm:"column:can_comment"`
-	CanManageMembers   bool      `gorm:"column:can_manage_members"`
-	CanManageRealm     bool      `gorm:"column:can_manage_realm"`
-	CanModerateChat    bool      `gorm:"column:can_moderate_chat"`
-	CanModeratePosts   bool      `gorm:"column:can_moderate_posts"`
-	CanPost            bool      `gorm:"column:can_post"`
-	CanUploadMedia     bool      `gorm:"column:can_upload_media"`
+	ID               uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
+	RealmID          uuid.UUID `gorm:"column:realm_id;type:uuid"`
+	RoleLevel        int       `gorm:"column:role_level"`
+	CanChat          bool      `gorm:"column:can_chat"`
+	CanComment       bool      `gorm:"column:can_comment"`
+	CanManageMembers bool      `gorm:"column:can_manage_members"`
+	CanManageRealm   bool      `gorm:"column:can_manage_realm"`
+	CanModerateChat  bool      `gorm:"column:can_moderate_chat"`
+	CanModeratePosts bool      `gorm:"column:can_moderate_posts"`
+	CanPost          bool      `gorm:"column:can_post"`
+	CanUploadMedia   bool      `gorm:"column:can_upload_media"`
 }
 
 func (RealmRolePermissionEntity) TableName() string { return "sn_realm_role_permission" }

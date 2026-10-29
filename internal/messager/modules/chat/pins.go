@@ -93,9 +93,9 @@ func (i *instance) pinMessage(c *gin.Context) {
 		return
 	}
 	meta := map[string]any{
-		"pin_id":                pin.ID.String(),
-		"message_id":            messageID.String(),
-		"pinned_by_member_id":   member.ID.String(),
+		"pin_id":              pin.ID.String(),
+		"message_id":          messageID.String(),
+		"pinned_by_member_id": member.ID.String(),
 	}
 	if expiresAt != nil {
 		meta["expires_at"] = expiresAt.UnixMilli()

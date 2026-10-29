@@ -133,8 +133,8 @@ func (s *server) writeNodeInfo(c *gin.Context, version string) {
 		},
 		"usage": gin.H{
 			"users": gin.H{
-				"total":         stats.totalPublishers,
-				"active_month":  stats.activePublishers,
+				"total":           stats.totalPublishers,
+				"active_month":    stats.activePublishers,
 				"active_halfyear": stats.activePublishers,
 			},
 			"local_posts":    stats.totalPosts,
@@ -150,12 +150,12 @@ func (s *server) writeNodeInfo(c *gin.Context, version string) {
 				"max_media_attachments": 4,
 			},
 			"media_attachments": gin.H{
-				"supported_mime_types":    []string{"image/*", "video/*", "audio/*"},
-				"image_size_limit":        10_000_000,
-				"image_matrix_limit":      4_000_000,
-				"video_size_limit":        40_000_000,
-				"video_frame_rate_limit":  30,
-				"video_matrix_limit":      2_000_000,
+				"supported_mime_types":   []string{"image/*", "video/*", "audio/*"},
+				"image_size_limit":       10_000_000,
+				"image_matrix_limit":     4_000_000,
+				"video_size_limit":       40_000_000,
+				"video_frame_rate_limit": 30,
+				"video_matrix_limit":     2_000_000,
 			},
 		},
 	}

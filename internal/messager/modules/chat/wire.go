@@ -80,7 +80,7 @@ type autocompletion struct {
 }
 
 type deviceSubscription struct {
-	DeviceToken string     `json:"device_token"`
+	DeviceToken string      `json:"device_token"`
 	ExpiresAt   *model.Time `json:"expires_at"`
 }
 
@@ -100,26 +100,26 @@ type accountSubscriptionEntry struct {
 }
 
 type subscriptionDeviceStatus struct {
-	DeviceToken          string     `json:"device_token"`
+	DeviceToken          string      `json:"device_token"`
 	ExpiresAt            *model.Time `json:"expires_at"`
-	IsWebSocketConnected bool       `json:"is_web_socket_connected"`
+	IsWebSocketConnected bool        `json:"is_web_socket_connected"`
 }
 
 type subscriptionRoomStatus struct {
-	RoomID                    string                      `json:"room_id"`
-	MemberID                  string                      `json:"member_id"`
-	Room                      model.ChatRoom              `json:"room"`
-	IsSubscribed              bool                        `json:"is_subscribed"`
-	PushNotificationsSuppressed bool                      `json:"push_notifications_suppressed"`
-	Devices                   []subscriptionDeviceStatus  `json:"devices"`
+	RoomID                      string                     `json:"room_id"`
+	MemberID                    string                     `json:"member_id"`
+	Room                        model.ChatRoom             `json:"room"`
+	IsSubscribed                bool                       `json:"is_subscribed"`
+	PushNotificationsSuppressed bool                       `json:"push_notifications_suppressed"`
+	Devices                     []subscriptionDeviceStatus `json:"devices"`
 }
 
 type accountStatusResponse struct {
-	AccountID                              string                   `json:"account_id"`
-	HasActiveSubscriptions                 bool                     `json:"has_active_subscriptions"`
-	HasAnyWebSocketConnection              bool                     `json:"has_any_web_socket_connection"`
-	PushNotificationsMaySendForUnsubscribed bool                   `json:"push_notifications_may_send_for_unsubscribed_rooms"`
-	Subscriptions                          []subscriptionRoomStatus `json:"subscriptions"`
+	AccountID                               string                   `json:"account_id"`
+	HasActiveSubscriptions                  bool                     `json:"has_active_subscriptions"`
+	HasAnyWebSocketConnection               bool                     `json:"has_any_web_socket_connection"`
+	PushNotificationsMaySendForUnsubscribed bool                     `json:"push_notifications_may_send_for_unsubscribed_rooms"`
+	Subscriptions                           []subscriptionRoomStatus `json:"subscriptions"`
 }
 
 type messageSearchRoomResponse struct {
@@ -128,11 +128,11 @@ type messageSearchRoomResponse struct {
 }
 
 type roomSyncChange struct {
-	RoomID    string             `json:"room_id"`
-	Type      string             `json:"type"`
-	Room      *model.ChatRoom    `json:"room"`
-	Member    *model.ChatMember  `json:"member"`
-	ChangedAt *model.Time        `json:"changed_at"`
+	RoomID    string            `json:"room_id"`
+	Type      string            `json:"type"`
+	Room      *model.ChatRoom   `json:"room"`
+	Member    *model.ChatMember `json:"member"`
+	ChangedAt *model.Time       `json:"changed_at"`
 }
 
 type roomSummarySyncChange struct {
@@ -190,7 +190,7 @@ type chatMemberRequest struct {
 }
 
 type chatMemberNotifyRequest struct {
-	NotifyLevel *int       `json:"notify_level"`
+	NotifyLevel *int        `json:"notify_level"`
 	BreakUntil  *model.Time `json:"break_until"`
 }
 
@@ -223,10 +223,10 @@ type moveToGroupRequest struct {
 }
 
 type onlineMembersResponse struct {
-	OnlineCount        int      `json:"online_count"`
-	DirectMessageStatus any     `json:"direct_message_status"`
-	OnlineUserNames    []string `json:"online_user_names"`
-	OnlineAccounts     []any    `json:"online_accounts"`
+	OnlineCount         int      `json:"online_count"`
+	DirectMessageStatus any      `json:"direct_message_status"`
+	OnlineUserNames     []string `json:"online_user_names"`
+	OnlineAccounts      []any    `json:"online_accounts"`
 }
 
 type deviceJoinedRequest struct {

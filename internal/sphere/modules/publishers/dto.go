@@ -44,8 +44,8 @@ type subscriptionWithLiveStatus struct {
 
 // subscriberResponse mirrors the controller's SubscriberResponse.
 type subscriberResponse struct {
-	Subscription *subscriptionDTO   `json:"subscription"`
-	Account      *model.AccountRef  `json:"account"`
+	Subscription *subscriptionDTO  `json:"subscription"`
+	Account      *model.AccountRef `json:"account"`
 }
 
 // relationshipResponse mirrors PublisherRelationshipResponse.
@@ -67,11 +67,11 @@ type publisherQuotaRecord struct {
 
 // publisherQuotaResponse mirrors ResourceQuotaResponse<PublisherQuotaRecord>.
 type publisherQuotaResponse struct {
-	Total     int                   `json:"total"`
-	Used      int                   `json:"used"`
-	Remaining int                   `json:"remaining"`
-	Level     int                   `json:"level"`
-	PerkLevel int                   `json:"perk_level"`
+	Total     int                    `json:"total"`
+	Used      int                    `json:"used"`
+	Remaining int                    `json:"remaining"`
+	Level     int                    `json:"level"`
+	PerkLevel int                    `json:"perk_level"`
 	Records   []publisherQuotaRecord `json:"records"`
 }
 
@@ -157,34 +157,34 @@ type publishingSettingsDTO struct {
 
 // liveStreamDTO mirrors SnLiveStream for the subscription live listing.
 type liveStreamDTO struct {
-	ID                   string          `json:"id"`
-	Title                *string         `json:"title"`
-	Description          *string         `json:"description"`
-	Slug                 *string         `json:"slug"`
-	Type                 int             `json:"type"`
-	Visibility           int             `json:"visibility"`
-	Status               int             `json:"status"`
-	RoomName             string          `json:"room_name"`
-	IngressID            *string         `json:"ingress_id"`
-	IngressStreamKey     *string         `json:"ingress_stream_key"`
-	EgressID             *string         `json:"egress_id"`
-	HLSegressID          *string         `json:"hls_egress_id"`
-	HLSPlaylistPath      *string         `json:"hls_playlist_path"`
-	HLSStartedAt         *model.Time     `json:"hls_started_at"`
-	StartedAt            *model.Time     `json:"started_at"`
-	EndedAt              *model.Time     `json:"ended_at"`
-	TotalDurationSeconds int64           `json:"total_duration_seconds"`
-	ViewerCount          int             `json:"viewer_count"`
-	PeakViewerCount      int             `json:"peak_viewer_count"`
-	TotalAwardScore      float64         `json:"total_award_score"`
-	DistributedAward     float64         `json:"distributed_award_amount"`
-	Thumbnail            any             `json:"thumbnail"`
-	Metadata             any             `json:"metadata"`
-	PublisherID          *string         `json:"publisher_id"`
+	ID                   string           `json:"id"`
+	Title                *string          `json:"title"`
+	Description          *string          `json:"description"`
+	Slug                 *string          `json:"slug"`
+	Type                 int              `json:"type"`
+	Visibility           int              `json:"visibility"`
+	Status               int              `json:"status"`
+	RoomName             string           `json:"room_name"`
+	IngressID            *string          `json:"ingress_id"`
+	IngressStreamKey     *string          `json:"ingress_stream_key"`
+	EgressID             *string          `json:"egress_id"`
+	HLSegressID          *string          `json:"hls_egress_id"`
+	HLSPlaylistPath      *string          `json:"hls_playlist_path"`
+	HLSStartedAt         *model.Time      `json:"hls_started_at"`
+	StartedAt            *model.Time      `json:"started_at"`
+	EndedAt              *model.Time      `json:"ended_at"`
+	TotalDurationSeconds int64            `json:"total_duration_seconds"`
+	ViewerCount          int              `json:"viewer_count"`
+	PeakViewerCount      int              `json:"peak_viewer_count"`
+	TotalAwardScore      float64          `json:"total_award_score"`
+	DistributedAward     float64          `json:"distributed_award_amount"`
+	Thumbnail            any              `json:"thumbnail"`
+	Metadata             any              `json:"metadata"`
+	PublisherID          *string          `json:"publisher_id"`
 	Publisher            *model.Publisher `json:"publisher"`
-	CreatedAt            *model.Time     `json:"created_at"`
-	UpdatedAt            *model.Time     `json:"updated_at"`
-	DeletedAt            *model.Time     `json:"deleted_at"`
+	CreatedAt            *model.Time      `json:"created_at"`
+	UpdatedAt            *model.Time      `json:"updated_at"`
+	DeletedAt            *model.Time      `json:"deleted_at"`
 }
 
 // Request payloads.

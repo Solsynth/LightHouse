@@ -23,11 +23,11 @@ import (
 )
 
 type createCollectionRequest struct {
-	Slug        string  `json:"slug"`
-	Name        *string `json:"name"`
-	Description *string `json:"description"`
+	Slug         string  `json:"slug"`
+	Name         *string `json:"name"`
+	Description  *string `json:"description"`
 	BackgroundID *string `json:"backgroundId"`
-	IconID      *string `json:"iconId"`
+	IconID       *string `json:"iconId"`
 }
 
 type updateCollectionRequest struct {

@@ -30,47 +30,47 @@ type AutomodRuleResult struct {
 
 // LiveStream is one live stream.
 type LiveStream struct {
-	ID                    string  `json:"id"`
-	Title                 *string `json:"title"`
-	Description           *string `json:"description"`
-	Slug                  *string `json:"slug"`
-	Type                  int     `json:"type"`
-	Visibility            int     `json:"visibility"`
-	Status                int     `json:"status"`
-	RoomName              string  `json:"room_name"`
-	IngressID             *string `json:"ingress_id"`
-	IngressStreamKey      *string `json:"ingress_stream_key"`
-	EgressID              *string `json:"egress_id"`
-	HLSEgressID           *string `json:"hls_egress_id"`
-	HLSPlaylistPath       *string `json:"hls_playlist_path"`
-	HLSStartedAt          *Time   `json:"hls_started_at"`
-	StartedAt             *Time   `json:"started_at"`
-	EndedAt               *Time   `json:"ended_at"`
-	TotalDurationSeconds  int64   `json:"total_duration_seconds"`
-	ViewerCount           int     `json:"viewer_count"`
-	PeakViewerCount       int     `json:"peak_viewer_count"`
-	TotalAwardScore       float64 `json:"total_award_score"`
-	DistributedAwardAmount float64 `json:"distributed_award_amount"`
-	Thumbnail             any     `json:"thumbnail"`
-	Metadata              any     `json:"metadata"`
-	PublisherID           *string `json:"publisher_id"`
-	Publisher             *Publisher `json:"publisher"`
-	CreatedAt             *Time   `json:"created_at"`
-	UpdatedAt             *Time   `json:"updated_at"`
-	DeletedAt             *Time   `json:"deleted_at"`
+	ID                     string     `json:"id"`
+	Title                  *string    `json:"title"`
+	Description            *string    `json:"description"`
+	Slug                   *string    `json:"slug"`
+	Type                   int        `json:"type"`
+	Visibility             int        `json:"visibility"`
+	Status                 int        `json:"status"`
+	RoomName               string     `json:"room_name"`
+	IngressID              *string    `json:"ingress_id"`
+	IngressStreamKey       *string    `json:"ingress_stream_key"`
+	EgressID               *string    `json:"egress_id"`
+	HLSEgressID            *string    `json:"hls_egress_id"`
+	HLSPlaylistPath        *string    `json:"hls_playlist_path"`
+	HLSStartedAt           *Time      `json:"hls_started_at"`
+	StartedAt              *Time      `json:"started_at"`
+	EndedAt                *Time      `json:"ended_at"`
+	TotalDurationSeconds   int64      `json:"total_duration_seconds"`
+	ViewerCount            int        `json:"viewer_count"`
+	PeakViewerCount        int        `json:"peak_viewer_count"`
+	TotalAwardScore        float64    `json:"total_award_score"`
+	DistributedAwardAmount float64    `json:"distributed_award_amount"`
+	Thumbnail              any        `json:"thumbnail"`
+	Metadata               any        `json:"metadata"`
+	PublisherID            *string    `json:"publisher_id"`
+	Publisher              *Publisher `json:"publisher"`
+	CreatedAt              *Time      `json:"created_at"`
+	UpdatedAt              *Time      `json:"updated_at"`
+	DeletedAt              *Time      `json:"deleted_at"`
 }
 
 // LiveStreamChatMessage is one live chat message.
 type LiveStreamChatMessage struct {
-	ID           string  `json:"id"`
-	LiveStreamID string  `json:"live_stream_id"`
-	SenderID     string  `json:"sender_id"`
-	SenderName   string  `json:"sender_name"`
-	Content      string  `json:"content"`
-	TimeoutUntil *Time   `json:"timeout_until"`
-	CreatedAt    *Time   `json:"created_at"`
-	UpdatedAt    *Time   `json:"updated_at"`
-	DeletedAt    *Time   `json:"deleted_at"`
+	ID           string `json:"id"`
+	LiveStreamID string `json:"live_stream_id"`
+	SenderID     string `json:"sender_id"`
+	SenderName   string `json:"sender_name"`
+	Content      string `json:"content"`
+	TimeoutUntil *Time  `json:"timeout_until"`
+	CreatedAt    *Time  `json:"created_at"`
+	UpdatedAt    *Time  `json:"updated_at"`
+	DeletedAt    *Time  `json:"deleted_at"`
 }
 
 // LiveStreamAward is one award on a live stream.
@@ -153,12 +153,12 @@ type TimelinePage struct {
 
 // DiscoveryProfile is the recommendation profile payload.
 type DiscoveryProfile struct {
-	GeneratedAt        *Time               `json:"generated_at"`
-	Interests          []InterestEntry     `json:"interests"`
-	SuggestedPublishers []Publisher        `json:"suggested_publishers"`
-	SuggestedAccounts  []AccountRef        `json:"suggested_accounts"`
-	SuggestedRealms    []RealmRef          `json:"suggested_realms"`
-	Suppressed         []DiscoveryPreference `json:"suppressed"`
+	GeneratedAt         *Time                 `json:"generated_at"`
+	Interests           []InterestEntry       `json:"interests"`
+	SuggestedPublishers []Publisher           `json:"suggested_publishers"`
+	SuggestedAccounts   []AccountRef          `json:"suggested_accounts"`
+	SuggestedRealms     []RealmRef            `json:"suggested_realms"`
+	Suppressed          []DiscoveryPreference `json:"suppressed"`
 }
 
 // InterestEntry is one interest profile entry.
@@ -187,8 +187,8 @@ type DiscoveryPreference struct {
 
 // RecommendationFeedbackResult is the feedback endpoint payload.
 type RecommendationFeedbackResult struct {
-	UpdatedProfiles []InterestEntry        `json:"updated_profiles"`
-	Preference      *DiscoveryPreference   `json:"preference"`
+	UpdatedProfiles []InterestEntry      `json:"updated_profiles"`
+	Preference      *DiscoveryPreference `json:"preference"`
 }
 
 // LinkEmbed is the scraped link preview payload.

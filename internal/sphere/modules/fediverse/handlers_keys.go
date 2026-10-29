@@ -163,15 +163,15 @@ func (s *server) handleActorKeyInfo(c *gin.Context) {
 	var key store.FediverseKeyEntity
 	hasKey := s.db.WithContext(ctx).Where("publisher_id = ?", id).First(&key).Error == nil
 	info := gin.H{
-		"actor_id":       actor.ID.String(),
-		"actor_uri":      deref(actor.URI),
-		"username":       deref(actor.Username),
-		"domain":         deref(actor.InstanceDomain),
-		"has_key":        hasKey,
+		"actor_id":        actor.ID.String(),
+		"actor_uri":       deref(actor.URI),
+		"username":        deref(actor.Username),
+		"domain":          deref(actor.InstanceDomain),
+		"has_key":         hasKey,
 		"has_private_key": hasKey && key.PrivateKeyPEM != nil && *key.PrivateKeyPEM != "",
-		"key_id":         nil,
-		"key_created_at": nil,
-		"key_rotated_at": nil,
+		"key_id":          nil,
+		"key_created_at":  nil,
+		"key_rotated_at":  nil,
 	}
 	if hasKey {
 		info["key_id"] = key.KeyID

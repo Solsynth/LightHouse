@@ -518,9 +518,9 @@ func (i *instance) membersOnline(c *gin.Context) {
 		}
 	}
 	response := onlineMembersResponse{
-		OnlineCount:       len(onlineIDs),
-		OnlineUserNames:   []string{},
-		OnlineAccounts:    []any{},
+		OnlineCount:     len(onlineIDs),
+		OnlineUserNames: []string{},
+		OnlineAccounts:  []any{},
 	}
 	if room.Type == int(model.ChatRoomDirectMessage) {
 		if accountID == "" {

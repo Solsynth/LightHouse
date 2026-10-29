@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	lookupCachePrefix = "sticker:lookup:"
-	lookupCacheTTL    = 15 * time.Minute
+	lookupCachePrefix  = "sticker:lookup:"
+	lookupCacheTTL     = 15 * time.Minute
 	maxStickersPerPack = 24
 )
 

@@ -34,10 +34,10 @@ const (
 	// Positive = 0, Neutral = 1, Negative = 2. model.PostReactionAttitude
 	// declares a different order, so the module keeps its own constants for
 	// database predicates.
-	attitudePositive = 0
-	attitudeNeutral  = 1
-	attitudeNegative = 2
-	sponsorBidDuration       = 24 * time.Hour
+	attitudePositive   = 0
+	attitudeNeutral    = 1
+	attitudeNegative   = 2
+	sponsorBidDuration = 24 * time.Hour
 )
 
 var reactionsAllowedDefault = map[string]struct{}{

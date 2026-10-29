@@ -32,12 +32,12 @@ const (
 type PostVisibility int
 
 const (
-	VisibilityPublic          PostVisibility = 0
-	VisibilityFriends         PostVisibility = 1
-	VisibilityUnlisted        PostVisibility = 2
-	VisibilityPrivate         PostVisibility = 3
+	VisibilityPublic           PostVisibility = 0
+	VisibilityFriends          PostVisibility = 1
+	VisibilityUnlisted         PostVisibility = 2
+	VisibilityPrivate          PostVisibility = 3
 	VisibilityCloseFriendsOnly PostVisibility = 4
-	VisibilityQuietPublic     PostVisibility = 5
+	VisibilityQuietPublic      PostVisibility = 5
 )
 
 // PostContentType mirrors the C# PostContentType enum.
@@ -241,12 +241,12 @@ type RealmRef struct {
 
 // AccountRef is the account reference embedded in responses.
 type AccountRef struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	Nick     string  `json:"nick"`
-	Region   string  `json:"region"`
-	Language string  `json:"language"`
-	Picture  any     `json:"picture"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Nick     string `json:"nick"`
+	Region   string `json:"region"`
+	Language string `json:"language"`
+	Picture  any    `json:"picture"`
 }
 
 // SubscriptionRef is the perk-subscription snapshot Sphere embeds in responses

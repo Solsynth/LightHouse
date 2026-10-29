@@ -45,10 +45,10 @@ type thumbnailRequest struct {
 }
 
 type startStreamingRequest struct {
-	ParticipantName  *string `json:"participant_name"`
-	NoIngress        *bool   `json:"no_ingress"`
-	UseWhip          *bool   `json:"use_whip"`
-	EnableTranscoding *bool  `json:"enable_transcoding"`
+	ParticipantName   *string `json:"participant_name"`
+	NoIngress         *bool   `json:"no_ingress"`
+	UseWhip           *bool   `json:"use_whip"`
+	EnableTranscoding *bool   `json:"enable_transcoding"`
 }
 
 type startEgressRequest struct {
@@ -454,8 +454,8 @@ func (s *service) startHLS(c *gin.Context) {
 	}
 	playlistURL := s.lk.buildHLSPlaylistURL(&playlistPath)
 	httpx.OK(c, gin.H{
-		"egress_id":    result.EgressID,
-		"playlist_url": playlistURL,
+		"egress_id":     result.EgressID,
+		"playlist_url":  playlistURL,
 		"playlist_name": playlistName,
 	})
 }
@@ -907,10 +907,10 @@ func (s *service) award(c *gin.Context) {
 		remark = *entity.Title
 	}
 	meta := map[string]any{
-		"account_id":   accountID.String(),
+		"account_id":    accountID.String(),
 		"livestream_id": entity.ID.String(),
-		"amount":       amount,
-		"message":      req.Message,
+		"amount":        amount,
+		"message":       req.Message,
 	}
 	_ = remark
 	orderID, err := payments.CreateOrder(c.Request.Context(), accountID.String(), "livestreams.award", amount, "points", meta)

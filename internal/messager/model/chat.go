@@ -56,58 +56,58 @@ type ChatReactionAttitude int
 
 // ChatRoom is the wire shape of a chat room.
 type ChatRoom struct {
-	ID                  string  `json:"id"`
-	Name                *string `json:"name"`
-	Description         *string `json:"description"`
-	Slug                *string `json:"slug"`
-	Type                int     `json:"type"`
-	IsCommunity         bool    `json:"is_community"`
-	IsPublic            bool    `json:"is_public"`
-	IsReadReceiptsPublic bool   `json:"is_read_receipts_public"`
-	EncryptionMode      int     `json:"encryption_mode"`
-	MLSGroupID          *string `json:"mls_group_id"`
-	E2eePolicy          any     `json:"e2ee_policy"`
-	Picture             any     `json:"picture"`
-	Background          any     `json:"background"`
-	AccountID           *string `json:"account_id"`
-	RealmID             *string `json:"realm_id"`
-	Account             any     `json:"account"`
-	Realm               any     `json:"realm"`
-	Members             []ChatMember `json:"members"`
-	CreatedAt           *Time   `json:"created_at"`
-	UpdatedAt           *Time   `json:"updated_at"`
-	DeletedAt           *Time   `json:"deleted_at"`
+	ID                   string       `json:"id"`
+	Name                 *string      `json:"name"`
+	Description          *string      `json:"description"`
+	Slug                 *string      `json:"slug"`
+	Type                 int          `json:"type"`
+	IsCommunity          bool         `json:"is_community"`
+	IsPublic             bool         `json:"is_public"`
+	IsReadReceiptsPublic bool         `json:"is_read_receipts_public"`
+	EncryptionMode       int          `json:"encryption_mode"`
+	MLSGroupID           *string      `json:"mls_group_id"`
+	E2eePolicy           any          `json:"e2ee_policy"`
+	Picture              any          `json:"picture"`
+	Background           any          `json:"background"`
+	AccountID            *string      `json:"account_id"`
+	RealmID              *string      `json:"realm_id"`
+	Account              any          `json:"account"`
+	Realm                any          `json:"realm"`
+	Members              []ChatMember `json:"members"`
+	CreatedAt            *Time        `json:"created_at"`
+	UpdatedAt            *Time        `json:"updated_at"`
+	DeletedAt            *Time        `json:"deleted_at"`
 }
 
 // ChatMember is one room membership.
 type ChatMember struct {
-	ID            string  `json:"id"`
-	ChatRoomID    string  `json:"chat_room_id"`
-	AccountID     string  `json:"account_id"`
-	Username      *string `json:"username"`
-	Nick          *string `json:"nick"`
-	ChatGroupID   *string `json:"chat_group_id"`
-	Notify        int     `json:"notify"`
-	LastReadAt    *Time   `json:"last_read_at"`
-	JoinedAt      *Time   `json:"joined_at"`
-	LeaveAt       *Time   `json:"leave_at"`
-	ConfirmedAt   *Time   `json:"confirmed_at"`
-	InvitedByID   *string `json:"invited_by_id"`
-	BreakUntil    *Time   `json:"break_until"`
-	TimeoutUntil  *Time   `json:"timeout_until"`
-	TimeoutCause  any     `json:"timeout_cause"`
-	Account       any     `json:"account"`
-	Status        any     `json:"status"`
-	ChatGroup     *ChatGroup `json:"chat_group"`
-	RealmNick     *string `json:"realm_nick"`
-	RealmBio      *string `json:"realm_bio"`
-	RealmExperience *int  `json:"realm_experience"`
-	RealmLevel    *int    `json:"realm_level"`
-	RealmLevelingProgress *float64 `json:"realm_leveling_progress"`
-	RealmLabel    *string `json:"realm_label"`
-	CreatedAt     *Time   `json:"created_at"`
-	UpdatedAt     *Time   `json:"updated_at"`
-	DeletedAt     *Time   `json:"deleted_at"`
+	ID                    string     `json:"id"`
+	ChatRoomID            string     `json:"chat_room_id"`
+	AccountID             string     `json:"account_id"`
+	Username              *string    `json:"username"`
+	Nick                  *string    `json:"nick"`
+	ChatGroupID           *string    `json:"chat_group_id"`
+	Notify                int        `json:"notify"`
+	LastReadAt            *Time      `json:"last_read_at"`
+	JoinedAt              *Time      `json:"joined_at"`
+	LeaveAt               *Time      `json:"leave_at"`
+	ConfirmedAt           *Time      `json:"confirmed_at"`
+	InvitedByID           *string    `json:"invited_by_id"`
+	BreakUntil            *Time      `json:"break_until"`
+	TimeoutUntil          *Time      `json:"timeout_until"`
+	TimeoutCause          any        `json:"timeout_cause"`
+	Account               any        `json:"account"`
+	Status                any        `json:"status"`
+	ChatGroup             *ChatGroup `json:"chat_group"`
+	RealmNick             *string    `json:"realm_nick"`
+	RealmBio              *string    `json:"realm_bio"`
+	RealmExperience       *int       `json:"realm_experience"`
+	RealmLevel            *int       `json:"realm_level"`
+	RealmLevelingProgress *float64   `json:"realm_leveling_progress"`
+	RealmLabel            *string    `json:"realm_label"`
+	CreatedAt             *Time      `json:"created_at"`
+	UpdatedAt             *Time      `json:"updated_at"`
+	DeletedAt             *Time      `json:"deleted_at"`
 }
 
 // ChatGroup is one account's room folder.
@@ -135,34 +135,34 @@ type ChatEncryptionMeta struct {
 
 // ChatMessage is the wire shape of a message.
 type ChatMessage struct {
-	ID                 string  `json:"id"`
-	RoomSequence       int64   `json:"room_sequence"`
-	Type               string  `json:"type"`
-	Content            *string `json:"content"`
-	EncryptionMeta     *ChatEncryptionMeta `json:"encryption_meta"`
-	ClientMessageID    *string `json:"client_message_id"`
-	Nonce              *string `json:"nonce"`
-	Meta               any     `json:"meta"`
-	MembersMentioned   []string `json:"members_mentioned"`
-	EditedAt           *Time   `json:"edited_at"`
+	ID                 string                     `json:"id"`
+	RoomSequence       int64                      `json:"room_sequence"`
+	Type               string                     `json:"type"`
+	Content            *string                    `json:"content"`
+	EncryptionMeta     *ChatEncryptionMeta        `json:"encryption_meta"`
+	ClientMessageID    *string                    `json:"client_message_id"`
+	Nonce              *string                    `json:"nonce"`
+	Meta               any                        `json:"meta"`
+	MembersMentioned   []string                   `json:"members_mentioned"`
+	EditedAt           *Time                      `json:"edited_at"`
 	Attachments        []CloudFileReferenceObject `json:"attachments"`
-	ReactionsCount     map[string]int `json:"reactions_count"`
-	ReactionsMade      map[string]bool `json:"reactions_made"`
-	RepliedMessageID   *string `json:"replied_message_id"`
-	ThreadID           *string `json:"thread_id"`
-	ThreadRootID       *string `json:"thread_root_id"`
-	ForwardedMessageID *string `json:"forwarded_message_id"`
-	SenderID           string  `json:"sender_id"`
-	ChatRoomID         string  `json:"chat_room_id"`
-	Sender             *ChatMember `json:"sender"`
-	Reactions          []ChatReaction `json:"reactions"`
-	IsThreadRoot       bool    `json:"is_thread_root"`
-	ThreadRepliesCount int     `json:"thread_replies_count"`
-	ThreadReplies      []ThreadReplyNode `json:"thread_replies"`
-	IsEncrypted        bool    `json:"is_encrypted"`
-	CreatedAt          *Time   `json:"created_at"`
-	UpdatedAt          *Time   `json:"updated_at"`
-	DeletedAt          *Time   `json:"deleted_at"`
+	ReactionsCount     map[string]int             `json:"reactions_count"`
+	ReactionsMade      map[string]bool            `json:"reactions_made"`
+	RepliedMessageID   *string                    `json:"replied_message_id"`
+	ThreadID           *string                    `json:"thread_id"`
+	ThreadRootID       *string                    `json:"thread_root_id"`
+	ForwardedMessageID *string                    `json:"forwarded_message_id"`
+	SenderID           string                     `json:"sender_id"`
+	ChatRoomID         string                     `json:"chat_room_id"`
+	Sender             *ChatMember                `json:"sender"`
+	Reactions          []ChatReaction             `json:"reactions"`
+	IsThreadRoot       bool                       `json:"is_thread_root"`
+	ThreadRepliesCount int                        `json:"thread_replies_count"`
+	ThreadReplies      []ThreadReplyNode          `json:"thread_replies"`
+	IsEncrypted        bool                       `json:"is_encrypted"`
+	CreatedAt          *Time                      `json:"created_at"`
+	UpdatedAt          *Time                      `json:"updated_at"`
+	DeletedAt          *Time                      `json:"deleted_at"`
 }
 
 // ThreadReplyNode is one flattened thread reply.
@@ -173,29 +173,29 @@ type ThreadReplyNode struct {
 
 // ChatReaction is one reaction on a message.
 type ChatReaction struct {
-	ID        string  `json:"id"`
-	MessageID string  `json:"message_id"`
-	SenderID  string  `json:"sender_id"`
-	Symbol    string  `json:"symbol"`
-	Attitude  int     `json:"attitude"`
+	ID        string      `json:"id"`
+	MessageID string      `json:"message_id"`
+	SenderID  string      `json:"sender_id"`
+	Symbol    string      `json:"symbol"`
+	Attitude  int         `json:"attitude"`
 	Sender    *ChatMember `json:"sender"`
-	CreatedAt *Time   `json:"created_at"`
-	UpdatedAt *Time   `json:"updated_at"`
-	DeletedAt *Time   `json:"deleted_at"`
+	CreatedAt *Time       `json:"created_at"`
+	UpdatedAt *Time       `json:"updated_at"`
+	DeletedAt *Time       `json:"deleted_at"`
 }
 
 // ChatMessagePin is one pinned message.
 type ChatMessagePin struct {
-	ID               string  `json:"id"`
-	MessageID        string  `json:"message_id"`
-	ChatRoomID       string  `json:"chat_room_id"`
-	PinnedByMemberID string  `json:"pinned_by_member_id"`
-	ExpiresAt        *Time   `json:"expires_at"`
+	ID               string       `json:"id"`
+	MessageID        string       `json:"message_id"`
+	ChatRoomID       string       `json:"chat_room_id"`
+	PinnedByMemberID string       `json:"pinned_by_member_id"`
+	ExpiresAt        *Time        `json:"expires_at"`
 	Message          *ChatMessage `json:"message"`
 	PinnedBy         *ChatMember  `json:"pinned_by"`
-	CreatedAt        *Time   `json:"created_at"`
-	UpdatedAt        *Time   `json:"updated_at"`
-	DeletedAt        *Time   `json:"deleted_at"`
+	CreatedAt        *Time        `json:"created_at"`
+	UpdatedAt        *Time        `json:"updated_at"`
+	DeletedAt        *Time        `json:"deleted_at"`
 }
 
 // ChatRoomCounter is the per-room sequence allocator.
@@ -206,18 +206,18 @@ type ChatRoomCounter struct {
 
 // RealtimeCall is one voice/video call session.
 type RealtimeCall struct {
-	ID           string  `json:"id"`
-	EndedAt      *Time   `json:"ended_at"`
-	SenderID     string  `json:"sender_id"`
+	ID           string      `json:"id"`
+	EndedAt      *Time       `json:"ended_at"`
+	SenderID     string      `json:"sender_id"`
 	Sender       *ChatMember `json:"sender"`
-	RoomID       string  `json:"room_id"`
+	RoomID       string      `json:"room_id"`
 	Room         *ChatRoom   `json:"room"`
-	ProviderName *string `json:"provider_name"`
-	SessionID    *string `json:"session_id"`
-	Upstream     any     `json:"upstream_config"`
-	CreatedAt    *Time   `json:"created_at"`
-	UpdatedAt    *Time   `json:"updated_at"`
-	DeletedAt    *Time   `json:"deleted_at"`
+	ProviderName *string     `json:"provider_name"`
+	SessionID    *string     `json:"session_id"`
+	Upstream     any         `json:"upstream_config"`
+	CreatedAt    *Time       `json:"created_at"`
+	UpdatedAt    *Time       `json:"updated_at"`
+	DeletedAt    *Time       `json:"deleted_at"`
 }
 
 // ChatVoiceClip is one uploaded voice message.
@@ -244,7 +244,7 @@ type ChatRoomSummary struct {
 
 // DeviceToken is one push/websocket device of a member.
 type DeviceToken struct {
-	DeviceToken        string `json:"device_token"`
-	ExpiresAt          *Time  `json:"expires_at"`
-	IsWebsocketConnected bool `json:"is_websocket_connected,omitempty"`
+	DeviceToken          string `json:"device_token"`
+	ExpiresAt            *Time  `json:"expires_at"`
+	IsWebsocketConnected bool   `json:"is_websocket_connected,omitempty"`
 }

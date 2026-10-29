@@ -350,8 +350,8 @@ func (s *server) changeActorFollow(c *gin.Context, follow bool) {
 	if success {
 		if follow {
 			httpx.OK(c, gin.H{
-				"success":         true,
-				"message":         "Follow request sent. Waiting for acceptance.",
+				"success":          true,
+				"message":          "Follow request sent. Waiting for acceptance.",
 				"target_actor_uri": *target.URI,
 			})
 		} else {
@@ -705,16 +705,16 @@ func (s *server) handleSuspendActor(c *gin.Context) {
 			priority = *request.Priority
 		}
 		rule = store.FediverseModerationRuleEntity{
-			ID:          uuid.New(),
-			Name:        name,
-			Description: request.Reason,
-			Type:        ruleActorSuspend,
-			Action:      actionSuspend,
-			Domain:      &actorURI,
-			IsEnabled:   true,
-			Priority:    priority,
+			ID:           uuid.New(),
+			Name:         name,
+			Description:  request.Reason,
+			Type:         ruleActorSuspend,
+			Action:       actionSuspend,
+			Domain:       &actorURI,
+			IsEnabled:    true,
+			Priority:     priority,
 			IsSystemRule: false,
-			EntityBase:  store.EntityBase{CreatedAt: now, UpdatedAt: now},
+			EntityBase:   store.EntityBase{CreatedAt: now, UpdatedAt: now},
 		}
 		if createErr := s.db.WithContext(ctx).Create(&rule).Error; createErr != nil {
 			httpx.Internal(c)

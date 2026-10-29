@@ -850,7 +850,7 @@ func (s *service) markDiscoveryPreference(ctx context.Context, accountID uuid.UU
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		preference = store.DiscoveryPreferenceEntity{
 			ID:          uuid.New(),
-			EntityBase: storeEntityBase(now),
+			EntityBase:  storeEntityBase(now),
 			AccountID:   accountID,
 			Kind:        int(kind),
 			ReferenceID: referenceID,
