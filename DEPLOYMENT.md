@@ -87,12 +87,12 @@ Postgres).
 ### Redis
 
 Optional. Without `[redis].addr` the service falls back to a **process-local**
-in-memory cache. See §7.6 — that is fine for one replica and wrong for many.
+in-memory cache. See §7.7 — that is fine for one replica and wrong for many.
 
 ### NATS
 
 Optional, but required for realtime chat and for award/sponsor settlement.
-Chat's inbound websocket consumer needs JetStream enabled. See §7.7 and §7.8.
+Chat's inbound websocket consumer needs JetStream enabled. See §7.8 and §7.9.
 
 ### Stargate and Passport
 
