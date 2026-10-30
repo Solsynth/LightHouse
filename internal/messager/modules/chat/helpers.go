@@ -81,7 +81,7 @@ func protoJSON(value proto.Message) any {
 	if value == nil {
 		return nil
 	}
-	raw, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(value)
+	raw, err := protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}.Marshal(value)
 	if err != nil {
 		return nil
 	}
