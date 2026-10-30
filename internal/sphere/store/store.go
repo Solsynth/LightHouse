@@ -322,7 +322,7 @@ func StickerToModel(entity *StickerEntity) model.Sticker {
 		ID:                 entity.ID.String(),
 		Slug:               entity.Slug,
 		Name:               entity.Name,
-		Image:              JSONValue(entity.Image),
+		Image:              filejson.Value(entity.Image),
 		Size:               entity.Size,
 		Mode:               entity.Mode,
 		Order:              entity.Order,
@@ -338,7 +338,7 @@ func StickerToModel(entity *StickerEntity) model.Sticker {
 func StickerPackToModel(entity *StickerPackEntity) model.StickerPack {
 	return model.StickerPack{
 		ID:          entity.ID.String(),
-		Icon:        JSONValue(entity.Icon),
+		Icon:        filejson.Value(entity.Icon),
 		Name:        entity.Name,
 		Description: entity.Description,
 		Prefix:      entity.Prefix,
