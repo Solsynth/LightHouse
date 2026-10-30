@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
@@ -28,9 +29,10 @@ import (
 type Client struct {
 	*eb.Bus
 	cfg *config.Config
-	// streamMu serializes stream creation. Consumers start concurrently and
-	// each ensures its own subject; without the lock a cold JetStream answers
-	// all but one with "stream name already in use".
+	// streamMu serializes JetStream stream creation. Consumers start
+	// concurrently and each ensures its own subject, so without it a cold
+	// JetStream answers all but one CreateOrUpdateStream with "stream name
+	// already in use". Consume takes the same lock below.
 	streamMu sync.Mutex
 }
 
@@ -53,10 +55,9 @@ func Connect(ctx context.Context, cfg *config.Config) (*Client, error) {
 }
 
 func (c *Client) ensureStreams(ctx context.Context) error {
-	// Serialize the bootstrap: every consumer goroutine calls EnsureStream for
-	// its own subject, and concurrent CreateOrUpdateStream calls on a stream
-	// that does not exist yet race (one wins, the rest get "name already in
-	// use"). One lock at connect time removes the whole class.
+	// Serialize the bootstrap: consumers call EnsureStream too (see Consume),
+	// and CreateOrUpdateStream on a stream that does not exist yet races
+	// between concurrent callers.
 	c.streamMu.Lock()
 	defer c.streamMu.Unlock()
 	if err := c.EnsureStream(ctx, c.cfg.NATS.SessionEventsStream, []string{c.cfg.NATS.SessionEventsSubject}); err != nil {
@@ -68,6 +69,48 @@ func (c *Client) ensureStreams(ctx context.Context) error {
 	if err := c.EnsureStream(ctx, actionLogEventsStream, []string{actionLogsSubjectPrefix + ">"}); err != nil {
 		return fmt.Errorf("action log events stream: %w", err)
 	}
+	return nil
+}
+
+// Consume shadows eb.Bus.Consume so the stream/consumer bootstrap runs under
+// streamMu. The embedded Consume calls EnsureStream on every invocation, so
+// two consumers of the same stream that start together (websocket_connected
+// and websocket_disconnected, or the several account_events listeners) both
+// try to create it on a cold server. The consume loop itself runs unlocked.
+func (c *Client) Consume(ctx context.Context, stream, subject, consumerName string, handler func(payload []byte) error) error {
+	if c == nil || c.Conn == nil || c.JS == nil {
+		return nil
+	}
+	c.streamMu.Lock()
+	err := c.EnsureStream(ctx, stream, []string{subject})
+	var consumer jetstream.Consumer
+	if err == nil {
+		consumer, err = c.JS.CreateOrUpdateConsumer(ctx, stream, jetstream.ConsumerConfig{
+			Name:          consumerName,
+			FilterSubject: subject,
+			DeliverPolicy: jetstream.DeliverNewPolicy,
+			AckPolicy:     jetstream.AckExplicitPolicy,
+		})
+		if err != nil {
+			err = fmt.Errorf("create %s consumer: %w", consumerName, err)
+		}
+	}
+	c.streamMu.Unlock()
+	if err != nil {
+		return err
+	}
+	cc, err := consumer.Consume(func(msg jetstream.Msg) {
+		if err := handler(msg.Data()); err != nil {
+			_ = msg.Nak()
+			return
+		}
+		_ = msg.Ack()
+	})
+	if err != nil {
+		return fmt.Errorf("start %s consumer: %w", consumerName, err)
+	}
+	<-ctx.Done()
+	cc.Stop()
 	return nil
 }
 
