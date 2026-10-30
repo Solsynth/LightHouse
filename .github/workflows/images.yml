@@ -23,27 +23,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # `-next` keeps these packages off the names the legacy fleet still
-          # publishes to until the cutover.
-          - image: sphere-next
+          - image: lighthouse-sphere
             context: .
             dockerfile: ./Dockerfile.sphere
             scope: sphere
-          - image: messager-next
+          - image: lighthouse-messager
             context: .
             dockerfile: ./Dockerfile.messager
             scope: messager
-          - image: stargate-next
+          - image: lighthouse-stargate
             context: ./internal/stargate
             dockerfile: ./internal/stargate/Dockerfile
             scope: stargate
           # Gateway and relay are one image: a relay runs it with `relay` as the
           # command.
-          - image: blade-next
+          - image: lighthouse-blade
             context: ./internal/blade
             dockerfile: ./internal/blade/Dockerfile
             scope: blade
-          - image: dysonfs-next
+          - image: lighthouse-dysonfs
             context: ./internal/filesystem
             dockerfile: ./internal/filesystem/Dockerfile
             scope: dysonfs

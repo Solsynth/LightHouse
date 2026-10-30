@@ -15,9 +15,8 @@ on:
 env:
   REGISTRY: ghcr.io
   # One image carries both binaries (gateway by default, `relay` as the
-  # command). The `-next` suffix keeps the rewrite's packages off the names the
-  # legacy fleet still publishes to.
-  IMAGE_NAME: ${{ vars.PACKAGE_OWNER }}/blade-next
+  # command).
+  IMAGE_NAME: ${{ vars.PACKAGE_OWNER }}/lighthouse-blade
 
 jobs:
   build:

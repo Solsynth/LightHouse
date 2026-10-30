@@ -179,8 +179,9 @@ tokens for sphere/messager over gRPC.
   contexts and run unchanged with
   `docker compose -f internal/blade/docker-compose.yml up -d`.
 - Root CI (`.github/workflows/{sphere,messager,stargate,blade,filesystem}.yml`)
-  builds and pushes one image per service — `sphere-next`, `messager-next`,
-  `stargate-next`, `blade-next`, `dysonfs-next` — path-filtered on its sources.
+  builds and pushes one image per service — `lighthouse-sphere`,
+  `lighthouse-messager`, `lighthouse-stargate`, `lighthouse-blade`,
+  `lighthouse-dysonfs` — path-filtered on its sources.
 
 ## Legacy data
 

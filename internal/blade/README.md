@@ -202,17 +202,17 @@ RELAY_CONFIG_PATH=./configs/relay.toml ./relay
 
 ```bash
 # Build — one image, both binaries
-docker build -t blade-next .
+docker build -t lighthouse-blade .
 
 # Run the gateway (the default command)
-docker run -p 6000:6000 blade-next
+docker run -p 6000:6000 lighthouse-blade
 
 # Run a relay node
-docker run -p 443:443 blade-next relay
+docker run -p 443:443 lighthouse-blade relay
 
 # Run with custom config
-docker run -p 6000:6000 -v ./configs/docker.toml:/app/configs/docker.toml:ro blade-next
-docker run -p 443:443 -v ./configs/relay.toml:/app/configs/relay.toml:ro blade-next relay
+docker run -p 6000:6000 -v ./configs/docker.toml:/app/configs/docker.toml:ro lighthouse-blade
+docker run -p 443:443 -v ./configs/relay.toml:/app/configs/relay.toml:ro lighthouse-blade relay
 ```
 
 ## Endpoints

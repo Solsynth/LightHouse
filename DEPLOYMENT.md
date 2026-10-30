@@ -44,8 +44,9 @@ Images: `Dockerfile.sphere` and `Dockerfile.messager` (root context). Both are
 CA bundle, and `config/sphere.example.toml` (resp. messager) as
 `/app/config.example.toml`. They take their config from `CONFIG_PATH`. No
 secrets are baked in — mount `Keys/` at deploy time. CI publishes
-`ghcr.io/<owner>/{sphere-next,messager-next}`; the `-next` suffix keeps the
-rewrite's packages apart from the ones the legacy fleet still publishes.
+`ghcr.io/<owner>/{lighthouse-sphere,lighthouse-messager}`; the `lighthouse-`
+prefix keeps the rewrite's packages apart from the ones the legacy fleet still
+publishes.
 
 Build locally (every target is workspace-aware; `./...` stops at a nested
 `go.mod`, so the Makefile builds each module in turn):

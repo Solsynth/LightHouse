@@ -11,7 +11,7 @@ sees plaintext, applies no bandwidth pacing, and does no wildcard matching.
 
 ```bash
 go build -o relay ./cmd/relay              # local
-docker build -t blade-next .               # image; CI publishes blade-next
+docker build -t lighthouse-blade .         # image; CI publishes lighthouse-blade
 ```
 
 The relay binary needs no CGO and no configuration file baked in; the image
@@ -122,7 +122,7 @@ docker run -d --name blade-relay \
   -p 443:443 \
   -v /etc/blade/relay.toml:/app/configs/relay.toml:ro \
   -e RELAY_CONFIG_PATH=/app/configs/relay.toml \
-  blade-next relay
+  lighthouse-blade relay
 ```
 
 Publish only `relay.listen` externally. In containers `relay.id` must be set

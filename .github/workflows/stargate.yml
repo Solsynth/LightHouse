@@ -14,7 +14,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ vars.PACKAGE_OWNER }}/stargate-next
+  IMAGE_NAME: ${{ vars.PACKAGE_OWNER }}/lighthouse-stargate
 
 jobs:
   build:

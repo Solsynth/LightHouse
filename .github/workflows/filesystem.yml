@@ -14,7 +14,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ vars.PACKAGE_OWNER }}/dysonfs-next
+  IMAGE_NAME: ${{ vars.PACKAGE_OWNER }}/lighthouse-dysonfs
 
 jobs:
   build:

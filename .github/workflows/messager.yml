@@ -32,7 +32,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ vars.PACKAGE_OWNER }}/messager-next
+  IMAGE_NAME: ${{ vars.PACKAGE_OWNER }}/lighthouse-messager
 
 jobs:
   build:
