@@ -13,7 +13,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
@@ -22,6 +21,7 @@ import (
 
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/store"
+	"src.solsynth.dev/sosys/lighthouse/internal/platform/accountjson"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/authn"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/httpx"
 )
@@ -77,19 +77,10 @@ func uuidParam(c *gin.Context, name string) (uuid.UUID, bool) {
 
 // --- proto / json ---------------------------------------------------------
 
+// protoJSON embeds a fleet proto in a chat payload with the C# wire shape
+// (jsonb columns parsed, enums numeric, 64-bit integers unquoted).
 func protoJSON(value proto.Message) any {
-	if value == nil {
-		return nil
-	}
-	raw, err := protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}.Marshal(value)
-	if err != nil {
-		return nil
-	}
-	var decoded any
-	if err := json.Unmarshal(raw, &decoded); err != nil {
-		return nil
-	}
-	return decoded
+	return accountjson.Message(value)
 }
 
 func jsonMap(raw datatypes.JSON) map[string]any {
