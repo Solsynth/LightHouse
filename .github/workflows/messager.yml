@@ -32,7 +32,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ vars.PACKAGE_OWNER }}/messager
+  IMAGE_NAME: ${{ vars.PACKAGE_OWNER }}/messager-next
 
 jobs:
   build:

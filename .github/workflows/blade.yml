@@ -1,4 +1,4 @@
-name: Blade images
+name: Blade image
 
 on:
   push:
@@ -14,6 +14,10 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  # One image carries both binaries (gateway by default, `relay` as the
+  # command). The `-next` suffix keeps the rewrite's packages off the names the
+  # legacy fleet still publishes to.
+  IMAGE_NAME: ${{ vars.PACKAGE_OWNER }}/blade-next
 
 jobs:
   build:
@@ -21,14 +25,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-
-    strategy:
-      matrix:
-        include:
-          - image: blade
-            dockerfile: Dockerfile
-          - image: blade-relay
-            dockerfile: Dockerfile.relay
 
     steps:
       - name: Checkout repository
@@ -50,10 +46,10 @@ jobs:
         with:
           # Context is the child module: the image never sees go.work.
           context: ./internal/blade
-          file: ./internal/blade/${{ matrix.dockerfile }}
+          file: ./internal/blade/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          cache-from: type=gha,scope=blade
+          cache-to: type=gha,mode=max,scope=blade
           tags: |
-            ${{ env.REGISTRY }}/${{ vars.PACKAGE_OWNER }}/${{ matrix.image }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ vars.PACKAGE_OWNER }}/${{ matrix.image }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest

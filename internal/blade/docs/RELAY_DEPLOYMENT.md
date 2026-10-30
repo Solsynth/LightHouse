@@ -10,8 +10,8 @@ sees plaintext, applies no bandwidth pacing, and does no wildcard matching.
 ## Build
 
 ```bash
-go build -o relay ./cmd/relay                       # local
-docker build -f Dockerfile.relay -t blade-relay .   # image (CI publishes blade-relay)
+go build -o relay ./cmd/relay              # local
+docker build -t blade-next .               # image; CI publishes blade-next
 ```
 
 The relay binary needs no CGO and no configuration file baked in; the image
@@ -122,7 +122,7 @@ docker run -d --name blade-relay \
   -p 443:443 \
   -v /etc/blade/relay.toml:/app/configs/relay.toml:ro \
   -e RELAY_CONFIG_PATH=/app/configs/relay.toml \
-  blade-relay
+  blade-next relay
 ```
 
 Publish only `relay.listen` externally. In containers `relay.id` must be set

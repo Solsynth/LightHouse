@@ -168,9 +168,10 @@ tokens for sphere/messager over gRPC.
   services; context `.`. Both produce static `scratch` images.
 - `internal/stargate/Dockerfile` builds the SPA and the service; context
   `./internal/stargate`, static `scratch` runtime.
-- `internal/blade/Dockerfile` and `internal/blade/Dockerfile.relay` build the
-  gateway and relay; context `./internal/blade`. The gateway keeps an Alpine
-  base for its compose healthcheck.
+- `internal/blade/Dockerfile` builds both Blade binaries into one image;
+  context `./internal/blade`. The gateway is the default process, `relay` as
+  the container command runs the L4 node, and Alpine stays for the compose
+  healthcheck.
 - `internal/filesystem/Dockerfile` builds the SPA and DysonFS; context
   `./internal/filesystem`. The runtime keeps libvips and ffmpeg.
 - `internal/blade/docker-compose.yml` (gateway + its Redis registry) and
@@ -178,8 +179,8 @@ tokens for sphere/messager over gRPC.
   contexts and run unchanged with
   `docker compose -f internal/blade/docker-compose.yml up -d`.
 - Root CI (`.github/workflows/{sphere,messager,stargate,blade,filesystem}.yml`)
-  builds and pushes one image per service — `sphere`, `messager`, `stargate`,
-  `blade`/`blade-relay`, `dysonfs` — path-filtered on its sources.
+  builds and pushes one image per service — `sphere-next`, `messager-next`,
+  `stargate-next`, `blade-next`, `dysonfs-next` — path-filtered on its sources.
 
 ## Legacy data
 

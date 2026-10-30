@@ -173,17 +173,20 @@ needs libvips and ffmpeg and carries two known failures listed in the Makefile.
   from context `.` into static `scratch` images.
 - `internal/stargate/Dockerfile` builds the console and the service; context
   `./internal/stargate`.
-- `internal/blade/Dockerfile` and `Dockerfile.relay` build the gateway and
-  relay; context `./internal/blade`.
+- `internal/blade/Dockerfile` builds both Blade binaries into one image;
+  context `./internal/blade`. The gateway is the default process, and `relay`
+  as the container command runs the L4 node.
 - `internal/filesystem/Dockerfile` builds the console and DysonFS; context
   `./internal/filesystem`, keeping libvips and ffmpeg in the runtime.
 - `internal/blade/docker-compose.yml` runs the gateway with its Redis registry;
   `internal/blade/docker-compose.relay.yml` runs a PoP relay.
 - CI (`.github/workflows/{sphere,messager,stargate,blade,filesystem}.yml`)
-  builds and pushes the service images (`blade` and `blade-relay` for Blade),
-  path-filtered on its sources. `.github/workflows/images.yml` rebuilds all six
-  images on manual dispatch — use it after base-image or toolchain bumps, or to
-  verify a change that touches shared inputs; `latest` only moves from `master`.
+  builds and pushes the five service images — `sphere-next`, `messager-next`,
+  `stargate-next`, `blade-next`, `dysonfs-next` — path-filtered on its sources.
+  The `-next` suffix keeps them off the package names the legacy fleet still
+  publishes to. `.github/workflows/images.yml` rebuilds all five on manual
+  dispatch — use it after base-image or toolchain bumps, or to verify a change
+  that touches shared inputs; `latest` only moves from `master`.
 
 Deployment, the legacy-data migration and the cutover runbook are in
 [`DEPLOYMENT.md`](DEPLOYMENT.md). Helpers: `make migrate-sphere`,

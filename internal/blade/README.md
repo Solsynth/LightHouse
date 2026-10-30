@@ -117,10 +117,11 @@ registered instance, allowing incremental migration.
 
 ### L4 Relay Nodes
 
-`cmd/relay` is a separate binary (image `blade-relay`, config
-`configs/relay.toml`, path overridable with `RELAY_CONFIG_PATH`) that accepts
-TCP connections, peeks the cleartext TLS ClientHello for the SNI, and copies
-bytes to an upstream chosen from a static allowlist. TLS is never terminated:
+`cmd/relay` is a second binary shipped in the same image, selected with the
+container command `relay` (config `configs/relay.toml`, path overridable with
+`RELAY_CONFIG_PATH`). It accepts TCP connections, peeks the cleartext TLS
+ClientHello for the SNI, and copies bytes to an upstream chosen from a static
+allowlist. TLS is never terminated:
 certificates, client certificates, and ECH-less SNI routing all stay
 end-to-end. Unlisted SNI is rejected unless `relay.defaultUpstream` is set.
 
@@ -200,17 +201,18 @@ RELAY_CONFIG_PATH=./configs/relay.toml ./relay
 ### Docker
 
 ```bash
-# Build
-docker build -t blade .
-docker build -f Dockerfile.relay -t blade-relay .
+# Build — one image, both binaries
+docker build -t blade-next .
 
-# Run
-docker run -p 6000:6000 blade
-docker run -p 443:443 blade-relay
+# Run the gateway (the default command)
+docker run -p 6000:6000 blade-next
+
+# Run a relay node
+docker run -p 443:443 blade-next relay
 
 # Run with custom config
-docker run -p 6000:6000 -v ./configs/docker.toml:/app/configs/docker.toml:ro blade
-docker run -p 443:443 -v ./configs/relay.toml:/app/configs/relay.toml:ro blade-relay
+docker run -p 6000:6000 -v ./configs/docker.toml:/app/configs/docker.toml:ro blade-next
+docker run -p 443:443 -v ./configs/relay.toml:/app/configs/relay.toml:ro blade-next relay
 ```
 
 ## Endpoints
