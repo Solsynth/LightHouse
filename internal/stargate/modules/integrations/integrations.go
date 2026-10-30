@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/shopspring/decimal"
 	"google.golang.org/protobuf/encoding/protojson"
 	"src.solsynth.dev/sosys/go/pkg/models"
 	gen "src.solsynth.dev/sosys/go/proto"
@@ -33,7 +34,7 @@ func Drive() module.Factory {
 // local app.solian.wallet module is enabled it provides the same port as a
 // feature, and the port registry prefers it over this adapter.
 func Wallet() module.Factory {
-	return integration("app.solian.wallet.remote", []module.PortID{ports.PortPerks})
+	return integration("app.solian.wallet.remote", []module.PortID{ports.PortPerks, ports.PortPayments})
 }
 
 // Pass provides badges, verification and remote NFC token validation.
@@ -83,6 +84,9 @@ func (i *instance) ProvidePorts(_ context.Context, host *module.Host) error {
 	case "app.solian.wallet.remote":
 		if c.Clients != nil && c.Clients.Wallet != nil {
 			module.Provide[ports.Perks](host.Ports, ports.PortPerks, i.id, module.KindIntegration, &perksAdapter{client: c.Clients.Wallet})
+		}
+		if c.Clients != nil && c.Clients.Payment != nil {
+			module.Provide[ports.Payments](host.Ports, ports.PortPayments, i.id, module.KindIntegration, &paymentsAdapter{client: c.Clients.Payment})
 		}
 	case "app.solian.pass":
 		if c.Clients != nil && c.Clients.Pass != nil {
@@ -148,6 +152,56 @@ func (a *perksAdapter) Subscription(ctx context.Context, accountID string) (*mod
 	provider := &grpcclient.WalletPerkProvider{Client: a.client}
 	return provider.GetPerkSubscription(ctx, accountID)
 }
+
+// ── payments ───────────────────────────────────────────────────────────────
+
+type paymentsAdapter struct {
+	client gen.DyPaymentServiceClient
+}
+
+func (a *paymentsAdapter) Available() bool { return a != nil && a.client != nil }
+
+// CreateOrder opens the order on the remote wallet. The meta bytes keep the
+// C# System.Text.Json shape (snake_case keys, decimal amount as a string) so
+// the remote wallet's own order-paid consumer reads the same payload the
+// passport_realm_boost_orders consumer expects.
+func (a *paymentsAdapter) CreateOrder(ctx context.Context, req ports.OrderRequest) (*ports.CreatedOrder, error) {
+	if !a.Available() {
+		return nil, ports.ErrUnavailable
+	}
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	meta, err := json.Marshal(req.Meta)
+	if err != nil {
+		return nil, fmt.Errorf("encode order meta: %w", err)
+	}
+	request := &gen.DyCreateOrderRequest{
+		Currency:  req.Currency,
+		Amount:    req.Amount.String(),
+		Meta:      meta,
+		Reuseable: req.Reuseable,
+	}
+	if req.ProductIdentifier != nil {
+		request.ProductIdentifier = req.ProductIdentifier
+	}
+	if req.AppIdentifier != nil {
+		request.AppIdentifier = req.AppIdentifier
+	}
+	if req.Remarks != nil {
+		request.Remarks = req.Remarks
+	}
+	order, err := a.client.CreateOrder(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	amount, err := decimal.NewFromString(order.GetAmount())
+	if err != nil {
+		return nil, fmt.Errorf("remote wallet returned an invalid amount %q: %w", order.GetAmount(), err)
+	}
+	return &ports.CreatedOrder{ID: order.GetId(), Amount: amount}, nil
+}
+
+var _ ports.Payments = (*paymentsAdapter)(nil)
 
 // ── badges / verification ──────────────────────────────────────────────────
 

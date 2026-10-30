@@ -40,6 +40,7 @@ disabled = []
 # files = "app.solian.drive"
 # email = "app.solian.ring"
 # nfcTokens = "app.solian.id.nfc"
+# payments = "app.solian.wallet"      # realm boosts; falls back to wallet.remote
 
 [grpc]
 port = "9090"

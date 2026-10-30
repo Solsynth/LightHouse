@@ -15,6 +15,8 @@ type Set struct {
 	OAuthClients       OAuthClients
 	NfcTokens          NfcTokens
 	VerificationSpells VerificationSpells
+	Payments           Payments
+	OrderEvents        OrderEvents
 }
 
 // FromRegistry resolves every known port. Missing providers stay nil.
@@ -33,5 +35,7 @@ func FromRegistry(registry *module.PortRegistry) *Set {
 	set.OAuthClients, _ = module.Get[OAuthClients](registry, PortOAuthClients)
 	set.NfcTokens, _ = module.Get[NfcTokens](registry, PortNfcTokens)
 	set.VerificationSpells, _ = module.Get[VerificationSpells](registry, PortVerificationSpells)
+	set.Payments, _ = module.Get[Payments](registry, PortPayments)
+	set.OrderEvents, _ = module.Get[OrderEvents](registry, PortOrderEvents)
 	return set
 }

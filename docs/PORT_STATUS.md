@@ -118,3 +118,54 @@ all five C# gRPC services, including `DySubscriptionCatalogService`
   are present and unused.
 - **The sponsor badge grant** (`HandleSponsorBadgeSubscriptionAsync`) is skipped
   — the wallet module has no profile client port.
+
+### Realm
+
+The `DysonNetwork.Passport` realm domain lives in `internal/stargate/realm/`
+(entities, store, service, gRPC), `internal/stargate/httpserver/realmctl/`
+(HTTP) and `internal/stargate/modules/realm/` (wiring).
+
+Verified against a live PostgreSQL (scratch database, single-user auth):
+
+- the module creates its eight tables on a fresh database and none when it is
+  disabled; re-enabling later AutoMigrates them onto the existing database
+  without touching anything else;
+- `POST /api/realms` enforces the tiered quota from the account's level
+  (`level >= 10` → 1 + perk level), `GET /api/realms/quota` reports it;
+- member listing, `GET /:slug/members/me`, labels, boosts, role/user
+  permissions and moderation logs answer with the C# payload shapes;
+- a boost order is created through the local wallet
+  (`product_identifier = realms.boost`), paying it raises the realm to boost
+  level 1, and the label cap follows (3 labels, then
+  `REALM_LABEL_LIMIT_REACHED`); replaying the same payment is a no-op;
+- the boost purchase grants shares × 100 realm XP, which the member payload
+  reports as experience/level;
+- `DyRealmService` answers all ten RPCs with real rows (`GetRealm`,
+  `GetRealmBatch`, `GetUserRealms`, `GetPublicRealms`, `SearchRealms`,
+  `IsMemberWithRole`, `HasPermission`, `LoadMemberAccount`,
+  `LoadMemberAccounts`; `SendInviteNotify` requires a push provider);
+- the legacy importer copies a Passport-shaped database, and a second run
+  writes 0 rows.
+
+Known gaps:
+
+- **`RealmActivityEvent` producers.** Sphere and Messager emit
+  `realm.activity.<type>` in the C# fleet; the Go ports do not publish it yet,
+  so activity XP is only exercised by the consumer's own contract. Tenure and
+  boost XP are live.
+- **`POST /:slug/boosts` without a payments provider** returns 503
+  `SERVICE_UNAVAILABLE`. Passport always had a wallet target, so the C# code
+  had no such branch.
+- **Boost points persistence.** Passport recomputed `realms.boost_points` in
+  memory per read and never wrote the column. Reads here are equally pure
+  (a GET never overwrites the column); the stored value is refreshed only
+  when a boost contribution is recorded, so it is a snapshot, not the read
+  path's source of truth.
+- **Realm post moderation log** has no inbound writer yet: Passport recorded a
+  removal through `RealmService.ModeratePost`, which Sphere called in-process.
+  Sphere's Go port removes posts itself and only asks
+  `DyRealmService.HasPermission(…, "post.moderate")`, so
+  `realm_post_moderation_logs` stays empty and
+  `GET /api/realms/:slug/posts/moderation-logs` answers with an empty page.
+- **Realm wallet and boost→publisher revenue** are not modelled: the C# boost
+  flow only created an order, and this port keeps that scope.

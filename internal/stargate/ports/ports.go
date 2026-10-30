@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 
+	"github.com/shopspring/decimal"
+
 	"src.solsynth.dev/sosys/stargate/model"
 	"src.solsynth.dev/sosys/stargate/module"
 )
@@ -25,6 +27,8 @@ const (
 	PortOAuthClients       module.PortID = "oauthClients"
 	PortNfcTokens          module.PortID = "nfcTokens"
 	PortVerificationSpells module.PortID = "verificationSpells"
+	PortPayments           module.PortID = "payments"
+	PortOrderEvents        module.PortID = "orderEvents"
 )
 
 // Files resolves a stored file reference (profile picture, background).
@@ -142,4 +146,61 @@ type NfcTokens interface {
 type VerificationSpells interface {
 	Available() bool
 	Notify(ctx context.Context, accountID, spellID string) error
+}
+
+// OrderRequest opens a wallet order for a product. The caller passes the
+// metadata the order's paid hook reads back (the realm boost consumer needs
+// realm_id, account_id, shares, currency and amount).
+type OrderRequest struct {
+	AccountID         string
+	Currency          string
+	Amount            decimal.Decimal
+	ProductIdentifier *string
+	AppIdentifier     *string
+	Remarks           *string
+	Meta              map[string]any
+	Reuseable         bool
+}
+
+// CreatedOrder is the order id plus the amount the provider actually opened.
+type CreatedOrder struct {
+	ID     string
+	Amount decimal.Decimal
+}
+
+// Payments opens wallet orders for modules that sell a product. The local
+// wallet module provides it as a feature; app.solian.wallet.remote provides
+// it over gRPC when the wallet lives in another deployment.
+type Payments interface {
+	Available() bool
+	CreateOrder(ctx context.Context, req OrderRequest) (*CreatedOrder, error)
+}
+
+// OrderEvent is one paid order as a feature module sees it.
+type OrderEvent struct {
+	OrderID           string
+	ProductIdentifier string
+	Meta              map[string]any
+}
+
+// OrderEvents lets a feature module subscribe to paid orders of the local
+// wallet in-process. It is the standalone counterpart of the fleet's
+// payment_orders NATS event: when the wallet runs in this binary, consumers
+// apply their product without an event bus. Subscribers must be idempotent,
+// because the NATS path may deliver the same order when a bus is configured.
+type OrderEvents interface {
+	Available() bool
+	OnOrderPaid(handler func(ctx context.Context, event OrderEvent) error)
+}
+
+// Creditor credits a currency to an account's wallet balance. It is the
+// progression rewards path; the local wallet provides it as a feature.
+type Creditor interface {
+	Credit(ctx context.Context, accountID, currency, remarks string, amount int64) error
+}
+
+// BadgeGranter extends the badges port with a write. A read-only provider
+// (Passport's gRPC surface only lists) implements only Badges.
+type BadgeGranter interface {
+	Grant(ctx context.Context, accountID, badgeType string, label, caption *string, meta map[string]any) error
 }

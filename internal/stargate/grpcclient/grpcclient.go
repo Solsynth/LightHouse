@@ -56,6 +56,7 @@ func DialInsecure(target string) (*grpc.ClientConn, error) {
 // Clients holds the outbound clients.
 type Clients struct {
 	Wallet  gen.DySubscriptionServiceClient
+	Payment gen.DyPaymentServiceClient
 	Develop gen.DyCustomAppServiceClient
 	Drive   gen.DyFileServiceClient
 	Pass    gen.DyProfileServiceClient
@@ -76,6 +77,8 @@ func (c *Clients) Available(service string) bool {
 	switch strings.ToLower(strings.TrimSpace(service)) {
 	case "wallet":
 		return c.Wallet != nil
+	case "payments":
+		return c.Payment != nil
 	case "develop":
 		return c.Develop != nil
 	case "drive":
@@ -102,6 +105,7 @@ func (c *Clients) FilterServices(enabled map[string]bool) {
 	}
 	if !enabled["wallet"] {
 		c.Wallet = nil
+		c.Payment = nil
 	}
 	if !enabled["develop"] {
 		c.Develop = nil
@@ -146,6 +150,9 @@ func NewClients(cfg *config.Config) (*Clients, error) {
 	}
 	if conn := dial(cfg.Services.Wallet.GRPC); conn != nil {
 		c.Wallet = gen.NewDySubscriptionServiceClient(conn)
+		// The remote wallet also hosts the payment surface the realm boost
+		// flow opens its orders on.
+		c.Payment = gen.NewDyPaymentServiceClient(conn)
 	}
 	if conn := dial(cfg.Services.Develop.GRPC); conn != nil {
 		c.Develop = gen.NewDyCustomAppServiceClient(conn)

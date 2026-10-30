@@ -39,6 +39,11 @@ func TestModuleSchemaOwnership(t *testing.T) {
 
 	moduleTable := "account_relationships"
 	oauthTables := []string{"oauth_apps", "oauth_app_secrets"}
+	realmTables := []string{
+		"realms", "realm_members", "realm_labels", "realm_boost_contributions",
+		"realm_experience_records", "realm_role_permissions",
+		"realm_user_permissions", "realm_post_moderation_logs",
+	}
 
 	t.Run("relationships module disabled skips table", func(t *testing.T) {
 		database := newDatabase(t)
@@ -160,6 +165,100 @@ func TestModuleSchemaOwnership(t *testing.T) {
 		}
 		if count != 1 {
 			t.Fatalf("ck_oauth_apps_owner constraints = %d; want 1", count)
+		}
+	})
+
+	t.Run("realm module disabled skips every realm table", func(t *testing.T) {
+		database := newDatabase(t)
+		if err := Run(ctx, database); err != nil {
+			t.Fatal(err)
+		}
+		resolution, err := module.Resolve(standard.Modules(),
+			[]string{"app.solian.id.auth", "app.solian.id.accounts", "app.solian.id.profiles"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resolution.Enabled["app.solian.id.realm"] {
+			t.Fatal("realm should be disabled by the allowlist")
+		}
+		if err := module.MigrateSchema(ctx, database, resolution.Factories); err != nil {
+			t.Fatal(err)
+		}
+		for _, table := range realmTables {
+			if database.Migrator().HasTable(table) {
+				t.Fatalf("table %s should not exist when realm is disabled", table)
+			}
+		}
+	})
+
+	t.Run("realm module enabled creates tables and the legacy indexes", func(t *testing.T) {
+		database := newDatabase(t)
+		if err := Run(ctx, database); err != nil {
+			t.Fatal(err)
+		}
+		resolution, err := module.Resolve(standard.Modules(), nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !resolution.Enabled["app.solian.id.realm"] {
+			t.Fatal("realm should be enabled by default")
+		}
+		if err := module.MigrateSchema(ctx, database, resolution.Factories); err != nil {
+			t.Fatal(err)
+		}
+		for _, table := range realmTables {
+			if !database.Migrator().HasTable(table) {
+				t.Fatalf("table %s should exist when realm is enabled", table)
+			}
+		}
+		// The slug uniqueness includes deleted_at, so a soft-deleted realm
+		// frees its slug; the role and user permission rows are unique per
+		// realm. Losing either index changes what the endpoints can promise.
+		for _, index := range []string{
+			"ix_realms_slug_deleted_at",
+			"ix_realm_role_permissions_realm_id_role_level",
+			"ix_realm_user_permissions_realm_id_account_id",
+		} {
+			var count int64
+			if err := database.WithContext(ctx).Raw(
+				`SELECT count(*) FROM pg_indexes WHERE indexname = ?`, index).Scan(&count).Error; err != nil {
+				t.Fatal(err)
+			}
+			if count != 1 {
+				t.Fatalf("index %s count = %d; want 1", index, count)
+			}
+		}
+	})
+
+	t.Run("realm tables are additive on an existing database", func(t *testing.T) {
+		database := newDatabase(t)
+		if err := Run(ctx, database); err != nil {
+			t.Fatal(err)
+		}
+		// First boot without the module: the tables do not exist.
+		without, err := module.Resolve(standard.Modules(),
+			[]string{"app.solian.id.auth", "app.solian.id.accounts"}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := module.MigrateSchema(ctx, database, without.Factories); err != nil {
+			t.Fatal(err)
+		}
+		if database.Migrator().HasTable("realms") {
+			t.Fatal("realms should not exist before the module is enabled")
+		}
+		// Enabling it later reconciles the schema without touching the rest.
+		with, err := module.Resolve(standard.Modules(), nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := module.MigrateSchema(ctx, database, with.Factories); err != nil {
+			t.Fatal(err)
+		}
+		for _, table := range realmTables {
+			if !database.Migrator().HasTable(table) {
+				t.Fatalf("table %s should exist after enabling realm", table)
+			}
 		}
 	})
 }

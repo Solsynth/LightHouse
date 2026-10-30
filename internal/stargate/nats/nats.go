@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,6 +28,10 @@ import (
 type Client struct {
 	*eb.Bus
 	cfg *config.Config
+	// streamMu serializes stream creation. Consumers start concurrently and
+	// each ensures its own subject; without the lock a cold JetStream answers
+	// all but one with "stream name already in use".
+	streamMu sync.Mutex
 }
 
 // Connect dials NATS via the shared event bus and ensures the JetStream
@@ -48,6 +53,12 @@ func Connect(ctx context.Context, cfg *config.Config) (*Client, error) {
 }
 
 func (c *Client) ensureStreams(ctx context.Context) error {
+	// Serialize the bootstrap: every consumer goroutine calls EnsureStream for
+	// its own subject, and concurrent CreateOrUpdateStream calls on a stream
+	// that does not exist yet race (one wins, the rest get "name already in
+	// use"). One lock at connect time removes the whole class.
+	c.streamMu.Lock()
+	defer c.streamMu.Unlock()
 	if err := c.EnsureStream(ctx, c.cfg.NATS.SessionEventsStream, []string{c.cfg.NATS.SessionEventsSubject}); err != nil {
 		return fmt.Errorf("session events stream: %w", err)
 	}

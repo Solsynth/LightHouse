@@ -119,9 +119,20 @@ const (
 	// Wallet emits. The first four are inline string literals in the C#
 	// controllers; only StellarSupportMonth is a canonical ActionLogType there
 	// (and the sole one the progression registry tracks).
-	ActionLogWalletCreate             ActionLogType = "wallets.create"
-	ActionLogSubscriptionActivate     ActionLogType = "subscriptions.activate_switch"
-	ActionLogSubscriptionCreate       ActionLogType = "subscriptions.create"
-	ActionLogSubscriptionCancel       ActionLogType = "subscriptions.cancel"
-	ActionLogStellarSupportMonth      ActionLogType = "stellar.support.month"
+	ActionLogWalletCreate         ActionLogType = "wallets.create"
+	ActionLogSubscriptionActivate ActionLogType = "subscriptions.activate_switch"
+	ActionLogSubscriptionCreate   ActionLogType = "subscriptions.create"
+	ActionLogSubscriptionCancel   ActionLogType = "subscriptions.cancel"
+	ActionLogStellarSupportMonth  ActionLogType = "stellar.support.month"
+
+	// Realm emits (DysonNetwork.Shared.Models.ActionLogType Realm* constants).
+	ActionLogRealmCreate     ActionLogType = "realms.create"
+	ActionLogRealmUpdate     ActionLogType = "realms.update"
+	ActionLogRealmDelete     ActionLogType = "realms.delete"
+	ActionLogRealmInvite     ActionLogType = "realms.invite"
+	ActionLogRealmJoin       ActionLogType = "realms.join"
+	ActionLogRealmLeave      ActionLogType = "realms.leave"
+	ActionLogRealmKick       ActionLogType = "realms.kick"
+	ActionLogRealmAdjustRole ActionLogType = "realms.role.edit"
+	ActionLogRealmModerate   ActionLogType = "realms.moderate"
 )

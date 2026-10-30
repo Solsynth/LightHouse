@@ -34,6 +34,7 @@ app.solian.id.spells
 app.solian.id.social
 app.solian.id.oidc
 app.solian.id.nfc
+app.solian.id.realm
 ```
 
 Other features:
@@ -240,6 +241,8 @@ fails startup.
 | `badges` | profiles, nfc | `app.solian.pass` |
 | `verification` | profiles, nfc | `app.solian.pass` |
 | `perks` | profiles | `app.solian.wallet` (feature), `app.solian.wallet.remote` |
+| `payments` | realm (boosts) | `app.solian.wallet` (feature), `app.solian.wallet.remote` |
+| `orderEvents` | realm (boosts, in-process) | `app.solian.wallet` (feature) |
 | `email` | auth, spells, admin | `app.solian.ring` |
 | `push` | auth, admin, relationships | `app.solian.ring` |
 | `presence` | security, admin | `app.solian.blade` |
@@ -272,6 +275,7 @@ startup.
 | `app.solian.id.social` | feature | `/api/auth/login/{provider}`, callbacks | auth, accounts | none |
 | `app.solian.id.oidc` | feature | `/api/oidc/**`, `/.well-known/openid-configuration` | auth, accounts | none |
 | `app.solian.id.oauthapps` | feature | `/api/oauth-apps/**`, provides `oauthClients` | auth | `oauth_apps`, `oauth_app_secrets` |
+| `app.solian.id.realm` | feature | `/api/realms/**`, `/api/realms/public`, `/api/admin/realms/**`, the ten `DyRealmService` RPCs | auth, accounts | `realms`, `realm_members`, `realm_labels`, `realm_boost_contributions`, `realm_experience_records`, `realm_role_permissions`, `realm_user_permissions`, `realm_post_moderation_logs` |
 | `app.solian.e2ee` | feature | `/api/e2ee/**`, MLS gRPC | accounts | `e2ee_*`, `mls_*` (later phase) |
 | `app.solian.admin` | feature | `/api/admin/**`, actions/punishments | accounts | core tables |
 | `app.solian.wellknown` | feature | `/.well-known/*` docs | — | none |
@@ -416,6 +420,35 @@ whose schema diverged.
       stops being the only consumer of `GetCustomAppSlug`.
 - [x] Legacy importer from Develop's `custom_apps` and `custom_app_secrets`,
       with `scripts/import-oauth-apps.sh`.
+
+### Phase 4c — realm extraction from Passport
+
+- [x] `app.solian.id.realm` owns the eight Passport realm tables under their
+      legacy names, with the EF indexes reproduced as schema hooks (the slug
+      uniqueness is `(slug, deleted_at)`, so a soft-deleted realm frees its
+      slug).
+- [x] 42 HTTP routes (`/api/realms`, `/api/realms/public`,
+      `/api/admin/realms`) with the C# paths, error codes and
+      `[AskPermission]` keys.
+- [x] dyRealmService: all ten RPCs (`GetRealm`, `GetRealmBatch`,
+      `GetUserRealms`, `GetPublicRealms`, `SearchRealms`, `SendInviteNotify`,
+      `IsMemberWithRole`, `HasPermission`, `LoadMemberAccount`,
+      `LoadMemberAccounts`). Sphere and Messager already dial it.
+- [x] Boost accounting: contributions are deduplicated by order id, shares are
+      derived from `(currency, amount)`, and the active window is 30 days.
+- [x] XP: tenure (daily, keyed by the date), activity
+      (`realm.activity.<type>`, one-minute cooldown for chat), and boost
+      purchases (shares × 100). The perk multiplier 1.5×/2×/2.5× comes from
+      the `perks` port.
+- [x] Paid boosts apply through the local wallet in-process
+      (`orderEvents`), because a standalone deployment has no event bus; the
+      `payment_orders` JetStream consumer stays subscribed for a remote
+      wallet.
+- [x] Legacy importer for all eight tables plus
+      `scripts/import-realm.sh`.
+- [ ] `RealmActivityEvent` producers: Sphere/Messager publish the C# subject
+      today; the Go ports do not yet, so realm XP stays tenure-and-boost only
+      until they do.
 
 ### Phase 5 — NFC
 

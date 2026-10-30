@@ -35,7 +35,7 @@ func Factory() module.Factory {
 		},
 		Models:   wallet.SchemaModels(),
 		SQL:      schemaHooks(),
-		Provides: []module.PortID{ports.PortPerks},
+		Provides: []module.PortID{ports.PortPerks, ports.PortPayments, ports.PortOrderEvents},
 		New:      func() module.Instance { return &instance{} },
 	}
 }
@@ -51,20 +51,28 @@ func schemaHooks() []module.SchemaHook {
 }
 
 type instance struct {
-	stop func()
+	// service is built once in ProvidePorts so the payments port and the HTTP/
+	// gRPC surfaces share one order ledger (and therefore one hook chain).
+	service *wallet.Service
+	stop    func()
 }
 
-// ProvidePorts publishes the local perks provider, which the port registry
-// prefers over the remote wallet adapter.
+// ProvidePorts publishes the local perks and payments providers, which the
+// port registry prefers over the remote wallet adapter.
 func (i *instance) ProvidePorts(_ context.Context, host *module.Host) error {
 	if host == nil || host.Ports == nil || host.Core == nil || host.Core.DB == nil {
 		return errors.New("wallet: missing host core database")
 	}
 	svc := wallet.NewService(host.Core.DB, coreLog(host), host.Core.NATS, portPush(host))
+	i.service = svc
 	subs := wallet.NewSubscriptions(svc)
 	subs.Configure(host.ModuleSettings(moduleID), coreLog(host))
 	module.Provide[ports.Perks](host.Ports, ports.PortPerks, moduleID, module.KindFeature,
 		&perksProvider{subs: subs})
+	module.Provide[ports.Payments](host.Ports, ports.PortPayments, moduleID, module.KindFeature,
+		&wallet.PaymentsProvider{Service: svc})
+	module.Provide[ports.OrderEvents](host.Ports, ports.PortOrderEvents, moduleID, module.KindFeature,
+		&wallet.OrderEventsProvider{Service: svc})
 	return nil
 }
 
@@ -73,7 +81,10 @@ func (i *instance) Configure(ctx context.Context, host *module.Host) error {
 		return errors.New("wallet: missing host core database")
 	}
 	log := coreLog(host)
-	svc := wallet.NewService(host.Core.DB, log, host.Core.NATS, portPush(host))
+	svc := i.service
+	if svc == nil {
+		svc = wallet.NewService(host.Core.DB, log, host.Core.NATS, portPush(host))
+	}
 	if host.Core.Clients != nil && host.Core.Clients.Develop != nil {
 		svc.SetAppPublisherResolver(developResolver{client: host.Core.Clients.Develop})
 	}

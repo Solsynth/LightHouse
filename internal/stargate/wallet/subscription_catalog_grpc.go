@@ -24,6 +24,7 @@ import (
 // unquotedDecimal marshals as a JSON number and accepts either a number or a
 // quoted decimal, matching System.Text.Json's decimal encoding.
 type unquotedDecimal struct{ decimal.Decimal }
+
 func (d unquotedDecimal) MarshalJSON() ([]byte, error) {
 	return []byte(d.Decimal.String()), nil
 }

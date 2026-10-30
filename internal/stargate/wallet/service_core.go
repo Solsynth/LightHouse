@@ -85,6 +85,28 @@ func (s *Service) notifyAccount(ctx context.Context, accountID *uuid.UUID, packe
 	}
 }
 
+// publishOrderPaid emits the fleet's PaymentOrderEvent so consumers outside
+// this binary (realm boosts, name-change cards, affiliation invites) apply
+// the order. The C# wallet published it from PaymentService.PayOrderAsync;
+// here it is the single place a paid order leaves the module.
+func (s *Service) publishOrderPaid(ctx context.Context, order *WalletOrderEntity, payerWallet *WalletEntity) {
+	if s.NATS == nil || order == nil || payerWallet == nil || payerWallet.AccountID == nil {
+		return
+	}
+	event := nats.PaidOrder{
+		OrderID:           order.ID.String(),
+		WalletID:          payerWallet.ID.String(),
+		AccountID:         payerWallet.AccountID.String(),
+		AppIdentifier:     order.AppIdentifier,
+		ProductIdentifier: order.ProductIdentifier,
+		Meta:              orderMeta(order),
+		Status:            order.Status,
+	}
+	if err := s.NATS.PublishOrderPaid(ctx, event); err != nil {
+		s.Log.Warn("wallet payment event publish failed", "order", order.ID, "error", err)
+	}
+}
+
 func (s *Service) notifyTransaction(ctx context.Context, tx *WalletTransactionEntity, packet string) {
 	payload := map[string]any{
 		"id":                   tx.ID.String(),

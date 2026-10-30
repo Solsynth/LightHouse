@@ -519,6 +519,9 @@ func (s *Service) PayOrder(ctx context.Context, orderID uuid.UUID, payerWallet *
 		if err := s.runOrderHooks(ctx, &order); err != nil {
 			return nil, err
 		}
+		// The C# wallet re-published PaymentOrderEvent for an already-paid
+		// order, so a retried checkout still reaches the fleet's consumers.
+		s.publishOrderPaid(ctx, &order, payerWallet)
 		return &order, nil
 	}
 	if order.Status != OrderUnpaid {
@@ -586,6 +589,7 @@ func (s *Service) PayOrder(ctx context.Context, orderID uuid.UUID, payerWallet *
 		"currency": order.Currency,
 		"status":   order.Status,
 	})
+	s.publishOrderPaid(ctx, &order, payerWallet)
 	return &order, nil
 }
 

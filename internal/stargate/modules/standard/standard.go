@@ -14,6 +14,8 @@ import (
 	"src.solsynth.dev/sosys/stargate/modules/oidc"
 	"src.solsynth.dev/sosys/stargate/modules/presences"
 	"src.solsynth.dev/sosys/stargate/modules/profiles"
+	progressionmod "src.solsynth.dev/sosys/stargate/modules/progression"
+	realmmod "src.solsynth.dev/sosys/stargate/modules/realm"
 	"src.solsynth.dev/sosys/stargate/modules/relationships"
 	"src.solsynth.dev/sosys/stargate/modules/social"
 	"src.solsynth.dev/sosys/stargate/modules/spells"
@@ -29,11 +31,13 @@ func Modules() []module.Factory {
 		accounts.Factory(),
 		profiles.Factory(),
 		presences.Factory(),
+		progressionmod.Factory(),
 		relationships.Factory(),
 		spells.Factory(),
 		social.Factory(),
 		oidc.Factory(),
 		oauthapps.Factory(),
+		realmmod.Factory(),
 
 		// Other features.
 		e2ee.Factory(),
