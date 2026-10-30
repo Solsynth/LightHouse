@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"google.golang.org/protobuf/encoding/protojson"
+	"src.solsynth.dev/sosys/go/pkg/models"
 	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/core"
@@ -124,16 +125,7 @@ func (p *filesPort) GetFiles(ctx context.Context, ids []string) (map[string]mode
 		return nil, err
 	}
 	for _, file := range resp.GetFiles() {
-		out[file.GetId()] = model.CloudFileReferenceObject{
-			Id:       file.GetId(),
-			Name:     file.GetName(),
-			MimeType: file.GetMimeType(),
-			Url:      file.GetUrl(),
-			Size:     file.GetSize(),
-			Width:    file.Width,
-			Height:   file.Height,
-			Blurhash: file.GetBlurhash(),
-		}
+		out[file.GetId()] = models.FromProtoValue(file)
 	}
 	return out, nil
 }
