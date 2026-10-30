@@ -23,7 +23,7 @@ type EntityBase struct {
 
 // AchievementDefinitionEntity is `achievement_definitions`.
 type AchievementDefinitionEntity struct {
-	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Identifier        string         `gorm:"column:identifier;size:256;not null"`
 	Title             string         `gorm:"column:title;size:256;not null"`
@@ -48,7 +48,7 @@ func (AchievementDefinitionEntity) TableName() string { return "achievement_defi
 
 // QuestDefinitionEntity is `quest_definitions`.
 type QuestDefinitionEntity struct {
-	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Identifier        string         `gorm:"column:identifier;size:256;not null"`
 	Title             string         `gorm:"column:title;size:256;not null"`
@@ -75,10 +75,10 @@ func (QuestDefinitionEntity) TableName() string { return "quest_definitions" }
 // AccountAchievementEntity is `account_achievements`. One row per
 // (account, definition); achievements never reset.
 type AccountAchievementEntity struct {
-	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
-	AccountID               uuid.UUID  `gorm:"column:account_id"`
-	AchievementDefinitionID uuid.UUID  `gorm:"column:achievement_definition_id"`
+	AccountID               uuid.UUID  `gorm:"column:account_id;type:uuid"`
+	AchievementDefinitionID uuid.UUID  `gorm:"column:achievement_definition_id;type:uuid"`
 	ProgressCount           int        `gorm:"column:progress_count"`
 	CurrentStreak           int        `gorm:"column:current_streak"`
 	BestStreak              int        `gorm:"column:best_streak"`
@@ -93,10 +93,10 @@ func (AccountAchievementEntity) TableName() string { return "account_achievement
 // AccountQuestProgressEntity is `account_quest_progresses`: one row per
 // (account, definition, period).
 type AccountQuestProgressEntity struct {
-	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
-	AccountID            uuid.UUID  `gorm:"column:account_id"`
-	QuestDefinitionID    uuid.UUID  `gorm:"column:quest_definition_id"`
+	AccountID            uuid.UUID  `gorm:"column:account_id;type:uuid"`
+	QuestDefinitionID    uuid.UUID  `gorm:"column:quest_definition_id;type:uuid"`
 	PeriodKey            string     `gorm:"column:period_key;size:128;not null"`
 	ProgressCount        int        `gorm:"column:progress_count"`
 	RepeatIterationCount int        `gorm:"column:repeat_iteration_count"`
@@ -111,14 +111,14 @@ func (AccountQuestProgressEntity) TableName() string { return "account_quest_pro
 // a per-delivery timestamp for each reward type so a partial failure retries
 // only what is missing.
 type RewardGrantEntity struct {
-	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
-	AccountID             uuid.UUID      `gorm:"column:account_id"`
+	AccountID             uuid.UUID      `gorm:"column:account_id;type:uuid"`
 	DefinitionType        string         `gorm:"column:definition_type;size:32;not null"`
 	DefinitionIdentifier  string         `gorm:"column:definition_identifier;size:256;not null"`
 	DefinitionTitle       string         `gorm:"column:definition_title;size:256;not null"`
 	RewardToken           string         `gorm:"column:reward_token;size:256;not null"`
-	SourceEventID         uuid.UUID      `gorm:"column:source_event_id"`
+	SourceEventID         uuid.UUID      `gorm:"column:source_event_id;type:uuid"`
 	Reward                datatypes.JSON `gorm:"column:reward;type:jsonb"`
 	PeriodKey             *string        `gorm:"column:period_key;size:64"`
 	BadgeGrantedAt        *time.Time     `gorm:"column:badge_granted_at"`
@@ -133,10 +133,10 @@ func (RewardGrantEntity) TableName() string { return "progress_reward_grants" }
 // the action-log consumer. A redelivered event for the same definition and
 // period is a no-op.
 type EventReceiptEntity struct {
-	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
-	EventID              uuid.UUID `gorm:"column:event_id"`
-	AccountID            uuid.UUID `gorm:"column:account_id"`
+	EventID              uuid.UUID `gorm:"column:event_id;type:uuid"`
+	AccountID            uuid.UUID `gorm:"column:account_id;type:uuid"`
 	DefinitionType       string    `gorm:"column:definition_type;size:32;not null"`
 	DefinitionIdentifier string    `gorm:"column:definition_identifier;size:256;not null"`
 	PeriodKey            string    `gorm:"column:period_key;size:64;not null"`

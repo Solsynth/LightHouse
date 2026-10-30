@@ -56,9 +56,34 @@ var legacyIndexes = []string{
 	"ix_account_quest_progresses_account_definition_period",
 }
 
+// legacyUUIDColumns restores Passport's uuid column types. GORM's AutoMigrate
+// does not alter primary keys, and the first module build stored uuid.UUID
+// values as text; converting them keeps the legacy importer and the wire
+// values (canonical UUID strings) identical.
+var legacyUUIDColumns = [][2]string{
+	{"achievement_definitions", "id"},
+	{"quest_definitions", "id"},
+	{"account_achievements", "id"}, {"account_achievements", "account_id"},
+	{"account_achievements", "achievement_definition_id"},
+	{"account_quest_progresses", "id"}, {"account_quest_progresses", "account_id"},
+	{"account_quest_progresses", "quest_definition_id"},
+	{"progress_reward_grants", "id"}, {"progress_reward_grants", "account_id"},
+	{"progress_reward_grants", "source_event_id"},
+	{"progress_event_receipts", "id"}, {"progress_event_receipts", "event_id"},
+	{"progress_event_receipts", "account_id"},
+}
+
 // Hooks applies the uniqueness rules and drops the superseded EF indexes.
 func Hooks() []func(ctx context.Context, db *gorm.DB) error {
-	hooks := make([]func(ctx context.Context, db *gorm.DB) error, 0, len(legacyIndexes)+len(uniqueIndexes))
+	hooks := make([]func(ctx context.Context, db *gorm.DB) error, 0, len(legacyIndexes)+len(uniqueIndexes)+1)
+	hooks = append(hooks, func(ctx context.Context, db *gorm.DB) error {
+		for _, column := range legacyUUIDColumns {
+			if err := ensureUUIDColumn(ctx, db, column[0], column[1]); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	for _, name := range legacyIndexes {
 		hooks = append(hooks, func(ctx context.Context, db *gorm.DB) error {
 			return db.WithContext(ctx).Exec(`DROP INDEX IF EXISTS ` + name).Error
@@ -73,4 +98,22 @@ func Hooks() []func(ctx context.Context, db *gorm.DB) error {
 		})
 	}
 	return hooks
+}
+
+// ensureUUIDColumn converts a text UUID column to uuid; already-uuid columns
+// are left alone.
+func ensureUUIDColumn(ctx context.Context, db *gorm.DB, table, column string) error {
+	var dataType string
+	if err := db.WithContext(ctx).Raw(`
+		SELECT data_type FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = ? AND column_name = ?`,
+		table, column).Scan(&dataType).Error; err != nil {
+		return err
+	}
+	if dataType == "" || dataType == "uuid" {
+		return nil
+	}
+	return db.WithContext(ctx).Exec(
+		"ALTER TABLE " + table + " ALTER COLUMN " + column + " TYPE uuid USING " + column + "::uuid",
+	).Error
 }

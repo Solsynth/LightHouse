@@ -28,7 +28,7 @@ type EntityBase struct {
 
 // RealmEntity is `realms` (SnRealm).
 type RealmEntity struct {
-	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Slug         string          `gorm:"column:slug;size:1024;not null"`
 	Name         string          `gorm:"column:name;size:1024;not null"`
@@ -38,7 +38,7 @@ type RealmEntity struct {
 	Picture      *datatypes.JSON `gorm:"column:picture;type:jsonb"`
 	Background   *datatypes.JSON `gorm:"column:background;type:jsonb"`
 	Verification *datatypes.JSON `gorm:"column:verification;type:jsonb"`
-	AccountID    uuid.UUID       `gorm:"column:account_id"`
+	AccountID    uuid.UUID       `gorm:"column:account_id;type:uuid"`
 	BoostPoints  Decimal         `gorm:"column:boost_points;type:numeric;not null"`
 }
 
@@ -47,12 +47,12 @@ func (RealmEntity) TableName() string { return "realms" }
 // RealmMemberEntity is `realm_members`. The primary key is (realm_id,
 // account_id); a membership row survives a leave so a rejoin reuses it.
 type RealmMemberEntity struct {
-	RealmID   uuid.UUID `gorm:"column:realm_id;primaryKey"`
-	AccountID uuid.UUID `gorm:"column:account_id;primaryKey"`
+	RealmID   uuid.UUID `gorm:"column:realm_id;primaryKey;type:uuid"`
+	AccountID uuid.UUID `gorm:"column:account_id;primaryKey;type:uuid"`
 	EntityBase
 	Nick       *string    `gorm:"column:nick;size:1024"`
 	Bio        *string    `gorm:"column:bio;size:4096"`
-	LabelID    *uuid.UUID `gorm:"column:label_id"`
+	LabelID    *uuid.UUID `gorm:"column:label_id;type:uuid"`
 	Experience int        `gorm:"column:experience"`
 	Role       int        `gorm:"column:role"`
 	JoinedAt   *time.Time `gorm:"column:joined_at"`
@@ -69,14 +69,14 @@ func (RealmMemberEntity) TableName() string { return "realm_members" }
 
 // RealmLabelEntity is `realm_labels`.
 type RealmLabelEntity struct {
-	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
-	RealmID            uuid.UUID `gorm:"column:realm_id"`
+	RealmID            uuid.UUID `gorm:"column:realm_id;type:uuid"`
 	Name               string    `gorm:"column:name;size:1024;not null"`
 	Description        *string   `gorm:"column:description;size:4096"`
 	Color              *string   `gorm:"column:color;size:64"`
 	Icon               *string   `gorm:"column:icon;size:256"`
-	CreatedByAccountID uuid.UUID `gorm:"column:created_by_account_id"`
+	CreatedByAccountID uuid.UUID `gorm:"column:created_by_account_id;type:uuid"`
 }
 
 func (RealmLabelEntity) TableName() string { return "realm_labels" }
@@ -85,14 +85,14 @@ func (RealmLabelEntity) TableName() string { return "realm_labels" }
 // Shares are derived from (currency, amount); a contribution counts toward the
 // realm's boost level for 30 days.
 type RealmBoostContributionEntity struct {
-	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
-	RealmID       uuid.UUID `gorm:"column:realm_id"`
-	AccountID     uuid.UUID `gorm:"column:account_id"`
+	RealmID       uuid.UUID `gorm:"column:realm_id;type:uuid"`
+	AccountID     uuid.UUID `gorm:"column:account_id;type:uuid"`
 	Currency      string    `gorm:"column:currency;size:128;not null"`
 	Amount        Decimal   `gorm:"column:amount;type:numeric;not null"`
-	OrderID       uuid.UUID `gorm:"column:order_id"`
-	TransactionID uuid.UUID `gorm:"column:transaction_id"`
+	OrderID       uuid.UUID `gorm:"column:order_id;type:uuid"`
+	TransactionID uuid.UUID `gorm:"column:transaction_id;type:uuid"`
 }
 
 func (RealmBoostContributionEntity) TableName() string { return "realm_boost_contributions" }
@@ -100,10 +100,10 @@ func (RealmBoostContributionEntity) TableName() string { return "realm_boost_con
 // RealmExperienceRecordEntity is `realm_experience_records`: one realm XP
 // grant. (reason_type, reason) is the idempotency key for non-cooldown grants.
 type RealmExperienceRecordEntity struct {
-	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
-	RealmID    uuid.UUID `gorm:"column:realm_id"`
-	AccountID  uuid.UUID `gorm:"column:account_id"`
+	RealmID    uuid.UUID `gorm:"column:realm_id;type:uuid"`
+	AccountID  uuid.UUID `gorm:"column:account_id;type:uuid"`
 	ReasonType string    `gorm:"column:reason_type;size:1024;not null"`
 	Reason     string    `gorm:"column:reason;size:1024;not null"`
 	Delta      int       `gorm:"column:delta"`
@@ -114,9 +114,9 @@ func (RealmExperienceRecordEntity) TableName() string { return "realm_experience
 // RealmRolePermissionEntity is `realm_role_permissions`: the permission set
 // applied to every member of one role level.
 type RealmRolePermissionEntity struct {
-	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
-	RealmID          uuid.UUID `gorm:"column:realm_id"`
+	RealmID          uuid.UUID `gorm:"column:realm_id;type:uuid"`
 	RoleLevel        int       `gorm:"column:role_level"`
 	CanChat          bool      `gorm:"column:can_chat"`
 	CanPost          bool      `gorm:"column:can_post"`
@@ -133,10 +133,10 @@ func (RealmRolePermissionEntity) TableName() string { return "realm_role_permiss
 // RealmUserPermissionEntity is `realm_user_permissions`: per-account
 // overrides. A nil flag falls through to the role permission.
 type RealmUserPermissionEntity struct {
-	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
-	RealmID          uuid.UUID `gorm:"column:realm_id"`
-	AccountID        uuid.UUID `gorm:"column:account_id"`
+	RealmID          uuid.UUID `gorm:"column:realm_id;type:uuid"`
+	AccountID        uuid.UUID `gorm:"column:account_id;type:uuid"`
 	CanChat          *bool     `gorm:"column:can_chat"`
 	CanPost          *bool     `gorm:"column:can_post"`
 	CanComment       *bool     `gorm:"column:can_comment"`
@@ -151,11 +151,11 @@ func (RealmUserPermissionEntity) TableName() string { return "realm_user_permiss
 
 // RealmPostModerationLogEntity is `realm_post_moderation_logs`.
 type RealmPostModerationLogEntity struct {
-	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
-	RealmID            uuid.UUID `gorm:"column:realm_id"`
-	PostID             uuid.UUID `gorm:"column:post_id"`
-	ModeratorAccountID uuid.UUID `gorm:"column:moderator_account_id"`
+	RealmID            uuid.UUID `gorm:"column:realm_id;type:uuid"`
+	PostID             uuid.UUID `gorm:"column:post_id;type:uuid"`
+	ModeratorAccountID uuid.UUID `gorm:"column:moderator_account_id;type:uuid"`
 	Reason             *string   `gorm:"column:reason;size:4096"`
 	ModeratedAt        time.Time `gorm:"column:moderated_at"`
 }
