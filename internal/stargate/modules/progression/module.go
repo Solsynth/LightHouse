@@ -21,9 +21,9 @@ import (
 // Factory returns the compiled module descriptor.
 //
 // Progression consumes action logs, which the accounts module emits, so it
-// requires it. The reward collaborators (profile XP, badges, source points,
-// websocket packets) are optional ports: a deployment without them still
-// tracks progress, it just cannot pay out.
+// requires it. The reward collaborators (profile XP, badges, source points)
+// are optional ports: a deployment without them still tracks progress, it
+// just cannot pay out. Completion packets go straight to the websocket bus.
 func Factory() module.Factory {
 	return module.Factory{
 		ID:             progression.ModuleID,
@@ -36,7 +36,6 @@ func Factory() module.Factory {
 		Ports: []module.PortRequirement{
 			{ID: ports.PortBadges, Optional: true},
 			{ID: ports.PortPayments, Optional: true},
-			{ID: ports.PortPush, Optional: true},
 		},
 		Models: progression.Models(),
 		SQL:    schemaHooks(),
