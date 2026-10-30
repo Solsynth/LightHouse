@@ -1,0 +1,28 @@
+# Metoer cutover edge config — runs in front of Blade (api.solian.app).
+#
+# Old clients (shipped Island builds) still call /ring/**; new clients call
+# /metoer/**. This file only swaps the service prefix; Blade inserts /api and
+# routes /metoer/** to the metoer service. Everything not matched falls
+# through to the single reverse_proxy and reaches Blade unchanged.
+#
+# Blade config delta (Blade/configs/config.toml):
+#   [services]
+#   metoer = { http = "http://localhost:8080", grpc = "localhost:9090" }
+#   [endpoints]
+#   serviceNames = [ ..., "metoer" ]
+#
+# Once old clients are gone, delete the @ring matcher/rewrite pair; the
+# imports, encode and the final reverse_proxy stay.
+
+api.solian.app {
+    import logging
+    import bad_bots
+
+    encode zstd gzip
+
+    # ---- old clients: /ring/** -> Metoer (Ring fully replaced) ----
+    @ring path /ring/*
+    rewrite @ring /metoer{path}
+
+    reverse_proxy localhost:8080
+}

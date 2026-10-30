@@ -1,0 +1,16 @@
+# Secrets and runtime assets — copy from the C# deployment's Keys/ dir
+Keys/
+
+# Local config overrides
+config.toml
+
+# Redis snapshots (local dev)
+dump.rdb
+*.rdb
+
+# Build output (make build → bin/, direct go build → root binaries)
+bin/
+/metoer
+
+# Go
+*.test
