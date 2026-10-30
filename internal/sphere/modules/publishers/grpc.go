@@ -15,9 +15,9 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
-	"src.solsynth.dev/sosys/go/pkg/models"
 	gen "src.solsynth.dev/sosys/go/proto"
 
+	"src.solsynth.dev/sosys/lighthouse/internal/platform/filejson"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
@@ -307,11 +307,8 @@ func publisherToProto(entity *store.PublisherEntity) *gen.DyPublisher {
 }
 
 func cloudFileProto(raw datatypes.JSON) *gen.DyCloudFile {
-	if len(raw) == 0 {
-		return nil
-	}
-	var reference models.SnCloudFileReferenceObject
-	if err := json.Unmarshal(raw, &reference); err != nil {
+	reference := filejson.Reference(raw)
+	if reference == nil {
 		return nil
 	}
 	file := &gen.DyCloudFile{

@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/model"
+	"src.solsynth.dev/sosys/lighthouse/internal/platform/filejson"
 )
 
 // ErrNotFound is returned when a row does not exist.
@@ -163,7 +164,7 @@ func MessageToModel(entity *ChatMessageEntity) model.ChatMessage {
 		Nonce:              entity.ClientMessageID,
 		Meta:               JSONValue(entity.Meta),
 		EditedAt:           TimePtr(entity.EditedAt),
-		Attachments:        []model.CloudFileReferenceObject{},
+		Attachments:        filejson.References(entity.Attachments),
 		ReactionsCount:     map[string]int{},
 		ReactionsMade:      map[string]bool{},
 		RepliedMessageID:   UUIDPtrString(entity.RepliedMessageID),
@@ -186,7 +187,6 @@ func MessageToModel(entity *ChatMessageEntity) model.ChatMessage {
 		}
 	}
 	JSONArray(entity.MembersMentioned, &message.MembersMentioned)
-	JSONArray(entity.Attachments, &message.Attachments)
 	JSONMap(entity.ReactionsCount, &message.ReactionsCount)
 	if message.ReactionsCount == nil {
 		message.ReactionsCount = map[string]int{}

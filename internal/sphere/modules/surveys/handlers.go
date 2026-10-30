@@ -15,6 +15,7 @@ import (
 	"src.solsynth.dev/sosys/go/pkg/errs"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/accountjson"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/authn"
+	"src.solsynth.dev/sosys/lighthouse/internal/platform/filejson"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/httpx"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
@@ -593,12 +594,7 @@ func (s *service) updateSurvey(c *gin.Context) {
 				question.Attachments = resolved
 			} else if parsed, err := uuid.Parse(question.ID); err == nil {
 				if current, ok := existing[parsed]; ok {
-					var preserved []model.CloudFileReferenceObject
-					store.JSONArray(current.Attachments, &preserved)
-					if preserved == nil {
-						preserved = []model.CloudFileReferenceObject{}
-					}
-					question.Attachments = preserved
+					question.Attachments = filejson.References(current.Attachments)
 				}
 			}
 			incoming = append(incoming, question)

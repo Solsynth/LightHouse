@@ -4,14 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"time"
-	"unicode"
 
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
+	"src.solsynth.dev/sosys/lighthouse/internal/platform/filejson"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 )
 
@@ -80,57 +79,6 @@ func JSONValue(raw datatypes.JSON) any {
 		return nil
 	}
 	return value
-}
-
-// FileReferenceValue normalizes a jsonb file-reference column for the wire.
-//
-// Sphere stores picture/background references as jsonb. Rows written by the
-// legacy C# fleet carry PascalCase keys (System.Text.Json's default), while
-// rows written here use the snake_case CloudFileReferenceObject tags. The
-// column is passed through as a generic object, so we rewrite the top-level
-// keys to snake_case here to keep the wire shape consistent no matter which
-// side wrote the row. Decoding into the typed struct is not an option: Go's
-// encoding/json only matches tags case-insensitively on an exact name, so a
-// PascalCase "MimeType" would silently fail to land on `mime_type` and drop.
-//
-// An empty column yields nil (wire null); a non-object blob is passed through
-// unchanged.
-func FileReferenceValue(raw datatypes.JSON) any {
-	if len(raw) == 0 {
-		return nil
-	}
-	var object map[string]any
-	if err := json.Unmarshal(raw, &object); err != nil || object == nil {
-		return JSONValue(raw)
-	}
-	normalized := make(map[string]any, len(object))
-	for key, value := range object {
-		normalized[toSnakeCase(key)] = value
-	}
-	return normalized
-}
-
-// toSnakeCase rewrites an identifier like "MimeType", "fileMeta" or "ID" to
-// its snake_case form ("mime_type", "file_meta", "id").
-func toSnakeCase(value string) string {
-	runes := []rune(value)
-	var out strings.Builder
-	out.Grow(len(value) + 4)
-	for index, r := range runes {
-		if unicode.IsUpper(r) {
-			if index > 0 {
-				prev := runes[index-1]
-				nextLower := index+1 < len(runes) && unicode.IsLower(runes[index+1])
-				if unicode.IsLower(prev) || unicode.IsDigit(prev) || (unicode.IsUpper(prev) && nextLower) {
-					out.WriteRune('_')
-				}
-			}
-			out.WriteRune(unicode.ToLower(r))
-			continue
-		}
-		out.WriteRune(r)
-	}
-	return out.String()
 }
 
 // JSONArray decodes a jsonb array into dst, leaving dst empty when the column
@@ -222,11 +170,10 @@ func PostToModel(entity *PostEntity) model.Post {
 		ReactionsMade:        map[string]bool{},
 		SensitiveMarks:       []model.SensitiveMark{},
 		Mentions:             []model.ContentMention{},
-		Attachments:          []model.CloudFileReferenceObject{},
+		Attachments:          filejson.References(entity.Attachments),
 	}
 	JSONArray(entity.SensitiveMarks, &post.SensitiveMarks)
 	JSONArray(entity.Mentions, &post.Mentions)
-	JSONArray(entity.Attachments, &post.Attachments)
 	post.EmbedView = JSONValue(entity.EmbedView)
 	post.IsShadowbanned = entity.ShadowbanReason != nil && *entity.ShadowbanReason != int(model.ShadowbanNone)
 	return post
@@ -241,8 +188,8 @@ func PublisherToModel(entity *PublisherEntity) model.Publisher {
 		Name:                   entity.Name,
 		Nick:                   entity.Nick,
 		Bio:                    entity.Bio,
-		Picture:                FileReferenceValue(entity.Picture),
-		Background:             FileReferenceValue(entity.Background),
+		Picture:                filejson.Value(entity.Picture),
+		Background:             filejson.Value(entity.Background),
 		Meta:                   JSONValue(entity.Meta),
 		Metadata:               JSONValue(entity.Metadata),
 		AccountID:              UUIDPtrString(entity.AccountID),
@@ -337,12 +284,11 @@ func SurveyToModel(entity *SurveyEntity) model.Survey {
 		HideResults:       entity.HideResults,
 		PublisherID:       entity.PublisherID.String(),
 		Questions:         []model.SurveyQuestion{},
-		Attachments:       []model.CloudFileReferenceObject{},
+		Attachments:       filejson.References(entity.Attachments),
 		CreatedAt:         model.NewTime(entity.CreatedAt),
 		UpdatedAt:         model.NewTime(entity.UpdatedAt),
 		DeletedAt:         DeletedPtr(entity.DeletedAt),
 	}
-	JSONArray(entity.Attachments, &survey.Attachments)
 	return survey
 }
 
@@ -361,13 +307,12 @@ func SurveyQuestionToModel(entity *SurveyQuestionEntity) model.SurveyQuestion {
 		MaxValue:      entity.MaxValue,
 		SurveyID:      entity.SurveyID.String(),
 		Options:       []model.SurveyOption{},
-		Attachments:   []model.CloudFileReferenceObject{},
+		Attachments:   filejson.References(entity.Attachments),
 		CreatedAt:     model.NewTime(entity.CreatedAt),
 		UpdatedAt:     model.NewTime(entity.UpdatedAt),
 		DeletedAt:     DeletedPtr(entity.DeletedAt),
 	}
 	JSONArray(entity.Options, &question.Options)
-	JSONArray(entity.Attachments, &question.Attachments)
 	return question
 }
 

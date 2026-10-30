@@ -2,11 +2,11 @@ package fediverse
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 
 	"github.com/google/uuid"
 
+	"src.solsynth.dev/sosys/lighthouse/internal/platform/filejson"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
 )
@@ -188,8 +188,7 @@ func (s *server) attachmentObjects(post *store.PostEntity) []any {
 	if len(post.Attachments) == 0 {
 		return result
 	}
-	var attachments []model.CloudFileReferenceObject
-	store.JSONArray(post.Attachments, &attachments)
+	attachments := filejson.References(post.Attachments)
 	for _, attachment := range attachments {
 		mediaType := attachment.MimeType
 		if mediaType == "" {
@@ -233,17 +232,11 @@ func (s *server) attachmentObjects(post *store.PostEntity) []any {
 // ---- file reference helpers ----------------------------------------------
 
 func decodeFileReference(raw []byte) (model.CloudFileReferenceObject, bool) {
-	if len(raw) == 0 {
+	reference := filejson.Reference(raw)
+	if reference == nil || (reference.Id == "" && reference.Url == "") {
 		return model.CloudFileReferenceObject{}, false
 	}
-	var reference model.CloudFileReferenceObject
-	if err := json.Unmarshal(raw, &reference); err != nil {
-		return model.CloudFileReferenceObject{}, false
-	}
-	if reference.Id == "" && reference.Url == "" {
-		return model.CloudFileReferenceObject{}, false
-	}
-	return reference, true
+	return *reference, true
 }
 
 func fileReferenceURL(raw []byte, base string) *string {

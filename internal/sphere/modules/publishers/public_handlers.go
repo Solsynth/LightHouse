@@ -12,6 +12,7 @@ import (
 	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/authn"
+	"src.solsynth.dev/sosys/lighthouse/internal/platform/filejson"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/httpx"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
@@ -222,7 +223,7 @@ func (i *instance) leaderboardEntries(c *gin.Context) ([]leaderboardEntry, error
 			PublisherID: row.ID.String(),
 			Name:        row.Name,
 			Nick:        row.Nick,
-			Picture:     store.FileReferenceValue(row.Picture),
+			Picture:     filejson.Value(row.Picture),
 			Rating:      row.Rating,
 			Rank:        currentRank,
 			Percentile:  math.Round(percentile*10) / 10,

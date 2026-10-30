@@ -11,6 +11,7 @@ import (
 	"src.solsynth.dev/sosys/go/pkg/errs"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/authn"
+	"src.solsynth.dev/sosys/lighthouse/internal/platform/filejson"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/httpx"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
@@ -1094,11 +1095,7 @@ func imageRef(image any) *model.CloudFileReferenceObject {
 	if err != nil {
 		return nil
 	}
-	var ref model.CloudFileReferenceObject
-	if err := json.Unmarshal(encoded, &ref); err != nil {
-		return nil
-	}
-	return &ref
+	return filejson.Reference(encoded)
 }
 
 func stringValue(value *string) string {

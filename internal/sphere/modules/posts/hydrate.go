@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"src.solsynth.dev/sosys/lighthouse/internal/platform/filejson"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
 )
@@ -511,8 +512,8 @@ func postCollectionToModel(e *store.PostCollectionEntity) model.PostCollection {
 		Name:        e.Name,
 		Description: e.Description,
 		PublisherID: e.PublisherID.String(),
-		Background:  store.FileReferenceValue(e.Background),
-		Icon:        store.FileReferenceValue(e.Icon),
+		Background:  filejson.Value(e.Background),
+		Icon:        filejson.Value(e.Icon),
 		CreatedAt:   model.NewTime(e.CreatedAt),
 		UpdatedAt:   model.NewTime(e.UpdatedAt),
 		DeletedAt:   store.DeletedPtr(e.DeletedAt),

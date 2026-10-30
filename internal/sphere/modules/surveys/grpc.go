@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 	gen "src.solsynth.dev/sosys/go/proto"
 
+	"src.solsynth.dev/sosys/lighthouse/internal/platform/filejson"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
 )
@@ -233,8 +234,7 @@ func surveyToProto(survey *store.SurveyEntity, questions []store.SurveyQuestionE
 	if survey.DeletedAt.Valid {
 		proto.DeletedAt = timestamppb.New(survey.DeletedAt.Time)
 	}
-	var attachments []model.CloudFileReferenceObject
-	store.JSONArray(survey.Attachments, &attachments)
+	attachments := filejson.References(survey.Attachments)
 	for _, attachment := range attachments {
 		proto.Attachments = append(proto.Attachments, cloudFileToProto(&attachment))
 	}
@@ -267,8 +267,7 @@ func questionToProto(question *store.SurveyQuestionEntity) *gen.DySurveyQuestion
 			Order:       int32(option.Order),
 		})
 	}
-	var attachments []model.CloudFileReferenceObject
-	store.JSONArray(question.Attachments, &attachments)
+	attachments := filejson.References(question.Attachments)
 	for _, attachment := range attachments {
 		proto.Attachments = append(proto.Attachments, cloudFileToProto(&attachment))
 	}
@@ -290,14 +289,11 @@ func publisherToProto(publisher *store.PublisherEntity) *gen.DyPublisher {
 		CreatedAt: timestamppb.New(publisher.CreatedAt),
 		UpdatedAt: timestamppb.New(publisher.UpdatedAt),
 	}
-	var picture, background model.CloudFileReferenceObject
-	store.JSONMap(publisher.Picture, &picture)
-	if picture.Id != "" {
-		proto.Picture = cloudFileToProto(&picture)
+	if picture := filejson.Reference(publisher.Picture); picture != nil && picture.Id != "" {
+		proto.Picture = cloudFileToProto(picture)
 	}
-	store.JSONMap(publisher.Background, &background)
-	if background.Id != "" {
-		proto.Background = cloudFileToProto(&background)
+	if background := filejson.Reference(publisher.Background); background != nil && background.Id != "" {
+		proto.Background = cloudFileToProto(background)
 	}
 	return proto
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 
+	"src.solsynth.dev/sosys/lighthouse/internal/platform/filejson"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
 )
@@ -142,9 +143,8 @@ func pictureURL(raw datatypes.JSON) *string {
 	if len(raw) == 0 {
 		return nil
 	}
-	var file model.CloudFileReferenceObject
-	store.JSONMap(raw, &file)
-	if file.Url == "" {
+	file := filejson.Reference(raw)
+	if file == nil || file.Url == "" {
 		return nil
 	}
 	url := file.Url
