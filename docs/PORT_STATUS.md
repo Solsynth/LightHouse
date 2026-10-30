@@ -230,3 +230,56 @@ Known gaps:
 - **No permanent regression test.** The idempotency, meta-filter, streak and
   consumer proofs were throwaway live probes (they need PostgreSQL and a
   JetStream server); no progression test is committed.
+
+### Domain trust, Stellar subscriptions and the Passport gRPC cutover
+
+`app.solian.id.domaintrust` lives in `internal/stargate/domaintrust/`,
+`internal/stargate/httpserver/domaintrustctl/` and
+`internal/stargate/modules/domaintrust/`; it is the last Passport gRPC service
+the Go services dialed.
+
+Verified against a live PostgreSQL and a running Stargate:
+
+- the module creates `domain_blocks` and `domain_validation_metrics` with the
+  Passport indexes; `GET /api/domain-blocks/check` blocks `http://` URLs and
+  private IPs and allows `https://example.com`, and `DyDomainBlockService`
+  answered both `ValidateUrl` and `IsDomainBlocked` over gRPC with the same
+  decisions;
+- the Go platform clients now dial one `[services].stargate` target. With
+  Sphere pointed at Stargate, `GET /api/publishers` returned the
+  realm-linked organization publisher with its full `realm` object
+  (`id`, `slug`, `name`, `description`, `is_public`) plus the member and
+  quota records; `GET /api/publishers/realmorg` returned the same snapshot.
+  This is the path a stale `[services].passport` override used to break;
+- the wallet seeds `wallet_subscription_definitions` on boot (5 rows: three
+  Stellar tiers and two Creator plans) without any hand-written config. An
+  active `solian.stellar.primary` subscription made
+  `GET /api/publishers/quota` report `perk_level: 1` and `total: 4`, and
+  switching it to `solian.stellar.nova` moved both to `2` and `6`, proving
+  `DyProfileService.GetAccount` carries `perk_level` from the in-process
+  wallet to Sphere;
+- the realm snapshot Sphere embeds now carries the full `SnRealm` field set
+  (`is_community`, `verification`, `account_id`, numeric `boost_points`,
+  `boost_level`), not just id/slug/name/description;
+- `stargate-migrate` now copies `realms`, the `realm_*` tables, the six
+  progression tables and both domain-trust tables. A run against a
+  legacy-shaped source copied realm, domain-trust and progression rows
+  (including `progress_reward_grants.reward_token`); a second
+  `--incremental` run copied 0 rows and skipped all 41 completed tables;
+- the module tables store UUID columns as `uuid`, not the `text` GORM chooses
+  by default. Fresh databases get the right type from the entity tags and an
+  existing database is converted by a schema hook (primary keys included), so
+  the legacy importer and the wire values agree.
+
+Known gaps:
+
+- **Stellar purchase path.** The catalog and perk resolution are verified;
+  buying a plan through an external provider (Paddle/Afdian/Apple) was not
+  exercised in this environment, so provider webhooks still need the
+  credentials set in `[modules.settings."app.solian.wallet"]`.
+- **NFC** remains Passport-only. No Go service dials it, so it does not block
+  removing the Passport target, but the NFC routes and `DyNfcService` are not
+  served by Stargate yet.
+- **Domain trust metrics are buffered per process** and flushed once a minute,
+  so a crash loses at most the last minute of validation counters (Passport
+  used the same buffer model).

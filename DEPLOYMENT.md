@@ -101,7 +101,7 @@ in-memory cache. See §7.7 — that is fine for one replica and wrong for many.
 Optional, but required for realtime chat and for award/sponsor settlement.
 Chat's inbound websocket consumer needs JetStream enabled. See §7.8 and §7.9.
 
-### Stargate and Passport
+### Stargate
 
 `internal/stargate/` in this repo is the identity service. Required for anything
 authenticated. Bearer tokens are validated by calling
@@ -109,15 +109,12 @@ Stargate's `DyAuthService.Authenticate` — the same contract as the C#
 `DysonTokenAuthHandler` — and `[AskPermission]` equivalents call
 `DyPermissionService.HasPermission`.
 
-The C# fleet splits those services over two hosts, so there are two targets:
+The port dials one target. It serves every identity read the Go services need;
+Passport is no longer configured:
 
 | Target | Logical name | Services used by the port |
 |---|---|---|
-| `[services].stargate` | `https://_grpc.stargate` | `DyAuthService`, `DyPermissionService`, `DyAccountService`, `DyActionLogService`, `DyPresenceService`, `DyMlsService` |
-| `[services].passport` | `https://_grpc.passport` | `DyProfileService`, `DyRealmService`, `DyDomainBlockService` |
-
-Leave `passport` empty and the Stargate target is used for both, which suits a
-deployment that serves them from one address.
+| `[services].stargate` | `https://_grpc.stargate` | `DyAuthService`, `DyPermissionService`, `DyAccountService`, `DyActionLogService`, `DyPresenceService`, `DyMlsService`, `DyProfileService`, `DyRealmService`, `DyDomainBlockService` |
 
 ### Blade
 
@@ -138,7 +135,6 @@ One TOML per service, selected with `CONFIG_PATH` (default
 | `SPHERE_HTTP_PORT` / `MESSAGER_HTTP_PORT` | `[http].port` |
 | `SPHERE_GRPC_PORT` / `MESSAGER_GRPC_PORT` | `[grpc].port` |
 | `SPHERE_SERVICES_STARGATE__GRPC` | `[services].stargate.grpc` |
-| `SPHERE_SERVICES_PASSPORT__GRPC` | `[services].passport.grpc` |
 | `SPHERE_SERVICES_SPHERE__GRPC` (messager only) | `[services].sphere.grpc` |
 | `SPHERE_NATS_TARGET` / `MESSAGER_NATS_TARGET` | `[nats].target` |
 | `SPHERE_REDIS_ADDR` / `MESSAGER_REDIS_ADDR` | `[redis].addr` |
@@ -160,7 +156,6 @@ keyFile  = "Keys/server.key"
 
 [services]
 stargate = { grpc = "stargate:9090" }
-passport = { grpc = "" }                    # empty = reuse stargate
 ring     = { grpc = "ring:7002" }
 drive    = { grpc = "drive:7004" }
 wallet   = { grpc = "wallet:7010" }
@@ -241,13 +236,21 @@ Properties of the importer:
   database has that the port does not is ignored.
 - **Soft-deleted rows are copied with their `deleted_at`**, so history survives.
 
+`stargate-migrate` copies the profile, realm, progression and domain-trust
+tables Passport used to own (`realms`, the `realm_*` tables,
+`achievement_definitions`/`quest_definitions` and progress rows,
+`domain_blocks`, `domain_validation_metrics`). The run is resumable: without
+`--incremental` it truncates the tables it owns and re-copies, and with
+`--incremental` it skips completed tables and inserts only missing rows.
+
 What is deliberately **not** copied:
 
-- Realm permission tables (`sn_realm_role_permission`,
-  `sn_realm_user_permission`) — those belong to Passport, not to these services.
-- Legacy tables the port does not own at all (`fediverse_actors`, `polls`,
-  `publisher_follow_requests`, …) are simply absent from the target; the
-  importer reports them as skipped.
+- Legacy tables no ported service owns (`fediverse_actors`, `polls`,
+  `publisher_follow_requests`, …) are absent from the target; the importer
+  reports them as skipped.
+- Wallet tables are not part of `stargate-migrate`; the wallet module has its
+  own schema and seeds the subscription catalog from configuration (the
+  Stellar and Creator plans ship as defaults).
 
 ---
 
@@ -342,12 +345,12 @@ of the public path, so `path = "/sphere"`, `target = "/api"` maps
 `/sphere/posts` to `/api/posts`. A rule with `target = "/sphere"` (or no target
 at all) forwards `/sphere/posts` unchanged and every request 404s.
 
-**7.4 Two identity endpoints, not one.** The port reads auth/permissions
-/accounts from `[services].stargate` and profiles/realms/domain blocks from
-`[services].passport`. Setting only `stargate` works when both services are
-reached there; setting `stargate` but not `passport` in a fleet where Passport
-is a separate host makes realm lookups, profile hydration and domain-block
-checks fail (§7.6 turns that into 503s and skipped enrichment). Configure both.
+**7.4 One identity endpoint.** The port reads auth, permissions, accounts,
+profiles, realms and domain blocks from `[services].stargate`; the former
+`[services].passport` override is gone. A deployment that still sets
+`passport` silently ignores the key, so remove it and point `stargate` at the
+Stargate gRPC address. Leaving `stargate` empty disables authentication and
+all identity-backed enrichment (§7.5).
 
 **7.5 No auth service configured means 401, not a fallback.** With
 `[services].stargate.grpc` empty, the service starts and serves anonymous

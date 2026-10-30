@@ -1,12 +1,12 @@
 # Stargate
 
 The Go replacement for **DysonNetwork.Padlock** (auth, accounts, OIDC, admin,
-E2EE/MLS) plus the **Passport account/profile domain** (accounts, profiles,
-relationships, followers/following). Serves the same `/api/**` routes the C#
-services served (the Blade gateway adds the `/padlock` and `/passport`
-prefixes) with identical JSON shapes. Account **board items stay in
-Passport** (routes + `account_board_items` table); Stargate only consumes
-board updates indirectly via the profile read-model.
+E2EE/MLS) and the **Passport identity domains** (profiles, relationships,
+followers/following, realms, progression and domain trust). Serves the same
+`/api/**` routes the C# services served (the Blade gateway adds the `/padlock`
+and `/passport` prefixes) with identical JSON shapes. Passport keeps the
+surfaces that are not ported yet (board items, NFC, Examination, Meet);
+Stargate only consumes board updates indirectly via the profile read-model.
 
 ## Layout
 
@@ -95,6 +95,12 @@ Modules own their schema:
   optional `badges` and `payments` ports, and completion packets go to the
   websocket bus. See
   [`docs/module-system-plan.md`](docs/module-system-plan.md).
+- `app.solian.id.domaintrust` owns the ported Passport domain-trust domain:
+  `domain_blocks` and `domain_validation_metrics`, `/api/domain-blocks`
+  (rule CRUD, public `validate`/`check`, metrics) and the
+  `DyDomainBlockService` gRPC port the Go services call for URL safety.
+  HTTP-block, private-IP and blocked-port defaults mirror `DomainBlock`
+  settings; metrics are buffered and flushed once a minute.
 - `app.solian.wallet` owns the ported DysonNetwork.Wallet service: wallets,
   pockets, the transaction ledger, orders, inbound provider orders,
   subscriptions, gifts, coupons, merchants and settlements, under the legacy
@@ -290,15 +296,19 @@ zero-filled per type.
 
 ## Cutover
 
-1. Point Blade's routes for `/padlock/**` (and the moved `/passport/**`
-   paths) at Stargate.
-2. Point the C# fleet's `services__padlock__grpc__0` env at Stargate (the
-   `_grpc.padlock`/`_grpc.passport` DNS targets stay; only the service
-   address changes).
-3. Keep Passport serving its remaining paths; its account lookups now hit
-   Stargate.
-4. Run the migration tool, restart, verify with the compat sweep in the
+1. Point Blade's routes for `/padlock/**`, `/passport/**`, `/api/realms/**`,
+   `/api/domain-blocks/**` and `/.well-known/badges` at Stargate.
+2. Point the C# fleet's `services__padlock__grpc__0` and
+   `services__passport__grpc__0` env at Stargate; the `_grpc.padlock` /
+   `_grpc.passport` DNS targets stay, only the service address changes.
+3. The Go services keep a single `[services].stargate` target: profiles,
+   realms and domain blocks are read from it, and the former `passport` key is
+   ignored. Remove it from deployment configs.
+4. Run the migration tool (it now copies the realm, progression and
+   domain-trust tables too), restart, and verify with the compat sweep in the
    plan (`local://stargate-user-domain-plan.md`).
+5. Keep Passport serving the paths that are not ported yet (board items, NFC,
+   Examination, Meet); its account lookups now hit Stargate.
 
 ## Compatibility notes
 

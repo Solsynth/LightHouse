@@ -24,7 +24,9 @@ disabled = []
 
 # The ported wallet module (app.solian.wallet) reads its settings here. The
 # catalog seed keeps the C# appsettings shape; providers only accept payments
-# once their credentials are set.
+# once their credentials are set. Omitting definitions (or leaving the list
+# empty) seeds the Stellar Program and Creator plans Passport shipped by
+# default.
 # [modules.settings."app.solian.wallet".payment.auth.paddle]
 # apiKey = "pdl_..."
 # webhookSecret = "replace-with-a-paddle-webhook-secret"
@@ -33,12 +35,19 @@ disabled = []
 # credential = "..."
 # [modules.settings."app.solian.wallet".subscriptionCatalog]
 # settings = { defaultSubscriptionDurationDays = 30 }
-# definitions = []
+# definitions = []                  # empty = the default Stellar/Creator plans
 # The progression module ships its badge SVGs embedded, so this block is only
 # needed to serve an operator replacement set from disk (the C# [Badges]
 # iconsPath option). Unknown icon names answer 404.
 # [modules.settings."app.solian.id.progression"]
 # iconsPath = "Resources/BadgeIcons"
+# Domain trust defaults to blocking HTTP, direct IPs, private networks and the
+# standard dangerous ports; these switches only need to change to opt out.
+# [modules.settings."app.solian.id.domaintrust"]
+# blockHttpByDefault = true
+# blockIpAddressesByDefault = true
+# blockPrivateNetworksByDefault = true
+# additionalBlockedPorts = [21, 22, 23, 25, 53, 110, 143, 993, 995, 3306, 5432, 6379, 27017]
 
 # Select a provider when more than one enabled module provides the same port.
 # [ports]

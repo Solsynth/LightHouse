@@ -36,6 +36,7 @@ app.solian.id.oidc
 app.solian.id.nfc
 app.solian.id.realm
 app.solian.id.progression
+app.solian.id.domaintrust
 ```
 
 Other features:
@@ -278,6 +279,7 @@ startup.
 | `app.solian.id.oauthapps` | feature | `/api/oauth-apps/**`, provides `oauthClients` | auth | `oauth_apps`, `oauth_app_secrets` |
 | `app.solian.id.realm` | feature | `/api/realms/**`, `/api/realms/public`, `/api/admin/realms/**`, the ten `DyRealmService` RPCs | auth, accounts | `realms`, `realm_members`, `realm_labels`, `realm_boost_contributions`, `realm_experience_records`, `realm_role_permissions`, `realm_user_permissions`, `realm_post_moderation_logs` |
 | `app.solian.id.progression` | feature | `/api/accounts/me/progression/**`, `/api/admin/progression/**`, `/.well-known/badges`, action-log consumer | auth, accounts | `achievement_definitions`, `quest_definitions`, `account_achievements`, `account_quest_progresses`, `progress_reward_grants`, `progress_event_receipts` |
+| `app.solian.id.domaintrust` | feature | `/api/domain-blocks/**` (rule CRUD, public `validate`/`check`, metrics), `DyDomainBlockService` | auth | `domain_blocks`, `domain_validation_metrics` |
 | `app.solian.e2ee` | feature | `/api/e2ee/**`, MLS gRPC | accounts | `e2ee_*`, `mls_*` (later phase) |
 | `app.solian.admin` | feature | `/api/admin/**`, actions/punishments | accounts | core tables |
 | `app.solian.wellknown` | feature | `/.well-known/*` docs | — | none |
@@ -491,6 +493,32 @@ whose schema diverged.
 - [ ] Action-log publishers: Stargate publishes its own tracked actions, but
       the Go Sphere/Messager processes do not emit `action_logs.*` yet, so
       post/chat/realm achievements only advance when the C# fleet publishes.
+
+### Phase 4e — domain trust and the last Passport gRPC dependency
+
+- [x] `app.solian.id.domaintrust` owns `domain_blocks` and
+      `domain_validation_metrics` under their legacy names, with the EF indexes
+      reproduced as schema hooks (unique metric domain, pattern/active
+      indexes).
+- [x] `/api/domain-blocks`: authenticated rule list/get/create, permission
+      gated update/delete (`domain.trust.update`, `domain.trust.delete`), the
+      public `POST /validate` and `GET /check`, and the authenticated metrics
+      endpoints — all with the C# snake_case bodies, `X-Total` headers and
+      `PASSPORT_DOMAIN_*` error codes.
+- [x] `DyDomainBlockService.ValidateUrl` and `IsDomainBlocked`, so Sphere and
+      Messager read domain safety from Stargate instead of Passport.
+- [x] Defaults: HTTP blocked, direct IPs blocked, private networks blocked and
+      the port list from `DomainBlockSettings`, configurable under
+      `[modules.settings."app.solian.id.domaintrust"]`. Validation metrics are
+      buffered and flushed once a minute.
+- [x] The Go platform clients dial one `[services].stargate` target for
+      profiles, realms and domain blocks; the `passport` target and
+      `*_SERVICES_PASSPORT__GRPC` override are gone.
+- [x] The wallet seeds its subscription catalog on boot (Passport called
+      `EnsureSeededAsync`), with the Stellar and Creator plans as defaults, so
+      `perk_level` reaches `DyProfileService` without hand-created rows.
+- [ ] NFC remains Passport-only; no Go service dials it, so it does not block
+      removing the Passport gRPC target.
 
 ### Phase 5 — NFC
 
