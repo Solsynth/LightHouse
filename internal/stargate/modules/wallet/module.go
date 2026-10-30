@@ -106,6 +106,12 @@ func (i *instance) Configure(ctx context.Context, host *module.Host) error {
 
 	subscriptions := wallet.NewSubscriptions(svc)
 	subscriptions.Configure(deps.Settings, log)
+	// Passport called EnsureSeededAsync during startup; without it the
+	// configured (or default Stellar) definitions never reach the table and
+	// perk subscriptions cannot resolve.
+	if err := subscriptions.EnsureSeeded(ctx); err != nil {
+		return err
+	}
 	products := wallet.ProductsService(deps)
 	// Subscription orders are applied first; the product hook ignores orders
 	// it does not own.

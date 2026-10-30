@@ -760,16 +760,122 @@ func parseSeedDefinitions(value any) []SubscriptionCatalogSeedDefinition {
 	return definitions
 }
 
+// defaultSubscriptionCatalogDefinitions is the Definition list Passport's
+// appsettings shipped: the three Stellar Program tiers and the two Creator
+// plans. A deployment without an explicit catalog gets these, so perk
+// subscriptions (and the publisher perks that depend on them) work out of the
+// box; configured definitions replace the set.
+func defaultSubscriptionCatalogDefinitions() []SubscriptionCatalogSeedDefinition {
+	stellarPolicy := SubscriptionPaymentPolicy{
+		AllowInternalWallet:        true,
+		AllowExternal:              true,
+		AllowInternalWalletRenewal: true,
+		AllowedMethods:             []string{PaymentInAppWallet, PaymentAfdian, PaymentAppleStore, PaymentPaddle, PaymentGift},
+	}
+	creatorPolicy := SubscriptionPaymentPolicy{
+		AllowInternalWallet:        true,
+		AllowExternal:              true,
+		AllowInternalWalletRenewal: false,
+		AllowedMethods:             []string{PaymentInAppWallet, PaymentPaddle, PaymentGift},
+	}
+	return []SubscriptionCatalogSeedDefinition{
+		{
+			Identifier:           "solian.stellar.primary",
+			GroupIdentifier:      new("solian.stellar"),
+			DisplayName:          "Stellar Program",
+			Currency:             CurrencyPoints,
+			BasePrice:            decimal.NewFromInt(1200),
+			PerkLevel:            1,
+			MinimumAccountLevel:  new(20),
+			ExperienceMultiplier: new(decimal.NewFromFloat(1.5)),
+			GoldenPointReward:    new(10),
+			DisplayConfig:        &SubscriptionDisplayConfig{Color: new("#1D4ED8"), BackgroundColor: new("#DBEAFE"), BadgeText: new("Starter")},
+			PaymentPolicy:        stellarPolicy,
+			ProviderMappings: map[string][]string{
+				"Afdian":     {"7d17aae23c9611f0b5705254001e7c00"},
+				"AppleStore": {"stellar.primary.monthly"},
+				"Paddle":     {"pri_stellar_monthly", "pri_stellar_yearly", "pro_stellar"},
+			},
+		},
+		{
+			Identifier:           "solian.stellar.nova",
+			GroupIdentifier:      new("solian.stellar"),
+			DisplayName:          "Stellar Program Nova",
+			Currency:             CurrencyPoints,
+			BasePrice:            decimal.NewFromInt(2400),
+			PerkLevel:            2,
+			MinimumAccountLevel:  new(40),
+			ExperienceMultiplier: new(decimal.NewFromFloat(2.0)),
+			GoldenPointReward:    new(20),
+			DisplayConfig:        &SubscriptionDisplayConfig{Color: new("#C2410C"), BackgroundColor: new("#FFEDD5"), BadgeText: new("Popular")},
+			PaymentPolicy:        stellarPolicy,
+			ProviderMappings: map[string][]string{
+				"Afdian":     {"7dfae4743c9611f0b3a55254001e7c00"},
+				"AppleStore": {"stellar.nova.monthly"},
+				"Paddle":     {"pri_nova_monthly", "pri_nova_yearly", "pro_nova"},
+			},
+		},
+		{
+			Identifier:           "solian.stellar.supernova",
+			GroupIdentifier:      new("solian.stellar"),
+			DisplayName:          "Stellar Program Supernova",
+			Currency:             CurrencyPoints,
+			BasePrice:            decimal.NewFromInt(3600),
+			PerkLevel:            3,
+			MinimumAccountLevel:  new(60),
+			ExperienceMultiplier: new(decimal.NewFromFloat(2.5)),
+			GoldenPointReward:    new(30),
+			DisplayConfig:        &SubscriptionDisplayConfig{Color: new("#7C3AED"), BackgroundColor: new("#EDE9FE"), BadgeText: new("Ultimate")},
+			PaymentPolicy:        stellarPolicy,
+			ProviderMappings: map[string][]string{
+				"Afdian":     {"141713ee3d6211f085b352540025c377"},
+				"AppleStore": {"stellar.supernova.monthly"},
+				"Paddle":     {"pri_supernova_monthly", "pri_supernova_yearly", "pro_supernova"},
+			},
+		},
+		{
+			Identifier:          "solian.creator.plus",
+			GroupIdentifier:     new("solian.creator"),
+			DisplayName:         "Creator Plus",
+			Currency:            CurrencyPoints,
+			BasePrice:           decimal.NewFromInt(900),
+			PerkLevel:           0,
+			MinimumAccountLevel: new(10),
+			DisplayConfig:       &SubscriptionDisplayConfig{Color: new("#0F766E"), BackgroundColor: new("#CCFBF1"), BadgeText: new("Creator")},
+			PaymentPolicy:       creatorPolicy,
+			ProviderMappings: map[string][]string{
+				"Paddle": {"pri_creator_plus_monthly", "pri_creator_plus_yearly", "pro_creator_plus"},
+			},
+		},
+		{
+			Identifier:          "solian.creator.pro",
+			GroupIdentifier:     new("solian.creator"),
+			DisplayName:         "Creator Pro",
+			Currency:            CurrencyPoints,
+			BasePrice:           decimal.NewFromInt(1800),
+			PerkLevel:           0,
+			MinimumAccountLevel: new(20),
+			DisplayConfig:       &SubscriptionDisplayConfig{Color: new("#7C2D12"), BackgroundColor: new("#FFEDD5"), BadgeText: new("Pro")},
+			PaymentPolicy:       creatorPolicy,
+			ProviderMappings: map[string][]string{
+				"Paddle": {"pri_creator_pro_monthly", "pri_creator_pro_yearly", "pro_creator_pro"},
+			},
+		},
+	}
+}
+
 // seedOptions reads Payment:SubscriptionCatalog from the wallet settings.
 func (s *Subscriptions) seedOptions() (SubscriptionCatalogSeedOptions, bool) {
 	options := SubscriptionCatalogSeedOptions{Settings: defaultSeedSettings()}
 	raw, ok := lookupValue(s.Settings, "subscriptionCatalog")
 	if !ok {
-		return options, false
+		options.Definitions = defaultSubscriptionCatalogDefinitions()
+		return options, true
 	}
 	table, ok := settingsTable(raw)
 	if !ok {
-		return options, false
+		options.Definitions = defaultSubscriptionCatalogDefinitions()
+		return options, true
 	}
 	if settingsRaw, ok := settingsTable(seedValue(table, "settings")); ok {
 		if giftRaw, ok := settingsTable(seedValue(settingsRaw, "giftPolicyDefaults")); ok {
@@ -788,6 +894,9 @@ func (s *Subscriptions) seedOptions() (SubscriptionCatalogSeedOptions, bool) {
 		}
 	}
 	options.Definitions = parseSeedDefinitions(seedValue(table, "definitions"))
+	if len(options.Definitions) == 0 {
+		options.Definitions = defaultSubscriptionCatalogDefinitions()
+	}
 	return options, true
 }
 
