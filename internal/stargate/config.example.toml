@@ -34,13 +34,18 @@ disabled = []
 # [modules.settings."app.solian.wallet".subscriptionCatalog]
 # settings = { defaultSubscriptionDurationDays = 30 }
 # definitions = []
+# The progression module ships its badge SVGs embedded, so this block is only
+# needed to serve an operator replacement set from disk (the C# [Badges]
+# iconsPath option). Unknown icon names answer 404.
+# [modules.settings."app.solian.id.progression"]
+# iconsPath = "Resources/BadgeIcons"
 
 # Select a provider when more than one enabled module provides the same port.
 # [ports]
 # files = "app.solian.drive"
 # email = "app.solian.ring"
 # nfcTokens = "app.solian.id.nfc"
-# payments = "app.solian.wallet"      # realm boosts; falls back to wallet.remote
+# payments = "app.solian.wallet"      # realm boosts, progression points; falls back to wallet.remote
 
 [grpc]
 port = "9090"

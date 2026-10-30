@@ -35,6 +35,7 @@ app.solian.id.social
 app.solian.id.oidc
 app.solian.id.nfc
 app.solian.id.realm
+app.solian.id.progression
 ```
 
 Other features:
@@ -238,10 +239,10 @@ fails startup.
 | Port | Consumers | Providers |
 |---|---|---|
 | `files` | profiles, nfc | `app.solian.drive` |
-| `badges` | profiles, nfc | `app.solian.pass` |
+| `badges` | profiles, nfc, progression | `app.solian.pass` |
 | `verification` | profiles, nfc | `app.solian.pass` |
 | `perks` | profiles | `app.solian.wallet` (feature), `app.solian.wallet.remote` |
-| `payments` | realm (boosts) | `app.solian.wallet` (feature), `app.solian.wallet.remote` |
+| `payments` | realm (boosts), progression (reward points) | `app.solian.wallet` (feature), `app.solian.wallet.remote` |
 | `orderEvents` | realm (boosts, in-process) | `app.solian.wallet` (feature) |
 | `email` | auth, spells, admin | `app.solian.ring` |
 | `push` | auth, admin, relationships | `app.solian.ring` |
@@ -276,6 +277,7 @@ startup.
 | `app.solian.id.oidc` | feature | `/api/oidc/**`, `/.well-known/openid-configuration` | auth, accounts | none |
 | `app.solian.id.oauthapps` | feature | `/api/oauth-apps/**`, provides `oauthClients` | auth | `oauth_apps`, `oauth_app_secrets` |
 | `app.solian.id.realm` | feature | `/api/realms/**`, `/api/realms/public`, `/api/admin/realms/**`, the ten `DyRealmService` RPCs | auth, accounts | `realms`, `realm_members`, `realm_labels`, `realm_boost_contributions`, `realm_experience_records`, `realm_role_permissions`, `realm_user_permissions`, `realm_post_moderation_logs` |
+| `app.solian.id.progression` | feature | `/api/accounts/me/progression/**`, `/api/admin/progression/**`, `/.well-known/badges`, action-log consumer | auth, accounts | `achievement_definitions`, `quest_definitions`, `account_achievements`, `account_quest_progresses`, `progress_reward_grants`, `progress_event_receipts` |
 | `app.solian.e2ee` | feature | `/api/e2ee/**`, MLS gRPC | accounts | `e2ee_*`, `mls_*` (later phase) |
 | `app.solian.admin` | feature | `/api/admin/**`, actions/punishments | accounts | core tables |
 | `app.solian.wellknown` | feature | `/.well-known/*` docs | — | none |
@@ -449,6 +451,46 @@ whose schema diverged.
 - [ ] `RealmActivityEvent` producers: Sphere/Messager publish the C# subject
       today; the Go ports do not yet, so realm XP stays tenure-and-boost only
       until they do.
+
+### Phase 4d — progression extraction from Passport
+
+- [x] `app.solian.id.progression` owns the six Passport tables under their
+      legacy names. The EF `(…, deleted_at)` unique indexes are recreated as
+      partial indexes (`WHERE deleted_at IS NULL`), which is the rule the code
+      relies on: a soft-deleted definition frees its identifier, a live
+      duplicate is rejected. The superseded EF indexes are dropped on migrate.
+- [x] Account routes
+      (`/api/accounts/me/progression/{achievements,achievements/stats,quests,grants}`),
+      admin routes (`/api/admin/progression/…`) with the C# permission keys
+      `progression.achievements.manage`, `progression.quests.manage` and
+      `progression.sync`, and the badge discovery surface
+      (`/.well-known/badges`, `/.well-known/badges/icons/:iconName`, 23
+      entries).
+- [x] Catalog seeded on boot (49 achievements, 9 quests) and on
+      `POST /api/admin/progression/sync`; seed-managed rows are overwritten, a
+      hand-edited row is not. Definitions are never force re-enabled: toggling
+      one off survives a sync.
+- [x] `action_logs.<action>` JetStream consumer over the fleet's
+      `action_log_events` stream. `progress_event_receipts` makes at-least-once
+      delivery idempotent per (event, definition, period); grants are keyed by
+      `reward_token` and the grant row is written before completion, so a crash
+      cannot pay twice.
+- [x] Quest periods (none/daily/weekly/monthly) computed in the account's time
+      zone (UTC when unset), streak counting with best-streak, and meta
+      equality filters.
+- [x] Rewards: profile XP through the accounts store, badges through the
+      `badges` port, source points through the `payments` `Creditor`, and the
+      `progression.completed` websocket packet through the event bus. All are
+      optional; without them progress still advances.
+- [x] Badge SVGs embedded with the binary; `iconsPath` under
+      `[modules.settings."app.solian.id.progression"]` overrides the set.
+- [x] No importer: the tables keep Passport's names and columns, so a legacy
+      database is used in place.
+- [ ] Examination and Meet (location pins) are deliberately out of scope for
+      this port; their Passport tables and routes stay in the C# service.
+- [ ] Action-log publishers: Stargate publishes its own tracked actions, but
+      the Go Sphere/Messager processes do not emit `action_logs.*` yet, so
+      post/chat/realm achievements only advance when the C# fleet publishes.
 
 ### Phase 5 — NFC
 

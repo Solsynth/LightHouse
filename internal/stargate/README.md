@@ -85,6 +85,16 @@ Modules own their schema:
   wallet and through `payment_orders` when a bus is configured; tenure and
   activity XP run as module jobs. See
   [`docs/module-system-plan.md`](docs/module-system-plan.md).
+- `app.solian.id.progression` owns the ported Passport progression domain: the
+  six `achievement_definitions`/`quest_definitions`/progress/receipt tables,
+  `/api/accounts/me/progression`, `/api/admin/progression` and the badge
+  discovery surface (`/.well-known/badges`, embedded SVG icons). The catalog
+  (49 achievements, 9 quests) is seeded on boot and stays idempotent on
+  `POST /api/admin/progression/sync`. Progress is driven by the
+  `action_logs.<action>` JetStream consumer; rewards pay out through the
+  optional `badges` and `payments` ports, and completion packets go to the
+  websocket bus. See
+  [`docs/module-system-plan.md`](docs/module-system-plan.md).
 - `app.solian.wallet` owns the ported DysonNetwork.Wallet service: wallets,
   pockets, the transaction ledger, orders, inbound provider orders,
   subscriptions, gifts, coupons, merchants and settlements, under the legacy

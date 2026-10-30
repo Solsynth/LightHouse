@@ -169,3 +169,64 @@ Known gaps:
   `GET /api/realms/:slug/posts/moderation-logs` answers with an empty page.
 - **Realm wallet and boost→publisher revenue** are not modelled: the C# boost
   flow only created an order, and this port keeps that scope.
+
+### Progression
+
+The `DysonNetwork.Passport` progression domain lives in
+`internal/stargate/progression/` (entities, catalog, store, service,
+consumer), `internal/stargate/httpserver/progressionctl/` (HTTP and badge
+discovery) and `internal/stargate/modules/progression/` (wiring).
+
+Verified against a live PostgreSQL (scratch database, single-user auth) and a
+local NATS JetStream:
+
+- the module creates its six tables under the legacy Passport names and seeds
+  the generated catalog (49 achievements, 9 quests); booting again and
+  `POST /api/admin/progression/sync` leave 49/9 rows, so the seed is
+  idempotent, and a definition toggled off is not re-enabled by the sync;
+- `GET /api/accounts/me/progression/{achievements,achievements/stats,quests,grants}`
+  answer with the C# payload shapes, including required JSON timestamps
+  (`RFC3339`, not `{}`);
+- `GET /.well-known/badges` lists 23 entries and
+  `/.well-known/badges/icons/draw` answers `200 image/svg+xml` from the SVGs
+  embedded in the binary; traversal attempts (`..%2f…`) answer 404. Setting
+  `iconsPath` serves an operator set instead;
+- admin create/update/toggle/quest-create/sync/test-ws-packet answer 200 with
+  the seeded `progression.admin`, `progression.achievements.manage`,
+  `progression.quests.manage` and `progression.sync` permission nodes;
+- the `action_logs.*` consumer advances progress end to end: publishing one
+  `action_logs.posts.create` event produced 8 achievement progress rows (two
+  of them completed) and 3 quest progresses, with
+  `progress_reward_grants` recording badge, experience, source-point and
+  notification timestamps;
+- replaying the same `event_id` on the stream is a no-op per definition:
+  telemetry shows one receipt per (event, definition, period) and a single
+  increment, so redelivery cannot double-count or double-pay;
+- meta equality filters (`meta_equals`) and streak mode were exercised with
+  throwaway probes: a `thumb_down` reaction on a publisher post advances
+  `gots-fired-5` while `heart` does not, and a second event on the same local
+  day restores the same streak count instead of incrementing it;
+- booting with several consumers on a cold JetStream creates the streams
+  without `stream name already in use` errors (the consumers' `EnsureStream`
+  calls are serialized in `nats.Client.Consume`).
+
+Known gaps:
+
+- **Action-log producers.** Stargate publishes the tracked actions its own
+  stores write (`accounts.*`, `relationships.*`, `login`), but the Go Sphere
+  and Messager processes do not publish `action_logs.*` yet. Post, chat and
+  realm achievements therefore only advance when the C# fleet (or a future Go
+  publisher) emits the events; Stargate's own actions are live.
+- **Legacy data.** No importer ships with this module: the tables keep
+  Passport's names and columns and are used in place. The EF unique indexes
+  are replaced on migrate by partial `WHERE deleted_at IS NULL` indexes, which
+  is the uniqueness rule the code actually depends on; dropping an index moves
+  no data.
+- **Optional rewards.** Without the `badges` port, badge rewards are recorded
+  as granted without a grant (a read-only provider cannot grant). Without the
+  `payments` `Creditor`, source points are skipped the same way. Without a
+  NATS bus, completion packets are skipped. Progress tracking itself never
+  depends on them.
+- **No permanent regression test.** The idempotency, meta-filter, streak and
+  consumer proofs were throwaway live probes (they need PostgreSQL and a
+  JetStream server); no progression test is committed.
