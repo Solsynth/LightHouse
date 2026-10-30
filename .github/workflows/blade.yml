@@ -4,12 +4,12 @@ on:
   push:
     branches: [master]
     paths:
-      - "blade/**"
+      - "internal/blade/**"
       - ".github/workflows/blade.yml"
   pull_request:
     branches: [master]
     paths:
-      - "blade/**"
+      - "internal/blade/**"
       - ".github/workflows/blade.yml"
 
 env:
@@ -49,8 +49,8 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           # Context is the child module: the image never sees go.work.
-          context: ./blade
-          file: ./blade/${{ matrix.dockerfile }}
+          context: ./internal/blade
+          file: ./internal/blade/${{ matrix.dockerfile }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
             ${{ env.REGISTRY }}/${{ vars.PACKAGE_OWNER }}/${{ matrix.image }}:${{ github.sha }}

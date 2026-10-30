@@ -5,7 +5,7 @@ How to run **sphere** and **messager** (the Go ports of `DysonNetwork.Sphere` an
 for the rest of the fleet when the C# services are retired.
 
 The repository is one workspace (`go.work`) over three Go modules: this module
-(sphere + messager), `stargate/` and `blade/`. Stargate is the identity service
+(sphere + messager), `internal/stargate/` and `internal/blade/`. Stargate is the identity service
 every authenticated request goes through, and Blade is the gateway that routes
 public traffic to sphere and messager — so a replacement touches all of them
 even though only sphere and messager are being ported here.
@@ -21,8 +21,8 @@ from the C# services at runtime.
 |---|---|---|---|---|---|
 | Sphere | `bin/sphere` | `:5071` | `:7099` | `dyson_sphere` | `config/sphere.toml` |
 | Messager | `bin/messager` | `:5072` | `:7100` | `dyson_messager` | `config/messager.toml` |
-| Stargate | `bin/stargate` | `:8080` | `:9090` | `dyson_stargate` | `stargate/config.toml` |
-| Blade | `bin/blade` | `:6000` | `:7001` | – | `blade/configs/config.toml` |
+| Stargate | `bin/stargate` | `:8080` | `:9090` | `dyson_stargate` | `internal/stargate/config.toml` |
+| Blade | `bin/blade` | `:6000` | `:7001` | – | `internal/blade/configs/config.toml` |
 
 The sphere and messager port defaults match the C# services' `BaseUrl` and
 `Service:Url`. Blade's shipped upstream table uses different numbers (§6.1) —
@@ -96,7 +96,7 @@ Chat's inbound websocket consumer needs JetStream enabled. See §7.8 and §7.9.
 
 ### Stargate and Passport
 
-`stargate/` in this repo is the identity service. Required for anything
+`internal/stargate/` in this repo is the identity service. Required for anything
 authenticated. Bearer tokens are validated by calling
 Stargate's `DyAuthService.Authenticate` — the same contract as the C#
 `DysonTokenAuthHandler` — and `[AskPermission]` equivalents call
@@ -246,7 +246,7 @@ What is deliberately **not** copied:
 
 ## 6. Cutting over
 
-Blade is the gateway in this repo (`blade/configs/config.toml`). It has two
+Blade is the gateway in this repo (`internal/blade/configs/config.toml`). It has two
 things to change: the upstream table and the public route table.
 
 ### 6.1 Point the upstreams at the Go services
@@ -502,7 +502,7 @@ dump until you are confident in the new deployment.
 | Logs | stdout, `LOG_LEVEL` (`debug`/`info`/`warn`/`error`, default `info`) |
 | Schema | created on boot; modules own their tables; nothing is ever dropped |
 | Data import | `cmd/sphere-migrate`, `cmd/messager-migrate` (`--dry-run` first) |
-| Container build | `Dockerfile.sphere`, `Dockerfile.messager` (plus `stargate/`, `blade/` Dockerfiles) |
+| Container build | `Dockerfile.sphere`, `Dockerfile.messager` (plus `internal/stargate/`, `internal/blade/` Dockerfiles) |
 | Local run | `make run-sphere`, `make run-messager` |
-| Whole workspace | `make build` builds sphere, messager, stargate, blade, relay |
+| Whole workspace | `make build` builds sphere, messager, stargate, blade, relay, dysonfs |
 | Checks | `make test`, `make lint` |

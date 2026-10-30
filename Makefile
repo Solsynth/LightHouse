@@ -7,9 +7,9 @@ BLADE_CONFIG ?= configs/config.toml
 RELAY_CONFIG ?= configs/relay.toml
 FILESYSTEM_CONFIG ?= config.example.toml
 
-# filesystem/ is not in go.work (see go.work): it pins go1.26.2, and its
-# grpc/x-net pair does not compile under go1.27. Every filesystem command below
-# therefore runs outside the workspace with that toolchain.
+# internal/filesystem is not in go.work (see go.work): it pins go1.26.2, and
+# its grpc/x-net pair does not compile under go1.27. Every filesystem command
+# below therefore runs outside the workspace with that toolchain.
 FS_GO := GOWORK=off GOTOOLCHAIN=go1.26.2 go
 
 .PHONY: all build build-sphere build-messager build-stargate build-blade build-relay build-filesystem \
@@ -33,16 +33,16 @@ build-messager:
 # Children are built from inside their module so relative config/web paths and
 # their own Makefile defaults keep working.
 build-stargate:
-	cd stargate && go build -o ../$(BIN_DIR)/stargate ./cmd/stargate
+	cd internal/stargate && go build -o ../../$(BIN_DIR)/stargate ./cmd/stargate
 
 build-blade:
-	cd blade && go build -o ../$(BIN_DIR)/blade ./cmd
+	cd internal/blade && go build -o ../../$(BIN_DIR)/blade ./cmd
 
 build-relay:
-	cd blade && go build -o ../$(BIN_DIR)/relay ./cmd/relay
+	cd internal/blade && go build -o ../../$(BIN_DIR)/relay ./cmd/relay
 
 build-filesystem:
-	cd filesystem && $(FS_GO) build -o ../$(BIN_DIR)/dysonfs ./cmd
+	cd internal/filesystem && $(FS_GO) build -o ../../$(BIN_DIR)/dysonfs ./cmd
 
 run-sphere:
 	CONFIG_PATH=$(SPHERE_CONFIG) go run ./cmd/sphere
@@ -51,41 +51,41 @@ run-messager:
 	CONFIG_PATH=$(MESSAGER_CONFIG) go run ./cmd/messager
 
 run-stargate:
-	cd stargate && CONFIG_PATH=$(STARGATE_CONFIG) go run ./cmd/stargate
+	cd internal/stargate && CONFIG_PATH=$(STARGATE_CONFIG) go run ./cmd/stargate
 
 run-blade:
-	cd blade && CONFIG_PATH=$(BLADE_CONFIG) go run ./cmd
+	cd internal/blade && CONFIG_PATH=$(BLADE_CONFIG) go run ./cmd
 
 run-relay:
-	cd blade && RELAY_CONFIG_PATH=$(RELAY_CONFIG) go run ./cmd/relay
+	cd internal/blade && RELAY_CONFIG_PATH=$(RELAY_CONFIG) go run ./cmd/relay
 
 run-filesystem:
-	cd filesystem && CONFIG_PATH=$(FILESYSTEM_CONFIG) $(FS_GO) run ./cmd --mode master
+	cd internal/filesystem && CONFIG_PATH=$(FILESYSTEM_CONFIG) $(FS_GO) run ./cmd --mode master
 
 # SPAs — bun, each in its child directory.
 web-stargate:
-	$(MAKE) -C stargate web
+	$(MAKE) -C internal/stargate web
 
 web-stargate-check:
-	$(MAKE) -C stargate web-check
+	$(MAKE) -C internal/stargate web-check
 
 web-stargate-dev:
-	$(MAKE) -C stargate dev
+	$(MAKE) -C internal/stargate dev
 
 web-stargate-test:
-	$(MAKE) -C stargate web-test
+	$(MAKE) -C internal/stargate web-test
 
 web-filesystem:
-	$(MAKE) -C filesystem web
+	$(MAKE) -C internal/filesystem web
 
 web-filesystem-check:
-	$(MAKE) -C filesystem web-check
+	$(MAKE) -C internal/filesystem web-check
 
 web-filesystem-dev:
-	$(MAKE) -C filesystem web-dev
+	$(MAKE) -C internal/filesystem web-dev
 
 web-filesystem-test:
-	$(MAKE) -C filesystem web-test
+	$(MAKE) -C internal/filesystem web-test
 
 test: test-sphere test-stargate test-blade test-filesystem
 
@@ -94,31 +94,31 @@ test-sphere:
 
 # internal/store needs a reachable PostgreSQL (dyson_stargate); it fails fast without one.
 test-stargate:
-	cd stargate && go test ./...
+	cd internal/stargate && go test ./...
 
 test-blade:
-	cd blade && go test ./...
+	cd internal/blade && go test ./...
 
 # internal/service has two known failures inherited from the FileSystem repo
 # (TestOverwriteFileSwapsObjectAndDeletesDereferencedSource,
 # TestFastOverwriteFileUpdatesExistingObject).
 test-filesystem:
-	cd filesystem && $(FS_GO) test ./...
+	cd internal/filesystem && $(FS_GO) test ./...
 
 lint:
 	go vet ./...
-	cd stargate && go vet ./...
-	cd blade && go vet ./...
-	cd filesystem && $(FS_GO) vet ./...
+	cd internal/stargate && go vet ./...
+	cd internal/blade && go vet ./...
+	cd internal/filesystem && $(FS_GO) vet ./...
 
 tidy:
 	go mod tidy
-	cd stargate && go mod tidy
-	cd blade && go mod tidy
-	cd filesystem && $(FS_GO) mod tidy
+	cd internal/stargate && go mod tidy
+	cd internal/blade && go mod tidy
+	cd internal/filesystem && $(FS_GO) mod tidy
 
 fmt:
-	gofmt -l -w cmd internal stargate blade filesystem
+	gofmt -l -w cmd internal
 
 # Boot each service once before importing so the schema exists.
 migrate-sphere:
@@ -128,14 +128,14 @@ migrate-messager:
 	go run ./cmd/messager-migrate --source-dsn "$$MESSAGER_SOURCE_DSN" --target-dsn "$$MESSAGER_TARGET_DSN"
 
 migrate-stargate:
-	cd stargate && go run ./cmd/stargate-migrate
+	cd internal/stargate && go run ./cmd/stargate-migrate
 
 # Imports the legacy C# drive database; set LEGACY_DATABASE_DSN.
 migrate-filesystem-legacy:
-	cd filesystem && CONFIG_PATH=$(FILESYSTEM_CONFIG) $(FS_GO) run ./cmd migrate-legacy
+	cd internal/filesystem && CONFIG_PATH=$(FILESYSTEM_CONFIG) $(FS_GO) run ./cmd migrate-legacy
 
 stargate-hash-password:
-	cd stargate && go run ./cmd/stargate-hash-password
+	cd internal/stargate && go run ./cmd/stargate-hash-password
 
 stargate-module-import:
-	cd stargate && go run ./cmd/stargate-module-import $(ARGS)
+	cd internal/stargate && go run ./cmd/stargate-module-import $(ARGS)

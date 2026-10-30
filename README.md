@@ -20,15 +20,15 @@ modules, one workspace:
 
 Sphere and Messager are **separate services**: separate binaries, separate
 databases, separate module sets. They share the platform layer
-(`internal/platform`) and nothing else. Stargate, Blade and DysonFS live in
-their own modules under `stargate/`, `blade/` and `filesystem/`, keep their own
-`go.mod`, Dockerfiles and configs, and talk to the other services over
+(`internal/platform`) and nothing else. Stargate, Blade and DysonFS live under
+`internal/` next to them, each as its own Go module with its own `go.mod`,
+Dockerfiles and configs, and they talk to the other services over
 HTTP/gRPC/NATS only. DysonFS is the one child outside `go.work` (see below).
 
 ## Layout
 
 ```
-go.work                   workspace: ., ./stargate, ./blade
+go.work                   workspace: ., ./internal/stargate, ./internal/blade
 go.mod                    module src.solsynth.dev/sosys/lighthouse
 cmd/sphere                sphere process
 cmd/messager              messager process
@@ -47,29 +47,29 @@ internal/platform/        shared house infrastructure
   httpx/                  gin engine, ApiError, pagination
   jobs/                   interval + Quartz-cron scheduler
   discovery/ legacyimport/
-internal/sphere/          sphere service
+internal/sphere/          sphere service (module src.solsynth.dev/sosys/lighthouse)
   config/ core/ app/ model/ store/ ports/ migrate/
   modules/*               feature modules (posts, publishers, ...)
-internal/messager/        messager service (same shape)
-stargate/                 module src.solsynth.dev/sosys/stargate
+internal/messager/        messager service (same module, same shape)
+internal/stargate/        module src.solsynth.dev/sosys/stargate
   cmd/stargate              the service (HTTP :8080, gRPC :9090)
   cmd/stargate-migrate      legacy Padlock/Passport import
   cmd/stargate-module-import  per-module legacy import
   cmd/stargate-hash-password  bcrypt hash for [auth.singleUser]
-  internal/                 module registry, modules, controllers, store
+  internal/                 module registry, modules, controllers, wallet, store
   web/                      Vue 3 + Vite console (served by internal/webui)
-  config.example.toml       see stargate/README.md
-blade/                    module srv.solsynth.dev/sosys/blade
+  config.example.toml       see internal/stargate/README.md
+internal/blade/          module srv.solsynth.dev/sosys/blade
   cmd/                      gateway (:6000 HTTP, :7001 gRPC)
   cmd/relay                 L4 TLS-SNI relay node (:443)
   internal/                 proxy, discovery, health, wsgateway, relay
   configs/                  config.toml, docker.toml, relay.toml
-  docs/                     see blade/README.md
-filesystem/               module src.solsynth.dev/sosys/filesystem
+  docs/                     see internal/blade/README.md
+internal/filesystem/     module src.solsynth.dev/sosys/filesystem
   cmd/                      dysonfs (master/worker/storage modes)
   internal/                 module registry, media, storage, S3, WebDAV, WOPI
   web/                      Vue 3 + Vite console
-  config.example.toml       see filesystem/README.md
+  config.example.toml       see internal/filesystem/README.md
 ```
 
 ## Workspace
@@ -77,24 +77,26 @@ filesystem/               module src.solsynth.dev/sosys/filesystem
 `go.work` uses the Lighthouse, Stargate and Blade modules so one checkout
 builds and tests them with a single toolchain (`go 1.27`). Nothing is published
 between them yet — each service still has its own dependency graph and
-`go.sum`.
+`go.sum`. A child's location under `internal/` is only a directory choice: the
+module path in its own `go.mod` is what its packages import by.
 
 Two consequences worth knowing:
 
 - Directory patterns stop at a nested `go.mod`, so `go build ./...` at the
   root covers only sphere/messager. Use the Makefile (or `go build
-  ./stargate/...` / `go build ./blade/...` from the root) for the whole tree.
-- Docker images build with a child directory as context (`./stargate`,
-  `./blade`, `./filesystem`), so `go.work` never enters an image and the
-  children stay buildable on their own. Their `Makefile`s keep working from
-  inside the child directory.
+  ./internal/stargate/...` / `go build ./internal/blade/...` from the root) for
+  the whole tree.
+- Docker images build with the child directory as context
+  (`./internal/stargate`, `./internal/blade`, `./internal/filesystem`), so
+  `go.work` never enters an image and the children stay buildable on their
+  own. Their `Makefile`s keep working from inside the child directory.
 
-`filesystem/` is **not** in `go.work`: it pins `go1.26.2`, and under `go1.27`
-its `golang.org/x/net` v0.54.0 compiles the stdlib-backed http2 server, which
-no longer exports `http2.TrailerPrefix` that its `google.golang.org/grpc`
-v1.79.1 still references. The root Makefile and `filesystem/Makefile` run it
-with `GOWORK=off GOTOOLCHAIN=go1.26.2`; drop that once the grpc/x-net pair is
-upgraded.
+`internal/filesystem` is **not** in `go.work`: it pins `go1.26.2`, and under
+`go1.27` its `golang.org/x/net` v0.54.0 compiles the stdlib-backed http2
+server, which no longer exports `http2.TrailerPrefix` that its
+`google.golang.org/grpc` v1.79.1 still references. The root Makefile and
+`internal/filesystem/Makefile` run it with `GOWORK=off GOTOOLCHAIN=go1.26.2`;
+drop that once the grpc/x-net pair is upgraded.
 
 ## Module system
 
@@ -112,8 +114,8 @@ disabled = ["app.solian.sphere.fediverse"]
 Disabling a module unmounts its surface and, on a fresh database, prevents its
 tables from being created. Existing tables are never dropped. `GET /api/modules`
 reports the resolved set and capabilities. Stargate and DysonFS use the same
-shape (see [`stargate/docs/module-system-plan.md`](stargate/docs/module-system-plan.md)
-and [`filesystem/docs/module-system.md`](filesystem/docs/module-system.md)).
+shape (see [`internal/stargate/docs/module-system-plan.md`](internal/stargate/docs/module-system-plan.md)
+and [`internal/filesystem/docs/module-system.md`](internal/filesystem/docs/module-system.md)).
 
 `docs/MODULE_CONTRACT.md` is the authoring contract: helpers, wire-type rules,
 persistence conventions and route-fidelity requirements.
@@ -124,10 +126,10 @@ persistence conventions and route-fidelity requirements.
 |---|---|---|---|
 | `sphere` | `:5071` | `:7099` | `config/sphere.toml` |
 | `messager` | `:5072` | `:7100` | `config/messager.toml` |
-| `stargate` | `:8080` | `:9090` | `stargate/config.toml` |
-| `blade` | `:6000` | `:7001` | `blade/configs/config.toml` |
-| `relay` | `:443` (TLS passthrough) | — | `blade/configs/relay.toml` |
-| `dysonfs` | `:8080` | `:9090` | `filesystem/config.toml` |
+| `stargate` | `:8080` | `:9090` | `internal/stargate/config.toml` |
+| `blade` | `:6000` | `:7001` | `internal/blade/configs/config.toml` |
+| `relay` | `:443` (TLS passthrough) | — | `internal/blade/configs/relay.toml` |
+| `dysonfs` | `:8080` | `:9090` | `internal/filesystem/config.toml` |
 
 `stargate` and `dysonfs` ship the same default ports; move one of them in its
 TOML when both run on one host. DysonFS also exposes optional S3 gateways on
@@ -136,8 +138,8 @@ TOML when both run on one host. DysonFS also exposes optional S3 gateways on
 ```sh
 cp config/sphere.example.toml config/sphere.toml
 cp config/messager.example.toml config/messager.toml
-cp stargate/config.example.toml stargate/config.toml
-cp filesystem/config.example.toml filesystem/config.toml
+cp internal/stargate/config.example.toml internal/stargate/config.toml
+cp internal/filesystem/config.example.toml internal/filesystem/config.toml
 make build                       # bin/{sphere,messager,stargate,blade,relay,dysonfs}
 make run-stargate                # each run target cds into its module
 make run-blade
@@ -149,9 +151,9 @@ CONFIG_PATH=config/messager.toml ./bin/messager
 The consoles build separately with bun and are served by their own process:
 
 ```sh
-make web-stargate                # stargate/web → stargate/web/dist
+make web-stargate                # internal/stargate/web → web/dist
 make web-stargate-dev            # Vite on :5173 proxying /api to :8080
-make web-filesystem              # filesystem/web → filesystem/web/dist
+make web-filesystem              # internal/filesystem/web → web/dist
 ```
 
 Postgres is required. Redis, NATS and every `[services]` target are optional: a
@@ -162,14 +164,16 @@ tokens for sphere/messager over gRPC.
 
 ## Deploy
 
-- `stargate/Dockerfile` builds the SPA and the service; context `./stargate`.
-- `blade/Dockerfile` and `blade/Dockerfile.relay` build the gateway and relay;
-  context `./blade`.
-- `filesystem/Dockerfile` builds the SPA and DysonFS (needs libvips); context
-  `./filesystem`.
-- `blade/docker-compose.yml` (gateway + its Redis registry) and
-  `blade/docker-compose.relay.yml` (a PoP relay) keep their own contexts and
-  run unchanged with `docker compose -f blade/docker-compose.yml up -d`.
+- `internal/stargate/Dockerfile` builds the SPA and the service; context
+  `./internal/stargate`.
+- `internal/blade/Dockerfile` and `internal/blade/Dockerfile.relay` build the
+  gateway and relay; context `./internal/blade`.
+- `internal/filesystem/Dockerfile` builds the SPA and DysonFS (needs libvips);
+  context `./internal/filesystem`.
+- `internal/blade/docker-compose.yml` (gateway + its Redis registry) and
+  `internal/blade/docker-compose.relay.yml` (a PoP relay) keep their own
+  contexts and run unchanged with
+  `docker compose -f internal/blade/docker-compose.yml up -d`.
 - Root CI (`.github/workflows/{stargate,blade,filesystem}.yml`) builds and
   pushes the same images, path-filtered on their directories.
 
@@ -192,8 +196,8 @@ SPHERE_TARGET_DSN=postgres://…/dyson_sphere_go \
 and then `INSERT … ON CONFLICT DO NOTHING`, so re-running is safe. Soft-deleted
 rows are copied with their `deleted_at` intact. Stargate's equivalent is
 `make migrate-stargate`, DysonFS's is `make migrate-filesystem-legacy` (see
-[`stargate/README.md`](stargate/README.md) and
-[`filesystem/README.md`](filesystem/README.md)).
+[`internal/stargate/README.md`](internal/stargate/README.md) and
+[`internal/filesystem/README.md`](internal/filesystem/README.md)).
 
 Deployment, the legacy-data migration and the cutover runbook — including
 everything that behaves differently from the C# services — are in

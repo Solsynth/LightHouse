@@ -7,7 +7,7 @@ CONFIG ?= config.toml
 GOTOOLCHAIN ?= go1.26.2
 export GOTOOLCHAIN
 # The monorepo's go.work selects go1.27, which this module does not build
-# under (see ../go.work); stay out of the workspace.
+# under (see ../../go.work); stay out of the workspace.
 GOWORK ?= off
 export GOWORK
 

@@ -1,14 +1,14 @@
 // The workspace covers the modules that share the go1.27 toolchain.
 //
-// filesystem/ is deliberately absent: its go.mod pins go1.26.2, and under
-// go1.27 its golang.org/x/net v0.54.0 compiles the stdlib-backed http2 server
-// (build tag go1.27), which no longer exports http2.TrailerPrefix that
+// internal/filesystem is deliberately absent: its go.mod pins go1.26.2, and
+// under go1.27 its golang.org/x/net v0.54.0 compiles the stdlib-backed http2
+// server (build tag go1.27), which no longer exports http2.TrailerPrefix that
 // google.golang.org/grpc v1.79.1 still references. Build it with
-// GOWORK=off, as the root Makefile and filesystem/Makefile do.
+// GOWORK=off, as the root Makefile and internal/filesystem/Makefile do.
 go 1.27
 
 use (
 	.
-	./blade
-	./stargate
+	./internal/blade
+	./internal/stargate
 )

@@ -4,12 +4,12 @@ on:
   push:
     branches: [master]
     paths:
-      - "stargate/**"
+      - "internal/stargate/**"
       - ".github/workflows/stargate.yml"
   pull_request:
     branches: [master]
     paths:
-      - "stargate/**"
+      - "internal/stargate/**"
       - ".github/workflows/stargate.yml"
 
 env:
@@ -44,8 +44,8 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           # Context is the child module: the image never sees go.work.
-          context: ./stargate
-          file: ./stargate/Dockerfile
+          context: ./internal/stargate
+          file: ./internal/stargate/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           build-args: |
             VERSION=${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
