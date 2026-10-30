@@ -1,25 +1,27 @@
-FROM golang:1.26.2-alpine AS builder
+# syntax=docker/dockerfile:1
 
-WORKDIR /app
+# Blade L4 relay node — TLS-SNI routing with byte-for-byte passthrough.
+
+FROM golang:1.26.2-alpine AS build
+WORKDIR /src
+ENV CGO_ENABLED=0
+
+RUN apk add --no-cache ca-certificates
 
 COPY go.mod go.sum ./
-RUN go mod download
+
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 COPY . .
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    go build -trimpath -buildvcs=false -ldflags="-s -w" -o /out/relay ./cmd/relay
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o relay ./cmd/relay
-
-FROM alpine:3.19
-
-RUN apk add --no-cache ca-certificates tzdata
-
+FROM scratch
 WORKDIR /app
-
-COPY --from=builder /app/relay .
-COPY --from=builder /app/configs ./configs
-
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=build /out/relay /app/relay
+COPY configs/relay.toml /app/configs/relay.toml
+ENV RELAY_CONFIG_PATH=/app/configs/relay.toml \
+    ZEROLOG_PRETTY=true
 EXPOSE 443
-
-ENV ZEROLOG_PRETTY=true
-
-ENTRYPOINT ["./relay"]
+ENTRYPOINT ["/app/relay"]

@@ -201,16 +201,16 @@ RELAY_CONFIG_PATH=./configs/relay.toml ./relay
 
 ```bash
 # Build
-docker build -t dyson-gateway .
+docker build -t blade .
 docker build -f Dockerfile.relay -t blade-relay .
 
 # Run
-docker run -p 6000:6000 dyson-gateway
+docker run -p 6000:6000 blade
 docker run -p 443:443 blade-relay
 
 # Run with custom config
-docker run -p 6000:6000 -v ./config.toml:/app/configs/config.toml dyson-gateway
-docker run -p 443:443 -v ./relay.toml:/app/configs/relay.toml blade-relay
+docker run -p 6000:6000 -v ./configs/docker.toml:/app/configs/docker.toml:ro blade
+docker run -p 443:443 -v ./configs/relay.toml:/app/configs/relay.toml:ro blade-relay
 ```
 
 ## Endpoints

@@ -39,11 +39,12 @@ Both expose:
   every `[modules]` change.
 - A canonical JSON 404 and the fleet `ApiError` envelope.
 
-Images: `Dockerfile.sphere` and `Dockerfile.messager`. Both are
-`golang:1.27-alpine` build → `alpine:3.21` runtime, ship
-`config/sphere.example.toml` (resp. messager) as `/app/config.example.toml`, and
-take their config from `CONFIG_PATH`. No secrets are baked in — mount `Keys/`
-at deploy time.
+Images: `Dockerfile.sphere` and `Dockerfile.messager` (root context). Both are
+`golang:1.27-alpine` build → `scratch` runtime: a static CGO-free binary, the
+CA bundle, and `config/sphere.example.toml` (resp. messager) as
+`/app/config.example.toml`. They take their config from `CONFIG_PATH`. No
+secrets are baked in — mount `Keys/` at deploy time. CI publishes
+`ghcr.io/<owner>/{sphere,messager}`.
 
 Build locally (every target is workspace-aware; `./...` stops at a nested
 `go.mod`, so the Makefile builds each module in turn):

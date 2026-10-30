@@ -4,7 +4,7 @@
 FROM oven/bun:1.4-alpine AS web
 WORKDIR /web
 COPY web/package.json web/bun.lock ./
-RUN bun install --frozen-lockfile
+RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lockfile
 COPY web/ ./
 # Skip vue-tsc here: the build stage must not depend on the host-only tsgo
 # bridge, and the CI Go image has no Node toolchain to run it.
@@ -12,17 +12,24 @@ RUN bun run build-only
 
 # ---- Go build ----
 FROM golang:1.26-alpine AS build
+WORKDIR /src
+ENV CGO_ENABLED=0
+
+RUN apk add --no-cache ca-certificates
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+
+COPY . .
 ARG VERSION=dev
 ARG GIT_COMMIT=unknown
-WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -ldflags "-X main.version=${VERSION} -X main.gitCommit=${GIT_COMMIT}" -o /out/stargate ./cmd/stargate
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    go build -trimpath -buildvcs=false \
+      -ldflags="-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_COMMIT}" \
+      -o /out/stargate ./cmd/stargate
 
-FROM alpine:3.21
-RUN apk add --no-cache ca-certificates tzdata
+FROM scratch
 WORKDIR /app
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /out/stargate /app/stargate
 COPY --from=web /web/dist /app/web/dist
 COPY config.example.toml /app/config.example.toml

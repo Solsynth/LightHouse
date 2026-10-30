@@ -164,18 +164,22 @@ tokens for sphere/messager over gRPC.
 
 ## Deploy
 
+- `Dockerfile.sphere` and `Dockerfile.messager` build the root-module
+  services; context `.`. Both produce static `scratch` images.
 - `internal/stargate/Dockerfile` builds the SPA and the service; context
-  `./internal/stargate`.
+  `./internal/stargate`, static `scratch` runtime.
 - `internal/blade/Dockerfile` and `internal/blade/Dockerfile.relay` build the
-  gateway and relay; context `./internal/blade`.
-- `internal/filesystem/Dockerfile` builds the SPA and DysonFS (needs libvips);
-  context `./internal/filesystem`.
+  gateway and relay; context `./internal/blade`. The gateway keeps an Alpine
+  base for its compose healthcheck.
+- `internal/filesystem/Dockerfile` builds the SPA and DysonFS; context
+  `./internal/filesystem`. The runtime keeps libvips and ffmpeg.
 - `internal/blade/docker-compose.yml` (gateway + its Redis registry) and
   `internal/blade/docker-compose.relay.yml` (a PoP relay) keep their own
   contexts and run unchanged with
   `docker compose -f internal/blade/docker-compose.yml up -d`.
-- Root CI (`.github/workflows/{stargate,blade,filesystem}.yml`) builds and
-  pushes the same images, path-filtered on their directories.
+- Root CI (`.github/workflows/{sphere,messager,stargate,blade,filesystem}.yml`)
+  builds and pushes one image per service — `sphere`, `messager`, `stargate`,
+  `blade`/`blade-relay`, `dysonfs` — path-filtered on its sources.
 
 ## Legacy data
 

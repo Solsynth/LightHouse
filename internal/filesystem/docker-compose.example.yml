@@ -1,6 +1,6 @@
 services:
   master:
-    image: ghcr.io/YOUR_OWNER/dyson-filesystem:latest
+    image: ghcr.io/YOUR_OWNER/dysonfs:latest
     command: ["--mode", "master", "--config", "/etc/dyson/config.toml"]
     ports:
       - "8080:8080"
@@ -12,7 +12,7 @@ services:
       - dyson-shared:/var/lib/dyson-drive
 
   worker:
-    image: ghcr.io/YOUR_OWNER/dyson-filesystem:latest
+    image: ghcr.io/YOUR_OWNER/dysonfs:latest
     command: ["--mode", "worker", "--config", "/etc/dyson/config.toml"]
     environment:
       CONFIG_PATH: /etc/dyson/config.toml

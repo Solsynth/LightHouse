@@ -2,6 +2,7 @@
 .git
 .gitignore
 .github
+.idea
 .vscode
 
 # Go build output
@@ -22,4 +23,14 @@ web/dist
 web/dist-ssr
 web/coverage
 web/.eslintcache
+web/.vite
 web/node_modules/.tmp
+
+# Docs and local tooling
+docs
+scripts
+*.md
+Caddyfile
+Makefile
+LICENSE.txt
+SECURITY.md

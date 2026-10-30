@@ -1,0 +1,72 @@
+name: Messager image
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "cmd/messager/**"
+      - "internal/platform/**"
+      - "internal/messager/**"
+      - "config/messager.example.toml"
+      - "go.mod"
+      - "go.sum"
+      - "go.work"
+      - "go.work.sum"
+      - "Dockerfile.messager"
+      - ".dockerignore"
+      - ".github/workflows/messager.yml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "cmd/messager/**"
+      - "internal/platform/**"
+      - "internal/messager/**"
+      - "config/messager.example.toml"
+      - "go.mod"
+      - "go.sum"
+      - "go.work"
+      - "go.work.sum"
+      - "Dockerfile.messager"
+      - ".dockerignore"
+      - ".github/workflows/messager.yml"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ vars.PACKAGE_OWNER }}/messager
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.messager
+          push: ${{ github.event_name != 'pull_request' }}
+          cache-from: type=gha,scope=messager
+          cache-to: type=gha,mode=max,scope=messager
+          build-args: |
+            VERSION=${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
+            GIT_COMMIT=${{ github.sha }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest

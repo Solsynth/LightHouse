@@ -14,7 +14,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ vars.PACKAGE_OWNER }}/dfs
+  IMAGE_NAME: ${{ vars.PACKAGE_OWNER }}/dysonfs
 
 jobs:
   build:
@@ -26,8 +26,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -41,12 +39,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           # Context is the child module: the image never sees go.work.
           context: ./internal/filesystem
           file: ./internal/filesystem/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
+          cache-from: type=gha,scope=dysonfs
+          cache-to: type=gha,mode=max,scope=dysonfs
           build-args: |
             VERSION=${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
             GIT_COMMIT=${{ github.sha }}

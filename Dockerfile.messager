@@ -1,19 +1,28 @@
 # syntax=docker/dockerfile:1
 
-# ---- Messager image ----
-FROM golang:1.27-alpine AS messager-build
+# Messager — chat rooms, messages, groups and realtime calls (HTTP + gRPC).
+
+FROM golang:1.27-alpine AS build
+WORKDIR /src
+ENV CGO_ENABLED=0 GOWORK=off
+
+RUN apk add --no-cache ca-certificates
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+
+COPY . .
 ARG VERSION=dev
 ARG GIT_COMMIT=unknown
-WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -ldflags "-X main.version=${VERSION} -X main.gitCommit=${GIT_COMMIT}" -o /out/messager ./cmd/messager
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    go build -trimpath -buildvcs=false \
+      -ldflags="-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_COMMIT}" \
+      -o /out/messager ./cmd/messager
 
-FROM alpine:3.21 AS messager
-RUN apk add --no-cache ca-certificates tzdata
+# Static binary, CA bundle for outbound HTTPS; everything else is mounted.
+FROM scratch
 WORKDIR /app
-COPY --from=messager-build /out/messager /app/messager
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=build /out/messager /app/messager
 COPY config/messager.example.toml /app/config.example.toml
 EXPOSE 5072 7100
 ENTRYPOINT ["/app/messager"]

@@ -23,7 +23,7 @@ services:
       retries: 5
 
   gateway:
-    image: blade-gateway:latest
+    image: blade:latest
     # Drop `build` if you deploy the image CI publishes.
     build:
       context: .

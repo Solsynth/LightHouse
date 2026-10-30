@@ -1,0 +1,20 @@
+# Root context builds sphere and messager only; child modules have their own
+# contexts and Dockerfiles.
+.git
+.github
+.idea
+.vscode
+bin
+docs
+Keys
+**/*.md
+Makefile
+go.work
+go.work.sum
+internal/blade
+internal/stargate
+internal/filesystem
+
+# Runtime config is mounted at deploy time; only the examples ship.
+config/*.toml
+!config/*.example.toml

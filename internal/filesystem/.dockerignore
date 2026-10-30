@@ -1,10 +1,27 @@
+# VCS/editor noise
 .git
+.gitignore
 .github
+.idea
+.vscode
+
+# Go build output and local config
 bin
 config.toml
+*.test
+
+# SPA dependencies and build output (rebuilt inside the image)
 web/node_modules
 web/dist
-web/.eslintcache
 web/coverage
-**/*.log
-.DS_Store
+web/.eslintcache
+web/.vite
+web/node_modules/.tmp
+
+# Docs and local tooling
+docs
+memo
+scripts
+*.md
+docker-compose*.yml
+LICENSE.txt

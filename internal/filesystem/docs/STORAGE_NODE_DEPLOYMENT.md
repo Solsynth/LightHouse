@@ -90,7 +90,7 @@ Create `compose.storage.yml`:
 ```yaml
 services:
   storage-node:
-    image: ghcr.io/YOUR_OWNER/dfs:latest
+    image: ghcr.io/YOUR_OWNER/dysonfs:latest
     command: ["--mode", "storage", "--config", "/etc/dyson/config.toml"]
     restart: unless-stopped
     ports:
