@@ -21,8 +21,8 @@ Two consequences matter operationally:
 
 ## Kernel
 
-`internal/module` holds the SPI, the registry, the resolver, the port registry
-and the schema migrator. `internal/core` holds the shared service graph that
+`internal/filesystem/module` holds the SPI, the registry, the resolver, the port registry
+and the schema migrator. `internal/filesystem/core` holds the shared service graph that
 modules receive.
 
 ```go
@@ -180,10 +180,10 @@ account service at all.
 
 ## Adding a module
 
-1. Create `internal/modules/<name>/` with a `Factory()`.
+1. Create `internal/filesystem/modules/<name>/` with a `Factory()`.
 2. Declare `Models` for any table you own; never add columns to another
    module's table and never drop one.
-3. Register routes from `Configure` using the `internal/handler` `Register*`
+3. Register routes from `Configure` using the `internal/filesystem/handler` `Register*`
    functions, or mount your own handler on `host.Engine`.
-4. Add the factory to `internal/modules/standard/standard.go`.
+4. Add the factory to `internal/filesystem/modules/standard/standard.go`.
 5. Document the ID here and add a row to the inventory table.

@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"srv.solsynth.dev/sosys/blade/internal/logging"
-	"srv.solsynth.dev/sosys/blade/internal/relay"
+	"srv.solsynth.dev/sosys/blade/logging"
+	"srv.solsynth.dev/sosys/blade/relay"
 )
 
 const (

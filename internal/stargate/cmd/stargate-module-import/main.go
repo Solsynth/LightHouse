@@ -24,10 +24,10 @@ import (
 
 	"gorm.io/gorm"
 
-	"src.solsynth.dev/sosys/stargate/internal/config"
-	"src.solsynth.dev/sosys/stargate/internal/db"
-	"src.solsynth.dev/sosys/stargate/internal/module"
-	"src.solsynth.dev/sosys/stargate/internal/modules/standard"
+	"src.solsynth.dev/sosys/stargate/config"
+	"src.solsynth.dev/sosys/stargate/db"
+	"src.solsynth.dev/sosys/stargate/module"
+	"src.solsynth.dev/sosys/stargate/modules/standard"
 )
 
 func main() {

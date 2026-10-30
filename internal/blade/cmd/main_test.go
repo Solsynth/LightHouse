@@ -10,9 +10,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	gen "src.solsynth.dev/sosys/go/proto"
-	"srv.solsynth.dev/sosys/blade/internal/config"
-	discovery "srv.solsynth.dev/sosys/blade/internal/discovery"
-	"srv.solsynth.dev/sosys/blade/internal/health"
+	"srv.solsynth.dev/sosys/blade/config"
+	discovery "srv.solsynth.dev/sosys/blade/discovery"
+	"srv.solsynth.dev/sosys/blade/health"
 )
 
 const testInternalToken = "internal-secret"

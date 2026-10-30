@@ -1,0 +1,24 @@
+# VCS/editor noise
+.git
+.gitignore
+.github
+.idea
+.vscode
+
+# Go build output and local config
+bin
+metoer
+*.test
+config.toml
+
+# Secrets and runtime assets (mounted at deploy time)
+Keys
+dump.rdb
+*.rdb
+
+# Docs and local tooling
+docs
+*.md
+Caddyfile
+Makefile
+LICENSE.txt

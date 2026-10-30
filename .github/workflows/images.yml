@@ -35,6 +35,10 @@ jobs:
             context: ./internal/stargate
             dockerfile: ./internal/stargate/Dockerfile
             scope: stargate
+          - image: lighthouse-metoer
+            context: ./internal/metoer
+            dockerfile: ./internal/metoer/Dockerfile
+            scope: metoer
           # Gateway and relay are one image: a relay runs it with `relay` as the
           # command.
           - image: lighthouse-blade

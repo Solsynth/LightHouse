@@ -333,8 +333,8 @@ dysonfs --mode storage --config config.toml
 CONFIG_MODE=storage dysonfs --config config.toml
 
 # With version injection (build time)
-go build -ldflags="-X src.solsynth.dev/sosys/filesystem/internal/version.Version=1.0.0 \
-  -X src.solsynth.dev/sosys/filesystem/internal/version.GitCommit=$(git rev-parse HEAD)" \
+go build -ldflags="-X src.solsynth.dev/sosys/filesystem/version.Version=1.0.0 \
+  -X src.solsynth.dev/sosys/filesystem/version.GitCommit=$(git rev-parse HEAD)" \
   ./cmd
 ```
 

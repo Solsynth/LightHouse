@@ -15,39 +15,39 @@ board updates indirectly via the profile read-model.
 - `cmd/stargate-module-import` — per-module legacy data import when a module's
   table layout changed
 - `cmd/stargate-hash-password` — bcrypt hash for `[auth.singleUser]`
-- `internal/module` — compile-time module registry, dependency resolution,
+- `module` — compile-time module registry, dependency resolution,
   ports and schema hooks
-- `internal/modules/*` — feature modules and ecosystem integrations
-- `internal/app` — process bootstrap and module lifecycle
-- `internal/core` — shared service graph handed to modules
-- `internal/ports` — interfaces between feature modules and integrations
-- `internal/auth` — JWT (RS256), token validation, session/challenge logic
-- `internal/httpserver/*ctl` — controller packages per domain
-- `internal/grpcserver` — the gRPC surface the C# fleet calls
-- `internal/store` — persistence layer: typed GORM entities + query builders
-  (schema in `internal/migrate/0001_initial.sql`)
-- `internal/dbtest` — dedicated-database helper for migration tests (the DDL
+- `modules/*` — feature modules and ecosystem integrations
+- `app` — process bootstrap and module lifecycle
+- `core` — shared service graph handed to modules
+- `ports` — interfaces between feature modules and integrations
+- `auth` — JWT (RS256), token validation, session/challenge logic
+- `httpserver/*ctl` — controller packages per domain
+- `grpcserver` — the gRPC surface the C# fleet calls
+- `store` — persistence layer: typed GORM entities + query builders
+  (schema in `migrate/0001_initial.sql`)
+- `dbtest` — dedicated-database helper for migration tests (the DDL
   starts with `DROP TABLE IF EXISTS`, so isolated migrations must run in a
   fresh database)
-- `internal/migrate` — embedded DDL, applied on boot
-- `internal/permission` — permission registry + evaluation + seed
-- `internal/grpcclient` — outbound clients (wallet, develop, drive, pass,
+- `migrate` — embedded DDL, applied on boot
+- `permission` — permission registry + evaluation + seed
+- `grpcclient` — outbound clients (wallet, develop, drive, pass,
   blade, ring)
-- `internal/nats` — thin wrapper over the shared event bus
+- `nats` — thin wrapper over the shared event bus
   (`src.solsynth.dev/sosys/go/pkg/eventbus`): JetStream events
   (`auth.session.revoked`, `websocket_push`, `account_events`)
-- `internal/broadcast` — friends-only websocket fan-out of account status and
+- `broadcast` — friends-only websocket fan-out of account status and
   presence-activity changes (`account.status.updated`,
   `account.presence.activities.updated`)
-- `internal/presence` — the computed half of an account status: live devices,
+- `presence` — the computed half of an account status: live devices,
   idle state and device-presence visibility
-- `internal/webui` — serves the built SPA (`web/dist`) with history fallback
+- `webui` — serves the built SPA (`web/dist`) with history fallback
 - `web/` — the Vue 3 + Vite single-page frontend
 
 ## Modules
 
 Stargate is a compile-time module system (Caddy style). Every surface is a
-module in `internal/modules`; `cmd/stargate` selects the standard set.
+module in `modules`; `cmd/stargate` selects the standard set.
 Runtime config enables or disables modules without rebuilding:
 
 ```toml

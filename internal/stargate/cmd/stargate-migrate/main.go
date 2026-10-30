@@ -25,7 +25,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"src.solsynth.dev/sosys/stargate/internal/config"
+	"src.solsynth.dev/sosys/stargate/config"
 )
 
 // padlockTables is the copy order for the Padlock database (FK-safe).

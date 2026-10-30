@@ -141,7 +141,7 @@ func renewLoop(ctx context.Context, client gen.DyServiceDiscoveryServiceClient, 
 Use TLS credentials rather than `insecure.NewCredentials()` outside trusted
 local networks.
 
-`internal/relay/registration.go` (used by `cmd/relay`) is the one client that
+`internal/blade/relay/registration.go` (used by `cmd/relay`) is the one client that
 does *not* use this gRPC contract: relays are deployed outside the cluster
 network, so they register, renew, and report their own health over the
 gateway's public HTTPS entry instead. The cadence is the same — bounded retries

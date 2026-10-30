@@ -30,7 +30,7 @@ ARG TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=1 GOOS=linux GOARCH=${TARGETARCH} go build \
       -trimpath -buildvcs=false \
-      -ldflags="-s -w -X src.solsynth.dev/sosys/filesystem/internal/version.Version=${VERSION} -X src.solsynth.dev/sosys/filesystem/internal/version.GitCommit=${GIT_COMMIT}" \
+      -ldflags="-s -w -X src.solsynth.dev/sosys/filesystem/version.Version=${VERSION} -X src.solsynth.dev/sosys/filesystem/version.GitCommit=${GIT_COMMIT}" \
       -o /out/dysonfs ./cmd
 
 # libvips and ffmpeg are runtime dependencies of govips and ffprobe.

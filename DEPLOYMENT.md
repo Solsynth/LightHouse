@@ -4,11 +4,13 @@ How to run **sphere** and **messager** (the Go ports of `DysonNetwork.Sphere` an
 `DysonNetwork.Messager`), how to move the legacy data across, and what changes
 for the rest of the fleet when the C# services are retired.
 
-The repository is one workspace (`go.work`) over three Go modules: this module
-(sphere + messager), `internal/stargate/` and `internal/blade/`. Stargate is the identity service
-every authenticated request goes through, and Blade is the gateway that routes
-public traffic to sphere and messager — so a replacement touches all of them
-even though only sphere and messager are being ported here.
+The repository is one workspace (`go.work`) over five Go modules: this module
+(sphere + messager), `internal/stargate/`, `internal/metoer/`, `internal/blade/`
+and — outside the workspace — `internal/filesystem/`. Stargate is the identity
+service every authenticated request goes through, Metoer replaces Ring for
+notifications and push, and Blade is the gateway that routes public traffic to
+sphere, messager and metoer — so a replacement touches all of them even though
+only sphere and messager are documented end to end here.
 
 Read §7 before you start a cutover: it lists everything that behaves differently
 from the C# services at runtime.
@@ -19,9 +21,10 @@ from the C# services at runtime.
 
 | Service | Binary | HTTP | gRPC | Database | Config |
 |---|---|---|---|---|---|
-| Sphere | `bin/sphere` | `:5071` | `:7099` | `dyson_sphere` | `config/sphere.toml` |
-| Messager | `bin/messager` | `:5072` | `:7100` | `dyson_messager` | `config/messager.toml` |
+| Sphere | `bin/sphere` | `:5071` | `:7099` | `dyson_sphere` | `internal/sphere/config.toml` |
+| Messager | `bin/messager` | `:5072` | `:7100` | `dyson_messager` | `internal/messager/config.toml` |
 | Stargate | `bin/stargate` | `:8080` | `:9090` | `dyson_stargate` | `internal/stargate/config.toml` |
+| Metoer | `bin/metoer` | `:8080` | `:9090` | `dyson_ring` | `internal/metoer/config.toml` |
 | Blade | `bin/blade` | `:6000` | `:7001` | – | `internal/blade/configs/config.toml` |
 
 The sphere and messager port defaults match the C# services' `BaseUrl` and
@@ -41,7 +44,7 @@ Both expose:
 
 Images: `Dockerfile.sphere` and `Dockerfile.messager` (root context). Both are
 `golang:1.27-alpine` build → `scratch` runtime: a static CGO-free binary, the
-CA bundle, and `config/sphere.example.toml` (resp. messager) as
+CA bundle, and `internal/sphere/config.example.toml` (resp. messager) as
 `/app/config.example.toml`. They take their config from `CONFIG_PATH`. No
 secrets are baked in — mount `Keys/` at deploy time. CI publishes
 `ghcr.io/<owner>/{lighthouse-sphere,lighthouse-messager}`; the `lighthouse-`
@@ -52,11 +55,12 @@ Build locally (every target is workspace-aware; `./...` stops at a nested
 `go.mod`, so the Makefile builds each module in turn):
 
 ```sh
-make build            # sphere, messager, stargate, blade, relay
+make build            # sphere, messager, stargate, metoer, blade, relay, dysonfs
 make build-sphere     # just bin/sphere
-make run-sphere       # CONFIG_PATH=config/sphere.example.toml go run ./cmd/sphere
+make run-sphere       # CONFIG_PATH=internal/sphere/config.example.toml go run ./internal/sphere/cmd/sphere
 make run-messager
 make run-stargate
+make run-metoer
 make run-blade
 ```
 
@@ -192,8 +196,8 @@ Boot each service once against the target database. This creates the schema
 the jobs.
 
 ```sh
-CONFIG_PATH=config/sphere.toml ./bin/sphere
-CONFIG_PATH=config/messager.toml ./bin/messager
+CONFIG_PATH=internal/sphere/config.toml ./bin/sphere
+CONFIG_PATH=internal/messager/config.toml ./bin/messager
 ```
 
 Check `/api/modules` and the log: every enabled module should appear, and the
@@ -213,15 +217,15 @@ runs; seeds and backfills must see the imported rows, so restart afterwards.
 # 1. boot once so dyson_sphere has its schema, then
 SPHERE_SOURCE_DSN="postgres://…/dyson_sphere" \
 SPHERE_TARGET_DSN="postgres://…/dyson_sphere" \
-  go run ./cmd/sphere-migrate --dry-run
+  go run ./internal/sphere/cmd/sphere-migrate --dry-run
 
 # 2. same command without --dry-run to write
-make migrate-sphere        # or cmd/sphere-migrate with explicit flags
+make migrate-sphere        # or internal/sphere/cmd/sphere-migrate with explicit flags
 
 # 3. restart the service
 ```
 
-`cmd/messager-migrate` is the same for Messager.
+`internal/messager/cmd/messager-migrate` is the same for Messager.
 
 Properties of the importer:
 
@@ -504,8 +508,8 @@ dump until you are confident in the new deployment.
 | Module state | `GET /api/modules` |
 | Logs | stdout, `LOG_LEVEL` (`debug`/`info`/`warn`/`error`, default `info`) |
 | Schema | created on boot; modules own their tables; nothing is ever dropped |
-| Data import | `cmd/sphere-migrate`, `cmd/messager-migrate` (`--dry-run` first) |
-| Container build | `Dockerfile.sphere`, `Dockerfile.messager`, `internal/stargate/Dockerfile`, `internal/blade/Dockerfile` (gateway and relay), `internal/filesystem/Dockerfile` |
-| Local run | `make run-sphere`, `make run-messager` |
-| Whole workspace | `make build` builds sphere, messager, stargate, blade, relay, dysonfs |
+| Data import | `internal/sphere/cmd/sphere-migrate`, `internal/messager/cmd/messager-migrate` (`--dry-run` first) |
+| Container build | `Dockerfile.sphere`, `Dockerfile.messager`, `internal/stargate/Dockerfile`, `internal/metoer/Dockerfile`, `internal/blade/Dockerfile` (gateway and relay), `internal/filesystem/Dockerfile` |
+| Local run | `make run-sphere`, `make run-messager`, `make run-metoer` |
+| Whole workspace | `make build` builds sphere, messager, stargate, metoer, blade, relay, dysonfs |
 | Checks | `make test`, `make lint` |

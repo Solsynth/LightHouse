@@ -21,9 +21,9 @@ web/node_modules/.tmp
 # Local tooling
 memo
 scripts
-# docs/ is a Go package: docs.go registers the swagger spec and
-# internal/server imports it, so the directory has to stay in the build
-# context. Only its Markdown is dropped.
+# docs/ is a Go package: docs.go registers the swagger spec and server
+# imports it, so the directory has to stay in the build context. Only its
+# Markdown is dropped.
 *.md
 docs/*.md
 docker-compose*.yml

@@ -190,7 +190,7 @@ tracked only after the client sends `session.resume` or `session.ack` on it.
 | Ack-capable (sent `session.resume`/`session.ack`) | At-least-once until acked, budget exhausted, or retention passes | yes | yes | up to `ackMaxAttempts` |
 | Legacy (never sent either) | Best effort, byte-identical to before this change | no | no | none |
 
-The capability gate is `shouldTrack` (`internal/wsgateway/ack.go`): the packet
+The capability gate is `shouldTrack` (`internal/blade/wsgateway/ack.go`): the packet
 family alone is not enough, because a client that cannot ack would otherwise be retried
 forever for behaving exactly as it was written. The connection is marked capable
 in the receive loop (`HandleConnection`) before the packet is dispatched, so the
@@ -199,7 +199,7 @@ flag — every connection generation re-establishes it with its own resume.
 
 `messages.*` is the tracked family because its client consumers key on the message
 id, so a re-delivered frame is idempotent client-side. The family is the single
-constant `ackedPacketPrefix` (`internal/wsgateway/ack.go`). Adding a family later
+constant `ackedPacketPrefix` (`internal/blade/wsgateway/ack.go`). Adding a family later
 needs no client change (clients ack any frame that carries an `_ack_id`); it needs
 an idempotency audit of that family's consumers.
 

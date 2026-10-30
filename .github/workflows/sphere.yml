@@ -4,10 +4,8 @@ on:
   push:
     branches: [master]
     paths:
-      - "cmd/sphere/**"
       - "internal/platform/**"
       - "internal/sphere/**"
-      - "config/sphere.example.toml"
       - "go.mod"
       - "go.sum"
       - "go.work"
@@ -18,10 +16,8 @@ on:
   pull_request:
     branches: [master]
     paths:
-      - "cmd/sphere/**"
       - "internal/platform/**"
       - "internal/sphere/**"
-      - "config/sphere.example.toml"
       - "go.mod"
       - "go.sum"
       - "go.work"

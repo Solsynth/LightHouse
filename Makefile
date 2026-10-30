@@ -1,39 +1,45 @@
 BIN_DIR := bin
 
-SPHERE_CONFIG ?= config/sphere.example.toml
-MESSAGER_CONFIG ?= config/messager.example.toml
-STARGATE_CONFIG ?= config.example.toml
-BLADE_CONFIG ?= configs/config.toml
-RELAY_CONFIG ?= configs/relay.toml
-FILESYSTEM_CONFIG ?= config.example.toml
+# Every service owns its directory under internal/: one module, its own cmd/,
+# and its example config. Local configs are the same paths without `.example`.
+SPHERE_CONFIG ?= internal/sphere/config.example.toml
+MESSAGER_CONFIG ?= internal/messager/config.example.toml
+STARGATE_CONFIG ?= internal/stargate/config.example.toml
+METOER_CONFIG ?= internal/metoer/config.example.toml
+BLADE_CONFIG ?= internal/blade/configs/config.toml
+RELAY_CONFIG ?= internal/blade/configs/relay.toml
+FILESYSTEM_CONFIG ?= internal/filesystem/config.example.toml
 
 # internal/filesystem is not in go.work (see go.work): it pins go1.26.2, and
 # its grpc/x-net pair does not compile under go1.27. Every filesystem command
 # below therefore runs outside the workspace with that toolchain.
 FS_GO := GOWORK=off GOTOOLCHAIN=go1.26.2 go
 
-.PHONY: all build build-sphere build-messager build-stargate build-blade build-relay build-filesystem \
-	run-sphere run-messager run-stargate run-blade run-relay run-filesystem \
+.PHONY: all build build-sphere build-messager build-stargate build-metoer build-blade build-relay build-filesystem \
+	run-sphere run-messager run-stargate run-metoer run-blade run-relay run-filesystem \
 	web-stargate web-stargate-check web-stargate-dev web-stargate-test \
 	web-filesystem web-filesystem-check web-filesystem-dev web-filesystem-test \
-	test test-sphere test-stargate test-blade test-filesystem lint tidy fmt \
+	test test-sphere test-stargate test-metoer test-blade test-filesystem lint tidy fmt \
 	migrate-sphere migrate-messager migrate-stargate migrate-filesystem-legacy \
 	stargate-hash-password stargate-module-import
 
 all: build
 
-build: build-sphere build-messager build-stargate build-blade build-relay build-filesystem
-
-build-sphere:
-	go build -o $(BIN_DIR)/sphere ./cmd/sphere
-
-build-messager:
-	go build -o $(BIN_DIR)/messager ./cmd/messager
+build: build-sphere build-messager build-stargate build-metoer build-blade build-relay build-filesystem
 
 # Children are built from inside their module so relative config/web paths and
 # their own Makefile defaults keep working.
+build-sphere:
+	go build -o $(BIN_DIR)/sphere ./internal/sphere/cmd/sphere
+
+build-messager:
+	go build -o $(BIN_DIR)/messager ./internal/messager/cmd/messager
+
 build-stargate:
 	cd internal/stargate && go build -o ../../$(BIN_DIR)/stargate ./cmd/stargate
+
+build-metoer:
+	cd internal/metoer && go build -o ../../$(BIN_DIR)/metoer ./cmd/metoer
 
 build-blade:
 	cd internal/blade && go build -o ../../$(BIN_DIR)/blade ./cmd
@@ -45,13 +51,16 @@ build-filesystem:
 	cd internal/filesystem && $(FS_GO) build -o ../../$(BIN_DIR)/dysonfs ./cmd
 
 run-sphere:
-	CONFIG_PATH=$(SPHERE_CONFIG) go run ./cmd/sphere
+	CONFIG_PATH=$(SPHERE_CONFIG) go run ./internal/sphere/cmd/sphere
 
 run-messager:
-	CONFIG_PATH=$(MESSAGER_CONFIG) go run ./cmd/messager
+	CONFIG_PATH=$(MESSAGER_CONFIG) go run ./internal/messager/cmd/messager
 
 run-stargate:
 	cd internal/stargate && CONFIG_PATH=$(STARGATE_CONFIG) go run ./cmd/stargate
+
+run-metoer:
+	cd internal/metoer && CONFIG_PATH=$(METOER_CONFIG) go run ./cmd/metoer
 
 run-blade:
 	cd internal/blade && CONFIG_PATH=$(BLADE_CONFIG) go run ./cmd
@@ -87,20 +96,24 @@ web-filesystem-dev:
 web-filesystem-test:
 	$(MAKE) -C internal/filesystem web-test
 
-test: test-sphere test-stargate test-blade test-filesystem
+test: test-sphere test-stargate test-metoer test-blade test-filesystem
 
 test-sphere:
 	go test ./...
 
-# internal/store needs a reachable PostgreSQL (dyson_stargate); it fails fast without one.
+# internal/stargate/store needs a reachable PostgreSQL (dyson_stargate); it
+# fails fast without one.
 test-stargate:
 	cd internal/stargate && go test ./...
+
+test-metoer:
+	cd internal/metoer && go test ./...
 
 test-blade:
 	cd internal/blade && go test ./...
 
-# internal/service has two known failures inherited from the FileSystem repo
-# (TestOverwriteFileSwapsObjectAndDeletesDereferencedSource,
+# internal/filesystem/service has two known failures inherited from the
+# FileSystem repo (TestOverwriteFileSwapsObjectAndDeletesDereferencedSource,
 # TestFastOverwriteFileUpdatesExistingObject).
 test-filesystem:
 	cd internal/filesystem && $(FS_GO) test ./...
@@ -108,24 +121,26 @@ test-filesystem:
 lint:
 	go vet ./...
 	cd internal/stargate && go vet ./...
+	cd internal/metoer && go vet ./...
 	cd internal/blade && go vet ./...
 	cd internal/filesystem && $(FS_GO) vet ./...
 
 tidy:
 	go mod tidy
 	cd internal/stargate && go mod tidy
+	cd internal/metoer && go mod tidy
 	cd internal/blade && go mod tidy
 	cd internal/filesystem && $(FS_GO) mod tidy
 
 fmt:
-	gofmt -l -w cmd internal
+	gofmt -l -w internal
 
 # Boot each service once before importing so the schema exists.
 migrate-sphere:
-	go run ./cmd/sphere-migrate --source-dsn "$$SPHERE_SOURCE_DSN" --target-dsn "$$SPHERE_TARGET_DSN"
+	go run ./internal/sphere/cmd/sphere-migrate --source-dsn "$$SPHERE_SOURCE_DSN" --target-dsn "$$SPHERE_TARGET_DSN"
 
 migrate-messager:
-	go run ./cmd/messager-migrate --source-dsn "$$MESSAGER_SOURCE_DSN" --target-dsn "$$MESSAGER_TARGET_DSN"
+	go run ./internal/messager/cmd/messager-migrate --source-dsn "$$MESSAGER_SOURCE_DSN" --target-dsn "$$MESSAGER_TARGET_DSN"
 
 migrate-stargate:
 	cd internal/stargate && go run ./cmd/stargate-migrate

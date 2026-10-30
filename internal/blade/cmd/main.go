@@ -25,13 +25,13 @@ import (
 	"src.solsynth.dev/sosys/go/pkg/cache"
 	eb "src.solsynth.dev/sosys/go/pkg/eventbus"
 	gen "src.solsynth.dev/sosys/go/proto"
-	"srv.solsynth.dev/sosys/blade/internal/capabilities"
-	"srv.solsynth.dev/sosys/blade/internal/config"
-	discovery "srv.solsynth.dev/sosys/blade/internal/discovery"
-	"srv.solsynth.dev/sosys/blade/internal/health"
-	"srv.solsynth.dev/sosys/blade/internal/logging"
-	"srv.solsynth.dev/sosys/blade/internal/proxy"
-	"srv.solsynth.dev/sosys/blade/internal/wsgateway"
+	"srv.solsynth.dev/sosys/blade/capabilities"
+	"srv.solsynth.dev/sosys/blade/config"
+	discovery "srv.solsynth.dev/sosys/blade/discovery"
+	"srv.solsynth.dev/sosys/blade/health"
+	"srv.solsynth.dev/sosys/blade/logging"
+	"srv.solsynth.dev/sosys/blade/proxy"
+	"srv.solsynth.dev/sosys/blade/wsgateway"
 )
 
 const (

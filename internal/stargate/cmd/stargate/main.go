@@ -8,8 +8,8 @@ import (
 	"log/slog"
 	"os"
 
-	"src.solsynth.dev/sosys/stargate/internal/app"
-	"src.solsynth.dev/sosys/stargate/internal/modules/standard"
+	"src.solsynth.dev/sosys/stargate/app"
+	"src.solsynth.dev/sosys/stargate/modules/standard"
 )
 
 // version and gitCommit are injected at build time (see Dockerfile).

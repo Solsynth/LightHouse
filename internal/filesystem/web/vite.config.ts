@@ -10,8 +10,8 @@ import { defineConfig, loadEnv } from 'vite'
 
 /**
  * Serves `/picker` from `picker.html` in development, mirroring the master's
- * route (internal/webui). Without it a host pointed at `/picker` works in
- * production and 404s locally, which is exactly the bug an embed hides.
+ * route (webui). Without it a host pointed at `/picker` works in production
+ * and 404s locally, which is exactly the bug an embed hides.
  */
 function pickerRoute(): Plugin {
   return {

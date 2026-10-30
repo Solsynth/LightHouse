@@ -10,24 +10,29 @@ port, following the house pattern established by the
 
 ```
 cmd/metoer/            entrypoint (HTTP :8080 + gRPC :9090, TLS optional)
-internal/config        TOML config + METOER_* env overrides
-internal/db, migrate   GORM PostgreSQL handle + embedded SQL migrations
-internal/store         GORM-backed Postgres access layer (mirrors EF Core
+config                 TOML config + METOER_* env overrides
+db, migrate            GORM PostgreSQL handle + embedded SQL migrations
+store                  GORM-backed Postgres access layer (mirrors EF Core
                        queries incl. the global soft-delete filter)
-internal/model         entity + wire models (snake_case JSON, nulls included)
-internal/queue         in-process async dispatcher (buffered channel + workers)
-internal/push          PushService port: senders, SOP streams, replay,
+model                  entity + wire models (snake_case JSON, nulls included)
+queue                  in-process async dispatcher (buffered channel + workers)
+push                   PushService port: senders, SOP streams, replay,
                        websocket fan-out, invalid-token flush buffer
-internal/email         SMTP sender + email sending-plan state machine
-internal/observability delivery records (never break the delivery path)
-internal/grpcclient    outbound clients (stargate: account/auth/permission/
+email                  SMTP sender + email sending-plan state machine
+observability          delivery records (never break the delivery path)
+grpcclient             outbound clients (stargate: account/auth/permission/
                        profile/action-log; blade: websocket)
-internal/grpcserver    DyRingService + capabilities + reflection + health
-internal/httpserver    gin + /api controllers + swagger manifest
-internal/middleware    DysonTokenAuthHandler + RemotePermissionMiddleware ports
-internal/scheduler     the four Quartz jobs (UTC schedules)
-internal/events        websocket_push publisher + filesystem listener
+grpcserver             DyRingService + capabilities + reflection + health
+httpserver             gin + /api controllers + swagger manifest
+middleware             DysonTokenAuthHandler + RemotePermissionMiddleware ports
+scheduler              the four Quartz jobs (UTC schedules)
+events                 websocket_push publisher + filesystem listener
 ```
+
+The module is `src.solsynth.dev/sosys/metoer` and lives at `internal/metoer`
+in the Lighthouse monorepo, listed in the root `go.work`. Like the other
+services it keeps its packages at the module root — there is no nested
+`internal/` directory.
 
 ## Run
 
@@ -35,7 +40,8 @@ Requires Postgres (`dyson_ring`), Redis and NATS (JetStream for
 `account_events` / `accounts.last_active`, core NATS for `websocket_push`).
 
 ```sh
-make run            # CONFIG_PATH=config.example.toml
+make run            # from this directory: CONFIG_PATH=config.example.toml
+make run-metoer     # from the repository root
 ```
 
 `CONFIG_PATH` selects the TOML file; `METOER_*` env vars override individual
@@ -50,7 +56,7 @@ are mounted at deploy time, never baked into the image.
   convention, do not add `omitempty` to API-facing fields. Enum values are
   ints; instants are RFC3339 UTC seconds. `meta` dictionary keys are
   snake-cased on outbound responses (STJ `DictionaryKeyPolicy`).
-- **Async dispatch** (push/email): in-process — `internal/queue` queues jobs
+- **Async dispatch** (push/email): in-process — `internal/metoer/queue` queues jobs
   on a buffered channel drained by a worker pool (size = `ConsumerCount`).
   Delivery is exactly-once-per-enqueue: no redelivery, no consumer state, no
   replay-on-restart; jobs buffered at shutdown are lost. Per-device push

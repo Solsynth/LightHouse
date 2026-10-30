@@ -16,13 +16,13 @@ ARG GIT_COMMIT=unknown
 RUN --mount=type=cache,target=/root/.cache/go-build \
     go build -trimpath -buildvcs=false \
       -ldflags="-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_COMMIT}" \
-      -o /out/sphere ./cmd/sphere
+      -o /out/sphere ./internal/sphere/cmd/sphere
 
 # Static binary, CA bundle for outbound HTTPS; everything else is mounted.
 FROM scratch
 WORKDIR /app
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /out/sphere /app/sphere
-COPY config/sphere.example.toml /app/config.example.toml
+COPY internal/sphere/config.example.toml /app/config.example.toml
 EXPOSE 5071 7099
 ENTRYPOINT ["/app/sphere"]

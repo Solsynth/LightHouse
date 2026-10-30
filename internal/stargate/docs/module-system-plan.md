@@ -60,7 +60,7 @@ Third-party modules must use their own reverse-DNS prefix.
 
 ## Kernel
 
-Package `internal/module` contains the SPI, the registry and the resolver.
+Package `internal/stargate/module` contains the SPI, the registry and the resolver.
 
 ```go
 type Kind string // "feature" | "integration"
@@ -142,7 +142,7 @@ STARGATE_MODULES_DISABLED=app.solian.e2ee
 
 ### Core
 
-Core SQL migrations stay in `internal/migrate/*.sql`. They own the tables
+Core SQL migrations stay in `internal/stargate/migrate/*.sql`. They own the tables
 needed by the required auth module and the permission system, including the
 `pg_trgm` extension and trigram indexes.
 
@@ -326,8 +326,8 @@ whose schema diverged.
 
 ### Phase 0 — kernel and wrapping
 
-- [x] `internal/module`: Factory, Instance, Host, resolver, ports, importer.
-- [x] `internal/app`: bootstrap extracted from `cmd/stargate/main.go`.
+- [x] `internal/stargate/module`: Factory, Instance, Host, resolver, ports, importer.
+- [x] `internal/stargate/app`: bootstrap extracted from `cmd/stargate/main.go`.
 - [x] Config `[modules]` and env overrides.
 - [x] Wrapper modules for every existing HTTP/gRPC surface.
 - [x] `GET /api/modules`.
@@ -393,7 +393,7 @@ whose schema diverged.
 
 ### Phase 4 — ports and integrations
 
-- [x] `internal/ports` interfaces.
+- [x] `internal/stargate/ports` interfaces.
 - [x] Integration modules publish ports (`files`, `badges`, `perks`,
       `email`, `push`, `presence`, `oauthClients`, `nfcTokens`).
 - [x] Disabled integrations are filtered out of the aggregate client.
@@ -428,7 +428,7 @@ whose schema diverged.
 ### Phase 6 — private submodule
 
 - [ ] Public SPI boundary.
-- [ ] `cmd/stargate/modules_private.go` behind `//go:build private`.
+- [ ] `cmd/internal/stargate/modules_private.go` behind `//go:build private`.
 - [ ] Private submodule docs. No nested `go.mod` if it needs `internal/`.
 
 ## Invariants

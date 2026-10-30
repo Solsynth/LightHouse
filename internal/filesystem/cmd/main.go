@@ -12,15 +12,15 @@ import (
 	"syscall"
 	"time"
 
-	"src.solsynth.dev/sosys/filesystem/internal/app"
-	"src.solsynth.dev/sosys/filesystem/internal/config"
-	"src.solsynth.dev/sosys/filesystem/internal/database"
-	"src.solsynth.dev/sosys/filesystem/internal/logging"
-	"src.solsynth.dev/sosys/filesystem/internal/migratelegacy"
-	"src.solsynth.dev/sosys/filesystem/internal/modules/standard"
-	"src.solsynth.dev/sosys/filesystem/internal/repairlegacy"
-	sentryutil "src.solsynth.dev/sosys/filesystem/internal/sentry"
-	"src.solsynth.dev/sosys/filesystem/internal/service"
+	"src.solsynth.dev/sosys/filesystem/app"
+	"src.solsynth.dev/sosys/filesystem/config"
+	"src.solsynth.dev/sosys/filesystem/database"
+	"src.solsynth.dev/sosys/filesystem/logging"
+	"src.solsynth.dev/sosys/filesystem/migratelegacy"
+	"src.solsynth.dev/sosys/filesystem/modules/standard"
+	"src.solsynth.dev/sosys/filesystem/repairlegacy"
+	sentryutil "src.solsynth.dev/sosys/filesystem/sentry"
+	"src.solsynth.dev/sosys/filesystem/service"
 )
 
 func main() {

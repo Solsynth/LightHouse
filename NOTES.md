@@ -1,6 +1,6 @@
 # Lighthouse
 
-The Go monorepo for the Solar Network services. Five services, four Go
+The Go monorepo for the Solar Network services. Six services, five Go
 modules, one workspace:
 
 - **sphere** — the port of `DysonNetwork.Sphere`: posts, publishers, timelines,
@@ -12,6 +12,8 @@ modules, one workspace:
   admin, E2EE/MLS), the Passport account/profile domain, and the ported
   `DysonNetwork.Wallet` (wallets, ledger, orders, subscriptions, merchants) as
   a module. Every other service validates inbound tokens through it.
+- **metoer** — the port of `DysonNetwork.Ring`: notifications, push delivery
+  (FCM/APNs/UnifiedPush/SOP), email sending plans and delivery observability.
 - **blade** — the API gateway: reverse proxy, health checks, gRPC service
   discovery, L4 TLS-SNI relays (`cmd/relay`) and the websocket gateway.
 - **filesystem** — DysonFS, the file service: uploads, media processing,
@@ -20,21 +22,16 @@ modules, one workspace:
 
 Sphere and Messager are **separate services**: separate binaries, separate
 databases, separate module sets. They share the platform layer
-(`internal/platform`) and nothing else. Stargate, Blade and DysonFS live under
-`internal/` next to them, each as its own Go module with its own `go.mod`,
-Dockerfiles and configs, and they talk to the other services over
+(`internal/platform`) and nothing else. Stargate, Metoer, Blade and DysonFS
+live under `internal/` next to them, each as its own Go module with its own
+`go.mod`, Dockerfiles and configs, and they talk to the other services over
 HTTP/gRPC/NATS only. DysonFS is the one child outside `go.work` (see below).
 
 ## Layout
 
 ```
-go.work                   workspace: ., ./internal/stargate, ./internal/blade
+go.work                   workspace: ., ./internal/stargate, ./internal/metoer, ./internal/blade
 go.mod                    module src.solsynth.dev/sosys/lighthouse
-cmd/sphere                sphere process
-cmd/messager              messager process
-cmd/sphere-migrate        legacy Sphere/Postgres import
-cmd/messager-migrate      legacy Messager/Postgres import
-config/                   example TOML per Lighthouse service
 docs/MODULE_CONTRACT.md   the interface every Lighthouse module is written against
 internal/platform/        shared house infrastructure
   module/                 compile-time module registry (Caddy style)
@@ -48,48 +45,66 @@ internal/platform/        shared house infrastructure
   jobs/                   interval + Quartz-cron scheduler
   discovery/ legacyimport/
 internal/sphere/          sphere service (module src.solsynth.dev/sosys/lighthouse)
+  cmd/sphere                sphere process
+  cmd/sphere-migrate        legacy Sphere/Postgres import
+  config.example.toml       example TOML (config.toml is the local copy)
   config/ core/ app/ model/ store/ ports/ migrate/
-  modules/*               feature modules (posts, publishers, ...)
+  modules/*                 feature modules (posts, publishers, ...)
 internal/messager/        messager service (same module, same shape)
+  cmd/messager              messager process
+  cmd/messager-migrate      legacy Messager/Postgres import
+  config.example.toml       example TOML
 internal/stargate/        module src.solsynth.dev/sosys/stargate
   cmd/stargate              the service (HTTP :8080, gRPC :9090)
   cmd/stargate-migrate      legacy Padlock/Passport import
   cmd/stargate-module-import  per-module legacy import
   cmd/stargate-hash-password  bcrypt hash for [auth.singleUser]
-  internal/                 module registry, modules, controllers, wallet, store
-  web/                      Vue 3 + Vite console (served by internal/webui)
+  module/ modules/ ...      module registry, controllers, wallet, store
+  web/                      Vue 3 + Vite console (served by webui)
   config.example.toml       see internal/stargate/README.md
-internal/blade/          module srv.solsynth.dev/sosys/blade
+internal/metoer/          module src.solsynth.dev/sosys/metoer
+  cmd/metoer                the service (HTTP :8080, gRPC :9090)
+  config/ store/ model/     config, persistence and wire models
+  push/ email/ queue/       delivery pipeline and in-process dispatcher
+  scheduler/ events/        Quartz jobs and NATS/websocket fan-out
+  config.example.toml       see internal/metoer/README.md
+internal/blade/           module srv.solsynth.dev/sosys/blade
   cmd/                      gateway (:6000 HTTP, :7001 gRPC)
   cmd/relay                 L4 TLS-SNI relay node (:443)
-  internal/                 proxy, discovery, health, wsgateway, relay
+  proxy/ discovery/ ...     proxy, discovery, health, wsgateway, relay
   configs/                  config.toml, docker.toml, relay.toml
   docs/                     see internal/blade/README.md
-internal/filesystem/     module src.solsynth.dev/sosys/filesystem
+internal/filesystem/      module src.solsynth.dev/sosys/filesystem
   cmd/                      dysonfs (master/worker/storage modes)
-  internal/                 module registry, media, storage, S3, WebDAV, WOPI
+  module/ media/ storage/   module registry, media, S3, WebDAV, WOPI
   web/                      Vue 3 + Vite console
   config.example.toml       see internal/filesystem/README.md
 ```
 
+Every service directory is laid out the same way: `cmd/` for its binaries,
+`config.example.toml` for its example config, and one package directory per
+domain at the top level. No service nests an `internal/` inside its own
+directory — the whole tree already lives under the repository's `internal/`.
+
 ## Workspace
 
-`go.work` uses the Lighthouse, Stargate and Blade modules so one checkout
-builds and tests them with a single toolchain (`go 1.27`). Nothing is published
-between them yet — each service still has its own dependency graph and
-`go.sum`. A child's location under `internal/` is only a directory choice: the
-module path in its own `go.mod` is what its packages import by.
+`go.work` uses the Lighthouse, Stargate, Metoer and Blade modules so one
+checkout builds and tests them with a single toolchain (`go 1.27`). Nothing is
+published between them yet — each service still has its own dependency graph
+and `go.sum`. A service's location under `internal/` is only a directory
+choice: the module path in its own `go.mod` is what its packages import by.
 
 Two consequences worth knowing:
 
 - Directory patterns stop at a nested `go.mod`, so `go build ./...` at the
   root covers only sphere/messager. Use the Makefile (or `go build
-  ./internal/stargate/...` / `go build ./internal/blade/...` from the root) for
-  the whole tree.
-- Docker images build with the child directory as context
-  (`./internal/stargate`, `./internal/blade`, `./internal/filesystem`), so
-  `go.work` never enters an image and the children stay buildable on their
-  own. Their `Makefile`s keep working from inside the child directory.
+  ./internal/stargate/...` / `go build ./internal/metoer/...` from the root)
+  for the whole tree.
+- Docker images build with the service directory as context
+  (`./internal/stargate`, `./internal/metoer`, `./internal/blade`,
+  `./internal/filesystem`), so `go.work` never enters an image and the
+  children stay buildable on their own. Their `Makefile`s keep working from
+  inside the service directory.
 
 `internal/filesystem` is **not** in `go.work`: it pins `go1.26.2`, and under
 `go1.27` its `golang.org/x/net` v0.54.0 compiles the stdlib-backed http2
@@ -124,28 +139,32 @@ persistence conventions and route-fidelity requirements.
 
 | binary | HTTP | gRPC | config |
 |---|---|---|---|
-| `sphere` | `:5071` | `:7099` | `config/sphere.toml` |
-| `messager` | `:5072` | `:7100` | `config/messager.toml` |
+| `sphere` | `:5071` | `:7099` | `internal/sphere/config.toml` |
+| `messager` | `:5072` | `:7100` | `internal/messager/config.toml` |
 | `stargate` | `:8080` | `:9090` | `internal/stargate/config.toml` |
+| `metoer` | `:8080` | `:9090` | `internal/metoer/config.toml` |
 | `blade` | `:6000` | `:7001` | `internal/blade/configs/config.toml` |
 | `relay` | `:443` (TLS passthrough) | — | `internal/blade/configs/relay.toml` |
 | `dysonfs` | `:8080` | `:9090` | `internal/filesystem/config.toml` |
 
-`stargate` and `dysonfs` ship the same default ports; move one of them in its
-TOML when both run on one host. DysonFS also exposes optional S3 gateways on
-`:9000`/`:9001` and runs as `master`, `worker` or `storage` (`--mode`).
+`stargate`, `metoer` and `dysonfs` ship the same default ports; move one of
+them in its TOML when they run on one host. DysonFS also exposes optional S3
+gateways on `:9000`/`:9001` and runs as `master`, `worker` or `storage`
+(`--mode`).
 
 ```sh
-cp config/sphere.example.toml config/sphere.toml
-cp config/messager.example.toml config/messager.toml
+cp internal/sphere/config.example.toml internal/sphere/config.toml
+cp internal/messager/config.example.toml internal/messager/config.toml
 cp internal/stargate/config.example.toml internal/stargate/config.toml
+cp internal/metoer/config.example.toml internal/metoer/config.toml
 cp internal/filesystem/config.example.toml internal/filesystem/config.toml
-make build                       # bin/{sphere,messager,stargate,blade,relay,dysonfs}
-make run-stargate                # each run target cds into its module
+make build                       # bin/{sphere,messager,stargate,metoer,blade,relay,dysonfs}
+make run-stargate                # each run target cds into its service
 make run-blade
+make run-metoer
 make run-filesystem
 make run-sphere
-CONFIG_PATH=config/messager.toml ./bin/messager
+CONFIG_PATH=internal/messager/config.toml ./bin/messager
 ```
 
 The consoles build separately with bun and are served by their own process:
@@ -160,7 +179,7 @@ Postgres is required. Redis, NATS and every `[services]` target are optional: a
 missing one degrades only the features that depend on it (session caching falls
 back to memory, events stop, enrichment/lookup/notification features are
 skipped). Stargate's Postgres is its own database; it additionally validates
-tokens for sphere/messager over gRPC.
+tokens for sphere/messager/metoer over gRPC.
 
 ## Deploy
 
@@ -168,6 +187,8 @@ tokens for sphere/messager over gRPC.
   services; context `.`. Both produce static `scratch` images.
 - `internal/stargate/Dockerfile` builds the SPA and the service; context
   `./internal/stargate`, static `scratch` runtime.
+- `internal/metoer/Dockerfile` builds the service; context `./internal/metoer`,
+  Alpine runtime for ca-certificates and tzdata.
 - `internal/blade/Dockerfile` builds both Blade binaries into one image;
   context `./internal/blade`. The gateway is the default process, `relay` as
   the container command runs the L4 node, and Alpine stays for the compose
@@ -178,10 +199,10 @@ tokens for sphere/messager over gRPC.
   `internal/blade/docker-compose.relay.yml` (a PoP relay) keep their own
   contexts and run unchanged with
   `docker compose -f internal/blade/docker-compose.yml up -d`.
-- Root CI (`.github/workflows/{sphere,messager,stargate,blade,filesystem}.yml`)
+- Root CI (`.github/workflows/{sphere,messager,stargate,metoer,blade,filesystem}.yml`)
   builds and pushes one image per service — `lighthouse-sphere`,
-  `lighthouse-messager`, `lighthouse-stargate`, `lighthouse-blade`,
-  `lighthouse-dysonfs` — path-filtered on its sources.
+  `lighthouse-messager`, `lighthouse-stargate`, `lighthouse-metoer`,
+  `lighthouse-blade`, `lighthouse-dysonfs` — path-filtered on its sources.
 
 ## Legacy data
 
@@ -190,11 +211,11 @@ import directly:
 
 ```sh
 # 1. boot the service once so the schema exists
-CONFIG_PATH=config/sphere.toml ./bin/sphere
+CONFIG_PATH=internal/sphere/config.toml ./bin/sphere
 # 2. copy the rows (idempotent; never truncates)
 SPHERE_SOURCE_DSN=postgres://…/dyson_sphere \
 SPHERE_TARGET_DSN=postgres://…/dyson_sphere_go \
-  go run ./cmd/sphere-migrate --dry-run
+  go run ./internal/sphere/cmd/sphere-migrate --dry-run
 # 3. restart the service
 ```
 

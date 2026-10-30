@@ -1,10 +1,9 @@
 # Build output
 bin/
 
-# Local configuration and runtime secrets
-config/*.toml
-!config/*.example.toml
-config.toml
+# Local configuration and runtime secrets. Examples ship as
+# internal/<service>/config.example.toml; Blade's configs/*.toml are checked in.
+internal/*/config.toml
 Keys/
 
 # Editor and OS noise

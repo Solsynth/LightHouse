@@ -8,7 +8,7 @@ through `auth_sessions.client_id`, so the session:
 - is reused only by the device that authorized it;
 - can never be trusted for interactive approval (see [Trust](#trust)).
 
-The binding is resolved in one place per grant, in `internal/httpserver/oidcctl`.
+The binding is resolved in one place per grant, in `internal/stargate/httpserver/oidcctl`.
 
 ## Where the device comes from
 

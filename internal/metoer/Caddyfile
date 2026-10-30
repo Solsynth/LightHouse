@@ -5,7 +5,7 @@
 # routes /metoer/** to the metoer service. Everything not matched falls
 # through to the single reverse_proxy and reaches Blade unchanged.
 #
-# Blade config delta (Blade/configs/config.toml):
+# Blade config delta (internal/blade/configs/config.toml):
 #   [services]
 #   metoer = { http = "http://localhost:8080", grpc = "localhost:9090" }
 #   [endpoints]

@@ -14,7 +14,8 @@ go.work.sum
 internal/blade
 internal/stargate
 internal/filesystem
+internal/metoer
 
 # Runtime config is mounted at deploy time; only the examples ship.
-config/*.toml
-!config/*.example.toml
+internal/*/config.toml
+internal/*/configs/config.toml
