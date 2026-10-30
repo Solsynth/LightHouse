@@ -21,7 +21,6 @@ websocketSubjectPrefix = "websocket_"
 
 [services]
 ring = { http = "http://localhost:8001", grpc = "localhost:7002" }
-passport = { http = "http://localhost:8002", grpc = "localhost:7003" }
 drive = { http = "http://localhost:8003", grpc = "localhost:7004" }
 sphere = { http = "http://localhost:8004", grpc = "localhost:7005" }
 develop = { http = "http://localhost:8005", grpc = "localhost:7006" }
@@ -29,13 +28,11 @@ insight = { http = "http://localhost:8006", grpc = "localhost:7007" }
 zone = { http = "http://localhost:8007", grpc = "localhost:7008" }
 messager = { http = "http://localhost:8008", grpc = "localhost:7009" }
 wallet = { http = "http://localhost:8009", grpc = "localhost:7010" }
-padlock = { http = "http://localhost:8010", grpc = "localhost:7011" }
 stargate = { http = "http://localhost:8080", grpc = "localhost:9090" }
 
 [endpoints]
 serviceNames = [
   "ring",
-  "passport",
   "drive",
   "sphere",
   "develop",
@@ -43,10 +40,9 @@ serviceNames = [
   "zone",
   "messager",
   "wallet",
-  "padlock",
   "stargate",
 ]
-coreServiceNames = ["padlock", "passport", "drive", "sphere"]
+coreServiceNames = ["drive", "sphere"]
 
 [rateLimit]
 requestsPerMinute = 120
