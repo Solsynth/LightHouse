@@ -25,11 +25,9 @@ websocketPushSubject = "websocket_push"
 # Inbound bearer tokens are validated by Stargate's DyAuthService over gRPC.
 # No target means authenticated routes answer 401.
 [services]
-# Stargate serves auth, permissions, accounts, action logs, presence and MLS.
+# Stargate serves auth, permissions, accounts, action logs, presence, MLS,
+# profiles, realms and domain blocks.
 stargate = { grpc = "" }
-# Passport serves profiles, realms and domain blocks; the C# fleet keeps them
-# on a separate host. Leave empty to reuse the stargate target for both.
-passport = { grpc = "" }
 ring = { grpc = "" }
 drive = { grpc = "" }
 wallet = { grpc = "" }

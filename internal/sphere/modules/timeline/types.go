@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	models "src.solsynth.dev/sosys/go/pkg/models"
 	gen "src.solsynth.dev/sosys/go/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/accountjson"
@@ -388,11 +389,23 @@ func realmRefFromProto(realm *gen.DyRealm) *model.RealmRef {
 		return nil
 	}
 	description := realm.GetDescription()
-	return &model.RealmRef{
-		ID:          realm.GetId(),
-		Slug:        realm.GetSlug(),
-		Name:        realm.GetName(),
-		Description: &description,
-		IsPublic:    realm.GetIsPublic(),
+	ref := &model.RealmRef{
+		ID:           realm.GetId(),
+		Slug:         realm.GetSlug(),
+		Name:         realm.GetName(),
+		Description:  &description,
+		IsCommunity:  realm.GetIsCommunity(),
+		IsPublic:     realm.GetIsPublic(),
+		Verification: model.VerificationFromProto(realm.GetVerification()),
+		AccountID:    realm.GetAccountId(),
+		BoostPoints:  model.RealmBoostPoints(realm.GetBoostPoints()),
+		BoostLevel:   int(realm.GetBoostLevel()),
 	}
+	if picture := realm.GetPicture(); picture != nil {
+		ref.Picture = models.FromProtoValue(picture)
+	}
+	if background := realm.GetBackground(); background != nil {
+		ref.Background = models.FromProtoValue(background)
+	}
+	return ref
 }

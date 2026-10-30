@@ -281,10 +281,14 @@ func realmInfo(realm *gen.DyRealm) *ports.RealmInfo {
 		return nil
 	}
 	info := &ports.RealmInfo{
-		ID:       realm.GetId(),
-		Slug:     realm.GetSlug(),
-		Name:     realm.GetName(),
-		IsPublic: realm.GetIsPublic(),
+		ID:          realm.GetId(),
+		Slug:        realm.GetSlug(),
+		Name:        realm.GetName(),
+		IsCommunity: realm.GetIsCommunity(),
+		IsPublic:    realm.GetIsPublic(),
+		AccountID:   realm.GetAccountId(),
+		BoostPoints: realm.GetBoostPoints(),
+		BoostLevel:  int(realm.GetBoostLevel()),
 	}
 	if description := realm.GetDescription(); description != "" {
 		info.Description = &description
@@ -295,5 +299,6 @@ func realmInfo(realm *gen.DyRealm) *ports.RealmInfo {
 	if background := realm.GetBackground(); background != nil {
 		info.Background = models.FromProtoValue(background)
 	}
+	info.Verification = model.VerificationFromProto(realm.GetVerification())
 	return info
 }

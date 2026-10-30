@@ -130,7 +130,6 @@ func applyEnv(cfg *Config) {
 	config.SetStr("SPHERE_REDIS_PASSWORD", &cfg.Redis.Password)
 	config.SetStr("SPHERE_NATS_TARGET", &cfg.NATS.Target)
 	config.SetStr("SPHERE_SERVICES_STARGATE__GRPC", &cfg.Services.Stargate.GRPC)
-	config.SetStr("SPHERE_SERVICES_PASSPORT__GRPC", &cfg.Services.Passport.GRPC)
 	config.SetStr("SPHERE_SERVICES_RING__GRPC", &cfg.Services.Ring.GRPC)
 	config.SetStr("SPHERE_SERVICES_DRIVE__GRPC", &cfg.Services.Drive.GRPC)
 	config.SetStr("SPHERE_SERVICES_WALLET__GRPC", &cfg.Services.Wallet.GRPC)

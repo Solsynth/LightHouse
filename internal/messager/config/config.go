@@ -81,7 +81,6 @@ func applyEnv(cfg *Config) {
 	config.SetStr("MESSAGER_REDIS_PASSWORD", &cfg.Redis.Password)
 	config.SetStr("MESSAGER_NATS_TARGET", &cfg.NATS.Target)
 	config.SetStr("MESSAGER_SERVICES_STARGATE__GRPC", &cfg.Services.Stargate.GRPC)
-	config.SetStr("MESSAGER_SERVICES_PASSPORT__GRPC", &cfg.Services.Passport.GRPC)
 	config.SetStr("MESSAGER_SERVICES_SPHERE__GRPC", &cfg.Services.Sphere.GRPC)
 	config.SetStr("MESSAGER_SERVICES_RING__GRPC", &cfg.Services.Ring.GRPC)
 	config.SetStr("MESSAGER_SERVICES_DRIVE__GRPC", &cfg.Services.Drive.GRPC)

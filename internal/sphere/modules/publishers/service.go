@@ -41,11 +41,16 @@ func (i *instance) realmRef(realm *gen.DyRealm) *model.RealmRef {
 		return nil
 	}
 	ref := &model.RealmRef{
-		ID:          realm.GetId(),
-		Slug:        realm.GetSlug(),
-		Name:        realm.GetName(),
-		IsPublic:    realm.GetIsPublic(),
-		Description: nil,
+		ID:           realm.GetId(),
+		Slug:         realm.GetSlug(),
+		Name:         realm.GetName(),
+		IsCommunity:  realm.GetIsCommunity(),
+		IsPublic:     realm.GetIsPublic(),
+		Verification: model.VerificationFromProto(realm.GetVerification()),
+		AccountID:    realm.GetAccountId(),
+		BoostPoints:  model.RealmBoostPoints(realm.GetBoostPoints()),
+		BoostLevel:   int(realm.GetBoostLevel()),
+		Description:  nil,
 	}
 	if realm.GetDescription() != "" {
 		description := realm.GetDescription()

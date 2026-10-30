@@ -87,13 +87,18 @@ const (
 
 // RealmInfo is the realm snapshot Sphere embeds in responses.
 type RealmInfo struct {
-	ID          string  `json:"id"`
-	Slug        string  `json:"slug"`
-	Name        string  `json:"name"`
-	Description *string `json:"description"`
-	IsPublic    bool    `json:"is_public"`
-	Picture     any     `json:"picture"`
-	Background  any     `json:"background"`
+	ID           string  `json:"id"`
+	Slug         string  `json:"slug"`
+	Name         string  `json:"name"`
+	Description  *string `json:"description"`
+	IsCommunity  bool    `json:"is_community"`
+	IsPublic     bool    `json:"is_public"`
+	Picture      any     `json:"picture"`
+	Background   any     `json:"background"`
+	Verification any     `json:"verification"`
+	AccountID    string  `json:"account_id"`
+	BoostPoints  string  `json:"boost_points"`
+	BoostLevel   int     `json:"boost_level"`
 }
 
 // Realms resolves realm snapshots.

@@ -14,13 +14,18 @@ func realmRefFromInfo(info *ports.RealmInfo) *model.RealmRef {
 		return nil
 	}
 	return &model.RealmRef{
-		ID:          info.ID,
-		Slug:        info.Slug,
-		Name:        info.Name,
-		Description: info.Description,
-		IsPublic:    info.IsPublic,
-		Picture:     info.Picture,
-		Background:  info.Background,
+		ID:           info.ID,
+		Slug:         info.Slug,
+		Name:         info.Name,
+		Description:  info.Description,
+		IsCommunity:  info.IsCommunity,
+		IsPublic:     info.IsPublic,
+		Picture:      info.Picture,
+		Background:   info.Background,
+		Verification: info.Verification,
+		AccountID:    info.AccountID,
+		BoostPoints:  model.RealmBoostPoints(info.BoostPoints),
+		BoostLevel:   info.BoostLevel,
 	}
 }
 

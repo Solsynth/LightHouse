@@ -71,16 +71,11 @@ type Base struct {
 	} `toml:"auth"`
 
 	Services struct {
-		// Stargate is the DysonNetwork.Stargate endpoint: DyAuthService,
+		// Stargate is the identity endpoint: DyAuthService,
 		// DyPermissionService, DyAccountService, DyActionLogService,
-		// DyPresenceService and DyMlsService.
+		// DyPresenceService, DyMlsService, plus the ported DyProfileService,
+		// DyRealmService and DyDomainBlockService.
 		Stargate ServiceTarget `toml:"stargate"`
-		// Passport is the DysonNetwork.Passport endpoint: DyProfileService,
-		// DyRealmService and DyDomainBlockService. The C# fleet splits them
-		// onto separate hosts (`_grpc.stargate` / `_grpc.passport`); when it
-		// is empty the Stargate target is used for both, which suits a
-		// deployment that serves them from one address.
-		Passport ServiceTarget `toml:"passport"`
 		Sphere   ServiceTarget `toml:"sphere"`
 		Messager ServiceTarget `toml:"messager"`
 		Ring     ServiceTarget `toml:"ring"`

@@ -5,9 +5,11 @@
 package model
 
 import (
+	"encoding/json"
 	"time"
 
 	models "src.solsynth.dev/sosys/go/pkg/models"
+	gen "src.solsynth.dev/sosys/go/proto"
 )
 
 // Time is the fleet Instant type (UTC RFC3339, seconds precision).
@@ -226,17 +228,51 @@ type PublisherActivityPub struct {
 	WebURL          string  `json:"web_url"`
 }
 
-// RealmRef is the realm reference embedded in posts and publishers. Realms
-// stay in Passport; Sphere only carries the snapshot fields the C# model
-// exposed.
+// RealmRef is the realm reference embedded in posts and publishers. Stargate
+// owns the realm rows; Sphere carries the same snapshot fields SnRealm
+// serialized (including the computed boost level).
 type RealmRef struct {
-	ID          string  `json:"id"`
-	Slug        string  `json:"slug"`
-	Name        string  `json:"name"`
-	Description *string `json:"description"`
-	IsPublic    bool    `json:"is_public"`
-	Picture     any     `json:"picture"`
-	Background  any     `json:"background"`
+	ID           string  `json:"id"`
+	Slug         string  `json:"slug"`
+	Name         string  `json:"name"`
+	Description  *string `json:"description"`
+	IsCommunity  bool    `json:"is_community"`
+	IsPublic     bool    `json:"is_public"`
+	Picture      any     `json:"picture"`
+	Background   any     `json:"background"`
+	Verification any     `json:"verification"`
+	AccountID    string  `json:"account_id"`
+	// BoostPoints is the numeric decimal SnRealm serializes; json.Number
+	// keeps it unquoted without pulling a decimal type into this package.
+	BoostPoints json.Number `json:"boost_points"`
+	BoostLevel  int         `json:"boost_level"`
+}
+
+// RealmBoostPoints normalizes the proto's decimal string into a JSON number.
+func RealmBoostPoints(value string) json.Number {
+	if value == "" {
+		return json.Number("0")
+	}
+	return json.Number(value)
+}
+
+// VerificationFromProto maps a DyVerificationMark onto the jsonb mark
+// SnRealm/SnPublisher embed.
+func VerificationFromProto(mark *gen.DyVerificationMark) *VerificationMark {
+	if mark == nil {
+		return nil
+	}
+	out := &VerificationMark{Type: int(mark.GetType())}
+	if title := mark.GetTitle(); title != "" {
+		out.Title = &title
+	}
+	if description := mark.GetDescription(); description != "" {
+		out.Description = &description
+	}
+	if verifiedBy := mark.GetVerifiedBy(); verifiedBy != "" {
+		out.VerifiedBy = &verifiedBy
+	}
+	return out
 }
 
 // SubscriptionRef is the perk-subscription snapshot Sphere embeds in responses
