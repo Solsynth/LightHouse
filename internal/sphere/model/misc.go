@@ -202,11 +202,11 @@ type LinkEmbed struct {
 	Type        *string `json:"type"`
 }
 
-// Autocompletion is one autocomplete suggestion.
+// Autocompletion is one autocomplete suggestion, matching the shared
+// Autocompletion contract: the composer inserts Keyword and renders Data as
+// the entity named by Type (account, publisher or sticker).
 type Autocompletion struct {
-	Type       string  `json:"type"`
-	Value      string  `json:"value"`
-	Label      *string `json:"label"`
-	Identifier *string `json:"identifier"`
-	Icon       *string `json:"icon"`
+	Type    string `json:"type"`
+	Keyword string `json:"keyword"`
+	Data    any    `json:"data"`
 }

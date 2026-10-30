@@ -14,6 +14,7 @@ import (
 	"src.solsynth.dev/sosys/go/pkg/errs"
 	gen "src.solsynth.dev/sosys/go/proto"
 
+	"src.solsynth.dev/sosys/lighthouse/internal/platform/accountjson"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/authn"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/httpx"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
@@ -194,22 +195,10 @@ func (i *instance) completeAccount(ctx context.Context, query string, hadSlash b
 		if hadSlash {
 			keyword = "@u/" + account.GetName()
 		}
-		label := account.GetNick()
-		if label == "" {
-			label = account.GetName()
-		}
-		identifier := account.GetId()
-		var icon *string
-		if picture := account.GetPicture(); picture != nil && picture.GetUrl() != "" {
-			url := picture.GetUrl()
-			icon = &url
-		}
 		results = append(results, model.Autocompletion{
-			Type:       "user",
-			Value:      keyword,
-			Label:      &label,
-			Identifier: &identifier,
-			Icon:       icon,
+			Type:    "user",
+			Keyword: keyword,
+			Data:    accountjson.FromProto(account),
 		})
 	}
 	return results

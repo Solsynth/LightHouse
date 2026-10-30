@@ -31,7 +31,7 @@ type updateTagRequest struct {
 }
 
 type setProtectedRequest struct {
-	IsProtected bool `json:"isProtected"`
+	IsProtected bool `json:"is_protected"`
 }
 
 type protectedTagQuotaRecord struct {
@@ -39,9 +39,9 @@ type protectedTagQuotaRecord struct {
 	Slug        string      `json:"slug"`
 	Name        *string     `json:"name"`
 	Description *string     `json:"description"`
-	IsProtected bool        `json:"isProtected"`
-	IsEvent     bool        `json:"isEvent"`
-	EventEndsAt *model.Time `json:"eventEndsAt"`
+	IsProtected bool        `json:"is_protected"`
+	IsEvent     bool        `json:"is_event"`
+	EventEndsAt *model.Time `json:"event_ends_at"`
 }
 
 type protectedTagQuotaResponse struct {
@@ -49,7 +49,7 @@ type protectedTagQuotaResponse struct {
 	Used      int                       `json:"used"`
 	Remaining int                       `json:"remaining"`
 	Level     int                       `json:"level"`
-	PerkLevel int                       `json:"perkLevel"`
+	PerkLevel int                       `json:"perk_level"`
 	Records   []protectedTagQuotaRecord `json:"records"`
 }
 

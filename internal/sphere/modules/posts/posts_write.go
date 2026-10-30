@@ -33,31 +33,31 @@ type postRequest struct {
 	Content         *string          `json:"content"`
 	Visibility      *int             `json:"visibility"`
 	Type            *int             `json:"type"`
-	EmbedView       any              `json:"embedView"`
+	EmbedView       any              `json:"embed_view"`
 	Tags            []string         `json:"tags"`
 	Categories      []string         `json:"categories"`
 	Attachments     []string         `json:"attachments"`
 	Meta            map[string]any   `json:"meta"`
-	DraftedAt       *model.Time      `json:"draftedAt"`
-	PublishedAt     *model.Time      `json:"publishedAt"`
-	RepliedPostID   *uuid.UUID       `json:"repliedPostId"`
-	ForwardedPostID *uuid.UUID       `json:"forwardedPostId"`
-	ChainedPostID   *uuid.UUID       `json:"chainedPostId"`
-	AutoChain       *bool            `json:"autoChain"`
-	RealmID         *uuid.UUID       `json:"realmId"`
-	SurveyID        *uuid.UUID       `json:"surveyId"`
-	FundID          *uuid.UUID       `json:"fundId"`
-	MeetID          *uuid.UUID       `json:"meetId"`
-	LiveStreamID    *uuid.UUID       `json:"liveStreamId"`
-	NotableDayID    *uuid.UUID       `json:"notableDayId"`
-	CalendarEventID *uuid.UUID       `json:"calendarEventId"`
-	LocationName    *string          `json:"locationName"`
-	LocationAddress *string          `json:"locationAddress"`
-	LocationWkt     *string          `json:"locationWkt"`
-	ThumbnailID     *string          `json:"thumbnailId"`
+	DraftedAt       *model.Time      `json:"drafted_at"`
+	PublishedAt     *model.Time      `json:"published_at"`
+	RepliedPostID   *uuid.UUID       `json:"replied_post_id"`
+	ForwardedPostID *uuid.UUID       `json:"forwarded_post_id"`
+	ChainedPostID   *uuid.UUID       `json:"chained_post_id"`
+	AutoChain       *bool            `json:"auto_chain"`
+	RealmID         *uuid.UUID       `json:"realm_id"`
+	SurveyID        *uuid.UUID       `json:"survey_id"`
+	FundID          *uuid.UUID       `json:"fund_id"`
+	MeetID          *uuid.UUID       `json:"meet_id"`
+	LiveStreamID    *uuid.UUID       `json:"live_stream_id"`
+	NotableDayID    *uuid.UUID       `json:"notable_day_id"`
+	CalendarEventID *uuid.UUID       `json:"calendar_event_id"`
+	LocationName    *string          `json:"location_name"`
+	LocationAddress *string          `json:"location_address"`
+	LocationWkt     *string          `json:"location_wkt"`
+	ThumbnailID     *string          `json:"thumbnail_id"`
 	Embeds          []map[string]any `json:"embeds"`
 	Language        *string          `json:"language"`
-	CollectionIDs   []uuid.UUID      `json:"collectionIds"`
+	CollectionIDs   []uuid.UUID      `json:"collection_ids"`
 }
 
 type blogPermissionRequest struct {
@@ -65,20 +65,20 @@ type blogPermissionRequest struct {
 }
 
 type batchDeleteRequest struct {
-	PostIDs []uuid.UUID `json:"postIds"`
+	PostIDs []uuid.UUID `json:"post_ids"`
 }
 
 type batchVisibilityRequest struct {
-	PostIDs     []uuid.UUID `json:"postIds"`
+	PostIDs     []uuid.UUID `json:"post_ids"`
 	Visibility  *int        `json:"visibility"`
-	DraftedAt   *model.Time `json:"draftedAt"`
-	PublishedAt *model.Time `json:"publishedAt"`
+	DraftedAt   *model.Time `json:"drafted_at"`
+	PublishedAt *model.Time `json:"published_at"`
 }
 
 type batchVisibilityResponse struct {
 	Visibility  *int        `json:"visibility"`
-	DraftedAt   *model.Time `json:"draftedAt"`
-	PublishedAt *model.Time `json:"publishedAt"`
+	DraftedAt   *model.Time `json:"drafted_at"`
+	PublishedAt *model.Time `json:"published_at"`
 }
 
 func (h *handler) registerPostWriteRoutes(host *module.Host[core.Services]) {

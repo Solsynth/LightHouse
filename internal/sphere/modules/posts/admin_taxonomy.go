@@ -18,20 +18,20 @@ type adminCreateTagRequest struct {
 	Slug             string     `json:"slug"`
 	Name             *string    `json:"name"`
 	Description      *string    `json:"description"`
-	OwnerPublisherID *uuid.UUID `json:"ownerPublisherId"`
+	OwnerPublisherID *uuid.UUID `json:"owner_publisher_id"`
 }
 
 type assignTagRequest struct {
-	PublisherID uuid.UUID `json:"publisherId"`
+	PublisherID uuid.UUID `json:"publisher_id"`
 }
 
 type adminProtectedRequest struct {
-	IsProtected bool `json:"isProtected"`
+	IsProtected bool `json:"is_protected"`
 }
 
 type setEventRequest struct {
-	IsEvent bool        `json:"isEvent"`
-	EndsAt  *model.Time `json:"endsAt"`
+	IsEvent bool        `json:"is_event"`
+	EndsAt  *model.Time `json:"ends_at"`
 }
 
 type adminUpdateTagRequest struct {

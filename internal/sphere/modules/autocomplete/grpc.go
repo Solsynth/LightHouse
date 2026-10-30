@@ -28,13 +28,13 @@ func (s *grpcServer) Autocomplete(ctx context.Context, request *gen.DyAutocomple
 		Results: make([]*gen.DyAutocompletionResult, 0, len(results)),
 	}
 	for _, result := range results {
-		data, err := json.Marshal(result)
+		data, err := json.Marshal(result.Data)
 		if err != nil {
 			continue
 		}
 		response.Results = append(response.Results, &gen.DyAutocompletionResult{
 			Type:    result.Type,
-			Keyword: result.Value,
+			Keyword: result.Keyword,
 			Data:    string(data),
 		})
 	}

@@ -5,9 +5,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"gorm.io/datatypes"
 
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/filejson"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
 )
@@ -37,18 +35,10 @@ func (i *instance) completePublisher(ctx context.Context, query string, limit in
 	results := make([]model.Autocompletion, 0, len(rows))
 	for idx := range rows {
 		row := &rows[idx]
-		label := row.Nick
-		if label == "" {
-			label = row.Name
-		}
-		identifier := row.ID.String()
-		keyword := "@p/" + row.Name
 		results = append(results, model.Autocompletion{
-			Type:       "publisher",
-			Value:      keyword,
-			Label:      &label,
-			Identifier: &identifier,
-			Icon:       pictureURL(row.Picture),
+			Type:    "publisher",
+			Keyword: "@p/" + row.Name,
+			Data:    store.PublisherToModel(row),
 		})
 	}
 	return results
@@ -58,47 +48,58 @@ func (i *instance) completePublisher(ctx context.Context, query string, limit in
 // is what a composer inserts after typing ":". These are the emoji-style
 // suggestions of the Sphere surface.
 func (i *instance) completeSticker(ctx context.Context, query string, limit int) []model.Autocompletion {
-	type stickerRow struct {
-		ID         uuid.UUID      `gorm:"column:id"`
-		Slug       string         `gorm:"column:slug"`
-		Name       string         `gorm:"column:name"`
-		Image      datatypes.JSON `gorm:"column:image"`
-		PackPrefix string         `gorm:"column:pack_prefix"`
-	}
-
 	stmt := i.db.WithContext(ctx).
-		Table("stickers").
-		Select(`stickers.id, stickers.slug, stickers.name, stickers.image,
-			sticker_packs.prefix AS pack_prefix`).
-		Joins("JOIN sticker_packs ON sticker_packs.id = stickers.pack_id").
-		Where("stickers.deleted_at IS NULL").
-		Where("sticker_packs.deleted_at IS NULL")
+		Model(&store.StickerEntity{}).
+		Select("stickers.*").
+		Joins("JOIN sticker_packs ON sticker_packs.id = stickers.pack_id AND sticker_packs.deleted_at IS NULL").
+		Where("stickers.deleted_at IS NULL")
 	if query != "" {
 		stmt = stmt.Where("(sticker_packs.prefix || '+' || stickers.slug) ILIKE ?", escapeLike(query)+"%")
 	}
 
-	var rows []stickerRow
+	var rows []store.StickerEntity
 	if err := stmt.Order(`sticker_packs.popularity DESC, stickers."order" ASC`).
-		Limit(limit).Scan(&rows).Error; err != nil {
+		Limit(limit).Find(&rows).Error; err != nil {
 		if i.log != nil {
 			i.log.Warn("autocomplete stickers", "error", err)
 		}
 		return []model.Autocompletion{}
 	}
 
-	results := make([]model.Autocompletion, 0, len(rows))
-	for _, row := range rows {
-		label := row.Name
-		if label == "" {
-			label = row.Slug
+	packIDs := make([]uuid.UUID, 0, len(rows))
+	for idx := range rows {
+		packIDs = append(packIDs, rows[idx].PackID)
+	}
+	packsByID := map[uuid.UUID]store.StickerPackEntity{}
+	if len(packIDs) > 0 {
+		var packs []store.StickerPackEntity
+		if err := i.db.WithContext(ctx).
+			Where("id IN ? AND deleted_at IS NULL", packIDs).
+			Find(&packs).Error; err != nil {
+			if i.log != nil {
+				i.log.Warn("autocomplete sticker packs", "error", err)
+			}
+			return []model.Autocompletion{}
 		}
-		identifier := row.ID.String()
+		for idx := range packs {
+			packsByID[packs[idx].ID] = packs[idx]
+		}
+	}
+
+	results := make([]model.Autocompletion, 0, len(rows))
+	for idx := range rows {
+		row := &rows[idx]
+		pack, ok := packsByID[row.PackID]
+		if !ok {
+			continue
+		}
+		packModel := store.StickerPackToModel(&pack)
+		sticker := store.StickerToModel(row)
+		sticker.Pack = &packModel
 		results = append(results, model.Autocompletion{
-			Type:       "sticker",
-			Value:      ":" + row.PackPrefix + "+" + row.Slug + ":",
-			Label:      &label,
-			Identifier: &identifier,
-			Icon:       pictureURL(row.Image),
+			Type:    "sticker",
+			Keyword: ":" + pack.Prefix + "+" + row.Slug + ":",
+			Data:    sticker,
 		})
 	}
 	return results
@@ -123,32 +124,21 @@ func (i *instance) completeTag(ctx context.Context, query string, limit int) []m
 	results := make([]model.Autocompletion, 0, len(rows))
 	for idx := range rows {
 		row := &rows[idx]
-		label := row.Slug
+		name := row.Slug
 		if row.Name != nil && *row.Name != "" {
-			label = *row.Name
+			name = *row.Name
 		}
-		identifier := row.ID.String()
 		results = append(results, model.Autocompletion{
-			Type:       "tag",
-			Value:      "#" + row.Slug,
-			Label:      &label,
-			Identifier: &identifier,
+			Type:    "tag",
+			Keyword: "#" + row.Slug,
+			Data: map[string]any{
+				"id":   row.ID.String(),
+				"slug": row.Slug,
+				"name": name,
+			},
 		})
 	}
 	return results
-}
-
-// pictureURL extracts the URL of a jsonb cloud-file column.
-func pictureURL(raw datatypes.JSON) *string {
-	if len(raw) == 0 {
-		return nil
-	}
-	file := filejson.Reference(raw)
-	if file == nil || file.Url == "" {
-		return nil
-	}
-	url := file.Url
-	return &url
 }
 
 // escapeLike escapes the LIKE wildcards so a query is matched literally.

@@ -289,7 +289,7 @@ type QuoteAuthorization struct {
 type ThreadedReplyNode struct {
 	Post     Post    `json:"post"`
 	Depth    int     `json:"depth"`
-	ParentID *string `json:"parentId"`
+	ParentID *string `json:"parent_id"`
 }
 
 // PostThreadResponse is the thread endpoint's payload.

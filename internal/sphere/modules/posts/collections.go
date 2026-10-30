@@ -26,24 +26,24 @@ type createCollectionRequest struct {
 	Slug         string  `json:"slug"`
 	Name         *string `json:"name"`
 	Description  *string `json:"description"`
-	BackgroundID *string `json:"backgroundId"`
-	IconID       *string `json:"iconId"`
+	BackgroundID *string `json:"background_id"`
+	IconID       *string `json:"icon_id"`
 }
 
 type updateCollectionRequest struct {
 	Name         *string `json:"name"`
 	Description  *string `json:"description"`
-	BackgroundID *string `json:"backgroundId"`
-	IconID       *string `json:"iconId"`
+	BackgroundID *string `json:"background_id"`
+	IconID       *string `json:"icon_id"`
 }
 
 type addCollectionPostRequest struct {
-	PostID uuid.UUID `json:"postId"`
+	PostID uuid.UUID `json:"post_id"`
 	Order  *int      `json:"order"`
 }
 
 type batchCollectionPostsRequest struct {
-	PostIDs []uuid.UUID `json:"postIds"`
+	PostIDs []uuid.UUID `json:"post_ids"`
 }
 
 type adminUpdateCollectionRequest struct {
@@ -59,7 +59,7 @@ type collectionOrderItem struct {
 
 type adminCollection struct {
 	model.PostCollection
-	ItemCount int `json:"itemCount"`
+	ItemCount int `json:"item_count"`
 }
 
 func (h *handler) registerCollectionRoutes(host *module.Host[core.Services]) {
