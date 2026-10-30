@@ -8,6 +8,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/modules/accounts"
 	"src.solsynth.dev/sosys/stargate/modules/admin"
 	"src.solsynth.dev/sosys/stargate/modules/auth"
+	domaintrustmod "src.solsynth.dev/sosys/stargate/modules/domaintrust"
 	"src.solsynth.dev/sosys/stargate/modules/e2ee"
 	"src.solsynth.dev/sosys/stargate/modules/integrations"
 	"src.solsynth.dev/sosys/stargate/modules/oauthapps"
@@ -38,6 +39,7 @@ func Modules() []module.Factory {
 		oidc.Factory(),
 		oauthapps.Factory(),
 		realmmod.Factory(),
+		domaintrustmod.Factory(),
 
 		// Other features.
 		e2ee.Factory(),
