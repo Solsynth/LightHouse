@@ -294,7 +294,7 @@ func publisherToProto(entity *store.PublisherEntity) *gen.DyPublisher {
 	}
 	if len(entity.Verification) > 0 {
 		var mark model.VerificationMark
-		if err := json.Unmarshal(entity.Verification, &mark); err == nil {
+		if err := filejson.Unmarshal(entity.Verification, &mark); err == nil {
 			publisher.VerificationMark = &gen.DyVerificationMark{
 				Type:        gen.DyVerificationMarkType(mark.Type + 1),
 				Title:       stringValue(mark.Title),

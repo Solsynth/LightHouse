@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 	gen "src.solsynth.dev/sosys/go/proto"
 
+	"src.solsynth.dev/sosys/lighthouse/internal/platform/filejson"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
 )
@@ -513,8 +514,8 @@ func (s *service) loadCollections(ctx context.Context, posts []model.Post, ids [
 			Name:        rows[i].Name,
 			Description: rows[i].Description,
 			PublisherID: rows[i].PublisherID.String(),
-			Background:  store.JSONValue(rows[i].Background),
-			Icon:        store.JSONValue(rows[i].Icon),
+			Background:  filejson.Value(rows[i].Background),
+			Icon:        filejson.Value(rows[i].Icon),
 			CreatedAt:   model.NewTime(rows[i].CreatedAt),
 			UpdatedAt:   model.NewTime(rows[i].UpdatedAt),
 			DeletedAt:   store.DeletedPtr(rows[i].DeletedAt),

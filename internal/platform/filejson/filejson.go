@@ -1,5 +1,6 @@
-// Package filejson decodes the jsonb cloud-file reference columns shared by
-// the fleet.
+// Package filejson decodes the legacy C# jsonb columns whose typed objects are
+// emitted on the wire: cloud-file references plus embedded value objects such
+// as PostEmbedView.
 //
 // Rows written by the legacy C# fleet serialize CloudFileReferenceObject with
 // System.Text.Json's default PascalCase property names ("FileMeta",
@@ -57,8 +58,17 @@ func Reference(raw []byte) *models.SnCloudFileReferenceObject {
 	return reference
 }
 
-// Value decodes a jsonb reference for a wire field typed as any, keeping the
-// column an object with snake_case keys. An empty column yields nil (wire
+// Unmarshal decodes a jsonb column into a typed destination after normalizing
+// its top-level keys. It is the typed counterpart of Value: use it for legacy
+// value objects whose wire shape is a Go struct rather than an any.
+func Unmarshal(raw []byte, destination any) error {
+	return json.Unmarshal(normalize(raw), destination)
+}
+
+// Value decodes a typed jsonb object for a wire field typed as any, keeping the
+// column an object with snake_case keys. It serves file references and other
+// legacy value objects (for example posts.embed_view), which the C# fleet
+// serialized with the same PascalCase keys. An empty column yields nil (wire
 // null); a non-object blob is decoded as-is.
 func Value(raw []byte) any {
 	if len(raw) == 0 {

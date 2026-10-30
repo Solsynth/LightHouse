@@ -53,8 +53,8 @@ func statusFromEntity(entity *AccountStatusEntity) *model.AccountStatus {
 		UpdatedAt:     timePtr(&entity.UpdatedAt),
 		DeletedAt:     deletedTime(entity.DeletedAt),
 	}
-	_ = decodeJSON(entity.Icon, &status.Icon)
-	_ = decodeJSON(entity.Background, &status.Background)
+	status.Icon = decodeFileReference(entity.Icon)
+	status.Background = decodeFileReference(entity.Background)
 	_ = decodeJSON(entity.Meta, &status.Meta)
 	return status
 }

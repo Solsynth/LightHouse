@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/authn"
+	"src.solsynth.dev/sosys/lighthouse/internal/platform/filejson"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
@@ -123,7 +124,7 @@ func streamToModel(entity *store.LiveStreamEntity, publisher *store.PublisherEnt
 		PeakViewerCount:        entity.PeakViewerCount,
 		TotalAwardScore:        entity.TotalAwardScore,
 		DistributedAwardAmount: entity.DistributedAwardAmount,
-		Thumbnail:              store.JSONValue(entity.Thumbnail),
+		Thumbnail:              filejson.Value(entity.Thumbnail),
 		Metadata:               store.JSONValue(entity.Metadata),
 		PublisherID:            store.UUIDPtrString(entity.PublisherID),
 		CreatedAt:              store.TimePtr(&entity.CreatedAt),

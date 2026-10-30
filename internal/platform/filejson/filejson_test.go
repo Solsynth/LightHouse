@@ -231,3 +231,21 @@ func TestToSnakeCase(t *testing.T) {
 		}
 	}
 }
+
+func TestUnmarshalNormalizesTypedObject(t *testing.T) {
+	type verification struct {
+		Type       int     `json:"type"`
+		Title      *string `json:"title"`
+		VerifiedBy *string `json:"verified_by"`
+	}
+	var decoded verification
+	if err := Unmarshal([]byte(`{"Type":1,"Title":"Verified","VerifiedBy":"staff"}`), &decoded); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if decoded.Type != 1 {
+		t.Errorf("type = %d, want 1", decoded.Type)
+	}
+	if decoded.VerifiedBy == nil || *decoded.VerifiedBy != "staff" {
+		t.Errorf("verified_by = %v, want staff", decoded.VerifiedBy)
+	}
+}

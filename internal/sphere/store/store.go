@@ -174,7 +174,9 @@ func PostToModel(entity *PostEntity) model.Post {
 	}
 	JSONArray(entity.SensitiveMarks, &post.SensitiveMarks)
 	JSONArray(entity.Mentions, &post.Mentions)
-	post.EmbedView = JSONValue(entity.EmbedView)
+	// embed_view is a typed C# jsonb object (PostEmbedView) stored with
+	// PascalCase keys; the client strict-casts its snake_case fields.
+	post.EmbedView = filejson.Value(entity.EmbedView)
 	post.IsShadowbanned = entity.ShadowbanReason != nil && *entity.ShadowbanReason != int(model.ShadowbanNone)
 	return post
 }
@@ -211,7 +213,7 @@ func PublisherToModel(entity *PublisherEntity) model.Publisher {
 	}
 	var verification model.VerificationMark
 	if len(entity.Verification) > 0 {
-		if err := json.Unmarshal(entity.Verification, &verification); err == nil {
+		if err := filejson.Unmarshal(entity.Verification, &verification); err == nil {
 			publisher.Verification = &verification
 		}
 	}

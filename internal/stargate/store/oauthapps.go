@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/stargate/model"
@@ -238,20 +237,6 @@ func (s *Store) DeleteOAuthAppSecret(ctx context.Context, appID, secretID string
 	return s.DB.WithContext(ctx).
 		Where("app_id = ? AND id = ?", appID, secretID).
 		Delete(&OAuthAppSecretEntity{}).Error
-}
-
-// decodeFileReference maps a nullable jsonb art column onto the model. A nil
-// column is SQL NULL, and the JSON literal null decodes to a nil pointer;
-// both mean the app has no art.
-func decodeFileReference(raw *datatypes.JSON) *model.SnCloudFileReferenceObject {
-	if raw == nil || len(*raw) == 0 {
-		return nil
-	}
-	var ref *model.SnCloudFileReferenceObject
-	if err := decodeJSON(raw, &ref); err != nil {
-		return nil
-	}
-	return ref
 }
 
 // ── Mappers ────────────────────────────────────────────────────────────────

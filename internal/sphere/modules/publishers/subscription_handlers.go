@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/authn"
+	"src.solsynth.dev/sosys/lighthouse/internal/platform/filejson"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/httpx"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
@@ -460,7 +461,7 @@ func liveStreamModel(entity *store.LiveStreamEntity, publishers map[string]*stor
 		PeakViewerCount:      entity.PeakViewerCount,
 		TotalAwardScore:      entity.TotalAwardScore,
 		DistributedAward:     entity.DistributedAwardAmount,
-		Thumbnail:            store.JSONValue(entity.Thumbnail),
+		Thumbnail:            filejson.Value(entity.Thumbnail),
 		Metadata:             store.JSONValue(entity.Metadata),
 		PublisherID:          store.UUIDPtrString(entity.PublisherID),
 		CreatedAt:            model.NewTime(entity.CreatedAt),

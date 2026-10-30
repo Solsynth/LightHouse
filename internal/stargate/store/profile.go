@@ -55,9 +55,9 @@ func profileFromEntity(entity *ProfileEntity) *model.Profile {
 	profile.ComputeLeveling()
 	_ = decodeJSON(entity.Links, &profile.Links)
 	_ = decodeJSON(entity.UsernameColor, &profile.UsernameColor)
-	_ = decodeJSON(entity.Verification, &profile.Verification)
-	_ = decodeJSON(entity.Picture, &profile.Picture)
-	_ = decodeJSON(entity.Background, &profile.Background)
+	_ = decodeJSONObject(entity.Verification, &profile.Verification)
+	profile.Picture = decodeFileReference(entity.Picture)
+	profile.Background = decodeFileReference(entity.Background)
 	var activeBadge []byte
 	if entity.ActiveBadge != nil {
 		activeBadge = *entity.ActiveBadge
