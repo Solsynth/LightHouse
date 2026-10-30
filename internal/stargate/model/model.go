@@ -116,4 +116,12 @@ const (
 	ActionLogAdminContactVerify            ActionLogType = "admin.contacts.verify"
 	ActionLogAdminPasskeyDelete            ActionLogType = "admin.passkeys.delete"
 	ActionLogAdminBatchDeviceRevoke        ActionLogType = "admin.devices.batch_revoke"
+	// Wallet emits. The first four are inline string literals in the C#
+	// controllers; only StellarSupportMonth is a canonical ActionLogType there
+	// (and the sole one the progression registry tracks).
+	ActionLogWalletCreate             ActionLogType = "wallets.create"
+	ActionLogSubscriptionActivate     ActionLogType = "subscriptions.activate_switch"
+	ActionLogSubscriptionCreate       ActionLogType = "subscriptions.create"
+	ActionLogSubscriptionCancel       ActionLogType = "subscriptions.cancel"
+	ActionLogStellarSupportMonth      ActionLogType = "stellar.support.month"
 )

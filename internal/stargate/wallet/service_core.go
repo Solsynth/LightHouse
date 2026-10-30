@@ -47,6 +47,10 @@ type Service struct {
 
 	// AppResolver maps Develop apps to publishers for app orders; optional.
 	AppResolver AppPublisherResolver
+
+	// Logs records account action logs. Optional: when nil, emits are skipped.
+	// It matches actionlog.Service.Create.
+	Logs ActionLogSink
 }
 
 // NewService builds the domain graph.

@@ -551,11 +551,15 @@ func (p *Products) notifyWalletProductApplied(ctx context.Context, order *Wallet
 	if p.svc.Push == nil || !p.svc.Push.Available() {
 		return
 	}
-	body := fmt.Sprintf(
-		"Your purchase of %s has been applied: +%s %s. New balance: %s.",
-		product.DisplayName, order.Amount.String(), order.Currency, balance.String(),
-	)
-	if err := p.svc.Push.SendToUser(ctx, wallet.AccountID.String(), "Wallet product applied", body); err != nil {
+	accountKey := wallet.AccountID.String()
+	title := p.svc.Localize(ctx, accountKey, "walletProductAppliedTitle", nil)
+	body := p.svc.Localize(ctx, accountKey, "walletProductAppliedBody", map[string]string{
+		"product":  product.DisplayName,
+		"amount":   order.Amount.String(),
+		"currency": p.svc.CurrencyName(ctx, accountKey, order.Currency),
+		"balance":  balance.String(),
+	})
+	if err := p.svc.Push.SendToUser(ctx, accountKey, title, body); err != nil {
 		p.svc.Log.Warn("wallet product push failed", "account", wallet.AccountID, "error", err)
 	}
 }

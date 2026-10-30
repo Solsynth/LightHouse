@@ -513,6 +513,9 @@ func (h *walletHTTP) createWallet(c *gin.Context) {
 		h.fail(c, "WALLET_CREATE_FAILED", err.Error(), http.StatusBadRequest)
 		return
 	}
+	h.d.Service.LogRequestAction(c, accountID.String(), model.ActionLogWalletCreate, map[string]any{
+		"wallet_id": wallet.ID.String(),
+	})
 	c.JSON(http.StatusOK, walletModel(wallet, nil))
 }
 

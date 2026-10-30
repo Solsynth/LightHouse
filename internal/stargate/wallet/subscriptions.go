@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"math/rand/v2"
 	"strings"
 	"sync"
@@ -964,6 +965,9 @@ func (s *Subscriptions) applyPaidSubscription(ctx context.Context, opts applyPai
 		return nil, err
 	}
 
+	// TrackStellarSupportPurchase ran here in the C# service, after the save
+	// and before the activation branch, and was independent of begunAt.
+	s.trackStellarSupportPurchase(ctx, subscription, opts.Definition, opts.PaymentMethod, cycle, opts.IsTesting)
 	s.logger().Info("applied subscription",
 		"subscription", subscription.ID, "identifier", opts.Definition.Identifier,
 		"account", opts.AccountID, "payment_method", opts.PaymentMethod,
@@ -977,6 +981,54 @@ func (s *Subscriptions) applyPaidSubscription(ctx context.Context, opts applyPai
 		}
 	}
 	return subscription, nil
+}
+
+// StellarProgramGroupIdentifier is SubscriptionService.StellarProgramGroupIdentifier.
+const StellarProgramGroupIdentifier = "solian.stellar"
+
+// trackStellarSupportPurchase mirrors TrackStellarSupportPurchase: one
+// stellar.support.month action log per credited month, for eligible paid
+// Stellar Program purchases only.
+func (s *Subscriptions) trackStellarSupportPurchase(ctx context.Context, subscription *WalletSubscriptionEntity, definition *WalletSubscriptionDefinitionEntity, paymentMethod string, cycleDuration time.Duration, isTesting bool) {
+	if subscription == nil || definition == nil || isTesting {
+		return
+	}
+	if definition.GroupIdentifier == nil ||
+		!strings.EqualFold(strings.TrimSpace(*definition.GroupIdentifier), StellarProgramGroupIdentifier) {
+		return
+	}
+	if !s.IsSponsorRewardEligiblePaymentMethod(paymentMethod) {
+		return
+	}
+	creditedMonths := resolveCreditedMonths(cycleDuration)
+	orderID := ""
+	if subscription.InboundOrderID != nil {
+		orderID = subscription.InboundOrderID.String()
+	}
+	for monthIndex := 1; monthIndex <= creditedMonths; monthIndex++ {
+		s.svc.LogAction(ctx, subscription.AccountID.String(), model.ActionLogStellarSupportMonth, map[string]any{
+			"subscription_id":         subscription.ID.String(),
+			"subscription_identifier": definition.Identifier,
+			"payment_method":          paymentMethod,
+			"perk_level":              definition.PerkLevel,
+			"credited_months":         creditedMonths,
+			"credited_month_index":    monthIndex,
+			"order_id":                orderID,
+		}, "", "")
+	}
+}
+
+// resolveCreditedMonths mirrors SubscriptionService.ResolveCreditedMonths.
+func resolveCreditedMonths(cycleDuration time.Duration) int {
+	totalDays := cycleDuration.Hours() / 24
+	if totalDays < 1 {
+		totalDays = 1
+	}
+	months := int(math.Floor((totalDays + 2) / 30))
+	if months < 1 {
+		months = 1
+	}
+	return months
 }
 
 // ── provider orders ────────────────────────────────────────────────────────
@@ -1135,12 +1187,15 @@ func (s *Subscriptions) NotifyProviderOrderProcessed(ctx context.Context, order 
 			product = inbound.Provider
 		}
 	}
-	title := "Order Processed"
-	body := fmt.Sprintf("Your %s order has been processed successfully.", product)
+	accountKey := accountID.String()
+	titleKey := "providerOrderProcessedTitle"
+	bodyKey := "providerOrderProcessedBody"
 	if order.IsTesting {
-		title = "Sandbox Order Received"
-		body = fmt.Sprintf("We received your %s order, but it will not affect your account because this was a sandbox purchase. No payment was collected.", product)
+		titleKey = "providerOrderSandboxTitle"
+		bodyKey = "providerOrderSandboxBody"
 	}
+	title := s.svc.Localize(ctx, accountKey, titleKey, nil)
+	body := s.svc.Localize(ctx, accountKey, bodyKey, map[string]string{"product": product})
 	s.push(ctx, *accountID, title, body)
 
 	now := time.Now().UTC()
@@ -1207,8 +1262,13 @@ func (s *Subscriptions) notifySubscriptionBegun(ctx context.Context, subscriptio
 		days := int(subscription.EndedAt.Sub(subscription.BegunAt).Hours() / 24)
 		duration = fmt.Sprintf("%d", days)
 	}
-	body := fmt.Sprintf("Your subscription for %s days of %s has been applied", duration, name)
-	s.push(ctx, subscription.AccountID, "Subscription Applied", body)
+	accountKey := subscription.AccountID.String()
+	title := s.svc.Localize(ctx, accountKey, "subscriptionAppliedTitle", map[string]string{"subscriptionName": name})
+	body := s.svc.Localize(ctx, accountKey, "subscriptionAppliedBody", map[string]string{
+		"duration":     duration,
+		"subscription": name,
+	})
+	s.push(ctx, subscription.AccountID, title, body)
 }
 
 // handleSponsorCurrencyUpdate mirrors HandleSponsorCurrencyUpdateAsync: sponsor
@@ -1224,7 +1284,10 @@ func (s *Subscriptions) handleSponsorCurrencyUpdate(ctx context.Context, subscri
 		return
 	}
 	accountID := subscription.AccountID
-	remarks := "Stellar Program Golden Points"
+	// The C# called this without a locale, so it stored the English template.
+	// Resolve against the member's language instead: the remark is persisted
+	// and later returned to that account via the transaction API.
+	remarks := s.svc.Localize(ctx, accountID.String(), "stellarProgramPerkGoldenPoints", nil)
 	if _, err := s.svc.CreateTransactionWithAccounts(ctx, nil, &accountID, CurrencyGolds, amount, &remarks, TransactionSystem); err != nil {
 		s.logger().Warn("unable to send golden points to member", "account", accountID, "error", err)
 	}
@@ -1996,8 +2059,13 @@ func (s *Subscriptions) notifyGiftClaimed(ctx context.Context, gift *WalletGiftE
 	if strings.TrimSpace(redeemerName) == "" {
 		redeemerName = redeemer.Nick
 	}
-	body := fmt.Sprintf("Your gift of %s has been claimed by %s", name, redeemerName)
-	s.push(ctx, gift.GifterID, "Gift Claimed", body)
+	gifterKey := gift.GifterID.String()
+	title := s.svc.Localize(ctx, gifterKey, "giftClaimedTitle", nil)
+	body := s.svc.Localize(ctx, gifterKey, "giftClaimedBody", map[string]string{
+		"subscription": name,
+		"user":         redeemerName,
+	})
+	s.push(ctx, gift.GifterID, title, body)
 }
 
 // GetGiftByCode mirrors GetGiftByCodeAsync.

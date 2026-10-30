@@ -88,5 +88,33 @@ reproduce yet.
   `DyCapabilitiesService` can only express the five shared enum capabilities, so
   a service whose features are all service-specific reports zero there (same as
   Stargate).
-- Localization is not ported: responses carry English text.
-- Action logs are not emitted (no port).
+- Localization covers the Stargate notification copy (auth, punishments, and the
+  wallet's `Resources/Locales` keys) in `internal/stargate/localization/` for
+  `en` and `zh-hans`. It resolves against the account row's stored language, so
+  a `zh-Hans` account gets Chinese even though the locale key is `zh-hans`.
+  Notification *titles* follow the C# templates; the push port
+  (`ports.Push.SendToUser`) carries only title and body, so the C# `Topic`,
+  `Subtitle` and `Meta` fields are still absent.
+- Action logs are emitted by Stargate's own surfaces through
+  `actionlog.Service`. The wallet module writes the five wallet actions
+  (`wallets.create`, `subscriptions.create`, `subscriptions.activate_switch`,
+  `subscriptions.cancel`, `stellar.support.month`) through the same sink rather
+  than the C# `RemoteActionLogService` gRPC round-trip.
+
+### Wallet
+
+The `DysonNetwork.Wallet` port lives in `internal/stargate/wallet/` and mounts
+all five C# gRPC services, including `DySubscriptionCatalogService`
+(`UpsertDefinition`/`ListDefinitions`), which the earlier port folded away.
+
+- **Catalog wire format.** `definition_json` keeps the C# `System.Text.Json`
+  shape: PascalCase keys, unquoted decimals. Input keys are matched ignoring
+  case and separators, so a snake_case caller also works.
+- **Provider order notifications** are sent once per inbound order, guarded by
+  `inbound_orders.notification_sent_at`.
+- **Transaction and order-payment push notifications** (`transactionNewTitle`,
+  `orderPaidTitle`) are not sent: the port emits WebSocket packets instead, and
+  the C# subscriber for those pushes has no counterpart here. The locale keys
+  are present and unused.
+- **The sponsor badge grant** (`HandleSponsorBadgeSubscriptionAsync`) is skipped
+  — the wallet module has no profile client port.

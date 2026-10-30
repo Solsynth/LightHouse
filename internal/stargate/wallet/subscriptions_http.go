@@ -830,9 +830,17 @@ func (s *Subscriptions) activateSubscriptionGroupHTTP(c *gin.Context) {
 		}))
 		return
 	}
-	if _, err := s.SwitchSubscriptionActivation(c.Request.Context(), accountID, c.Param("groupIdentifier"), *request.SubscriptionID); err != nil {
+	target, err := s.SwitchSubscriptionActivation(c.Request.Context(), accountID, c.Param("groupIdentifier"), *request.SubscriptionID)
+	if err != nil {
 		failWith(c, "WALLET_SUBSCRIPTION_ACTIVATE_FAILED", err, http.StatusBadRequest)
 		return
+	}
+	if target != nil {
+		s.svc.LogRequestAction(c, accountID.String(), model.ActionLogSubscriptionActivate, map[string]any{
+			"group_identifier":        c.Param("groupIdentifier"),
+			"subscription_id":         target.ID.String(),
+			"subscription_identifier": target.Identifier,
+		})
 	}
 	s.getSubscriptionGroup(c, c.Param("groupIdentifier"))
 }
@@ -874,7 +882,7 @@ type createSubscriptionRequest struct {
 
 // POST /api/subscriptions
 func (s *Subscriptions) createSubscriptionHTTP(c *gin.Context) {
-	user, _, ok := currentWalletAccount(c)
+	user, accountID, ok := currentWalletAccount(c)
 	if !ok {
 		return
 	}
@@ -920,6 +928,11 @@ func (s *Subscriptions) createSubscriptionHTTP(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.New("WALLET_SUBSCRIPTION_CREATE_FAILED", err.Error(), http.StatusBadRequest))
 		return
 	}
+	s.svc.LogRequestAction(c, accountID.String(), model.ActionLogSubscriptionCreate, map[string]any{
+		"subscription_identifier": request.Identifier,
+		"payment_method":          request.PaymentMethod,
+		"is_free_trial":           request.IsFreeTrial,
+	})
 	wires, err := s.subscriptionWires(c.Request.Context(), []WalletSubscriptionEntity{*subscription})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to load the subscription.", http.StatusInternalServerError))
@@ -939,6 +952,9 @@ func (s *Subscriptions) cancelSubscriptionHTTP(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.New("WALLET_SUBSCRIPTION_CANCEL_FAILED", err.Error(), http.StatusBadRequest))
 		return
 	}
+	s.svc.LogRequestAction(c, accountID.String(), model.ActionLogSubscriptionCancel, map[string]any{
+		"subscription_identifier": c.Param("identifier"),
+	})
 	wires, err := s.subscriptionWires(c.Request.Context(), []WalletSubscriptionEntity{*subscription})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to load the subscription.", http.StatusInternalServerError))

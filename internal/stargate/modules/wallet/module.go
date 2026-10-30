@@ -86,6 +86,12 @@ func (i *instance) Configure(ctx context.Context, host *module.Host) error {
 		Config:   host.Core.Config,
 		Settings: host.ModuleSettings(moduleID),
 	}
+	// The C# wallet called RemoteActionLogService (fire-and-forget gRPC into
+	// Stargate); the module runs inside Stargate, so it writes the same rows
+	// through the core sink. A nil sink simply disables emits.
+	if host.Core.Logs != nil {
+		svc.Logs = host.Core.Logs
+	}
 
 	subscriptions := wallet.NewSubscriptions(svc)
 	subscriptions.Configure(deps.Settings, log)

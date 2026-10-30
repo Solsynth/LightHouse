@@ -21,10 +21,12 @@ import (
 	"src.solsynth.dev/sosys/stargate/store"
 )
 
-// registerGRPC mounts the four wallet gRPC services the C# fleet calls
-// (WalletServiceGrpc, PaymentServiceGrpc, SubscriptionServiceGrpc and
-// MerchantServiceGrpc). The catalog surface is folded into DyPaymentService's
-// RegisterAppSubscriptionDefinition, exactly as in the C# PaymentServiceGrpc.
+// registerGRPC mounts the five wallet gRPC services the C# fleet exposes
+// (WalletServiceGrpc, PaymentServiceGrpc, SubscriptionServiceGrpc,
+// MerchantServiceGrpc and SubscriptionCatalogServiceGrpc), matching the C#
+// ApplicationConfiguration's MapGrpcService list. DyPaymentService keeps its
+// own RegisterAppSubscriptionDefinition, exactly as in the C# PaymentServiceGrpc;
+// the catalog service is the JSON-carrier variant for app-owned definitions.
 func registerGRPC(server *grpc.Server, d *Deps) {
 	if server == nil || d == nil || d.Service == nil {
 		return
@@ -39,6 +41,7 @@ func registerGRPC(server *grpc.Server, d *Deps) {
 	gen.RegisterDyPaymentServiceServer(server, &dyPaymentGRPC{d: d, subs: subs})
 	gen.RegisterDySubscriptionServiceServer(server, &dySubscriptionGRPC{d: d, subs: subs})
 	gen.RegisterDyMerchantServiceServer(server, &dyMerchantGRPC{d: d})
+	gen.RegisterDySubscriptionCatalogServiceServer(server, &dySubscriptionCatalogGRPC{subs: subs})
 }
 
 // ── errors and shared helpers ──────────────────────────────────────────────
@@ -873,17 +876,21 @@ func (s *dyPaymentGRPC) transferBetweenAccounts(ctx context.Context, payerAccoun
 		return nil, status.Errorf(codes.FailedPrecondition, "Payee wallet not found for account %s", payeeAccountID)
 	}
 	if remarks == nil {
-		remark := "Transfer"
+		payerName, payeeName := "unknown", "unknown"
 		if accounts := walletAccountStore(s.d); accounts != nil {
-			payerName, payeeName := "unknown", "unknown"
 			if payer, lookupErr := accounts.GetAccountByID(ctx, payerAccountID); lookupErr == nil {
 				payerName = payer.Name
 			}
 			if payee, lookupErr := accounts.GetAccountByID(ctx, payeeAccountID); lookupErr == nil {
 				payeeName = payee.Name
 			}
-			remark = "Transfer from @" + payerName + " to @" + payeeName
 		}
+		// The C# localized this against the payee's language; the remark is
+		// persisted and later returned through the transaction API.
+		remark := s.d.Service.Localize(ctx, payeeAccountID.String(), "transferRemark", map[string]string{
+			"payer": "@" + payerName,
+			"payee": "@" + payeeName,
+		})
 		remarks = &remark
 	}
 	return s.d.Service.TransferBetweenWallets(ctx, payerWallet.ID, payeeWallet.ID, currency, amount, remarks, false, false)
