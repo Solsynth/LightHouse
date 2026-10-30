@@ -181,7 +181,9 @@ needs libvips and ffmpeg and carries two known failures listed in the Makefile.
   `internal/blade/docker-compose.relay.yml` runs a PoP relay.
 - CI (`.github/workflows/{sphere,messager,stargate,blade,filesystem}.yml`)
   builds and pushes the service images (`blade` and `blade-relay` for Blade),
-  path-filtered on its sources.
+  path-filtered on its sources. `.github/workflows/images.yml` rebuilds all six
+  images on manual dispatch — use it after base-image or toolchain bumps, or to
+  verify a change that touches shared inputs; `latest` only moves from `master`.
 
 Deployment, the legacy-data migration and the cutover runbook are in
 [`DEPLOYMENT.md`](DEPLOYMENT.md). Helpers: `make migrate-sphere`,

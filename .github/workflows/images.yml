@@ -1,0 +1,92 @@
+name: All images
+
+on:
+  workflow_dispatch:
+    inputs:
+      push:
+        description: Push the built images to ghcr.io (off = build only)
+        type: boolean
+        default: true
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      # A full rebuild is a health check: report every broken image, not just the first.
+      fail-fast: false
+      matrix:
+        include:
+          - image: sphere
+            context: .
+            dockerfile: ./Dockerfile.sphere
+            scope: sphere
+          - image: messager
+            context: .
+            dockerfile: ./Dockerfile.messager
+            scope: messager
+          - image: stargate
+            context: ./internal/stargate
+            dockerfile: ./internal/stargate/Dockerfile
+            scope: stargate
+          - image: blade
+            context: ./internal/blade
+            dockerfile: ./internal/blade/Dockerfile
+            scope: blade
+          - image: blade-relay
+            context: ./internal/blade
+            dockerfile: ./internal/blade/Dockerfile.relay
+            scope: blade-relay
+          - image: dysonfs
+            context: ./internal/filesystem
+            dockerfile: ./internal/filesystem/Dockerfile
+            scope: dysonfs
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        if: inputs.push
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # A dispatch from a branch may carry unreleased code, so `latest` only
+      # moves from master; every build is addressable by commit SHA.
+      - name: Compute tags
+        id: tags
+        run: |
+          image="${{ env.REGISTRY }}/${{ vars.PACKAGE_OWNER }}/${{ matrix.image }}"
+          {
+            echo "tags<<EOF"
+            echo "${image}:${{ github.sha }}"
+            if [ "${{ github.ref }}" = "refs/heads/master" ]; then
+              echo "${image}:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: ${{ inputs.push }}
+          cache-from: type=gha,scope=${{ matrix.scope }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.scope }}
+          build-args: |
+            VERSION=${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
+            GIT_COMMIT=${{ github.sha }}
+          tags: ${{ steps.tags.outputs.tags }}
