@@ -315,7 +315,7 @@ func (s *service) buildDiscoveryInterestEntries(ctx context.Context, profiles []
 // discoverySuggestionContext mirrors DiscoverySuggestionContext.
 type discoverySuggestionContext struct {
 	publishers []publisherCandidate
-	accounts   []model.AccountRef
+	accounts   []any
 	realms     []model.RealmRef
 	suppressed []model.DiscoveryPreference
 }
@@ -529,7 +529,7 @@ func (s *service) buildAccountSuggestions(
 	hiddenAccounts map[uuid.UUID]struct{},
 	hiddenRelationship map[uuid.UUID]struct{},
 	publishers []publisherCandidate,
-) []model.AccountRef {
+) []any {
 	friendSet := map[uuid.UUID]struct{}{}
 	for _, id := range friends {
 		friendSet[id] = struct{}{}
@@ -569,13 +569,13 @@ func (s *service) buildAccountSuggestions(
 		ids = append(ids, item.accountID.String())
 	}
 	accounts := s.accountBatch(ctx, ids)
-	out := make([]model.AccountRef, 0, len(candidates))
+	out := make([]any, 0, len(candidates))
 	for _, item := range candidates {
 		account, ok := accounts[item.accountID.String()]
 		if !ok || account == nil {
 			continue
 		}
-		out = append(out, *account)
+		out = append(out, account)
 	}
 	return out
 }

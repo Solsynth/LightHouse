@@ -19,14 +19,14 @@ type Publisher struct {
 	RealmID        *string `json:"realm_id"`
 	PayoutWalletID *string `json:"payout_wallet_id"`
 
-	Realm                 *RealmRef   `json:"realm"`
-	Account               *AccountRef `json:"account"`
-	RealmNick             *string     `json:"realm_nick"`
-	RealmBio              *string     `json:"realm_bio"`
-	RealmExperience       *int        `json:"realm_experience"`
-	RealmLevel            *int        `json:"realm_level"`
-	RealmLevelingProgress *float64    `json:"realm_leveling_progress"`
-	RealmLabel            *string     `json:"realm_label"`
+	Realm                 *RealmRef `json:"realm"`
+	Account               any       `json:"account"`
+	RealmNick             *string   `json:"realm_nick"`
+	RealmBio              *string   `json:"realm_bio"`
+	RealmExperience       *int      `json:"realm_experience"`
+	RealmLevel            *int      `json:"realm_level"`
+	RealmLevelingProgress *float64  `json:"realm_leveling_progress"`
+	RealmLabel            *string   `json:"realm_label"`
 
 	DisplayName *string `json:"display_name"`
 
@@ -48,12 +48,12 @@ type Publisher struct {
 
 // PublisherMember is one membership row.
 type PublisherMember struct {
-	PublisherID string      `json:"publisher_id"`
-	AccountID   string      `json:"account_id"`
-	JoinedAt    *Time       `json:"joined_at"`
-	Role        int         `json:"role"`
-	Account     *AccountRef `json:"account"`
-	Publisher   *Publisher  `json:"publisher"`
+	PublisherID string     `json:"publisher_id"`
+	AccountID   string     `json:"account_id"`
+	JoinedAt    *Time      `json:"joined_at"`
+	Role        int        `json:"role"`
+	Account     any        `json:"account"`
+	Publisher   *Publisher `json:"publisher"`
 }
 
 // PublisherSubscription is one follow subscription.
@@ -214,5 +214,5 @@ type PublisherRewardPreview struct {
 // SubscriberResponse is one subscriber listing row.
 type SubscriberResponse struct {
 	Subscription *PublisherSubscription `json:"subscription"`
-	Account      *AccountRef            `json:"account"`
+	Account      any                    `json:"account"`
 }

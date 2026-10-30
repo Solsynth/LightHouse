@@ -156,7 +156,7 @@ type DiscoveryProfile struct {
 	GeneratedAt         *Time                 `json:"generated_at"`
 	Interests           []InterestEntry       `json:"interests"`
 	SuggestedPublishers []Publisher           `json:"suggested_publishers"`
-	SuggestedAccounts   []AccountRef          `json:"suggested_accounts"`
+	SuggestedAccounts   []any                 `json:"suggested_accounts"`
 	SuggestedRealms     []RealmRef            `json:"suggested_realms"`
 	Suppressed          []DiscoveryPreference `json:"suppressed"`
 }

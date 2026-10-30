@@ -326,8 +326,8 @@ func (s *service) loadPublishers(ctx context.Context, posts []model.Post) {
 
 // accountBatch fetches account references, degrading to an empty map when the
 // profile service is not configured.
-func (s *service) accountBatch(ctx context.Context, ids []string) map[string]*model.AccountRef {
-	out := map[string]*model.AccountRef{}
+func (s *service) accountBatch(ctx context.Context, ids []string) map[string]any {
+	out := map[string]any{}
 	if len(ids) == 0 || s.clients == nil || s.clients.Profile == nil {
 		return out
 	}

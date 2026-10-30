@@ -13,9 +13,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"src.solsynth.dev/sosys/go/pkg/errs"
-	models "src.solsynth.dev/sosys/go/pkg/models"
-	gen "src.solsynth.dev/sosys/go/proto"
-
+	"src.solsynth.dev/sosys/lighthouse/internal/platform/accountjson"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/authn"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/httpx"
 	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
@@ -29,7 +27,7 @@ import (
 // the C# controller populates for non-anonymous surveys.
 type answerResponse struct {
 	model.SurveyAnswer
-	Account *model.AccountRef `json:"account"`
+	Account any `json:"account"`
 }
 
 type surveyRequest struct {
@@ -303,30 +301,16 @@ func (s *service) populateAccounts(ctx context.Context, responses []answerRespon
 	if err != nil {
 		return
 	}
-	byID := make(map[string]*model.AccountRef, len(resolved))
+	byID := make(map[string]any, len(resolved))
 	for _, account := range resolved {
 		if account == nil {
 			continue
 		}
-		byID[account.GetId()] = accountRef(account)
+		byID[account.GetId()] = accountjson.FromProto(account)
 	}
 	for i := range responses {
 		responses[i].Account = byID[responses[i].AccountID]
 	}
-}
-
-func accountRef(account *gen.DyAccount) *model.AccountRef {
-	ref := &model.AccountRef{
-		ID:       account.GetId(),
-		Name:     account.GetName(),
-		Nick:     account.GetNick(),
-		Region:   account.GetRegion(),
-		Language: account.GetLanguage(),
-	}
-	if picture := account.GetPicture(); picture != nil {
-		ref.Picture = models.FromProtoValue(picture)
-	}
-	return ref
 }
 
 func (s *service) listMine(c *gin.Context) {

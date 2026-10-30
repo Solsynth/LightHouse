@@ -15,6 +15,7 @@ import (
 	"src.solsynth.dev/sosys/go/pkg/models"
 	gen "src.solsynth.dev/sosys/go/proto"
 
+	"src.solsynth.dev/sosys/lighthouse/internal/platform/accountjson"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/ports"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
@@ -31,21 +32,8 @@ func (i *instance) publisherByName(ctx context.Context, name string) (*store.Pub
 	return i.store.PublisherByNameCI(ctx, name)
 }
 
-func (i *instance) accountRef(account *gen.DyAccount) *model.AccountRef {
-	if account == nil {
-		return nil
-	}
-	ref := &model.AccountRef{
-		ID:       account.GetId(),
-		Name:     account.GetName(),
-		Nick:     account.GetNick(),
-		Region:   account.GetRegion(),
-		Language: account.GetLanguage(),
-	}
-	if picture := account.GetPicture(); picture != nil {
-		ref.Picture = models.FromProtoValue(picture)
-	}
-	return ref
+func (i *instance) accountRef(account *gen.DyAccount) any {
+	return accountjson.FromProto(account)
 }
 
 func (i *instance) realmRef(realm *gen.DyRealm) *model.RealmRef {

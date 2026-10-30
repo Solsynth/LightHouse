@@ -9,9 +9,9 @@ import (
 // computed properties the C# model exposes are added back.
 type subscriptionDTO struct {
 	model.PublisherSubscription
-	IsActive  bool              `json:"is_active"`
-	IsPending bool              `json:"is_pending"`
-	Account   *model.AccountRef `json:"account"`
+	IsActive  bool `json:"is_active"`
+	IsPending bool `json:"is_pending"`
+	Account   any  `json:"account"`
 }
 
 // subscriptionStatusResponse mirrors
@@ -44,8 +44,8 @@ type subscriptionWithLiveStatus struct {
 
 // subscriberResponse mirrors the controller's SubscriberResponse.
 type subscriberResponse struct {
-	Subscription *subscriptionDTO  `json:"subscription"`
-	Account      *model.AccountRef `json:"account"`
+	Subscription *subscriptionDTO `json:"subscription"`
+	Account      any              `json:"account"`
 }
 
 // relationshipResponse mirrors PublisherRelationshipResponse.

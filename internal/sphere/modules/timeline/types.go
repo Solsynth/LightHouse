@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	gen "src.solsynth.dev/sosys/go/proto"
 
+	"src.solsynth.dev/sosys/lighthouse/internal/platform/accountjson"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 )
 
@@ -228,33 +229,33 @@ type presenceTag struct {
 
 // presenceActivity is the wire shape of SnPresenceActivity.
 type presenceActivity struct {
-	ID             string            `json:"id"`
-	Type           *string           `json:"type"`
-	Tags           []presenceTag     `json:"tags"`
-	ActivityTags   []any             `json:"activity_tags"`
-	Visibility     int               `json:"visibility"`
-	Provider       *string           `json:"provider"`
-	ReferenceID    *string           `json:"reference_id"`
-	ManualID       *string           `json:"manual_id"`
-	Title          *string           `json:"title"`
-	Subtitle       *string           `json:"subtitle"`
-	Caption        *string           `json:"caption"`
-	LargeImage     *string           `json:"large_image"`
-	SmallImage     *string           `json:"small_image"`
-	TitleURL       *string           `json:"title_url"`
-	SubtitleURL    *string           `json:"subtitle_url"`
-	QueryableTerms []string          `json:"queryable_terms"`
-	Meta           map[string]any    `json:"meta"`
-	LeaseMinutes   int               `json:"lease_minutes"`
-	LeaseExpiresAt *model.Time       `json:"lease_expires_at"`
-	StartedAt      *model.Time       `json:"started_at"`
-	EndedAt        *model.Time       `json:"ended_at"`
-	CatalogID      *string           `json:"catalog_id"`
-	AccountID      string            `json:"account_id"`
-	Account        *model.AccountRef `json:"account"`
-	CreatedAt      *model.Time       `json:"created_at"`
-	UpdatedAt      *model.Time       `json:"updated_at"`
-	DeletedAt      *model.Time       `json:"deleted_at"`
+	ID             string         `json:"id"`
+	Type           *string        `json:"type"`
+	Tags           []presenceTag  `json:"tags"`
+	ActivityTags   []any          `json:"activity_tags"`
+	Visibility     int            `json:"visibility"`
+	Provider       *string        `json:"provider"`
+	ReferenceID    *string        `json:"reference_id"`
+	ManualID       *string        `json:"manual_id"`
+	Title          *string        `json:"title"`
+	Subtitle       *string        `json:"subtitle"`
+	Caption        *string        `json:"caption"`
+	LargeImage     *string        `json:"large_image"`
+	SmallImage     *string        `json:"small_image"`
+	TitleURL       *string        `json:"title_url"`
+	SubtitleURL    *string        `json:"subtitle_url"`
+	QueryableTerms []string       `json:"queryable_terms"`
+	Meta           map[string]any `json:"meta"`
+	LeaseMinutes   int            `json:"lease_minutes"`
+	LeaseExpiresAt *model.Time    `json:"lease_expires_at"`
+	StartedAt      *model.Time    `json:"started_at"`
+	EndedAt        *model.Time    `json:"ended_at"`
+	CatalogID      *string        `json:"catalog_id"`
+	AccountID      string         `json:"account_id"`
+	Account        any            `json:"account"`
+	CreatedAt      *model.Time    `json:"created_at"`
+	UpdatedAt      *model.Time    `json:"updated_at"`
+	DeletedAt      *model.Time    `json:"deleted_at"`
 }
 
 // friendPresenceEvent mirrors FriendPresenceEvent.
@@ -264,26 +265,26 @@ type friendPresenceEvent struct {
 
 // accountStatus is the wire shape of SnAccountStatus.
 type accountStatus struct {
-	ID            string            `json:"id"`
-	Attitude      int               `json:"attitude"`
-	IsOnline      bool              `json:"is_online"`
-	IsIdle        bool              `json:"is_idle"`
-	IdleSince     *model.Time       `json:"idle_since"`
-	IsCustomized  bool              `json:"is_customized"`
-	Type          int               `json:"type"`
-	Label         *string           `json:"label"`
-	Symbol        *string           `json:"symbol"`
-	Icon          any               `json:"icon"`
-	Background    any               `json:"background"`
-	Meta          map[string]any    `json:"meta"`
-	ClearedAt     *model.Time       `json:"cleared_at"`
-	AppIdentifier *string           `json:"app_identifier"`
-	IsAutomated   bool              `json:"is_automated"`
-	AccountID     string            `json:"account_id"`
-	Account       *model.AccountRef `json:"account"`
-	CreatedAt     *model.Time       `json:"created_at"`
-	UpdatedAt     *model.Time       `json:"updated_at"`
-	DeletedAt     *model.Time       `json:"deleted_at"`
+	ID            string         `json:"id"`
+	Attitude      int            `json:"attitude"`
+	IsOnline      bool           `json:"is_online"`
+	IsIdle        bool           `json:"is_idle"`
+	IdleSince     *model.Time    `json:"idle_since"`
+	IsCustomized  bool           `json:"is_customized"`
+	Type          int            `json:"type"`
+	Label         *string        `json:"label"`
+	Symbol        *string        `json:"symbol"`
+	Icon          any            `json:"icon"`
+	Background    any            `json:"background"`
+	Meta          map[string]any `json:"meta"`
+	ClearedAt     *model.Time    `json:"cleared_at"`
+	AppIdentifier *string        `json:"app_identifier"`
+	IsAutomated   bool           `json:"is_automated"`
+	AccountID     string         `json:"account_id"`
+	Account       any            `json:"account"`
+	CreatedAt     *model.Time    `json:"created_at"`
+	UpdatedAt     *model.Time    `json:"updated_at"`
+	DeletedAt     *model.Time    `json:"deleted_at"`
 }
 
 // friendStatusEvent mirrors FriendStatusEvent.
@@ -375,18 +376,10 @@ func accountStatusFromProto(status *gen.DyAccountStatus) accountStatus {
 	return out
 }
 
-// accountRefFromProto maps a DyAccount onto the embedded account reference.
-func accountRefFromProto(account *gen.DyAccount) *model.AccountRef {
-	if account == nil {
-		return nil
-	}
-	return &model.AccountRef{
-		ID:       account.GetId(),
-		Name:     account.GetName(),
-		Nick:     account.GetNick(),
-		Region:   account.GetRegion(),
-		Language: account.GetLanguage(),
-	}
+// accountRefFromProto embeds the full DyAccount wire shape, matching the C#
+// SnAccount hydration on presence activities and statuses.
+func accountRefFromProto(account *gen.DyAccount) any {
+	return accountjson.FromProto(account)
 }
 
 // realmRefFromProto maps a DyRealm onto the realm snapshot embedded in posts.
