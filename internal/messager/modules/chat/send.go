@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"gorm.io/datatypes"
 	"src.solsynth.dev/sosys/go/pkg/errs"
 	gen "src.solsynth.dev/sosys/go/proto"
 
@@ -455,15 +457,27 @@ func (i *instance) deliverMessage(ctx context.Context, room *store.ChatRoomEntit
 	if body == "" {
 		body = "Attachment"
 	}
-	title := roomSubject
-	if sender.Nick != nil {
-		title = *sender.Nick + " (" + roomSubject + ")"
-	}
+	senderAccount := i.account(ctx, sender.AccountID.String())
+	senderName := memberDisplayName(sender, senderAccount)
+	title := senderName + " (" + roomSubject + ")"
 	meta := map[string]string{
-		"user_id":    sender.AccountID.String(),
-		"sender_id":  sender.ID.String(),
-		"message_id": entity.ID.String(),
-		"room_id":    room.ID.String(),
+		"user_id":     sender.AccountID.String(),
+		"sender_id":   sender.ID.String(),
+		"sender_name": senderName,
+		"message_id":  entity.ID.String(),
+		"room_id":     room.ID.String(),
+	}
+	// Notification clients render the chat push as a communication
+	// notification: sender_name/pfp give it the member identity instead of the
+	// bare room subject, matching the C# BuildNotificationMeta contract.
+	if pfp := senderAccount.GetPicture().GetId(); pfp != "" {
+		meta["pfp"] = pfp
+	}
+	if room.Name != nil && strings.TrimSpace(*room.Name) != "" {
+		meta["room_name"] = strings.TrimSpace(*room.Name)
+	}
+	if image := firstImageAttachmentID(entity.Attachments); image != "" {
+		meta["image"] = image
 	}
 	i.sendPush(ctx, accountIDs, "messages.new", title, body, meta)
 }
@@ -493,14 +507,37 @@ func (i *instance) sendSystemMessage(ctx context.Context, room *store.ChatRoomEn
 }
 
 func (i *instance) displayName(ctx context.Context, member *store.ChatMemberEntity) string {
-	if member.Nick != nil && *member.Nick != "" {
-		return *member.Nick
+	return memberDisplayName(member, i.account(ctx, member.AccountID.String()))
+}
+
+// memberDisplayName resolves the member's visible name with the account nick
+// fallback, mirroring the C# sender name chain in BuildNotification.
+func memberDisplayName(member *store.ChatMemberEntity, account *gen.DyAccount) string {
+	if member != nil && member.Nick != nil && strings.TrimSpace(*member.Nick) != "" {
+		return strings.TrimSpace(*member.Nick)
 	}
-	account := i.account(ctx, member.AccountID.String())
-	if account != nil && account.GetNick() != "" {
-		return account.GetNick()
+	if account != nil && strings.TrimSpace(account.GetNick()) != "" {
+		return strings.TrimSpace(account.GetNick())
 	}
 	return "Someone"
+}
+
+// firstImageAttachmentID returns the first image attachment's file id, the
+// preview the C# notification meta promotes to `image`.
+func firstImageAttachmentID(raw datatypes.JSON) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var attachments []model.CloudFileReferenceObject
+	if err := json.Unmarshal(raw, &attachments); err != nil {
+		return ""
+	}
+	for _, attachment := range attachments {
+		if attachment.Id != "" && strings.HasPrefix(attachment.MimeType, "image") {
+			return attachment.Id
+		}
+	}
+	return ""
 }
 
 func (i *instance) sendMemberJoined(ctx context.Context, room *store.ChatRoomEntity, member *store.ChatMemberEntity) {
