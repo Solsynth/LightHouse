@@ -55,10 +55,32 @@ var padlockTables = []string{
 	"mls_device_memberships",
 }
 
-// passportTables is the copy order for the Passport profile tables.
+// passportTables is the copy order for the tables Passport owned that the
+// stargate binary now serves. FK-safe: parents before children. Tables whose
+// module is disabled are reported as skipped by copyTable.
 var passportTables = []string{
+	// Profiles and the social graph.
 	"account_profiles",
 	"account_relationships",
+	// Realm (app.solian.id.realm).
+	"realms",
+	"realm_labels",
+	"realm_members",
+	"realm_role_permissions",
+	"realm_user_permissions",
+	"realm_boost_contributions",
+	"realm_experience_records",
+	"realm_post_moderation_logs",
+	// Progression (app.solian.id.progression).
+	"achievement_definitions",
+	"quest_definitions",
+	"account_achievements",
+	"account_quest_progresses",
+	"progress_reward_grants",
+	"progress_event_receipts",
+	// Domain trust (app.solian.id.domaintrust).
+	"domain_blocks",
+	"domain_validation_metrics",
 }
 
 func main() {
@@ -140,6 +162,11 @@ func main() {
 			"action_logs", "auth_challenges", "auth_sessions", "auth_clients", "api_keys",
 			"account_contacts", "account_connections", "authorized_apps", "punishments",
 			"account_passkeys", "account_auth_factors", "account_relationships",
+			"realm_post_moderation_logs", "realm_user_permissions", "realm_role_permissions",
+			"realm_experience_records", "realm_boost_contributions", "realm_members", "realm_labels", "realms",
+			"progress_event_receipts", "progress_reward_grants", "account_quest_progresses",
+			"account_achievements", "quest_definitions", "achievement_definitions",
+			"domain_validation_metrics", "domain_blocks",
 			"account_profiles", "accounts",
 		}
 		existing := make([]string, 0, len(truncateCandidates))
@@ -237,6 +264,11 @@ func targetHasData(ctx context.Context, db querier) (bool, string, error) {
 			"authorized_apps", "action_logs", "e2ee_devices", "e2ee_key_bundles", "e2ee_one_time_pre_keys",
 			"e2ee_sessions", "e2ee_envelopes", "mls_key_packages", "mls_group_states",
 			"mls_device_memberships",
+			"realms", "realm_members", "realm_labels", "realm_boost_contributions",
+			"realm_experience_records", "realm_role_permissions", "realm_user_permissions",
+			"realm_post_moderation_logs",
+			"account_achievements", "account_quest_progresses", "progress_reward_grants",
+			"progress_event_receipts", "domain_blocks", "domain_validation_metrics",
 		})
 	if err != nil {
 		return false, "", err
