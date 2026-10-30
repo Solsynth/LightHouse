@@ -80,33 +80,40 @@ func signJWT(claims map[string]any, secret string) (string, error) {
 	return signingInput + "." + enc.EncodeToString(mac.Sum(nil)), nil
 }
 
-// serverToken is the server API token: it carries the admin video grants the
-// C# SDK's RoomServiceClient/IngressServiceClient/EgressServiceClient used.
-func (c *livekitClient) serverToken() (string, error) {
+// serverToken is one server API token scoped to a single call. LiveKit checks
+// room-scoped methods with EnsureAdminPermission, which requires roomAdmin
+// AND video.room equal to the requested room; the .NET SDK therefore mints a
+// fresh token per request with the room baked in, and a room-agnostic admin
+// token is rejected with "permissions denied". Same for the create/record/
+// ingress grants, which the SDK sets per call rather than globally.
+func (c *livekitClient) serverToken(grants map[string]any) (string, error) {
 	if !c.configured() {
 		return "", errLiveKitUnconfigured
 	}
 	now := time.Now()
 	return signJWT(map[string]any{
-		"exp": now.Add(10 * time.Minute).Unix(),
-		"nbf": now.Add(-10 * time.Second).Unix(),
-		"iss": c.apiKey,
-		"sub": c.apiKey,
-		"jti": uuid.NewString(),
-		"video": map[string]any{
-			"roomCreate":     true,
-			"roomList":       true,
-			"roomAdmin":      true,
-			"roomRecord":     true,
-			"ingressAdmin":   true,
-			"canPublish":     true,
-			"canSubscribe":   true,
-			"canPublishData": true,
-			"hidden":         false,
-			"recorder":       false,
-		},
+		"exp":   now.Add(10 * time.Minute).Unix(),
+		"nbf":   now.Add(-10 * time.Second).Unix(),
+		"iss":   c.apiKey,
+		"sub":   c.apiKey,
+		"jti":   uuid.NewString(),
+		"video": grants,
 	}, c.apiSecret)
 }
+
+// roomCreateGrants mirrors VideoGrants{RoomCreate: true}.
+func roomCreateGrants() map[string]any { return map[string]any{"roomCreate": true} }
+
+// roomAdminGrants mirrors VideoGrants{RoomAdmin: true, Room: room}.
+func roomAdminGrants(room string) map[string]any {
+	return map[string]any{"roomAdmin": true, "room": room}
+}
+
+// roomRecordGrants mirrors VideoGrants{RoomRecord: true}.
+func roomRecordGrants() map[string]any { return map[string]any{"roomRecord": true} }
+
+// ingressAdminGrants mirrors VideoGrants{IngressAdmin: true}.
+func ingressAdminGrants() map[string]any { return map[string]any{"ingressAdmin": true} }
 
 // clientToken is the join token handed to browsers. It mirrors
 // LiveKitLivestreamService.GenerateToken: video grants for one room plus the
@@ -148,11 +155,11 @@ func (c *livekitClient) clientToken(room, identity, name string, canPublish, can
 
 // ---- Twirp transport ------------------------------------------------------
 
-func (c *livekitClient) call(ctx context.Context, service, method string, body any, out any) error {
+func (c *livekitClient) call(ctx context.Context, service, method string, grants map[string]any, body any, out any) error {
 	if !c.configured() {
 		return errLiveKitUnconfigured
 	}
-	token, err := c.serverToken()
+	token, err := c.serverToken(grants)
 	if err != nil {
 		return err
 	}
@@ -203,18 +210,18 @@ func (c *livekitClient) createRoom(ctx context.Context, name string, metadata ma
 		}
 		body["metadata"] = string(raw)
 	}
-	return c.call(ctx, "RoomService", "CreateRoom", body, nil)
+	return c.call(ctx, "RoomService", "CreateRoom", roomCreateGrants(), body, nil)
 }
 
 func (c *livekitClient) deleteRoom(ctx context.Context, name string) error {
-	return c.call(ctx, "RoomService", "DeleteRoom", map[string]any{"room": name}, nil)
+	return c.call(ctx, "RoomService", "DeleteRoom", roomCreateGrants(), map[string]any{"room": name}, nil)
 }
 
 func (c *livekitClient) listParticipants(ctx context.Context, room string) (int, error) {
 	var resp struct {
 		Participants []json.RawMessage `json:"participants"`
 	}
-	if err := c.call(ctx, "RoomService", "ListParticipants", map[string]any{"room": room}, &resp); err != nil {
+	if err := c.call(ctx, "RoomService", "ListParticipants", roomAdminGrants(room), map[string]any{"room": room}, &resp); err != nil {
 		return 0, err
 	}
 	return len(resp.Participants), nil
@@ -237,7 +244,7 @@ func (c *livekitClient) sendData(ctx context.Context, room string, data []byte) 
 	}
 	var lastErr error
 	for attempt := range 3 {
-		if lastErr = c.call(ctx, "RoomService", "SendData", body, nil); lastErr == nil {
+		if lastErr = c.call(ctx, "RoomService", "SendData", roomAdminGrants(room), body, nil); lastErr == nil {
 			return nil
 		}
 		select {
@@ -294,14 +301,14 @@ func (c *livekitClient) createIngress(ctx context.Context, room, identity, parti
 		URL       string `json:"url"`
 		StreamKey string `json:"stream_key"`
 	}
-	if err := c.call(ctx, "IngressService", "CreateIngress", body, &resp); err != nil {
+	if err := c.call(ctx, "IngressService", "CreateIngress", ingressAdminGrants(), body, &resp); err != nil {
 		return nil, err
 	}
 	return &ingressResult{IngressID: resp.IngressID, URL: resp.URL, StreamKey: resp.StreamKey}, nil
 }
 
 func (c *livekitClient) deleteIngress(ctx context.Context, ingressID string) error {
-	return c.call(ctx, "IngressService", "DeleteIngress", map[string]any{"ingress_id": ingressID}, nil)
+	return c.call(ctx, "IngressService", "DeleteIngress", ingressAdminGrants(), map[string]any{"ingress_id": ingressID}, nil)
 }
 
 // ---- egress ---------------------------------------------------------------
@@ -323,7 +330,7 @@ func (c *livekitClient) startRoomCompositeEgress(ctx context.Context, room strin
 	var resp struct {
 		EgressID string `json:"egress_id"`
 	}
-	if err := c.call(ctx, "EgressService", "StartRoomCompositeEgress", body, &resp); err != nil {
+	if err := c.call(ctx, "EgressService", "StartRoomCompositeEgress", roomRecordGrants(), body, &resp); err != nil {
 		return "", err
 	}
 	return resp.EgressID, nil
@@ -354,12 +361,12 @@ func (c *livekitClient) startRoomCompositeHLSEgress(ctx context.Context, room, p
 	var resp struct {
 		EgressID string `json:"egress_id"`
 	}
-	if err := c.call(ctx, "EgressService", "StartRoomCompositeEgress", body, &resp); err != nil {
+	if err := c.call(ctx, "EgressService", "StartRoomCompositeEgress", roomRecordGrants(), body, &resp); err != nil {
 		return nil, err
 	}
 	return &hlsEgressResult{EgressID: resp.EgressID, PlaylistName: playlistName, FilenamePrefix: filePath}, nil
 }
 
 func (c *livekitClient) stopEgress(ctx context.Context, egressID string) error {
-	return c.call(ctx, "EgressService", "StopEgress", map[string]any{"egress_id": egressID}, nil)
+	return c.call(ctx, "EgressService", "StopEgress", roomRecordGrants(), map[string]any{"egress_id": egressID}, nil)
 }

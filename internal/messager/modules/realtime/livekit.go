@@ -133,20 +133,30 @@ func (l *livekitClient) signJWT(claims map[string]any) (string, error) {
 	return body + "." + base64URL(mac.Sum(nil)), nil
 }
 
-// serverToken authorizes RoomService calls.
-func (l *livekitClient) serverToken() (string, error) {
+// serverToken authorizes exactly one RoomService call. LiveKit validates
+// room-scoped methods with EnsureAdminPermission, which requires
+// video.roomAdmin AND video.room equal to the requested room, so the C# SDK
+// mints a fresh token per request with the room baked in; a single
+// room-agnostic admin token is rejected with "permissions denied".
+func (l *livekitClient) serverToken(grants map[string]any) (string, error) {
 	now := time.Now()
 	return l.signJWT(map[string]any{
-		"iss": l.apiKey,
-		"sub": l.apiKey,
-		"nbf": now.Add(-5 * time.Second).Unix(),
-		"exp": now.Add(10 * time.Minute).Unix(),
-		"video": map[string]any{
-			"roomCreate": true,
-			"roomList":   true,
-			"roomAdmin":  true,
-		},
+		"iss":   l.apiKey,
+		"sub":   l.apiKey,
+		"nbf":   now.Add(-5 * time.Second).Unix(),
+		"exp":   now.Add(10 * time.Minute).Unix(),
+		"video": grants,
 	})
+}
+
+// roomCreateGrants mirrors VideoGrants{RoomCreate: true}.
+func roomCreateGrants() map[string]any {
+	return map[string]any{"roomCreate": true}
+}
+
+// roomAdminGrants mirrors VideoGrants{RoomAdmin: true, Room: room}.
+func roomAdminGrants(room string) map[string]any {
+	return map[string]any{"roomAdmin": true, "room": room}
 }
 
 // userToken issues the participant access token handed to clients.
@@ -225,9 +235,10 @@ func normalizeToolName(tool string) string {
 	return sanitized
 }
 
-// twirp posts one RoomService method.
-func (l *livekitClient) twirp(ctx context.Context, method string, in any, out any) error {
-	token, err := l.serverToken()
+// twirp posts one RoomService method, authenticated with grants scoped to that
+// call.
+func (l *livekitClient) twirp(ctx context.Context, method string, grants map[string]any, in any, out any) error {
+	token, err := l.serverToken(grants)
 	if err != nil {
 		return err
 	}
@@ -284,7 +295,7 @@ func (l *livekitClient) createSession(ctx context.Context, roomID uuid.UUID, met
 	}
 
 	var room roomInfo
-	err = l.twirp(ctx, "CreateRoom", map[string]any{
+	err = l.twirp(ctx, "CreateRoom", roomCreateGrants(), map[string]any{
 		"name":          roomName,
 		"empty_timeout": 300,
 		"metadata":      string(encoded),
@@ -316,28 +327,28 @@ func (l *livekitClient) endSession(ctx context.Context, sessionID string) error 
 	if sessionID == "" {
 		return nil
 	}
-	return l.twirp(ctx, "DeleteRoom", map[string]any{"room": sessionID}, nil)
+	return l.twirp(ctx, "DeleteRoom", roomCreateGrants(), map[string]any{"room": sessionID}, nil)
 }
 
 func (l *livekitClient) listParticipants(ctx context.Context, sessionID string) ([]participantInfo, error) {
 	var response struct {
 		Participants []participantInfo `json:"participants"`
 	}
-	if err := l.twirp(ctx, "ListParticipants", map[string]any{"room": sessionID}, &response); err != nil {
+	if err := l.twirp(ctx, "ListParticipants", roomAdminGrants(sessionID), map[string]any{"room": sessionID}, &response); err != nil {
 		return nil, err
 	}
 	return response.Participants, nil
 }
 
 func (l *livekitClient) kickParticipant(ctx context.Context, sessionID, identity string) error {
-	return l.twirp(ctx, "RemoveParticipant", map[string]any{
+	return l.twirp(ctx, "RemoveParticipant", roomAdminGrants(sessionID), map[string]any{
 		"room":     sessionID,
 		"identity": identity,
 	}, nil)
 }
 
 func (l *livekitClient) muteParticipant(ctx context.Context, sessionID, identity, trackSid string, muted bool) error {
-	return l.twirp(ctx, "MutePublishedTrack", map[string]any{
+	return l.twirp(ctx, "MutePublishedTrack", roomAdminGrants(sessionID), map[string]any{
 		"room":      sessionID,
 		"identity":  identity,
 		"track_sid": trackSid,
