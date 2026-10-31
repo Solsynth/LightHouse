@@ -101,6 +101,42 @@ func TestFromProtoEmitsEmptyFileMetaAsObject(t *testing.T) {
 	}
 }
 
+// A local cloud file has no off-site URL. C# stored Url as null; the proto's
+// url is a plain string, so EmitUnpopulated renders "" instead. Clients test
+// `storageUrl != null` to fall back to /drive/files/{id}, and an empty string
+// passes that test — the image then fails with "No host specified in URI".
+// Blank must travel as null.
+func TestFromProtoEmitsNullURLForLocalFiles(t *testing.T) {
+	account := &gen.DyAccount{
+		Id:      "acc-1",
+		Profile: &gen.DyAccountProfile{Picture: &gen.DyCloudFile{Id: "file-1"}},
+	}
+
+	picture := fileOf(t, wireMap(t, accountjson.FromProto(account)), "profile", "picture")
+	url, present := picture["url"]
+	if !present {
+		t.Fatal("url key is missing; C# always emitted it")
+	}
+	if url != nil {
+		t.Errorf("url = %#v (%T), want null", url, url)
+	}
+}
+
+// An external (fediverse) reference carries a real URL, which must survive.
+func TestFromProtoKeepsExternalURL(t *testing.T) {
+	account := &gen.DyAccount{
+		Id: "acc-1",
+		Profile: &gen.DyAccountProfile{
+			Picture: &gen.DyCloudFile{Url: "https://files.mastodon.social/a.png"},
+		},
+	}
+
+	picture := fileOf(t, wireMap(t, accountjson.FromProto(account)), "profile", "picture")
+	if picture["url"] != "https://files.mastodon.social/a.png" {
+		t.Errorf("url = %#v, want the remote address", picture["url"])
+	}
+}
+
 // Dart's SnAccountBadge casts created_at/updated_at as non-null strings. C#
 // SnAccountBadgeRef embeds ModelBase and always serialized both (zero Instant
 // when the proto could not carry them), so the ported account JSON must too.

@@ -82,6 +82,18 @@ func normalize(descriptor protoreflect.MessageDescriptor, value any) any {
 		"proto.DyAccountConnection", "proto.DyMagicSpell", "proto.DyRelationship":
 		fillModelTimestamps(object)
 	}
+	// DyCloudFile.Url is a proto3 string, so EmitUnpopulated renders an unset
+	// URL as "". C# stored SnCloudFileReferenceObject.Url as a nullable string
+	// and serialized null for local cloud files (their address is `/drive/
+	// files/{id}`). An empty string is not "no URL" to a client: it is a
+	// non-null value that beats every `storageUrl ?? fallback` and fails in the
+	// image loader with "No host specified in URI". Blank means the same thing
+	// as absent here — a real off-site URL is never empty — so emit null.
+	if descriptor.FullName() == "proto.DyCloudFile" {
+		if url, ok := object["url"].(string); ok && url == "" {
+			object["url"] = nil
+		}
+	}
 	return object
 }
 
