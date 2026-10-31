@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"src.solsynth.dev/sosys/go/pkg/errs"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/auth"
 	"src.solsynth.dev/sosys/stargate/grpcclient"
 	"src.solsynth.dev/sosys/stargate/middleware"

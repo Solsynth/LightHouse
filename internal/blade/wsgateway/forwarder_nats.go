@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 	"srv.solsynth.dev/sosys/blade/logging"
 )
 

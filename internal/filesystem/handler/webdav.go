@@ -20,7 +20,7 @@ import (
 	"src.solsynth.dev/sosys/filesystem/dispatch"
 	"src.solsynth.dev/sosys/filesystem/eventbus"
 	"src.solsynth.dev/sosys/filesystem/service"
-	"src.solsynth.dev/sosys/go/pkg/auth"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
 )
 
 const WebDAVAccountIDKey = "webdav_account_id"

@@ -16,14 +16,14 @@ import (
 	"google.golang.org/protobuf/proto"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
-	"src.solsynth.dev/sosys/go/pkg/errs"
-	gen "src.solsynth.dev/sosys/go/proto"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/store"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/accountjson"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/authn"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/httpx"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/accountjson"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/authn"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/httpx"
 )
 
 func currentUser(c *gin.Context) *gen.DyAccount { return authn.CurrentUser(c) }
@@ -248,10 +248,36 @@ func (i *instance) applyRealmIdentity(ctx context.Context, members []model.ChatM
 		members[idx].RealmLevel = &level
 		members[idx].RealmLevelingProgress = &progress
 		if label := realmMember.GetLabel(); label != nil {
-			labelName := label.GetName()
-			members[idx].RealmLabel = &labelName
+			// The C# snapshot rebuilt a full SnRealmLabel from the partial
+			// proto and serialized it as an object. Clients cast realm_label
+			// as a map, so emitting the bare name broke the member.
+			zero := model.Time(time.Time{})
+			labelID := realmMember.GetLabelId()
+			if labelID == "" {
+				labelID = uuid.Nil.String()
+			}
+			members[idx].RealmLabel = &model.ChatRealmLabel{
+				ID:                 labelID,
+				RealmID:            realmID,
+				Name:               label.GetName(),
+				Description:        optionalLabelText(label.GetDescription()),
+				Color:              optionalLabelText(label.GetColor()),
+				Icon:               optionalLabelText(label.GetIcon()),
+				CreatedByAccountID: uuid.Nil.String(),
+				CreatedAt:          &zero,
+				UpdatedAt:          &zero,
+			}
 		}
 	}
+}
+
+// optionalLabelText mirrors SnRealmLabel.FromProtoValue: blank proto strings
+// become JSON null.
+func optionalLabelText(value string) *string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return &value
 }
 
 func (i *instance) accountStatuses(ctx context.Context, accountIDs []string) map[string]*gen.DyAccountStatus {

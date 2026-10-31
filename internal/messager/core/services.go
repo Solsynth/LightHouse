@@ -5,7 +5,7 @@ package core
 
 import (
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/config"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/app"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/app"
 )
 
 // Services is the shared, already-constructed core graph. Modules must treat

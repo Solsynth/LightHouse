@@ -4,9 +4,9 @@ How to run **sphere** and **messager** (the Go ports of `DysonNetwork.Sphere` an
 `DysonNetwork.Messager`), how to move the legacy data across, and what changes
 for the rest of the fleet when the C# services are retired.
 
-The repository is one workspace (`go.work`) over five Go modules: this module
-(sphere + messager), `internal/stargate/`, `internal/metoer/`, `internal/blade/`
-and — outside the workspace — `internal/filesystem/`. Stargate is the identity
+The repository is one workspace (`go.work`) over six Go modules: this module
+(sphere + messager), `shared/`, `internal/stargate/`, `internal/metoer/`,
+`internal/blade/` and — outside the workspace — `internal/filesystem/`. Stargate is the identity
 service every authenticated request goes through, Metoer replaces Ring for
 notifications and push, and Blade is the gateway that routes public traffic to
 sphere, messager and metoer — so a replacement touches all of them even though
@@ -32,7 +32,8 @@ The sphere and messager port defaults match the C# services' `BaseUrl` and
 decide which side you align.
 
 They are separate processes with separate databases and separate module sets.
-They share only `internal/platform` code. Neither writes to the other's tables.
+They share only the vendored `shared` module (platform layer plus SDK).
+Neither writes to the other's tables.
 
 Both expose:
 
@@ -42,7 +43,8 @@ Both expose:
   every `[modules]` change.
 - A canonical JSON 404 and the fleet `ApiError` envelope.
 
-Images: `Dockerfile.sphere` and `Dockerfile.messager` (root context). Both are
+Images: `Dockerfile.sphere` and `Dockerfile.messager` (root context, like every
+service image, so the vendored `shared/` module is in the build context). Both are
 `golang:1.27-alpine` build → `scratch` runtime: a static CGO-free binary, the
 CA bundle, and `internal/sphere/config.example.toml` (resp. messager) as
 `/app/config.example.toml`. They take their config from `CONFIG_PATH`. No

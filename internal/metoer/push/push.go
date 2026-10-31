@@ -12,7 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sideshow/apns2"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/metoer/events"
 	"src.solsynth.dev/sosys/metoer/grpcclient"

@@ -17,7 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	"src.solsynth.dev/sosys/go/pkg/errs"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/middleware"
 	"src.solsynth.dev/sosys/stargate/permission"
 )

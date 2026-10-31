@@ -96,7 +96,10 @@ web-filesystem-dev:
 web-filesystem-test:
 	$(MAKE) -C internal/filesystem web-test
 
-test: test-sphere test-stargate test-metoer test-blade test-filesystem
+test: test-shared test-sphere test-stargate test-metoer test-blade test-filesystem
+
+test-shared:
+	cd shared && go test ./...
 
 test-sphere:
 	go test ./...
@@ -119,6 +122,7 @@ test-filesystem:
 	cd internal/filesystem && $(FS_GO) test ./...
 
 lint:
+	cd shared && go vet ./...
 	go vet ./...
 	cd internal/stargate && go vet ./...
 	cd internal/metoer && go vet ./...
@@ -126,6 +130,7 @@ lint:
 	cd internal/filesystem && $(FS_GO) vet ./...
 
 tidy:
+	cd shared && go mod tidy
 	go mod tidy
 	cd internal/stargate && go mod tidy
 	cd internal/metoer && go mod tidy
@@ -133,7 +138,7 @@ tidy:
 	cd internal/filesystem && $(FS_GO) mod tidy
 
 fmt:
-	gofmt -l -w internal
+	gofmt -l -w internal shared
 
 # Boot each service once before importing so the schema exists.
 migrate-sphere:

@@ -5,11 +5,13 @@ on:
     branches: [master]
     paths:
       - "internal/metoer/**"
+      - "shared/**"
       - ".github/workflows/metoer.yml"
   pull_request:
     branches: [master]
     paths:
       - "internal/metoer/**"
+      - "shared/**"
       - ".github/workflows/metoer.yml"
 
 env:
@@ -63,8 +65,8 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          # Context is the child module: the image never sees go.work.
-          context: ./internal/metoer
+          # Root context so the Dockerfile can copy the vendored shared/ module.
+          context: .
           file: ./internal/metoer/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           cache-from: type=gha,scope=metoer

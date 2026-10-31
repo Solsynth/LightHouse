@@ -21,12 +21,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"src.solsynth.dev/sosys/go/pkg/errs"
-	gen "src.solsynth.dev/sosys/go/proto"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/store"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/authn"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/authn"
 )
 
 const (

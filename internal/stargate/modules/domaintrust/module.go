@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/stargate/domaintrust"
 	"src.solsynth.dev/sosys/stargate/httpserver/domaintrustctl"

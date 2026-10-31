@@ -15,8 +15,8 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
-	"src.solsynth.dev/sosys/go/pkg/models"
-	gen "src.solsynth.dev/sosys/go/proto"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/stargate/auth"
 	"src.solsynth.dev/sosys/stargate/model"

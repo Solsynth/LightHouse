@@ -8,8 +8,8 @@ import (
 	"encoding/json"
 	"time"
 
-	models "src.solsynth.dev/sosys/go/pkg/models"
-	gen "src.solsynth.dev/sosys/go/proto"
+	models "src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 // Time is the fleet Instant type (UTC RFC3339, seconds precision).

@@ -21,7 +21,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"src.solsynth.dev/sosys/go/pkg/errs"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/middleware"
 	"src.solsynth.dev/sosys/stargate/permission"
 	"src.solsynth.dev/sosys/stargate/store"

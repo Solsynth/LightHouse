@@ -13,9 +13,9 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/authn"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/filejson"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/authn"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/filejson"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/ports"

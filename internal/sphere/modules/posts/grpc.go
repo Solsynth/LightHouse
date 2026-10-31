@@ -14,7 +14,7 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 	"gorm.io/gorm"
 
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"

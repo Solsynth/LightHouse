@@ -13,10 +13,10 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/app"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/grpcclient"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/app"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpcclient"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/ports"

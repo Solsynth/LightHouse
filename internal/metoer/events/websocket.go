@@ -13,8 +13,8 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
-	eb "src.solsynth.dev/sosys/go/pkg/eventbus"
-	gen "src.solsynth.dev/sosys/go/proto"
+	eb "src.solsynth.dev/sosys/lighthouse/shared/pkg/eventbus"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/metoer/grpcclient"
 )

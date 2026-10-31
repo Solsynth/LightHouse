@@ -6,7 +6,7 @@ package model
 import (
 	"time"
 
-	models "src.solsynth.dev/sosys/go/pkg/models"
+	models "src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
 )
 
 // Time is the fleet Instant type (UTC RFC3339, seconds precision).
@@ -81,33 +81,49 @@ type ChatRoom struct {
 
 // ChatMember is one room membership.
 type ChatMember struct {
-	ID                    string     `json:"id"`
-	ChatRoomID            string     `json:"chat_room_id"`
-	AccountID             string     `json:"account_id"`
-	Username              *string    `json:"username"`
-	Nick                  *string    `json:"nick"`
-	ChatGroupID           *string    `json:"chat_group_id"`
-	Notify                int        `json:"notify"`
-	LastReadAt            *Time      `json:"last_read_at"`
-	JoinedAt              *Time      `json:"joined_at"`
-	LeaveAt               *Time      `json:"leave_at"`
-	ConfirmedAt           *Time      `json:"confirmed_at"`
-	InvitedByID           *string    `json:"invited_by_id"`
-	BreakUntil            *Time      `json:"break_until"`
-	TimeoutUntil          *Time      `json:"timeout_until"`
-	TimeoutCause          any        `json:"timeout_cause"`
-	Account               any        `json:"account"`
-	Status                any        `json:"status"`
-	ChatGroup             *ChatGroup `json:"chat_group"`
-	RealmNick             *string    `json:"realm_nick"`
-	RealmBio              *string    `json:"realm_bio"`
-	RealmExperience       *int       `json:"realm_experience"`
-	RealmLevel            *int       `json:"realm_level"`
-	RealmLevelingProgress *float64   `json:"realm_leveling_progress"`
-	RealmLabel            *string    `json:"realm_label"`
-	CreatedAt             *Time      `json:"created_at"`
-	UpdatedAt             *Time      `json:"updated_at"`
-	DeletedAt             *Time      `json:"deleted_at"`
+	ID                    string          `json:"id"`
+	ChatRoomID            string          `json:"chat_room_id"`
+	AccountID             string          `json:"account_id"`
+	Username              *string         `json:"username"`
+	Nick                  *string         `json:"nick"`
+	ChatGroupID           *string         `json:"chat_group_id"`
+	Notify                int             `json:"notify"`
+	LastReadAt            *Time           `json:"last_read_at"`
+	JoinedAt              *Time           `json:"joined_at"`
+	LeaveAt               *Time           `json:"leave_at"`
+	ConfirmedAt           *Time           `json:"confirmed_at"`
+	InvitedByID           *string         `json:"invited_by_id"`
+	BreakUntil            *Time           `json:"break_until"`
+	TimeoutUntil          *Time           `json:"timeout_until"`
+	TimeoutCause          any             `json:"timeout_cause"`
+	Account               any             `json:"account"`
+	Status                any             `json:"status"`
+	ChatGroup             *ChatGroup      `json:"chat_group"`
+	RealmNick             *string         `json:"realm_nick"`
+	RealmBio              *string         `json:"realm_bio"`
+	RealmExperience       *int            `json:"realm_experience"`
+	RealmLevel            *int            `json:"realm_level"`
+	RealmLevelingProgress *float64        `json:"realm_leveling_progress"`
+	RealmLabel            *ChatRealmLabel `json:"realm_label"`
+	CreatedAt             *Time           `json:"created_at"`
+	UpdatedAt             *Time           `json:"updated_at"`
+	DeletedAt             *Time           `json:"deleted_at"`
+}
+
+// ChatRealmLabel mirrors the C# SnRealmLabel the profile-service member
+// snapshot embeds. Clients parse realm_label as an object, so a bare name
+// breaks the whole chat member — and every message summary carrying it.
+type ChatRealmLabel struct {
+	ID                 string  `json:"id"`
+	RealmID            string  `json:"realm_id"`
+	Name               string  `json:"name"`
+	Description        *string `json:"description"`
+	Color              *string `json:"color"`
+	Icon               *string `json:"icon"`
+	CreatedByAccountID string  `json:"created_by_account_id"`
+	CreatedAt          *Time   `json:"created_at"`
+	UpdatedAt          *Time   `json:"updated_at"`
+	DeletedAt          *Time   `json:"deleted_at"`
 }
 
 // ChatGroup is one account's room folder.

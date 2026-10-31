@@ -8,9 +8,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"src.solsynth.dev/sosys/go/pkg/cache"
-	"src.solsynth.dev/sosys/go/pkg/errs"
-	"src.solsynth.dev/sosys/go/pkg/handoff"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/cache"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/handoff"
 	"src.solsynth.dev/sosys/stargate/auth"
 	"src.solsynth.dev/sosys/stargate/middleware"
 )
@@ -26,7 +26,7 @@ import (
 // Instead the console hands the app a single-use code, and the app's own server
 // trades that code for a token pair it stores in its own cookie. The protocol —
 // code storage, single-use redemption, PKCE, target policy — lives in
-// src.solsynth.dev/sosys/go/pkg/handoff, so every Solar Network app speaks one
+// src.solsynth.dev/sosys/lighthouse/shared/pkg/handoff, so every Solar Network app speaks one
 // version of it. This file is only the Stargate half: resolving its own session,
 // and minting from a redeemed grant.
 

@@ -13,7 +13,6 @@ require (
 	github.com/spf13/viper v1.19.0
 	google.golang.org/grpc v1.79.1
 	google.golang.org/protobuf v1.36.11
-	src.solsynth.dev/sosys/go v0.2.1-0.20260919143325-40fa743b4bd0
 )
 
 require (
@@ -63,4 +62,7 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	src.solsynth.dev/sosys/lighthouse/shared v0.0.0
 )
+
+replace src.solsynth.dev/sosys/lighthouse/shared => ../../shared

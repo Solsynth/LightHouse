@@ -7,15 +7,15 @@ import (
 	"strings"
 
 	"google.golang.org/protobuf/encoding/protojson"
-	"src.solsynth.dev/sosys/go/pkg/models"
-	gen "src.solsynth.dev/sosys/go/proto"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/ports"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/eventbus"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/grpcclient"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/eventbus"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpcclient"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 )
 
 // ModuleID is the integrations module's registry ID.

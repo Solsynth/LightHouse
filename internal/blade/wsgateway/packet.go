@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 
 	"google.golang.org/protobuf/types/known/wrapperspb"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 const (

@@ -9,11 +9,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/store"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/httpx"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/httpx"
 )
 
 const defaultMlsCiphersuite = "MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519"

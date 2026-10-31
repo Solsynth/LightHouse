@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	platformapp "src.solsynth.dev/sosys/lighthouse/internal/platform/app"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
+	platformapp "src.solsynth.dev/sosys/lighthouse/shared/platform/app"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/config"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/migrate"

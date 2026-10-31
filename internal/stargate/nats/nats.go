@@ -1,6 +1,6 @@
 // Package nats wires the NATS connection and JetStream event publishing for
 // auth.session.revoked and websocket_push streams. It builds on the shared
-// fleet event bus (src.solsynth.dev/sosys/go/pkg/eventbus).
+// fleet event bus (src.solsynth.dev/sosys/lighthouse/shared/pkg/eventbus).
 package nats
 
 import (
@@ -17,8 +17,8 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
-	eb "src.solsynth.dev/sosys/go/pkg/eventbus"
-	gen "src.solsynth.dev/sosys/go/proto"
+	eb "src.solsynth.dev/sosys/lighthouse/shared/pkg/eventbus"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/stargate/auth"
 	"src.solsynth.dev/sosys/stargate/config"

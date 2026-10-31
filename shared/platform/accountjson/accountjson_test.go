@@ -6,9 +6,9 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/accountjson"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/accountjson"
 )
 
 // wireMap embeds a proto the way the HTTP handlers do and decodes the result
@@ -98,6 +98,32 @@ func TestFromProtoEmitsEmptyFileMetaAsObject(t *testing.T) {
 		if _, ok := picture[key].(map[string]any); !ok {
 			t.Errorf("%s = %#v (%T), want {}", key, picture[key], picture[key])
 		}
+	}
+}
+
+// Dart's SnAccountBadge casts created_at/updated_at as non-null strings. C#
+// SnAccountBadgeRef embeds ModelBase and always serialized both (zero Instant
+// when the proto could not carry them), so the ported account JSON must too.
+func TestFromProtoRestoresBadgeRefTimestamps(t *testing.T) {
+	account := &gen.DyAccount{
+		Id: "acc-1",
+		Profile: &gen.DyAccountProfile{
+			ActiveBadge: &gen.DyBadgeReferenceObject{
+				Id:        "badge-1",
+				Type:      "pioneer",
+				AccountId: "acc-1",
+			},
+		},
+	}
+
+	badge := fileOf(t, wireMap(t, accountjson.FromProto(account)), "profile", "active_badge")
+	for _, key := range []string{"created_at", "updated_at"} {
+		if badge[key] != "0001-01-01T00:00:00Z" {
+			t.Errorf("active_badge.%s = %#v, want the zero Instant", key, badge[key])
+		}
+	}
+	if _, ok := badge["deleted_at"]; !ok {
+		t.Error("active_badge.deleted_at is missing")
 	}
 }
 

@@ -17,10 +17,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"src.solsynth.dev/sosys/go/pkg/auth"
-	"src.solsynth.dev/sosys/go/pkg/cache"
-	"src.solsynth.dev/sosys/go/pkg/errs"
-	gen "src.solsynth.dev/sosys/go/proto"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/cache"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 // Context keys used by the handlers. They mirror the C# HttpContext.Items

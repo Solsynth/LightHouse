@@ -7,7 +7,7 @@ import (
 	"context"
 
 	"google.golang.org/protobuf/types/known/emptypb"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 type dyCapabilitiesService struct {

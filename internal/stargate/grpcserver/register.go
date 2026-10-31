@@ -1,7 +1,7 @@
 // Package grpcserver implements Stargate's inbound gRPC servers — the
 // surface the C# fleet calls via services__padlock__grpc__0. Every service is
 // a port of the corresponding Padlock *Grpc.cs file against the pinned
-// Golaunch generated interfaces (src.solsynth.dev/sosys/go/proto).
+// Golaunch generated interfaces (src.solsynth.dev/sosys/lighthouse/shared/proto).
 package grpcserver
 
 import (
@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/stargate/actionlog"
 	"src.solsynth.dev/sosys/stargate/auth"

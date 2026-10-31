@@ -10,7 +10,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/ports"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"

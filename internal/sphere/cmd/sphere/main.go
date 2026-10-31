@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"os"
 
-	platformapp "src.solsynth.dev/sosys/lighthouse/internal/platform/app"
+	platformapp "src.solsynth.dev/sosys/lighthouse/shared/platform/app"
 	sphereapp "src.solsynth.dev/sosys/lighthouse/internal/sphere/app"
 )
 

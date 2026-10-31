@@ -4,7 +4,7 @@
 package standard
 
 import (
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/modules/autocomplete"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/modules/automod"

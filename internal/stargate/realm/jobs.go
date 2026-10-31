@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	eb "src.solsynth.dev/sosys/go/pkg/eventbus"
+	eb "src.solsynth.dev/sosys/lighthouse/shared/pkg/eventbus"
 )
 
 // Background work ported from Passport's Quartz job and event listeners.

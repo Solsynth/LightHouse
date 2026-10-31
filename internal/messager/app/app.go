@@ -10,8 +10,8 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/migrate"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/modules/standard"
-	platformapp "src.solsynth.dev/sosys/lighthouse/internal/platform/app"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
+	platformapp "src.solsynth.dev/sosys/lighthouse/shared/platform/app"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 )
 
 // Run boots the Messager service.

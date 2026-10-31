@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"src.solsynth.dev/sosys/go/pkg/errs"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 )
 
 // PermissionChecker is the local permission evaluation contract (implemented

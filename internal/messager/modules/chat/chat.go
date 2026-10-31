@@ -8,13 +8,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/ports"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/store"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/authn"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/authn"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 )
 
 // ModuleID is the chat module's registry ID.

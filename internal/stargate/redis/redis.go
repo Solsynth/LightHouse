@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/redis/go-redis/v9"
-	"src.solsynth.dev/sosys/go/pkg/cache"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/cache"
 )
 
 // Client bundles the raw client and the shared cache service.

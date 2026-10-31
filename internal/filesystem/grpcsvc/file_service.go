@@ -13,7 +13,7 @@ import (
 	"src.solsynth.dev/sosys/filesystem/core"
 	"src.solsynth.dev/sosys/filesystem/database"
 	"src.solsynth.dev/sosys/filesystem/service"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

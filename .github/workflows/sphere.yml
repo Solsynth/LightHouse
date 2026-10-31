@@ -4,8 +4,8 @@ on:
   push:
     branches: [master]
     paths:
-      - "internal/platform/**"
       - "internal/sphere/**"
+      - "shared/**"
       - "go.mod"
       - "go.sum"
       - "go.work"
@@ -16,8 +16,8 @@ on:
   pull_request:
     branches: [master]
     paths:
-      - "internal/platform/**"
       - "internal/sphere/**"
+      - "shared/**"
       - "go.mod"
       - "go.sum"
       - "go.work"

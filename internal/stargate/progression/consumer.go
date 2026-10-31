@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	eb "src.solsynth.dev/sosys/go/pkg/eventbus"
+	eb "src.solsynth.dev/sosys/lighthouse/shared/pkg/eventbus"
 )
 
 // ActionLogSource is the NATS surface the consumer needs: the fleet's

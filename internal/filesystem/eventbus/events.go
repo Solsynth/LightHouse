@@ -3,7 +3,7 @@ package eventbus
 import (
 	"time"
 
-	shared "src.solsynth.dev/sosys/go/pkg/eventbus"
+	shared "src.solsynth.dev/sosys/lighthouse/shared/pkg/eventbus"
 )
 
 type FileUploadedEvent struct {

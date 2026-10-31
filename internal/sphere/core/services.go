@@ -5,7 +5,7 @@
 package core
 
 import (
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/app"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/app"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/config"
 )
 

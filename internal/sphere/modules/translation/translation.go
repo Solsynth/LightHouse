@@ -15,11 +15,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"src.solsynth.dev/sosys/go/pkg/errs"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/authn"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/httpx"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/authn"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/httpx"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/config"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
 )

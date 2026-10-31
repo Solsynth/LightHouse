@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 // grpcServer implements gen.DyAutocompletionServiceServer over the same

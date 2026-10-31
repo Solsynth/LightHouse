@@ -12,8 +12,8 @@ import (
 	"github.com/coder/websocket"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	dyauth "src.solsynth.dev/sosys/go/pkg/auth"
-	gen "src.solsynth.dev/sosys/go/proto"
+	dyauth "src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 func testWSConn(t *testing.T) *websocket.Conn {

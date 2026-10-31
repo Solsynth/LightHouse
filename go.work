@@ -1,5 +1,6 @@
 // The workspace covers the modules that share the go1.27 toolchain:
-// Lighthouse, Stargate, Blade and Metoer.
+// Lighthouse, Stargate, Blade and Metoer, plus the vendored shared module
+// every service imports.
 //
 // internal/filesystem is deliberately absent: its go.mod pins go1.26.2, and
 // under go1.27 its golang.org/x/net v0.54.0 compiles the stdlib-backed http2
@@ -13,4 +14,5 @@ use (
 	./internal/blade
 	./internal/metoer
 	./internal/stargate
+	./shared
 )

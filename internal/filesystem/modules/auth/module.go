@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc"
 
-	dyauth "src.solsynth.dev/sosys/go/pkg/auth"
+	dyauth "src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
 
 	"src.solsynth.dev/sosys/filesystem/config"
 	"src.solsynth.dev/sosys/filesystem/core"

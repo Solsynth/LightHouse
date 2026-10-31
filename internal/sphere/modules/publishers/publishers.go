@@ -11,8 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	gen "src.solsynth.dev/sosys/go/proto"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/ports"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"

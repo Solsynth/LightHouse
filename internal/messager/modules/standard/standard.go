@@ -8,7 +8,7 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/modules/integrations"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/modules/realtime"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/modules/rewind"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 )
 
 // Modules returns every compiled-in factory.

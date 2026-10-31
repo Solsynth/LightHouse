@@ -7,10 +7,10 @@ import (
 
 	"github.com/google/uuid"
 
-	eb "src.solsynth.dev/sosys/go/pkg/eventbus"
+	eb "src.solsynth.dev/sosys/lighthouse/shared/pkg/eventbus"
 
-	"src.solsynth.dev/sosys/go/pkg/auth"
-	"src.solsynth.dev/sosys/go/pkg/cache"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/cache"
 )
 
 // lastActiveStream/subject mirror LastActiveEvent (StreamName

@@ -32,21 +32,21 @@ jobs:
             dockerfile: ./Dockerfile.messager
             scope: messager
           - image: lighthouse-stargate
-            context: ./internal/stargate
+            context: .
             dockerfile: ./internal/stargate/Dockerfile
             scope: stargate
           - image: lighthouse-metoer
-            context: ./internal/metoer
+            context: .
             dockerfile: ./internal/metoer/Dockerfile
             scope: metoer
           # Gateway and relay are one image: a relay runs it with `relay` as the
           # command.
           - image: lighthouse-blade
-            context: ./internal/blade
+            context: .
             dockerfile: ./internal/blade/Dockerfile
             scope: blade
           - image: lighthouse-dysonfs
-            context: ./internal/filesystem
+            context: .
             dockerfile: ./internal/filesystem/Dockerfile
             scope: dysonfs
 

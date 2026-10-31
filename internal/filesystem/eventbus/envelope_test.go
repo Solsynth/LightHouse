@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	shared "src.solsynth.dev/sosys/go/pkg/eventbus"
+	shared "src.solsynth.dev/sosys/lighthouse/shared/pkg/eventbus"
 )
 
 // The fleet envelope pins event_id to a UUID: every .NET consumer

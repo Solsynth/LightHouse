@@ -7,7 +7,7 @@ instance set for HTTP gateway routing and makes it available to other services
 through `Resolve`.
 
 The contract is defined in `Spec/proto/discovery.proto` and generated in the
-shared package `src.solsynth.dev/sosys/go/proto`.
+shared package `src.solsynth.dev/sosys/lighthouse/shared/proto`.
 
 ## Prerequisites
 
@@ -89,7 +89,7 @@ import (
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/metadata"
-    gen "src.solsynth.dev/sosys/go/proto"
+    gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 func register(ctx context.Context, bladeAddr, token, instanceID string) (gen.DyServiceDiscoveryServiceClient, *grpc.ClientConn, context.Context, error) {

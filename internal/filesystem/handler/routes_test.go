@@ -29,8 +29,8 @@ import (
 	"src.solsynth.dev/sosys/filesystem/s3server"
 	"src.solsynth.dev/sosys/filesystem/service"
 	"src.solsynth.dev/sosys/filesystem/storage"
-	dyauth "src.solsynth.dev/sosys/go/pkg/auth"
-	gen "src.solsynth.dev/sosys/go/proto"
+	dyauth "src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 type recordingDispatcher struct {

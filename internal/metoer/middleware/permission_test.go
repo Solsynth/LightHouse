@@ -8,8 +8,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc"
-	"src.solsynth.dev/sosys/go/pkg/auth"
-	gen "src.solsynth.dev/sosys/go/proto"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 // denyPermissionClient denies every lookup, like Stargate does for an account

@@ -16,7 +16,6 @@ require (
 	gorm.io/datatypes v1.2.7
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
-	src.solsynth.dev/sosys/go v0.2.1-0.20261023145601-258ce5581a28
 )
 
 require (
@@ -66,4 +65,7 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/mysql v1.5.6 // indirect
+	src.solsynth.dev/sosys/lighthouse/shared v0.0.0
 )
+
+replace src.solsynth.dev/sosys/lighthouse/shared => ../../shared

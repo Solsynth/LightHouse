@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 // TestBuildWSPushEnvelopeMultiRecipient decodes the body the way Blade's

@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/httpx"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/httpx"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
 )

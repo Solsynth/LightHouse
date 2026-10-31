@@ -7,7 +7,7 @@ import (
 
 	"src.solsynth.dev/sosys/filesystem/database"
 	"src.solsynth.dev/sosys/filesystem/service"
-	"src.solsynth.dev/sosys/go/pkg/auth"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"

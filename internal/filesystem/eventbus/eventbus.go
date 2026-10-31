@@ -1,5 +1,5 @@
 // Package eventbus is a thin wrapper over the fleet-wide shared event bus
-// (src.solsynth.dev/sosys/go/pkg/eventbus), exposing the filesystem service's
+// (src.solsynth.dev/sosys/lighthouse/shared/pkg/eventbus), exposing the filesystem service's
 // typed publish/subscribe API. Wire shapes mirror the shared Event envelope
 // (event_id, timestamp, event_type, stream_name); see events.go.
 //
@@ -15,7 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"src.solsynth.dev/sosys/filesystem/logging"
-	shared "src.solsynth.dev/sosys/go/pkg/eventbus"
+	shared "src.solsynth.dev/sosys/lighthouse/shared/pkg/eventbus"
 )
 
 // Bus wraps the shared event bus. The embedded *shared.Bus promotes Publish,

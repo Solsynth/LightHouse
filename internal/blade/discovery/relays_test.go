@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 func TestCatalog_ListRelaysWithTCPEndpoint(t *testing.T) {

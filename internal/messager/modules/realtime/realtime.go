@@ -14,8 +14,8 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/ports"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/store"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/authn"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/authn"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 )
 
 const (

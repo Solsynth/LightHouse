@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/migrate"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/legacyimport"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/legacyimport"
 )
 
 func main() {

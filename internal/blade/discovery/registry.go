@@ -13,7 +13,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/proto"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 // Registry is the shared instance source of truth. Redis key expiry is the

@@ -14,8 +14,8 @@ import (
 	"github.com/nats-io/nats.go"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/wrapperspb"
-	"src.solsynth.dev/sosys/go/pkg/eventbus"
-	gen "src.solsynth.dev/sosys/go/proto"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/eventbus"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 // wsDefaultNamespace is WebSocketNamespaces.Solian: an unmatched namespace

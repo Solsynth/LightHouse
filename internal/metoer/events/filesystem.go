@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	eb "src.solsynth.dev/sosys/go/pkg/eventbus"
+	eb "src.solsynth.dev/sosys/lighthouse/shared/pkg/eventbus"
 
 	"src.solsynth.dev/sosys/metoer/store"
 )

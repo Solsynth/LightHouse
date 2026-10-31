@@ -7,7 +7,7 @@ written against. Read it fully before writing code.
 
 - Go module `src.solsynth.dev/sosys/lighthouse`, Go 1.27. Put `/tmp/go/bin` on
   `PATH` before running Go.
-- The platform (`internal/platform/...`) and the Sphere foundation
+- The platform (`shared/platform/...`) and the Sphere foundation
   (`internal/sphere/{config,core,model,store,ports,migrate}`) already compile.
   **Never modify an existing file.** Create new files only. Every new entity or
   query you need goes in your own file(s).
@@ -26,7 +26,7 @@ package posts
 import (
     "context"
 
-    "src.solsynth.dev/sosys/lighthouse/internal/platform/module"
+    "src.solsynth.dev/sosys/lighthouse/shared/platform/module"
     "src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
 )
 
@@ -74,7 +74,7 @@ host.API.GET("/posts/:id", handler)                 // group is already /api
 host.API.POST("/posts", authn.RequireAuth(), host.Core.Auth.RequirePermission("posts.create"), handler)
 ```
 
-Helpers from `internal/platform/httpx`:
+Helpers from `shared/platform/httpx`:
 
 - `httpx.PageQuery(c, maxTake) (httpx.Page, bool)` — parses `offset`/`take`,
   rejects `take > maxTake` with the C# `PAGINATION_TAKE_EXCEEDED` validation
@@ -85,7 +85,7 @@ Helpers from `internal/platform/httpx`:
   `httpx.Unauthorized(c)`, `httpx.Forbidden(c, msg)`, `httpx.Internal(c)`.
 - `httpx.BindJSON(c, &dst) bool`.
 
-Auth helpers from `internal/platform/authn`:
+Auth helpers from `shared/platform/authn`:
 
 - `authn.CurrentUser(c) *gen.DyAccount` (nil when anonymous)
 - `authn.CurrentSession(c) *gen.DyAuthSession`
@@ -130,7 +130,7 @@ Where the C# controller returns an object, return that object. Where it returns
 ## gRPC
 
 Register your service on `host.GRPC` from `Configure`, using the generated
-server from `src.solsynth.dev/sosys/go/proto` (package name `gen`), e.g.
+server from `src.solsynth.dev/sosys/lighthouse/shared/proto` (package name `gen`), e.g.
 `gen.RegisterDyPostServiceServer(host.GRPC, &postServer{core: host.Core})`.
 Embed `gen.UnimplementedDyPostServiceServer`. If a method is not implementable
 yet, return `status.Error(codes.Unimplemented, "...")` rather than a wrong

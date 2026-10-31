@@ -14,8 +14,8 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
-	sharedmodels "src.solsynth.dev/sosys/go/pkg/models"
-	gen "src.solsynth.dev/sosys/go/proto"
+	sharedmodels "src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/stargate/model"
 	"src.solsynth.dev/sosys/stargate/redis"

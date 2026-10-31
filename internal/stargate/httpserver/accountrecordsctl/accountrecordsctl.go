@@ -10,7 +10,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"src.solsynth.dev/sosys/go/pkg/errs"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 
 	"src.solsynth.dev/sosys/stargate/accountrecords"
 	"src.solsynth.dev/sosys/stargate/middleware"

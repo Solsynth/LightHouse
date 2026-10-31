@@ -10,7 +10,7 @@ import (
 	"os"
 
 	messagerapp "src.solsynth.dev/sosys/lighthouse/internal/messager/app"
-	platformapp "src.solsynth.dev/sosys/lighthouse/internal/platform/app"
+	platformapp "src.solsynth.dev/sosys/lighthouse/shared/platform/app"
 )
 
 // version and gitCommit are injected at build time (see Dockerfile).

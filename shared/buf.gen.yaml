@@ -1,0 +1,13 @@
+version: v2
+
+inputs:
+  - git_repo: https://src.solsynth.dev/SoSYS/Spec.git
+    subdir: proto
+
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: proto
+    opt: paths=source_relative
+  - remote: buf.build/grpc/go
+    out: proto
+    opt: paths=source_relative

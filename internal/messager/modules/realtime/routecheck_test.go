@@ -8,8 +8,8 @@ import (
 
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/config"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/core"
-	platformapp "src.solsynth.dev/sosys/lighthouse/internal/platform/app"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/module"
+	platformapp "src.solsynth.dev/sosys/lighthouse/shared/platform/app"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 )
 
 // TestRouteRegistration registers the realtime routes on top of the chat

@@ -4,7 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/store"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/httpx"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/httpx"
 )
 
 func (i *instance) listRealmChat(c *gin.Context) {

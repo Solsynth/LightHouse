@@ -22,9 +22,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
-	"src.solsynth.dev/sosys/go/pkg/auth"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
 
 	"src.solsynth.dev/sosys/metoer/config"
 	"src.solsynth.dev/sosys/metoer/db"
@@ -46,7 +46,7 @@ import (
 	"src.solsynth.dev/sosys/metoer/scheduler"
 	"src.solsynth.dev/sosys/metoer/store"
 
-	eb "src.solsynth.dev/sosys/go/pkg/eventbus"
+	eb "src.solsynth.dev/sosys/lighthouse/shared/pkg/eventbus"
 )
 
 // parseLogLevel maps the LOG_LEVEL env value to a slog level (default debug).

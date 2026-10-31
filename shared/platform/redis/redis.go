@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"src.solsynth.dev/sosys/go/pkg/cache"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/cache"
 )
 
 // Connect dials Redis and returns a cache service. An empty address yields a

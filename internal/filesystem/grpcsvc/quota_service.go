@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"src.solsynth.dev/sosys/filesystem/service"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"

@@ -2,7 +2,7 @@
 // DyRingService surface the C# fleet calls via services__ring__grpc__0 plus
 // the static capability registry and the standard health service. Every
 // method is a port of DysonNetwork.Ring/Services/RingServiceGrpc.cs against
-// the pinned Golaunch generated interfaces (src.solsynth.dev/sosys/go/proto).
+// the pinned Golaunch generated interfaces (src.solsynth.dev/sosys/lighthouse/shared/proto).
 //
 // Error mapping mirrors ASP.NET Core gRPC's default exception mapping:
 // ArgumentException (the empty-notification guard) → InvalidArgument,
@@ -25,7 +25,7 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/metoer/email"
 	"src.solsynth.dev/sosys/metoer/push"

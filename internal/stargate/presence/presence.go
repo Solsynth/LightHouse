@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"src.solsynth.dev/sosys/go/pkg/cache"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/cache"
 
 	"src.solsynth.dev/sosys/stargate/auth"
 	"src.solsynth.dev/sosys/stargate/model"

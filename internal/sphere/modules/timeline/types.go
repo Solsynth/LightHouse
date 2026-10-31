@@ -7,10 +7,10 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	models "src.solsynth.dev/sosys/go/pkg/models"
-	gen "src.solsynth.dev/sosys/go/proto"
+	models "src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/accountjson"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/accountjson"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 )
 

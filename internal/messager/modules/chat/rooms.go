@@ -10,12 +10,12 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 	"gorm.io/gorm"
-	"src.solsynth.dev/sosys/go/pkg/errs"
-	gen "src.solsynth.dev/sosys/go/proto"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/store"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/httpx"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/httpx"
 )
 
 // --- helpers --------------------------------------------------------------

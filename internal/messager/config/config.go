@@ -4,7 +4,7 @@ package config
 import (
 	"strings"
 
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/config"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/config"
 )
 
 // Config is the Messager configuration: the shared base plus chat-specific

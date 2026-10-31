@@ -9,7 +9,7 @@ import (
 	"errors"
 	"log/slog"
 
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 	"src.solsynth.dev/sosys/stargate/httpserver/nfcctl"
 	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/nfc"

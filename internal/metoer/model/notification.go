@@ -7,7 +7,7 @@ package model
 
 import (
 	"github.com/google/uuid"
-	"src.solsynth.dev/sosys/go/pkg/models"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
 )
 
 // ModelBase mirrors DysonNetwork.Shared.Models.ModelBase.

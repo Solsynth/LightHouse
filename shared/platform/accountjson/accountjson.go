@@ -13,7 +13,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 // FromProto embeds a fleet account exactly as System.Text.Json serialized
@@ -68,7 +68,32 @@ func normalize(descriptor protoreflect.MessageDescriptor, value any) any {
 		}
 		object[key] = normalizeField(field, item)
 	}
+	// DyBadgeReferenceObject models C# SnAccountBadgeRef, which embeds
+	// ModelBase. The proto has no timestamp fields, so protojson omits keys the
+	// C# wire shape always carried. Dart's SnAccountBadge casts created_at and
+	// updated_at as non-null strings, so a profile with an active badge fails
+	// to deserialize — and with it every chat summary carrying that sender.
+	if descriptor.FullName() == "proto.DyBadgeReferenceObject" {
+		fillModelTimestamps(object)
+	}
 	return object
+}
+
+// zeroInstant is how NodaTime's default Instant serializes in the C# fleet.
+const zeroInstant = "0001-01-01T00:00:00Z"
+
+// fillModelTimestamps restores the ModelBase keys System.Text.Json always
+// emitted for model-shaped reference objects.
+func fillModelTimestamps(object map[string]any) {
+	if _, ok := object["created_at"]; !ok {
+		object["created_at"] = zeroInstant
+	}
+	if _, ok := object["updated_at"]; !ok {
+		object["updated_at"] = zeroInstant
+	}
+	if _, ok := object["deleted_at"]; !ok {
+		object["deleted_at"] = nil
+	}
 }
 
 func normalizeField(field protoreflect.FieldDescriptor, value any) any {

@@ -1,5 +1,5 @@
-# Root context builds sphere and messager only; child modules have their own
-# contexts and Dockerfiles.
+# Every image builds from the repository root so the vendored shared/ module is
+# in context; each service still has its own Dockerfile and go.mod.
 .git
 .github
 .idea
@@ -11,10 +11,6 @@ Keys
 Makefile
 go.work
 go.work.sum
-internal/blade
-internal/stargate
-internal/filesystem
-internal/metoer
 
 # Runtime config is mounted at deploy time; only the examples ship.
 internal/*/config.toml

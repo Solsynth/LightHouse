@@ -7,11 +7,11 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
-	"src.solsynth.dev/sosys/go/pkg/auth"
-	"src.solsynth.dev/sosys/go/pkg/cache"
-	"src.solsynth.dev/sosys/go/pkg/errs"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/cache"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 )
 
 // AuthDeps bundles what the auth middleware needs.

@@ -14,8 +14,8 @@ import (
 
 	"github.com/shopspring/decimal"
 	"google.golang.org/protobuf/encoding/protojson"
-	"src.solsynth.dev/sosys/go/pkg/models"
-	gen "src.solsynth.dev/sosys/go/proto"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/stargate/auth"
 	"src.solsynth.dev/sosys/stargate/config"

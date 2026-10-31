@@ -22,7 +22,7 @@ import (
 	"strings"
 	"unicode"
 
-	"src.solsynth.dev/sosys/go/pkg/models"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
 )
 
 // References decodes a jsonb array of references. It never returns nil: an

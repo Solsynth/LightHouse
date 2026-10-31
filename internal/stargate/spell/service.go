@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/stargate/config"
 	"src.solsynth.dev/sosys/stargate/model"

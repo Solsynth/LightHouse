@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 
-	"src.solsynth.dev/sosys/go/pkg/errs"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/model"
 )
 

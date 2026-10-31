@@ -5,7 +5,7 @@ import (
 	"unicode"
 
 	"github.com/google/uuid"
-	"src.solsynth.dev/sosys/go/pkg/models"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
 )
 
 func lowerFirst(s string) string {

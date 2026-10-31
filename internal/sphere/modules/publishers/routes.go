@@ -3,7 +3,7 @@ package publishers
 import (
 	"github.com/gin-gonic/gin"
 
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/authn"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/authn"
 )
 
 func (i *instance) registerPublisherRoutes(api *gin.RouterGroup) {

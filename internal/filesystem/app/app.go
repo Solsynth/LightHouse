@@ -19,8 +19,8 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
 
-	sharedcache "src.solsynth.dev/sosys/go/pkg/cache"
-	gen "src.solsynth.dev/sosys/go/proto"
+	sharedcache "src.solsynth.dev/sosys/lighthouse/shared/pkg/cache"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/filesystem/config"
 	"src.solsynth.dev/sosys/filesystem/core"

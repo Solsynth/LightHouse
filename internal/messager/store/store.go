@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/model"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/filejson"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/filejson"
 )
 
 // ErrNotFound is returned when a row does not exist.

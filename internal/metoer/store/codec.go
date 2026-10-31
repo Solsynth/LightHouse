@@ -7,7 +7,7 @@ import (
 
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
-	"src.solsynth.dev/sosys/go/pkg/models"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
 	"src.solsynth.dev/sosys/metoer/model"
 )
 

@@ -8,7 +8,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"google.golang.org/protobuf/encoding/protojson"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 const pushSubjectSuffix = "push"

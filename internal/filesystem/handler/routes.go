@@ -24,8 +24,8 @@ import (
 	"src.solsynth.dev/sosys/filesystem/logging"
 	"src.solsynth.dev/sosys/filesystem/service"
 	"src.solsynth.dev/sosys/filesystem/storage"
-	"src.solsynth.dev/sosys/go/pkg/auth"
-	gen "src.solsynth.dev/sosys/go/proto"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"

@@ -10,9 +10,9 @@ import (
 
 	"github.com/google/uuid"
 
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
-	"src.solsynth.dev/sosys/go/pkg/models"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
 
 	"src.solsynth.dev/sosys/metoer/model"
 	"src.solsynth.dev/sosys/metoer/store"

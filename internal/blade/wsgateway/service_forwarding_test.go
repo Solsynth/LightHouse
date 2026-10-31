@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 type testForwarder struct {

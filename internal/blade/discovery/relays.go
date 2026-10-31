@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 	"srv.solsynth.dev/sosys/blade/logging"
 )
 

@@ -6,7 +6,7 @@ package model
 import (
 	"time"
 
-	models "src.solsynth.dev/sosys/go/pkg/models"
+	models "src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
 )
 
 // Time is the fleet Instant type (UTC RFC3339, seconds precision), shared via

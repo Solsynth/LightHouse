@@ -47,7 +47,8 @@ flowchart LR
 ```
 
 Sphere and Messager are separate processes with separate databases and module
-sets; they share only `internal/platform`. Stargate is the identity service:
+sets; they share only the vendored `shared` module (platform layer plus SDK).
+Stargate is the identity service:
 every authenticated fleet request is checked by `DyAuthService.Authenticate`
 over gRPC, and no service validates JWTs locally. Metoer replaces
 DysonNetwork.Ring: notifications, push delivery, email plans and delivery
@@ -101,8 +102,9 @@ either a package of the root module or a module of its own (see
 [Workspace](#workspace)).
 
 ```text
-go.work                 workspace: ., internal/stargate, internal/blade, internal/metoer
-internal/platform/      shared bootstrap, config, DB, Redis, NATS, auth, HTTP/gRPC
+go.work                 workspace: ., shared, internal/stargate, internal/blade, internal/metoer
+shared/                 vendored fleet SDK: auth, cache, errs, eventbus, models, proto
+shared/platform/        house platform layer: bootstrap, config, DB, Redis, NATS, HTTP/gRPC
 internal/sphere/        Sphere module: cmd/, config, core, models, store, ports, modules
 internal/messager/      Messager module, same shape
 internal/stargate/      Stargate module: cmd/, console, migration commands, packages
@@ -116,20 +118,21 @@ NOTES.md                original README and porting notes
 
 ### Workspace
 
-`go.work` uses the root, Stargate, Blade and Metoer modules so one checkout
-builds and tests them with Go 1.27. Each service keeps its own `go.mod` and
-`go.sum`; a service's directory under `internal/` is only a directory choice,
-and imports go through its module path.
+`go.work` uses the root, `shared`, Stargate, Blade and Metoer modules so one
+checkout builds and tests them with Go 1.27. Each service keeps its own
+`go.mod` and `go.sum`; a service's directory under `internal/` is only a
+directory choice, and imports go through its module path. The vendored SDK is
+`shared` (module `src.solsynth.dev/sosys/lighthouse/shared`), and every module
+replaces the `src.solsynth.dev/sosys/go` dependency with it.
 
 Two consequences:
 
 - Directory patterns stop at a nested `go.mod`, so `go build ./...` at the root
   covers only Sphere and Messager. Use the Makefile, or build a child module
   explicitly.
-- Docker images build with the service directory as context
-  (`./internal/stargate`, `./internal/metoer`, `./internal/blade`,
-  `./internal/filesystem`), so `go.work` never enters an image and each child
-  stays buildable on its own.
+- Docker images build from the repository root so their Dockerfiles can copy
+  `shared/`; `go.work` is excluded by `.dockerignore`, so each image resolves
+  modules through its own `go.mod` and `replace` directives.
 
 `internal/filesystem` is deliberately **not** in `go.work`: it pins Go 1.26.2,
 and under Go 1.27 its `golang.org/x/net` and gRPC versions do not compile

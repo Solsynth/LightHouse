@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/config"
-	"src.solsynth.dev/sosys/lighthouse/internal/platform/app"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/app"
 )
 
 // livekitClient is the LiveKit provider: HS256 access-token issuance plus the

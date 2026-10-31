@@ -14,9 +14,9 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/google/uuid"
-	dyauth "src.solsynth.dev/sosys/go/pkg/auth"
-	"src.solsynth.dev/sosys/go/pkg/cache"
-	gen "src.solsynth.dev/sosys/go/proto"
+	dyauth "src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/cache"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 	"srv.solsynth.dev/sosys/blade/logging"
 )
 

@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 	"src.solsynth.dev/sosys/stargate/model"
 	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/ports"

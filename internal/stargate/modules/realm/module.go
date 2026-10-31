@@ -8,7 +8,7 @@ import (
 	"errors"
 	"log/slog"
 
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 	"src.solsynth.dev/sosys/stargate/httpserver/realmctl"
 	"src.solsynth.dev/sosys/stargate/httpserver/statusctl"
 	"src.solsynth.dev/sosys/stargate/model"

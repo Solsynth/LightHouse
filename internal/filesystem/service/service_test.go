@@ -30,8 +30,8 @@ import (
 	"src.solsynth.dev/sosys/filesystem/config"
 	"src.solsynth.dev/sosys/filesystem/database"
 	"src.solsynth.dev/sosys/filesystem/storage"
-	sharedcache "src.solsynth.dev/sosys/go/pkg/cache"
-	gen "src.solsynth.dev/sosys/go/proto"
+	sharedcache "src.solsynth.dev/sosys/lighthouse/shared/pkg/cache"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 type stubAccountClient struct {

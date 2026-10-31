@@ -3,7 +3,7 @@ package model
 import (
 	"time"
 
-	"src.solsynth.dev/sosys/go/pkg/models"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
 )
 
 // NowTime returns the current UTC instant as a models.Time.

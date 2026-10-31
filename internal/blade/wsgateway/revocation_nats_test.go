@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/nats-io/nats.go"
-	gen "src.solsynth.dev/sosys/go/proto"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 func TestHandleAuthSessionRevokedMessage_DisconnectsMatchingSession(t *testing.T) {

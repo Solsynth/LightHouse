@@ -18,7 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"src.solsynth.dev/sosys/go/pkg/handoff"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/handoff"
 	"src.solsynth.dev/sosys/stargate/auth"
 	"src.solsynth.dev/sosys/stargate/config"
 	"src.solsynth.dev/sosys/stargate/geo"
