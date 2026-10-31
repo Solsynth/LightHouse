@@ -28,7 +28,7 @@ func magicSpellFromEntity(entity *MagicSpellEntity) *model.MagicSpell {
 	if entity.AccountID != nil {
 		spell.AccountId = entity.AccountID.String()
 	}
-	_ = decodeJSONValue(entity.Meta, &spell.Meta)
+	_ = decodeJSON(&entity.Meta, &spell.Meta)
 	return spell
 }
 
@@ -234,7 +234,7 @@ func affiliationSpellFromEntity(entity *AffiliationSpellEntity) *model.Affiliati
 	if entity.AccountID != nil {
 		spell.AccountId = entity.AccountID.String()
 	}
-	_ = decodeJSONValue(entity.Meta, &spell.Meta)
+	_ = decodeJSON(&entity.Meta, &spell.Meta)
 	return spell
 }
 

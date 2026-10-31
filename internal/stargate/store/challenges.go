@@ -49,9 +49,9 @@ func challengeFromEntity(entity *ChallengeEntity) *model.AuthChallenge {
 		SudoUntil:           timePtr(entity.SudoUntil),
 		ExtraFactorType:     entity.ExtraFactorType,
 	}
-	_ = decodeJSONValue(entity.Audiences, &challenge.Audiences)
-	_ = decodeJSONValue(entity.Scopes, &challenge.Scopes)
-	_ = decodeJSONValue(entity.BlacklistFactors, &challenge.BlacklistFactors)
+	_ = decodeJSON(&entity.Audiences, &challenge.Audiences)
+	_ = decodeJSON(&entity.Scopes, &challenge.Scopes)
+	_ = decodeJSON(&entity.BlacklistFactors, &challenge.BlacklistFactors)
 	_ = decodeJSON(entity.Location, &challenge.Location)
 	return challenge
 }

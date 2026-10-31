@@ -3,11 +3,10 @@ package store
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
-	"unicode"
 
 	"gorm.io/datatypes"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/filejson"
 	"src.solsynth.dev/sosys/stargate/model"
 )
 
@@ -45,24 +44,14 @@ func decodeJSONArray(raw []byte) []string {
 	return out
 }
 
+// decodeJSON decodes a nullable jsonb column through the shared codec without
+// rewriting its keys: these columns carry data the producer owns (metadata,
+// coordinates, config), so their key spelling must survive verbatim.
 func decodeJSON(raw *datatypes.JSON, destination any) error {
-	if raw == nil || len(*raw) == 0 {
+	if raw == nil {
 		return nil
 	}
-	if err := json.Unmarshal(*raw, destination); err != nil {
-		return fmt.Errorf("unmarshal json: %w", err)
-	}
-	return nil
-}
-
-func decodeJSONValue(raw datatypes.JSON, destination any) error {
-	if len(raw) == 0 {
-		return nil
-	}
-	if err := json.Unmarshal(raw, destination); err != nil {
-		return fmt.Errorf("unmarshal json: %w", err)
-	}
-	return nil
+	return filejson.Decode(*raw, destination)
 }
 
 // DecodeJSONObject decodes a legacy C# jsonb value object into a typed
@@ -72,74 +61,16 @@ func DecodeJSONObject(raw *datatypes.JSON, destination any) error {
 	if raw == nil || len(*raw) == 0 {
 		return nil
 	}
-	if err := json.Unmarshal(normalizeReferenceKeys(*raw), destination); err != nil {
-		return fmt.Errorf("unmarshal json: %w", err)
-	}
-	return nil
+	return filejson.Unmarshal(*raw, destination)
 }
 
-// DecodeFileReference decodes a jsonb file-reference column into the wire
-// model. Rows written by the legacy C# fleet carry System.Text.Json PascalCase
-// keys ("Id", "FileMeta", "MimeType"), and a typed decode would silently drop
-// every key whose snake_case tag does not match case-insensitively — clients
-// strict-cast the object, so the blob is normalized before decoding. A nil or
-// JSON-null column yields nil.
+// DecodeFileReference decodes a nullable jsonb file-reference column through
+// the shared codec, which understands the legacy C# PascalCase keys and drops
+// a malformed property instead of erasing the reference. A nil column yields
+// nil.
 func DecodeFileReference(raw *datatypes.JSON) *model.SnCloudFileReferenceObject {
-	if raw == nil || len(*raw) == 0 {
+	if raw == nil {
 		return nil
 	}
-	var reference *model.SnCloudFileReferenceObject
-	if err := DecodeJSONObject(raw, &reference); err != nil {
-		return nil
-	}
-	return reference
-}
-
-// normalizeReferenceKeys rewrites the top-level keys of a jsonb reference to
-// snake_case, keeping nested objects (file_meta/user_meta carry other systems'
-// data) untouched. This mirrors platform/filejson, which Stargate cannot import
-// because it is a separate module.
-func normalizeReferenceKeys(raw []byte) []byte {
-	var object map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &object); err != nil || object == nil {
-		return raw
-	}
-	normalized := make(map[string]json.RawMessage, len(object))
-	for key, value := range object {
-		snake := toSnakeCase(key)
-		if key != snake {
-			if _, present := object[snake]; present {
-				continue
-			}
-		}
-		normalized[snake] = value
-	}
-	encoded, err := json.Marshal(normalized)
-	if err != nil {
-		return raw
-	}
-	return encoded
-}
-
-// toSnakeCase rewrites an identifier like "MimeType", "fileMeta" or "ID" to
-// its snake_case form ("mime_type", "file_meta", "id").
-func toSnakeCase(value string) string {
-	runes := []rune(value)
-	var out strings.Builder
-	out.Grow(len(value) + 4)
-	for index, r := range runes {
-		if unicode.IsUpper(r) {
-			if index > 0 {
-				prev := runes[index-1]
-				nextLower := index+1 < len(runes) && unicode.IsLower(runes[index+1])
-				if unicode.IsLower(prev) || unicode.IsDigit(prev) || nextLower {
-					out.WriteByte('_')
-				}
-			}
-			out.WriteRune(unicode.ToLower(r))
-			continue
-		}
-		out.WriteRune(r)
-	}
-	return out.String()
+	return filejson.Reference(*raw)
 }

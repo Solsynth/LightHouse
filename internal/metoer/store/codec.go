@@ -8,6 +8,7 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/filejson"
 	"src.solsynth.dev/sosys/metoer/model"
 )
 
@@ -17,17 +18,6 @@ func encodeJSON(value any) (datatypes.JSON, error) {
 		return nil, err
 	}
 	return datatypes.JSON(data), nil
-}
-
-func decodeJSON(data datatypes.JSON) (map[string]any, error) {
-	if len(data) == 0 || string(data) == "null" {
-		return nil, nil
-	}
-	var value map[string]any
-	if err := json.Unmarshal(data, &value); err != nil {
-		return nil, fmt.Errorf("decode json: %w", err)
-	}
-	return value, nil
 }
 
 func modelTime(value time.Time) models.Time { return models.Time(value) }
@@ -47,8 +37,8 @@ func timePtr(value *models.Time) *time.Time {
 }
 
 func notificationFromEntity(entity *NotificationEntity) (*model.Notification, error) {
-	meta, err := decodeJSON(entity.Meta)
-	if err != nil {
+	var meta map[string]any
+	if err := filejson.Decode(entity.Meta, &meta); err != nil {
 		return nil, fmt.Errorf("parse notification meta: %w", err)
 	}
 	return &model.Notification{

@@ -15,10 +15,17 @@
 // decode. Values are carried as raw JSON, so nested objects (which are other
 // systems' data, such as the EXIF dictionary in FileMeta) and 64-bit numbers
 // survive unchanged.
+//
+// Decoding is also tolerant: a property whose stored value does not fit its
+// Go type (a NodaTime Instant stored as {}, a number stored as a string) is
+// dropped instead of discarding the whole value object that embeds it.
 package filejson
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"reflect"
 	"strings"
 	"unicode"
 
@@ -38,31 +45,56 @@ func References(raw []byte) []models.SnCloudFileReferenceObject {
 		return out
 	}
 	for _, entry := range entries {
-		var reference models.SnCloudFileReferenceObject
-		_ = json.Unmarshal(normalize(entry), &reference)
-		out = append(out, reference)
+		if reference := Reference(entry); reference != nil {
+			out = append(out, *reference)
+		}
 	}
 	return out
 }
 
 // Reference decodes one jsonb reference. It returns nil when the column is
-// empty, the JSON literal null or a blob that is not an object.
+// empty, the JSON literal null or a blob that is not an object. A malformed
+// property is dropped rather than nil-ing the reference, so a legacy row that
+// embeds an undecodable field still yields its id, mime type and metadata.
 func Reference(raw []byte) *models.SnCloudFileReferenceObject {
 	if len(raw) == 0 {
 		return nil
 	}
-	var reference *models.SnCloudFileReferenceObject
-	if err := json.Unmarshal(normalize(raw), &reference); err != nil {
+	normalized := normalize(raw)
+	if !isObject(normalized) {
 		return nil
 	}
+	var reference *models.SnCloudFileReferenceObject
+	if err := json.Unmarshal(normalized, &reference); err != nil {
+		reference = &models.SnCloudFileReferenceObject{}
+		decodeFields(normalized, reference)
+		if reference.Id == "" && reference.Url == "" {
+			return nil
+		}
+	}
 	return reference
+}
+
+// Decode unmarshals a jsonb column into destination without rewriting its
+// keys. Use it for columns whose values belong to the producer, not to the
+// fleet's value objects (free-form metadata maps), where the key spelling must
+// survive verbatim. An empty column or the JSON literal null leaves
+// destination untouched.
+func Decode(raw []byte, destination any) error {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	if err := json.Unmarshal(raw, destination); err != nil {
+		return fmt.Errorf("unmarshal json: %w", err)
+	}
+	return nil
 }
 
 // Unmarshal decodes a jsonb column into a typed destination after normalizing
 // its top-level keys. It is the typed counterpart of Value: use it for legacy
 // value objects whose wire shape is a Go struct rather than an any.
 func Unmarshal(raw []byte, destination any) error {
-	return json.Unmarshal(normalize(raw), destination)
+	return Decode(normalize(raw), destination)
 }
 
 // Value decodes a typed jsonb object for a wire field typed as any, keeping the
@@ -138,4 +170,48 @@ func toSnakeCase(value string) string {
 		out.WriteRune(r)
 	}
 	return out.String()
+}
+
+// isObject reports whether raw is a JSON object, i.e. a value whose keys can be
+// normalized and decoded into a struct. The leading byte is enough: callers
+// hand it blobs the driver returned from a jsonb column, and a parse failure
+// has already been ruled out by normalize.
+func isObject(raw []byte) bool {
+	trimmed := bytes.TrimSpace(raw)
+	return len(trimmed) > 0 && trimmed[0] == '{'
+}
+
+// decodeFields fills a struct one field at a time, skipping properties whose
+// stored value does not fit the field. It is the fallback for legacy rows that
+// a strict decode rejects: the field types and json tags are the same ones the
+// strict decode used, so every property that does fit is still read.
+func decodeFields(raw []byte, destination any) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil || fields == nil {
+		return
+	}
+	value := reflect.ValueOf(destination)
+	if value.Kind() != reflect.Pointer || value.IsNil() {
+		return
+	}
+	value = value.Elem()
+	if value.Kind() != reflect.Struct {
+		return
+	}
+	typ := value.Type()
+	for index := range typ.NumField() {
+		tag, _, _ := strings.Cut(typ.Field(index).Tag.Get("json"), ",")
+		if tag == "" || tag == "-" {
+			continue
+		}
+		encoded, present := fields[tag]
+		if !present {
+			continue
+		}
+		holder := reflect.New(value.Field(index).Type())
+		if err := json.Unmarshal(encoded, holder.Interface()); err != nil {
+			continue
+		}
+		value.Field(index).Set(holder.Elem())
+	}
 }

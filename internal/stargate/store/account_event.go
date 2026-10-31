@@ -234,7 +234,7 @@ func catalogFromEntity(entity *PresenceCatalogItemEntity, tags []model.PresenceT
 	if item.Tags == nil {
 		item.Tags = []model.PresenceTag{}
 	}
-	_ = decodeJSONValue(entity.Meta, &item.Meta)
+	_ = decodeJSON(&entity.Meta, &item.Meta)
 	return item
 }
 

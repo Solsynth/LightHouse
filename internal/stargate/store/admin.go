@@ -1452,7 +1452,7 @@ func adminActionLogFromEntity(entity *ActionLogEntity) model.ActionLog {
 		UpdatedAt: timePtr(&entity.UpdatedAt),
 		DeletedAt: deletedTime(entity.DeletedAt),
 	}
-	_ = decodeJSONValue(entity.Meta, &log.Meta)
+	_ = decodeJSON(&entity.Meta, &log.Meta)
 	_ = decodeJSON(entity.Location, &log.Location)
 	return log
 }

@@ -119,3 +119,35 @@ func TestRealmToProtoCarriesFileMeta(t *testing.T) {
 		t.Errorf("mime_type = %q, want application/octet-stream", proto.GetBackground().GetMimeType())
 	}
 }
+
+// reportedRealmPicture is a production realms.picture row: CreatedAt and
+// UpdatedAt are empty objects because the legacy fleet serialized NodaTime
+// Instants without a registered converter. The typed decode used to fail on
+// them, nil-ing the reference so every realm in the listing showed no picture.
+const reportedRealmPicture = `{"Id": "iibOlcZz2wWs9SyMsX4Tw", "Url": null, "Hash": "05a8b15d30729612a68654df3797c6ec", "Name": "upload.bin", "Size": 113136, "Width": null, "Height": null, "Blurhash": null, "FileMeta": {"blur": "KKS6Plof_3j[offQ~qayD%", "exif": {}, "xres": 2.834645669291339, "yres": 2.834645669291339, "bands": 3, "ratio": 1, "width": 984, "coding": 0, "format": 0, "height": 984, "xoffset": 0, "yoffset": 0, "filename": null, "orientation": 1, "vips-loader": "jpegload_source", "interpretation": 22, "jpeg-multiscan": 0, "jpeg-chroma-subsample": "4:4:4"}, "MimeType": "image/webp", "UserMeta": {}, "CreatedAt": {}, "DeletedAt": null, "UpdatedAt": {}, "HasCompression": false, "SensitiveMarks": []}`
+
+func TestRealmFromEntityKeepsPictureWithEmptyInstants(t *testing.T) {
+	raw := datatypes.JSON(reportedRealmPicture)
+	realm := RealmFromEntity(&RealmEntity{ID: uuid.New(), Picture: &raw})
+
+	wire, err := json.Marshal(realm)
+	if err != nil {
+		t.Fatalf("marshal realm: %v", err)
+	}
+	var decoded struct {
+		Picture map[string]any `json:"picture"`
+	}
+	if err := json.Unmarshal(wire, &decoded); err != nil {
+		t.Fatalf("unmarshal realm: %v", err)
+	}
+	if decoded.Picture["id"] != "iibOlcZz2wWs9SyMsX4Tw" {
+		t.Errorf("picture.id = %v", decoded.Picture["id"])
+	}
+	if decoded.Picture["mime_type"] != "image/webp" {
+		t.Errorf("picture.mime_type = %v, want image/webp", decoded.Picture["mime_type"])
+	}
+	fileMeta, _ := decoded.Picture["file_meta"].(map[string]any)
+	if fileMeta["width"] != float64(984) {
+		t.Errorf("picture.file_meta.width = %v, want 984", fileMeta["width"])
+	}
+}

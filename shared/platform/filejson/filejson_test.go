@@ -249,3 +249,77 @@ func TestUnmarshalNormalizesTypedObject(t *testing.T) {
 		t.Errorf("verified_by = %v, want staff", decoded.VerifiedBy)
 	}
 }
+
+// legacyRealmArtwork is a realms.picture row from the legacy fleet verbatim.
+// NodaTime Instants stored without a registered converter came out as {}, and
+// a typed decode used to fail on them, nil-ing the whole reference so every
+// realm listing reported no picture.
+const legacyRealmArtwork = `{"Id": "iibOlcZz2wWs9SyMsX4Tw", "Url": null, "Hash": "05a8b15d30729612a68654df3797c6ec", "Name": "upload.bin", "Size": 113136, "Width": null, "Height": null, "Blurhash": null, "FileMeta": {"blur": "KKS6Plof_3j[offQ~qayD%", "exif": {}, "xres": 2.834645669291339, "yres": 2.834645669291339, "bands": 3, "ratio": 1, "width": 984, "coding": 0, "format": 0, "height": 984, "xoffset": 0, "yoffset": 0, "filename": null, "orientation": 1, "vips-loader": "jpegload_source", "interpretation": 22, "jpeg-multiscan": 0, "jpeg-chroma-subsample": "4:4:4"}, "MimeType": "image/webp", "UserMeta": {}, "CreatedAt": {}, "DeletedAt": null, "UpdatedAt": {}, "HasCompression": false, "SensitiveMarks": []}`
+
+func TestReferenceToleratesEmptyInstants(t *testing.T) {
+	reference := Reference([]byte(legacyRealmArtwork))
+	if reference == nil {
+		t.Fatal("reference = nil, want the legacy picture decoded")
+	}
+	if reference.Id != "iibOlcZz2wWs9SyMsX4Tw" {
+		t.Errorf("id = %q", reference.Id)
+	}
+	if reference.MimeType != "image/webp" {
+		t.Errorf("mime_type = %q, want image/webp", reference.MimeType)
+	}
+	if reference.Size != 113136 {
+		t.Errorf("size = %d, want 113136", reference.Size)
+	}
+	if reference.FileMeta["width"] != float64(984) {
+		t.Errorf("file_meta.width = %v, want 984", reference.FileMeta["width"])
+	}
+	if reference.FileMeta["jpeg-chroma-subsample"] != "4:4:4" {
+		t.Errorf("file_meta = %v", reference.FileMeta)
+	}
+	if reference.CreatedAt == nil || !reference.CreatedAt.Time().IsZero() {
+		t.Errorf("created_at = %v, want the zero instant for an empty object", reference.CreatedAt)
+	}
+}
+
+func TestReferenceDropsMalformedProperties(t *testing.T) {
+	raw := []byte(`{"Id":"file-1","FileMeta":{"width":2},"MimeType":"image/png","Size":"not-a-number","Width":2.5}`)
+	reference := Reference(raw)
+	if reference == nil {
+		t.Fatal("reference = nil, want the malformed row decoded")
+	}
+	if reference.Id != "file-1" || reference.MimeType != "image/png" {
+		t.Errorf("id/mime_type = %q/%q", reference.Id, reference.MimeType)
+	}
+	if reference.FileMeta["width"] != float64(2) {
+		t.Errorf("file_meta = %v", reference.FileMeta)
+	}
+	if reference.Size != 0 || reference.Width != nil {
+		t.Errorf("size/width = %d/%v, want the malformed properties dropped", reference.Size, reference.Width)
+	}
+}
+
+func TestDecodeKeepsProducerKeys(t *testing.T) {
+	var meta map[string]any
+	if err := Decode([]byte(`{"iconURL":"x","Nested":{"Key":1}}`), &meta); err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if meta["iconURL"] != "x" {
+		t.Errorf("meta = %v, want the producer key untouched", meta)
+	}
+	nested, _ := meta["Nested"].(map[string]any)
+	if nested["Key"] != float64(1) {
+		t.Errorf("nested = %v", nested)
+	}
+}
+
+func TestDecodeEmptyAndNullLeaveDestination(t *testing.T) {
+	for _, raw := range [][]byte{nil, []byte(""), []byte("null")} {
+		meta := map[string]any{"keep": true}
+		if err := Decode(raw, &meta); err != nil {
+			t.Fatalf("Decode(%q): %v", raw, err)
+		}
+		if len(meta) != 1 || meta["keep"] != true {
+			t.Errorf("Decode(%q) rewrote the destination: %v", raw, meta)
+		}
+	}
+}

@@ -5,6 +5,7 @@
 package models
 
 import (
+	"bytes"
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
@@ -25,7 +26,20 @@ func (t Time) MarshalJSON() ([]byte, error) {
 func (t *Time) UnmarshalJSON(b []byte) error {
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil {
+		// Legacy C# rows stored NodaTime Instants without a converter, which
+		// System.Text.Json rendered as {}. That means "no instant", and
+		// rejecting it would discard the whole value object around it.
+		if bytes.Equal(bytes.TrimSpace(b), []byte("{}")) {
+			*t = Time{}
+			return nil
+		}
 		return err
+	}
+	if s == "" {
+		// An unset value field arrives as null (encoding/json hands
+		// UnmarshalJSON the literal) or as the empty string.
+		*t = Time{}
+		return nil
 	}
 	parsed, err := time.Parse(time.RFC3339, s)
 	if err != nil {

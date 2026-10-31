@@ -65,7 +65,7 @@ func (s *Store) GetAuthorizedAppScopes(ctx context.Context, accountID, appID str
 		return nil, mapNotFound(err)
 	}
 	var scopes []string
-	_ = decodeJSONValue(entity.Scopes, &scopes)
+	_ = decodeJSON(&entity.Scopes, &scopes)
 	return scopes, nil
 }
 

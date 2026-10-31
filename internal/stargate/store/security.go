@@ -663,7 +663,7 @@ func (s *Store) ListAuthorizedApps(ctx context.Context, accountID string, typ *m
 			UpdatedAt:        timePtr(&entity.UpdatedAt),
 			DeletedAt:        deletedTime(entity.DeletedAt),
 		}
-		_ = decodeJSONValue(entity.Scopes, &app.Scopes)
+		_ = decodeJSON(&entity.Scopes, &app.Scopes)
 		apps = append(apps, app)
 	}
 	return apps, int(total), nil

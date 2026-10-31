@@ -11,6 +11,7 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/filejson"
 	"src.solsynth.dev/sosys/stargate/model"
 	"src.solsynth.dev/sosys/stargate/store"
 )
@@ -42,13 +43,6 @@ func jsonBytes(value any) datatypes.JSON {
 	return datatypes.JSON(raw)
 }
 
-func decodeJSON(raw datatypes.JSON, dest any) {
-	if len(raw) == 0 || string(raw) == "null" {
-		return
-	}
-	_ = json.Unmarshal(raw, dest)
-}
-
 func optionalJSON(raw datatypes.JSON) datatypes.JSON {
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil
@@ -70,13 +64,13 @@ func checkInFromEntity(entity *CheckInResultEntity) *CheckInResult {
 		CreatedAt:        model.NewTime(entity.CreatedAt),
 		UpdatedAt:        model.NewTime(entity.UpdatedAt),
 	}
-	decodeJSON(entity.Tips, &result.Tips)
+	filejson.Decode(entity.Tips, &result.Tips)
 	if result.Tips == nil {
 		result.Tips = []FortuneTip{}
 	}
 	if len(entity.FortuneReport) > 0 && string(entity.FortuneReport) != "null" {
 		report := &FortuneReport{}
-		decodeJSON(entity.FortuneReport, report)
+		filejson.Decode(entity.FortuneReport, report)
 		result.FortuneReport = report
 	}
 	if entity.DeletedAt.Valid {
@@ -255,12 +249,12 @@ func userEventFromEntity(entity *UserCalendarEventEntity) *UserCalendarEvent {
 		UpdatedAt:   model.NewTime(entity.UpdatedAt),
 	}
 	event.Recurrence = decodeRecurrence(entity.Recurrence)
-	decodeJSON(entity.Tags, &event.Tags)
+	filejson.Decode(entity.Tags, &event.Tags)
 	if event.Tags == nil {
 		event.Tags = []string{}
 	}
 	if len(entity.Meta) > 0 {
-		decodeJSON(entity.Meta, &event.Meta)
+		filejson.Decode(entity.Meta, &event.Meta)
 	}
 	event.Icon = store.DecodeFileReference(&entity.Icon)
 	event.Background = store.DecodeFileReference(&entity.Background)
@@ -494,7 +488,7 @@ func (s *Store) CalendarTags(ctx context.Context, accountID uuid.UUID) ([]string
 	all := make([]string, 0)
 	for _, row := range rows {
 		var tags []string
-		decodeJSON(row, &tags)
+		filejson.Decode(row, &tags)
 		all = append(all, tags...)
 	}
 	return normalizeCalendarTags(all), nil
@@ -599,14 +593,14 @@ func storedNotableDayFromEntity(entity *NotableDayEntity) *StoredNotableDay {
 		CreatedAt:         model.NewTime(entity.CreatedAt),
 		UpdatedAt:         model.NewTime(entity.UpdatedAt),
 	}
-	decodeJSON(entity.Tags, &day.Tags)
+	filejson.Decode(entity.Tags, &day.Tags)
 	if day.Tags == nil {
 		day.Tags = []NotableDayTag{}
 	}
 	if len(entity.Meta) > 0 {
-		decodeJSON(entity.Meta, &day.Meta)
+		filejson.Decode(entity.Meta, &day.Meta)
 	}
-	decodeJSON(entity.HolidayDays, &day.HolidayDays)
+	filejson.Decode(entity.HolidayDays, &day.HolidayDays)
 	if day.HolidayDays == nil {
 		day.HolidayDays = []string{}
 	}

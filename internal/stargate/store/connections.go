@@ -32,7 +32,7 @@ func connectionFromEntity(entity *ConnectionEntity) model.Connection {
 		UpdatedAt:          timePtr(&entity.UpdatedAt),
 		DeletedAt:          deletedTime(entity.DeletedAt),
 	}
-	_ = decodeJSONValue(entity.Meta, &connection.Meta)
+	_ = decodeJSON(&entity.Meta, &connection.Meta)
 	if entity.AccessToken != nil {
 		connection.AccessToken = *entity.AccessToken
 	}

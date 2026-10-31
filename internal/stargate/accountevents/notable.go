@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/filejson"
 )
 
 // NotableService resolves notable days/holidays into concrete occurrences for
@@ -262,8 +264,8 @@ func storedEntityToNotableDay(entity *NotableDayEntity) NotableDay {
 		Holidays:       holidayTypes(entity.Tags),
 		Tags:           []NotableDayTag{},
 	}
-	decodeJSON(entity.Meta, &day.Meta)
-	decodeJSON(entity.Tags, &day.Tags)
+	filejson.Decode(entity.Meta, &day.Meta)
+	filejson.Decode(entity.Tags, &day.Tags)
 	if day.Tags == nil {
 		day.Tags = []NotableDayTag{}
 	}
@@ -286,7 +288,7 @@ func generateRecurringDay(entity *NotableDayEntity, year int) *NotableDay {
 		Holidays:       holidayTypes(entity.Tags),
 		Tags:           tags,
 	}
-	decodeJSON(entity.Meta, &day.Meta)
+	filejson.Decode(entity.Meta, &day.Meta)
 	return &day
 }
 
@@ -322,7 +324,7 @@ func generatePeriodDays(entity *NotableDayEntity, year int) []NotableDay {
 			Holidays:       []NotableHolidayType{},
 			Tags:           decodeTags(entity.Tags),
 		}
-		decodeJSON(entity.Meta, &day.Meta)
+		filejson.Decode(entity.Meta, &day.Meta)
 		if isHoliday {
 			day.Holidays = []NotableHolidayType{HolidayPublic}
 		}
@@ -359,7 +361,7 @@ func isLunarPattern(entity *NotableDayEntity) bool {
 		return false
 	}
 	var meta map[string]any
-	decodeJSON(entity.Meta, &meta)
+	filejson.Decode(entity.Meta, &meta)
 	value, ok := meta["calendar"]
 	if !ok {
 		return false
@@ -511,7 +513,7 @@ func holidayTypes(rawTags []byte) []NotableHolidayType {
 
 func decodeTags(raw []byte) []NotableDayTag {
 	tags := []NotableDayTag{}
-	decodeJSON(raw, &tags)
+	filejson.Decode(raw, &tags)
 	if tags == nil {
 		tags = []NotableDayTag{}
 	}

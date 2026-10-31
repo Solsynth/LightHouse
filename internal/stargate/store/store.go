@@ -129,8 +129,8 @@ func sessionFromEntity(entity *AuthSessionEntity) *model.AuthSession {
 		ChallengeId: uuidPtrStr(entity.ChallengeID), AppId: uuidPtrStr(entity.AppID),
 		Epoch: entity.Epoch,
 	}
-	_ = decodeJSONValue(entity.Audiences, &session.Audiences)
-	_ = decodeJSONValue(entity.Scopes, &session.Scopes)
+	_ = decodeJSON(&entity.Audiences, &session.Audiences)
+	_ = decodeJSON(&entity.Scopes, &session.Scopes)
 	_ = decodeJSON(entity.Location, &session.Location)
 	return session
 }
