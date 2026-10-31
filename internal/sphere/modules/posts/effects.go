@@ -12,6 +12,7 @@ import (
 
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
+	"src.solsynth.dev/sosys/lighthouse/internal/sphere/localization"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/ports"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
@@ -183,11 +184,15 @@ func (h *handler) notifyPostAudience(ctx context.Context, ent *store.PostEntity,
 	if ent.RepliedPostID != nil {
 		if author, ok := h.postAuthorAccountID(ctx, *ent.RepliedPostID); ok {
 			if author != actor && h.replyNotificationsEnabled(ctx, author) && !h.isBlockedOrMuted(ctx, author, actor) {
-				title := "Someone replied to your post"
-				if publisherName != "" {
-					title = publisherName + " replied to your post"
+				lang := h.accountLanguage(ctx, author)
+				actorName := publisherName
+				if actorName == "" {
+					actorName = "Someone"
 				}
-				_, body := chopPostForNotification(ent)
+				title := localization.Localize(lang, "postReplyTitle", map[string]string{
+					"user": actorName,
+				})
+				_, body := chopPostForNotification(ent, lang)
 				meta := map[string]string{
 					"notification_type": "post_watch",
 					"watch_event_type":  "reply",
@@ -223,23 +228,28 @@ func (h *handler) notifyPostAudience(ctx context.Context, ent *store.PostEntity,
 					}
 					rawIDs = h.filterBlockedAndMuted(ctx, *pubAccountID, rawIDs)
 					if len(rawIDs) > 0 {
-						ids := make([]string, 0, len(rawIDs))
-						for _, id := range rawIDs {
-							ids = append(ids, id.String())
-							notified[id] = struct{}{}
+						byLang := h.accountLanguages(ctx, rawIDs)
+						for lang, userIDs := range byLang {
+							for _, uidStr := range userIDs {
+								if uid, err := uuid.Parse(uidStr); err == nil {
+									notified[uid] = struct{}{}
+								}
+							}
+							title, body := chopPostForNotification(ent, lang)
+							if publisherName != "" {
+								title = localization.Localize(lang, "postCloseFriendTitle", map[string]string{
+									"publisher": publisherName,
+								})
+							}
+							meta := map[string]string{
+								"notification_type": "close_friends",
+								"topic":             "posts.close_friends",
+								"post_id":           ent.ID.String(),
+								"publisher_id":      ent.PublisherID.String(),
+								"action_uri":        "/posts/" + ent.ID.String(),
+							}
+							_ = notify.SendPushToAccounts(ctx, userIDs, title, body, meta)
 						}
-						title, body := chopPostForNotification(ent)
-						if publisherName != "" {
-							title = publisherName
-						}
-						meta := map[string]string{
-							"notification_type": "close_friends",
-							"topic":             "posts.close_friends",
-							"post_id":           ent.ID.String(),
-							"publisher_id":      ent.PublisherID.String(),
-							"action_uri":        "/posts/" + ent.ID.String(),
-						}
-						_ = notify.SendPushToAccounts(ctx, ids, title, body, meta)
 					}
 				}
 			}
@@ -304,59 +314,74 @@ func (h *handler) notifyPostAudience(ctx context.Context, ent *store.PostEntity,
 			}
 
 			if len(cleanIDs) > 0 {
-				ids := make([]string, 0, len(cleanIDs))
-				for _, id := range cleanIDs {
-					ids = append(ids, id.String())
-					notified[id] = struct{}{}
+				byLang := h.accountLanguages(ctx, cleanIDs)
+				for lang, userIDs := range byLang {
+					for _, uidStr := range userIDs {
+						if uid, err := uuid.Parse(uidStr); err == nil {
+							notified[uid] = struct{}{}
+						}
+					}
+					sort.Strings(userIDs)
+					title, body := chopPostForNotification(ent, lang)
+					if publisherName != "" {
+						title = localization.Localize(lang, "postSubscriptionTitle", map[string]string{
+							"publisher": publisherName,
+						})
+					}
+					meta := map[string]string{
+						"notification_type": "subscription",
+						"topic":             "posts.new",
+						"post_id":           ent.ID.String(),
+						"publisher_id":      ent.PublisherID.String(),
+						"action_uri":        "/posts/" + ent.ID.String(),
+					}
+					_ = notify.SendPushToAccounts(ctx, userIDs, title, body, meta)
 				}
-				sort.Strings(ids)
-				title, body := chopPostForNotification(ent)
-				if publisherName != "" {
-					title = publisherName
-				}
-				meta := map[string]string{
-					"notification_type": "subscription",
-					"topic":             "posts.new",
-					"post_id":           ent.ID.String(),
-					"publisher_id":      ent.PublisherID.String(),
-					"action_uri":        "/posts/" + ent.ID.String(),
-				}
-				_ = notify.SendPushToAccounts(ctx, ids, title, body, meta)
 			}
 		}
 	}
 
 	// 3. Mentions: notify accounts mentioned in the post that were not already notified.
-	var mentionRecipients []string
+	var mentionRecipients []uuid.UUID
 	for _, id := range h.mentionedAccountIDs(ctx, ent) {
 		if id == uuid.Nil || id == actor {
 			continue
 		}
 		if _, already := notified[id]; !already {
 			if !h.isBlockedOrMuted(ctx, id, actor) {
-				mentionRecipients = append(mentionRecipients, id.String())
+				mentionRecipients = append(mentionRecipients, id)
 				notified[id] = struct{}{}
 			}
 		}
 	}
 	if len(mentionRecipients) > 0 {
-		sort.Strings(mentionRecipients)
-		title := "You were mentioned in a post"
-		if publisherName != "" {
-			title = publisherName + " mentioned you in a post"
+		byLang := h.accountLanguages(ctx, mentionRecipients)
+		for lang, userIDs := range byLang {
+			sort.Strings(userIDs)
+			actorName := publisherName
+			if actorName == "" {
+				actorName = "Someone"
+			}
+			title := localization.Localize(lang, "postMentionTitle", map[string]string{
+				"user": actorName,
+			})
+			_, content := chopPostForNotification(ent, lang)
+			body := localization.Localize(lang, "postMentionBody", map[string]string{
+				"user":    actorName,
+				"content": content,
+			})
+			meta := map[string]string{
+				"notification_type": "mention",
+				"topic":             "posts.mention",
+				"post_id":           ent.ID.String(),
+				"action_uri":        "/posts/" + ent.ID.String(),
+			}
+			_ = notify.SendPushToAccounts(ctx, userIDs, title, body, meta)
 		}
-		_, body := chopPostForNotification(ent)
-		meta := map[string]string{
-			"notification_type": "mention",
-			"topic":             "posts.mention",
-			"post_id":           ent.ID.String(),
-			"action_uri":        "/posts/" + ent.ID.String(),
-		}
-		_ = notify.SendPushToAccounts(ctx, mentionRecipients, title, body, meta)
 	}
 }
 
-func chopPostForNotification(ent *store.PostEntity) (title, body string) {
+func chopPostForNotification(ent *store.PostEntity, locale string) (title, body string) {
 	if ent.Title != nil && strings.TrimSpace(*ent.Title) != "" {
 		title = strings.TrimSpace(*ent.Title)
 	}
@@ -390,7 +415,10 @@ func chopPostForNotification(ent *store.PostEntity) (title, body string) {
 		}
 	}
 	if title == "" {
-		title = "New post"
+		title = localization.Localize(locale, "postSharedMedia", map[string]string{"count": "1"})
+		if title == "postSharedMedia" {
+			title = "New post"
+		}
 	}
 	if body == "" {
 		body = title
@@ -414,6 +442,48 @@ func (h *handler) postAuthorAccountID(ctx context.Context, postID uuid.UUID) (uu
 		return uuid.Nil, false
 	}
 	return h.publisherAccountID(ctx, ent.PublisherID)
+}
+
+func (h *handler) accountLanguages(ctx context.Context, accountIDs []uuid.UUID) map[string][]string {
+	byLang := make(map[string][]string)
+	if len(accountIDs) == 0 {
+		return byLang
+	}
+	idStrings := make([]string, len(accountIDs))
+	for i, id := range accountIDs {
+		idStrings[i] = id.String()
+	}
+	seen := make(map[string]struct{}, len(idStrings))
+	if accounts, ok := module.Get[ports.Accounts](h.ports, ports.PortAccounts); ok {
+		if list, err := accounts.GetAccounts(ctx, idStrings); err == nil {
+			for _, acc := range list {
+				if acc == nil {
+					continue
+				}
+				lang := acc.GetLanguage()
+				if lang == "" {
+					lang = "en"
+				}
+				byLang[lang] = append(byLang[lang], acc.GetId())
+				seen[acc.GetId()] = struct{}{}
+			}
+		}
+	}
+	for _, idStr := range idStrings {
+		if _, ok := seen[idStr]; !ok {
+			byLang["en"] = append(byLang["en"], idStr)
+		}
+	}
+	return byLang
+}
+
+func (h *handler) accountLanguage(ctx context.Context, accountID uuid.UUID) string {
+	if accounts, ok := module.Get[ports.Accounts](h.ports, ports.PortAccounts); ok {
+		if acc, err := accounts.GetAccount(ctx, accountID.String()); err == nil && acc != nil && acc.GetLanguage() != "" {
+			return acc.GetLanguage()
+		}
+	}
+	return "en"
 }
 
 func (h *handler) isBlockedOrMuted(ctx context.Context, accountID, otherID uuid.UUID) bool {

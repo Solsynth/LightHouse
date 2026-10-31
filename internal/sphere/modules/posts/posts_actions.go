@@ -19,6 +19,7 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/authn"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/httpx"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
+	"src.solsynth.dev/sosys/lighthouse/internal/sphere/localization"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/ports"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
@@ -208,10 +209,22 @@ func (h *handler) notifyReaction(ctx context.Context, ent *store.PostEntity, act
 	if actorName == "" {
 		actorName = "Someone"
 	}
-	title := actorName + " reacted to your post"
-	body := actorName + " reacted with " + symbol
+	lang := h.accountLanguage(ctx, targetAccountID)
+	title := localization.Localize(lang, "postReactTitle", map[string]string{
+		"user": actorName,
+	})
+	var body string
 	if ent.Title != nil && strings.TrimSpace(*ent.Title) != "" {
-		body = actorName + " reacted with " + symbol + " to \"" + strings.TrimSpace(*ent.Title) + "\""
+		body = localization.Localize(lang, "postReactContentBody", map[string]string{
+			"user":     actorName,
+			"reaction": symbol,
+			"title":    strings.TrimSpace(*ent.Title),
+		})
+	} else {
+		body = localization.Localize(lang, "postReactBody", map[string]string{
+			"user":     actorName,
+			"reaction": symbol,
+		})
 	}
 	meta := map[string]string{
 		"notification_type": "reaction",

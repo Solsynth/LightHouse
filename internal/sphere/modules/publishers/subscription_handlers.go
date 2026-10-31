@@ -11,6 +11,7 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/authn"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/filejson"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/httpx"
+	"src.solsynth.dev/sosys/lighthouse/internal/sphere/localization"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
 )
@@ -488,14 +489,28 @@ func (i *instance) notifyManagers(ctx context.Context, publisher *store.Publishe
 	requesterAccount := i.getAccount(ctx, requester.String())
 	name := "A user"
 	if requesterAccount != nil {
-		name = requesterAccount.GetNick()
+		if requesterAccount.GetNick() != "" {
+			name = requesterAccount.GetNick()
+		} else if requesterAccount.GetName() != "" {
+			name = requesterAccount.GetName()
+		}
 	}
-	title := "Follow request received"
-	body := name + " wants to follow " + publisher.Nick
 	for _, row := range rows {
 		if row.Role < roleManager {
 			continue
 		}
+		lang := "en"
+		if managerAcc := i.getAccount(ctx, row.AccountID.String()); managerAcc != nil && managerAcc.GetLanguage() != "" {
+			lang = managerAcc.GetLanguage()
+		}
+		title := localization.Localize(lang, "followRequestReceivedTitle", map[string]string{
+			"user":      name,
+			"publisher": publisher.Nick,
+		})
+		body := localization.Localize(lang, "followRequestReceivedBody", map[string]string{
+			"user":      name,
+			"publisher": publisher.Nick,
+		})
 		if err := i.notify.SendPush(ctx, row.AccountID.String(), title, body, map[string]string{
 			"notification_type": "follow_request",
 			"publisher_id":      publisher.ID.String(),

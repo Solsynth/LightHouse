@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/httpx"
+	"src.solsynth.dev/sosys/lighthouse/internal/sphere/localization"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
 )
 
@@ -101,11 +102,17 @@ func (i *instance) handleAddSubscriber(c *gin.Context) {
 	}
 	account := i.getAccount(c.Request.Context(), accountID.String())
 	if account != nil && i.notify != nil {
-		_ = i.notify.SendPush(c.Request.Context(), accountID.String(), "Subscriber added",
-			"You were added as a subscriber of "+publisher.Nick, map[string]string{
-				"notification_type": "subscriber_added",
-				"publisher_id":      publisher.ID.String(),
-			})
+		lang := account.GetLanguage()
+		title := localization.Localize(lang, "subscriberAddedTitle", map[string]string{
+			"publisher": publisher.Nick,
+		})
+		body := localization.Localize(lang, "subscriberAddedBody", map[string]string{
+			"publisher": publisher.Nick,
+		})
+		_ = i.notify.SendPush(c.Request.Context(), accountID.String(), title, body, map[string]string{
+			"notification_type": "subscriber_added",
+			"publisher_id":      publisher.ID.String(),
+		})
 	}
 	result := subscriberResponse{Subscription: i.subscriptionDTO(subscription, nil)}
 	if account != nil {
@@ -339,11 +346,25 @@ func (i *instance) notifyFollowDecision(c *gin.Context, publisher *store.Publish
 	if i.notify == nil || request == nil || request.AccountID == nil {
 		return
 	}
-	title := "Follow request rejected"
-	body := "Your follow request to " + publisher.Nick + " was rejected"
+	lang := "en"
+	if acc := i.getAccount(c.Request.Context(), request.AccountID.String()); acc != nil && acc.GetLanguage() != "" {
+		lang = acc.GetLanguage()
+	}
+	var title, body string
 	if approved {
-		title = "Follow request approved"
-		body = "Your follow request to " + publisher.Nick + " was approved"
+		title = localization.Localize(lang, "followRequestApprovedTitle", map[string]string{
+			"publisher": publisher.Nick,
+		})
+		body = localization.Localize(lang, "followRequestApprovedBody", map[string]string{
+			"publisher": publisher.Nick,
+		})
+	} else {
+		title = localization.Localize(lang, "followRequestRejectedTitle", map[string]string{
+			"publisher": publisher.Nick,
+		})
+		body = localization.Localize(lang, "followRequestRejectedBody", map[string]string{
+			"publisher": publisher.Nick,
+		})
 	}
 	if reason != nil && *reason != "" {
 		body += ": " + *reason
