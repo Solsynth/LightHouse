@@ -165,7 +165,17 @@ func (p *notifyPort) SendPushToAccounts(ctx context.Context, accountIDs []string
 	if len(accountIDs) == 0 {
 		return nil
 	}
-	notification := &gen.DyPushNotification{Title: title, Body: body}
+	notification := &gen.DyPushNotification{
+		Title:     title,
+		Body:      body,
+		IsSavable: true,
+	}
+	if topic, ok := meta["topic"]; ok && topic != "" {
+		notification.Topic = topic
+	}
+	if actionURI, ok := meta["action_uri"]; ok && actionURI != "" {
+		notification.ActionUri = &actionURI
+	}
 	if len(meta) > 0 {
 		if raw, err := json.Marshal(meta); err == nil {
 			notification.Meta = raw

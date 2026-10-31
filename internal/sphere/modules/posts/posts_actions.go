@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,6 +13,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/authn"
@@ -171,8 +173,59 @@ func (h *handler) reactPost(c *gin.Context) {
 	if !isSelfReact {
 		h.adjustPostVotes(ctx, &ent, request.Attitude, true)
 		h.enqueueInterest(accountID, ent.ID, float64(reactionWeight(request.Attitude)), "reaction")
+		go h.notifyReaction(context.WithoutCancel(ctx), &ent, account, request.Symbol, request.Attitude)
 	}
 	httpx.OK(c, postReactionToModel(&reaction))
+}
+
+func (h *handler) notifyReaction(ctx context.Context, ent *store.PostEntity, actor *gen.DyAccount, symbol string, attitude int) {
+	notify, ok := module.Get[ports.Notify](h.ports, ports.PortNotify)
+	if !ok || ent == nil || actor == nil {
+		return
+	}
+	actorID, err := uuid.Parse(actor.GetId())
+	if err != nil {
+		return
+	}
+	publisher, err := h.publisherByID(ctx, ent.PublisherID)
+	if err != nil || publisher == nil || publisher.AccountID == nil {
+		return
+	}
+	targetAccountID := *publisher.AccountID
+	if targetAccountID == actorID {
+		return
+	}
+	if !h.reactionNotificationsEnabled(ctx, targetAccountID) {
+		return
+	}
+	if h.isBlockedOrMuted(ctx, targetAccountID, actorID) {
+		return
+	}
+	actorName := actor.GetNick()
+	if actorName == "" {
+		actorName = actor.GetName()
+	}
+	if actorName == "" {
+		actorName = "Someone"
+	}
+	title := actorName + " reacted to your post"
+	body := actorName + " reacted with " + symbol
+	if ent.Title != nil && strings.TrimSpace(*ent.Title) != "" {
+		body = actorName + " reacted with " + symbol + " to \"" + strings.TrimSpace(*ent.Title) + "\""
+	}
+	meta := map[string]string{
+		"notification_type": "reaction",
+		"reaction":          symbol,
+		"reaction_attitude": strconv.Itoa(attitude),
+		"actor_id":          actorID.String(),
+		"actor_name":        actorName,
+		"post_id":           ent.ID.String(),
+		"topic":             "posts.reactions",
+		"action_uri":        "/posts/" + ent.ID.String(),
+	}
+	if err := notify.SendPush(ctx, targetAccountID.String(), title, body, meta); err != nil {
+		h.log.Warn("posts: notify reaction failed", "post", ent.ID, "target", targetAccountID, "error", err)
+	}
 }
 
 func (h *handler) adjustPostVotes(ctx context.Context, ent *store.PostEntity, attitude int, adding bool) {

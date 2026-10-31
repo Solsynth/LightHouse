@@ -8,7 +8,9 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/proto"
 
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/ports"
@@ -149,50 +151,260 @@ func (h *handler) publishPostFederation(ctx context.Context, ent *store.PostEnti
 
 func (h *handler) notifyPostAudience(ctx context.Context, ent *store.PostEntity, post *model.Post, action string, actor uuid.UUID) {
 	notify, ok := module.Get[ports.Notify](h.ports, ports.PortNotify)
-	if !ok {
+	if !ok || ent == nil {
 		return
 	}
-	recipients := map[string]struct{}{}
-	add := func(id uuid.UUID) {
-		if id == uuid.Nil || id == actor {
-			return
+	// Drafted posts do not dispatch push notifications.
+	if ent.DraftedAt != nil {
+		return
+	}
+
+	publisherName := ""
+	if post != nil && post.Publisher != nil {
+		if post.Publisher.Nick != "" {
+			publisherName = post.Publisher.Nick
+		} else if post.Publisher.Name != "" {
+			publisherName = post.Publisher.Name
 		}
-		recipients[id.String()] = struct{}{}
 	}
-
-	for _, id := range h.mentionedAccountIDs(ctx, ent) {
-		add(id)
-	}
-
-	if ent.RepliedPostID != nil {
-		if author, ok := h.postAuthorAccountID(ctx, *ent.RepliedPostID); ok {
-			if h.replyNotificationsEnabled(ctx, author) {
-				add(author)
+	if publisherName == "" {
+		if pub, err := h.publisherByID(ctx, ent.PublisherID); err == nil && pub != nil {
+			if pub.Nick != "" {
+				publisherName = pub.Nick
+			} else if pub.Name != "" {
+				publisherName = pub.Name
 			}
 		}
 	}
-	if len(recipients) == 0 {
-		return
-	}
-	ids := make([]string, 0, len(recipients))
-	for id := range recipients {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
 
-	title := "New post"
-	body := "A post you subscribed to was published."
-	if action == "updated" {
-		title = "Post updated"
-		body = "A post you subscribed to was updated."
+	notified := make(map[uuid.UUID]struct{})
+
+	// 1. Reply notification: if this post is a reply to another post.
+	if ent.RepliedPostID != nil {
+		if author, ok := h.postAuthorAccountID(ctx, *ent.RepliedPostID); ok {
+			if author != actor && h.replyNotificationsEnabled(ctx, author) && !h.isBlockedOrMuted(ctx, author, actor) {
+				title := "Someone replied to your post"
+				if publisherName != "" {
+					title = publisherName + " replied to your post"
+				}
+				_, body := chopPostForNotification(ent)
+				meta := map[string]string{
+					"notification_type": "post_watch",
+					"watch_event_type":  "reply",
+					"topic":             "posts.watch.replies",
+					"post_id":           ent.ID.String(),
+					"replied_post_id":   ent.RepliedPostID.String(),
+					"publisher_id":      ent.PublisherID.String(),
+					"action_uri":        "/posts/" + ent.ID.String(),
+				}
+				if err := notify.SendPush(ctx, author.String(), title, body, meta); err == nil {
+					notified[author] = struct{}{}
+				}
+			}
+		}
+	} else if action == "created" {
+		// 2. Subscriber / Audience notification (only for top-level posts on publish).
+		var pubAccountID *uuid.UUID
+		if id, ok := h.publisherAccountID(ctx, ent.PublisherID); ok {
+			pubAccountID = &id
+		}
+
+		if ent.Visibility == int(model.VisibilityCloseFriendsOnly) {
+			// Close friends visibility: notify accounts author considers close friends.
+			if pubAccountID != nil && h.core != nil && h.core.Clients != nil && h.core.Clients.Profile != nil {
+				if resp, err := h.core.Clients.Profile.ListCloseFriends(ctx, &gen.DyListRelationshipSimpleRequest{
+					RelationIdentifier: &gen.DyListRelationshipSimpleRequest_AccountId{AccountId: pubAccountID.String()},
+				}); err == nil && resp != nil {
+					var rawIDs []uuid.UUID
+					for _, raw := range resp.GetAccountsId() {
+						if id, err := uuid.Parse(raw); err == nil && id != actor && id != uuid.Nil {
+							rawIDs = append(rawIDs, id)
+						}
+					}
+					rawIDs = h.filterBlockedAndMuted(ctx, *pubAccountID, rawIDs)
+					if len(rawIDs) > 0 {
+						ids := make([]string, 0, len(rawIDs))
+						for _, id := range rawIDs {
+							ids = append(ids, id.String())
+							notified[id] = struct{}{}
+						}
+						title, body := chopPostForNotification(ent)
+						if publisherName != "" {
+							title = publisherName
+						}
+						meta := map[string]string{
+							"notification_type": "close_friends",
+							"topic":             "posts.close_friends",
+							"post_id":           ent.ID.String(),
+							"publisher_id":      ent.PublisherID.String(),
+							"action_uri":        "/posts/" + ent.ID.String(),
+						}
+						_ = notify.SendPushToAccounts(ctx, ids, title, body, meta)
+					}
+				}
+			}
+		} else if ent.Visibility == int(model.VisibilityPublic) || ent.Visibility == int(model.VisibilityQuietPublic) {
+			// Public visibility: gather publisher subscribers & topic subscribers.
+			var subAccountIDs []uuid.UUID
+			h.db.WithContext(ctx).Model(&store.PublisherSubscriptionEntity{}).
+				Where("publisher_id = ? AND state = ? AND ended_at IS NULL AND is_blocking = false AND notify = true AND account_id IS NOT NULL",
+					ent.PublisherID, int(model.SubscriptionAccepted)).
+				Pluck("account_id", &subAccountIDs)
+
+			// Topic subscribers (categories, tags, collections):
+			var categoryIDs []uuid.UUID
+			_ = h.db.WithContext(ctx).Table("post_category_links").
+				Where("posts_id = ?", ent.ID).Pluck("categories_id", &categoryIDs).Error
+
+			var tagIDs []uuid.UUID
+			_ = h.db.WithContext(ctx).Table("post_tag_links").
+				Where("posts_id = ?", ent.ID).Pluck("tags_id", &tagIDs).Error
+
+			var collectionIDs []uuid.UUID
+			_ = h.db.WithContext(ctx).Model(&store.PostCollectionItemEntity{}).
+				Where("post_id = ?", ent.ID).Pluck("collection_id", &collectionIDs).Error
+
+			if len(categoryIDs) > 0 || len(tagIDs) > 0 || len(collectionIDs) > 0 {
+				var topicConditions []string
+				var topicArgs []any
+				if len(categoryIDs) > 0 {
+					topicConditions = append(topicConditions, "category_id IN ?")
+					topicArgs = append(topicArgs, categoryIDs)
+				}
+				if len(tagIDs) > 0 {
+					topicConditions = append(topicConditions, "tag_id IN ?")
+					topicArgs = append(topicArgs, tagIDs)
+				}
+				if len(collectionIDs) > 0 {
+					topicConditions = append(topicConditions, "collection_id IN ?")
+					topicArgs = append(topicArgs, collectionIDs)
+				}
+				var topicSubs []uuid.UUID
+				_ = h.db.WithContext(ctx).Model(&store.PostCategorySubscriptionEntity{}).
+					Where(strings.Join(topicConditions, " OR "), topicArgs...).
+					Pluck("account_id", &topicSubs).Error
+				subAccountIDs = append(subAccountIDs, topicSubs...)
+			}
+
+			// Deduplicate and exclude actor / nil
+			unique := make(map[uuid.UUID]struct{}, len(subAccountIDs))
+			cleanIDs := make([]uuid.UUID, 0, len(subAccountIDs))
+			for _, id := range subAccountIDs {
+				if id == uuid.Nil || id == actor {
+					continue
+				}
+				if _, seen := unique[id]; !seen {
+					unique[id] = struct{}{}
+					cleanIDs = append(cleanIDs, id)
+				}
+			}
+
+			if pubAccountID != nil {
+				cleanIDs = h.filterBlockedAndMuted(ctx, *pubAccountID, cleanIDs)
+			}
+
+			if len(cleanIDs) > 0 {
+				ids := make([]string, 0, len(cleanIDs))
+				for _, id := range cleanIDs {
+					ids = append(ids, id.String())
+					notified[id] = struct{}{}
+				}
+				sort.Strings(ids)
+				title, body := chopPostForNotification(ent)
+				if publisherName != "" {
+					title = publisherName
+				}
+				meta := map[string]string{
+					"notification_type": "subscription",
+					"topic":             "posts.new",
+					"post_id":           ent.ID.String(),
+					"publisher_id":      ent.PublisherID.String(),
+					"action_uri":        "/posts/" + ent.ID.String(),
+				}
+				_ = notify.SendPushToAccounts(ctx, ids, title, body, meta)
+			}
+		}
 	}
-	if post != nil && post.Publisher != nil && post.Publisher.Name != "" {
-		body = post.Publisher.Name + " published a post."
+
+	// 3. Mentions: notify accounts mentioned in the post that were not already notified.
+	var mentionRecipients []string
+	for _, id := range h.mentionedAccountIDs(ctx, ent) {
+		if id == uuid.Nil || id == actor {
+			continue
+		}
+		if _, already := notified[id]; !already {
+			if !h.isBlockedOrMuted(ctx, id, actor) {
+				mentionRecipients = append(mentionRecipients, id.String())
+				notified[id] = struct{}{}
+			}
+		}
 	}
-	meta := map[string]string{"post_id": ent.ID.String(), "event": "post." + action}
-	if err := notify.SendPushToAccounts(ctx, ids, title, body, meta); err != nil {
-		h.log.Warn("posts: notify post audience failed", "post", ent.ID, "error", err)
+	if len(mentionRecipients) > 0 {
+		sort.Strings(mentionRecipients)
+		title := "You were mentioned in a post"
+		if publisherName != "" {
+			title = publisherName + " mentioned you in a post"
+		}
+		_, body := chopPostForNotification(ent)
+		meta := map[string]string{
+			"notification_type": "mention",
+			"topic":             "posts.mention",
+			"post_id":           ent.ID.String(),
+			"action_uri":        "/posts/" + ent.ID.String(),
+		}
+		_ = notify.SendPushToAccounts(ctx, mentionRecipients, title, body, meta)
 	}
+}
+
+func chopPostForNotification(ent *store.PostEntity) (title, body string) {
+	if ent.Title != nil && strings.TrimSpace(*ent.Title) != "" {
+		title = strings.TrimSpace(*ent.Title)
+	}
+	if ent.Description != nil && strings.TrimSpace(*ent.Description) != "" {
+		d := strings.TrimSpace(*ent.Description)
+		if len(d) > 40 {
+			body = d[:37] + "..."
+		} else {
+			body = d
+		}
+		if title == "" {
+			if len(d) > 10 {
+				title = d[:10] + "..."
+			} else {
+				title = d
+			}
+		}
+	} else if ent.Content != nil && strings.TrimSpace(*ent.Content) != "" {
+		c := strings.TrimSpace(*ent.Content)
+		if len(c) > 100 {
+			body = c[:97] + "..."
+		} else {
+			body = c
+		}
+		if title == "" {
+			if len(c) > 20 {
+				title = c[:17] + "..."
+			} else {
+				title = c
+			}
+		}
+	}
+	if title == "" {
+		title = "New post"
+	}
+	if body == "" {
+		body = title
+	}
+	return title, body
+}
+
+// publisherAccountID resolves the owning account of a publisher.
+func (h *handler) publisherAccountID(ctx context.Context, publisherID uuid.UUID) (uuid.UUID, bool) {
+	publisher, err := h.publisherByID(ctx, publisherID)
+	if err != nil || publisher == nil || publisher.AccountID == nil {
+		return uuid.Nil, false
+	}
+	return *publisher.AccountID, true
 }
 
 // postAuthorAccountID resolves the owning account of a post's publisher.
@@ -201,11 +413,77 @@ func (h *handler) postAuthorAccountID(ctx context.Context, postID uuid.UUID) (uu
 	if err := h.db.WithContext(ctx).Where("id = ?", postID).First(&ent).Error; err != nil {
 		return uuid.Nil, false
 	}
-	publisher, err := h.publisherByID(ctx, ent.PublisherID)
-	if err != nil || publisher.AccountID == nil {
-		return uuid.Nil, false
+	return h.publisherAccountID(ctx, ent.PublisherID)
+}
+
+func (h *handler) isBlockedOrMuted(ctx context.Context, accountID, otherID uuid.UUID) bool {
+	if h.core == nil || h.core.Clients == nil || h.core.Clients.Profile == nil {
+		return false
 	}
-	return *publisher.AccountID, true
+	hasBlocked, err := h.core.Clients.Profile.HasRelationship(ctx, &gen.DyGetRelationshipRequest{
+		AccountId:       accountID.String(),
+		RelatedId:       otherID.String(),
+		Status:          proto.Int32(-100),
+		EitherDirection: true,
+	})
+	if err == nil && hasBlocked != nil && hasBlocked.GetValue() {
+		return true
+	}
+	hasMuted, err := h.core.Clients.Profile.HasRelationship(ctx, &gen.DyGetRelationshipRequest{
+		AccountId: accountID.String(),
+		RelatedId: otherID.String(),
+		Status:    proto.Int32(-50),
+	})
+	if err == nil && hasMuted != nil && hasMuted.GetValue() {
+		return true
+	}
+	return false
+}
+
+func (h *handler) filterBlockedAndMuted(ctx context.Context, publisherAccountID uuid.UUID, accountIDs []uuid.UUID) []uuid.UUID {
+	if len(accountIDs) == 0 || h.core == nil || h.core.Clients == nil || h.core.Clients.Profile == nil {
+		return accountIDs
+	}
+	hidden := make(map[uuid.UUID]struct{})
+	// Blocked in either direction:
+	if blockedResp, err := h.core.Clients.Profile.ListBlocked(ctx, &gen.DyListRelationshipSimpleRequest{
+		RelationIdentifier: &gen.DyListRelationshipSimpleRequest_AccountId{AccountId: publisherAccountID.String()},
+	}); err == nil && blockedResp != nil {
+		for _, raw := range blockedResp.GetAccountsId() {
+			if id, err := uuid.Parse(raw); err == nil {
+				hidden[id] = struct{}{}
+			}
+		}
+	}
+	if blockedByResp, err := h.core.Clients.Profile.ListBlocked(ctx, &gen.DyListRelationshipSimpleRequest{
+		RelationIdentifier: &gen.DyListRelationshipSimpleRequest_RelatedId{RelatedId: publisherAccountID.String()},
+	}); err == nil && blockedByResp != nil {
+		for _, raw := range blockedByResp.GetAccountsId() {
+			if id, err := uuid.Parse(raw); err == nil {
+				hidden[id] = struct{}{}
+			}
+		}
+	}
+	// Muted by publisher:
+	if mutedResp, err := h.core.Clients.Profile.ListMuted(ctx, &gen.DyListRelationshipSimpleRequest{
+		RelationIdentifier: &gen.DyListRelationshipSimpleRequest_AccountId{AccountId: publisherAccountID.String()},
+	}); err == nil && mutedResp != nil {
+		for _, raw := range mutedResp.GetAccountsId() {
+			if id, err := uuid.Parse(raw); err == nil {
+				hidden[id] = struct{}{}
+			}
+		}
+	}
+	if len(hidden) == 0 {
+		return accountIDs
+	}
+	filtered := make([]uuid.UUID, 0, len(accountIDs))
+	for _, id := range accountIDs {
+		if _, ok := hidden[id]; !ok {
+			filtered = append(filtered, id)
+		}
+	}
+	return filtered
 }
 
 // replyNotificationsEnabled honours post_watch_preferences.notify_replies when
@@ -219,6 +497,19 @@ func (h *handler) replyNotificationsEnabled(ctx context.Context, accountID uuid.
 		return true
 	}
 	return preference.NotifyReplies
+}
+
+// reactionNotificationsEnabled honours post_watch_preferences.notify_reactions when
+// a preference row exists for the account.
+func (h *handler) reactionNotificationsEnabled(ctx context.Context, accountID uuid.UUID) bool {
+	var preference store.PostWatchPreferenceEntity
+	err := h.db.WithContext(ctx).
+		Where("account_id = ? AND source = ?", accountID, watchSourceReaction).
+		First(&preference).Error
+	if err != nil {
+		return true
+	}
+	return preference.NotifyReactions
 }
 
 // mentionedAccountIDs resolves @mentions from the stored mention list and the
