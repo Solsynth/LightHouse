@@ -15,7 +15,7 @@ require (
 	google.golang.org/protobuf v1.36.11
 	gorm.io/datatypes v1.2.7
 	gorm.io/gorm v1.31.1
-	src.solsynth.dev/sosys/lighthouse/shared v0.2.1
+	src.solsynth.dev/sosys/lighthouse/shared v0.2.2
 )
 
 require (
