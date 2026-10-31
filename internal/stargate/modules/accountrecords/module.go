@@ -42,7 +42,7 @@ func Factory() module.Factory {
 		Ports: []module.PortRequirement{
 			{ID: ports.PortPerks, Optional: true},
 		},
-		Provides: []module.PortID{ports.PortBadges, ports.PortVerification},
+		Provides: []module.PortID{ports.PortBadges, ports.PortVerification, ports.PortBoards},
 		Models:   accountrecords.Models(),
 		SQL:      schemaHooks(),
 		New:      func() module.Instance { return &instance{} },
@@ -72,6 +72,7 @@ func (i *instance) ProvidePorts(_ context.Context, host *module.Host) error {
 	records := accountrecords.NewStore(host.Core.DB)
 	module.Provide[ports.Badges](host.Ports, ports.PortBadges, moduleID, module.KindFeature, &badgePort{store: records})
 	module.Provide[ports.Verification](host.Ports, ports.PortVerification, moduleID, module.KindFeature, &verificationPort{profiles: host.Core.Store})
+	module.Provide[ports.Boards](host.Ports, ports.PortBoards, moduleID, module.KindFeature, &boardPort{store: records})
 	return nil
 }
 
@@ -152,6 +153,31 @@ type verificationPort struct {
 }
 
 func (p *verificationPort) Available() bool { return p != nil && p.profiles != nil }
+
+type boardPort struct {
+	store *accountrecords.Store
+}
+
+func (p *boardPort) Available() bool { return p != nil && p.store != nil }
+
+func (p *boardPort) List(ctx context.Context, accountID string) ([]any, error) {
+	if !p.Available() {
+		return nil, ports.ErrUnavailable
+	}
+	id, err := store.ParseUUID(accountID)
+	if err != nil {
+		return nil, err
+	}
+	items, err := p.store.ListBoard(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]any, 0, len(items))
+	for _, item := range items {
+		out = append(out, item)
+	}
+	return out, nil
+}
 
 func (p *verificationPort) Get(ctx context.Context, accountID string) (*model.SnVerificationMark, error) {
 	if !p.Available() {

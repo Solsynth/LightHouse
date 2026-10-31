@@ -19,6 +19,7 @@ var ErrUnavailable = errors.New("port provider unavailable")
 const (
 	PortFiles              module.PortID = "files"
 	PortBadges             module.PortID = "badges"
+	PortBoards             module.PortID = "boards"
 	PortVerification       module.PortID = "verification"
 	PortPerks              module.PortID = "perks"
 	PortEmail              module.PortID = "email"
@@ -39,6 +40,12 @@ type Files interface {
 
 // Badges lists an account's badges.
 type Badges interface {
+	Available() bool
+	List(ctx context.Context, accountID string) ([]any, error)
+}
+
+// Boards returns an account's profile board items.
+type Boards interface {
 	Available() bool
 	List(ctx context.Context, accountID string) ([]any, error)
 }

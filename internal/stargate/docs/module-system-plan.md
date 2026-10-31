@@ -241,6 +241,7 @@ fails startup.
 |---|---|---|
 | `files` | profiles, nfc, accountevents, tickets | `app.solian.drive` |
 | `badges` | profiles, nfc, progression | `app.solian.id.accountrecords` (feature), `app.solian.pass` |
+| `boards` | profiles | `app.solian.id.accountrecords` (feature) |
 | `verification` | profiles, nfc | `app.solian.id.accountrecords` (feature), `app.solian.pass` |
 | `perks` | profiles, accountrecords, accountevents | `app.solian.wallet` (feature), `app.solian.wallet.remote` |
 | `payments` | realm (boosts), progression/accountevents (points), purchases (orders) | `app.solian.wallet` (feature), `app.solian.wallet.remote` |
@@ -280,7 +281,7 @@ startup.
 | `app.solian.id.realm` | feature | `/api/realms/**`, `/api/realms/public`, `/api/admin/realms/**`, the ten `DyRealmService` RPCs | auth, accounts | `realms`, `realm_members`, `realm_labels`, `realm_boost_contributions`, `realm_experience_records`, `realm_role_permissions`, `realm_user_permissions`, `realm_post_moderation_logs` |
 | `app.solian.id.progression` | feature | `/api/accounts/me/progression/**`, `/api/admin/progression/**`, `/.well-known/badges`, action-log consumer | auth, accounts | `achievement_definitions`, `quest_definitions`, `account_achievements`, `account_quest_progresses`, `progress_reward_grants`, `progress_event_receipts` |
 | `app.solian.id.domaintrust` | feature | `/api/domain-blocks/**` (rule CRUD, public `validate`/`check`, metrics), `DyDomainBlockService` | auth | `domain_blocks`, `domain_validation_metrics` |
-| `app.solian.id.accountrecords` | feature | `/api/accounts/me/{actions,badges,leveling,credits,connections,board}`, public badge/board/credit routes, admin badge/board/credit/verification routes, `DyExperienceService`, `DySocialCreditService`; provides `badges`/`verification` | auth, accounts | `experience_records`, `social_credit_records`, `badges`, `account_board_items` |
+| `app.solian.id.accountrecords` | feature | `/api/accounts/me/{actions,badges,leveling,credits,connections,board}`, public badge/board/credit routes, admin badge/board/credit/verification routes, `DyExperienceService`, `DySocialCreditService`; provides `badges`/`verification`/`boards` | auth, accounts | `experience_records`, `social_credit_records`, `badges`, `account_board_items` |
 | `app.solian.id.accountevents` | feature | `/api/accounts/me/{check-in,calendar/**}`, public account calendar/timeline, `/api/notable-days/**`, `/api/fortune*` | accounts, accountrecords, presences | `account_check_in_results`, `user_calendar_events`, `calendar_event_subscriptions`, `notable_days` |
 | `app.solian.id.tickets` | feature | `/api/tickets/**`, `/api/admin/tickets/on-call/**` | accounts | `tickets`, `ticket_messages`, `ticket_on_call_admins` |
 | `app.solian.id.purchases` | feature | `/api/affiliations/**`, `/api/accounts/me/name-change-card/**` | accounts | `affiliation_spells`, `affiliation_results`, `affiliation_spell_purchases`, `name_change_card_purchases` |

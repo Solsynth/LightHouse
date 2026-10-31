@@ -149,18 +149,21 @@ func (d Deps) enrichOwn(ctx context.Context, account *model.Account) error {
 		}
 		account.Profile = profile
 	}
-	if d.Clients != nil && d.Clients.Pass != nil {
+	if d.canHydrateBadges() {
 		if badges, err := d.listBadges(ctx, account.Id); err == nil {
 			account.Badges = badges
 		} else {
 			d.Log.Warn("badges hydration", "account", account.Id, "error", err)
 		}
+	}
+	if (d.Ports != nil && d.Ports.Verification != nil && d.Ports.Verification.Available()) || (d.Clients != nil && d.Clients.Pass != nil) {
 		if verification, err := d.verificationOf(ctx, account.Id); err == nil && verification != nil {
 			account.Profile.Verification = verification
 		} else if err != nil {
 			d.Log.Warn("verification hydration", "account", account.Id, "error", err)
 		}
 	}
+	d.hydrateBoard(ctx, account)
 	d.hydratePerk(ctx, account)
 	contacts, err := d.Store.ListPublicContacts(ctx, accountID)
 	if err != nil {
@@ -193,13 +196,14 @@ func (d Deps) enrichPublic(ctx context.Context, account *model.Account) error {
 		}
 		account.Profile = profile
 	}
-	if d.Clients != nil && d.Clients.Pass != nil {
+	if d.canHydrateBadges() {
 		if badges, err := d.listBadges(ctx, account.Id); err == nil {
 			account.Badges = badges
 		} else {
 			d.Log.Warn("badges hydration", "account", account.Id, "error", err)
 		}
 	}
+	d.hydrateBoard(ctx, account)
 	contacts, err := d.Store.ListPublicContacts(ctx, accountID)
 	if err != nil {
 		d.Log.Warn("load public contacts", "account", account.Id, "error", err)
@@ -209,6 +213,31 @@ func (d Deps) enrichPublic(ctx context.Context, account *model.Account) error {
 	d.hydratePerk(ctx, account)
 	applyPublicProjection(account)
 	return nil
+}
+
+// canHydrateBadges reports whether a local or remote badge provider exists.
+func (d Deps) canHydrateBadges() bool {
+	return (d.Ports != nil && d.Ports.Badges != nil && d.Ports.Badges.Available()) ||
+		(d.Clients != nil && d.Clients.Pass != nil)
+}
+
+// hydrateBoard fills profile.board from the local board port. Passport embedded
+// the board in its profile read model, so clients expect the key even when no
+// widget is configured (an empty array, not null).
+func (d Deps) hydrateBoard(ctx context.Context, account *model.Account) {
+	if account.Profile == nil {
+		return
+	}
+	account.Profile.Board = []any{}
+	if d.Ports == nil || d.Ports.Boards == nil || !d.Ports.Boards.Available() {
+		return
+	}
+	items, err := d.Ports.Boards.List(ctx, account.Id)
+	if err != nil {
+		d.Log.Warn("board hydration", "account", account.Id, "error", err)
+		return
+	}
+	account.Profile.Board = items
 }
 
 // hydratePerk populates PerkSubscription/PerkLevel from the wallet service,

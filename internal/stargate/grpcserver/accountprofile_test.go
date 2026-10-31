@@ -94,6 +94,45 @@ func TestGetAccountBatchHydratesProfiles(t *testing.T) {
 			t.Fatalf("account %s profile active_badge missing: %+v", a.Id, a.Profile.ActiveBadge)
 		}
 	}
+
+	// Messager's RemoteAccountService-shaped port calls the account reads on
+	// DyProfileService, not DyAccountService. Leaving them unimplemented makes
+	// every chat member hydrate with account=null, which drops the room's
+	// /messager/chat/summary entry on strict clients.
+	profileClient := gen.NewDyProfileServiceClient(conn)
+
+	profileBatch, err := profileClient.GetAccountBatch(ctx, &gen.DyGetAccountBatchRequest{Id: []string{alice, bob}})
+	if err != nil {
+		t.Fatalf("DyProfileService.GetAccountBatch: %v", err)
+	}
+	if len(profileBatch.Accounts) != 2 {
+		t.Fatalf("DyProfileService.GetAccountBatch returned %d accounts, want 2", len(profileBatch.Accounts))
+	}
+	for _, a := range profileBatch.Accounts {
+		if a.Profile == nil || a.Profile.Id == "" {
+			t.Fatalf("DyProfileService.GetAccountBatch account %s has no profile", a.Id)
+		}
+	}
+
+	var aliceName string
+	if err := pool.QueryRow(ctx, `SELECT name FROM accounts WHERE id = $1`, alice).Scan(&aliceName); err != nil {
+		t.Fatalf("read account name: %v", err)
+	}
+	lookup, err := profileClient.LookupAccountBatch(ctx, &gen.DyLookupAccountBatchRequest{Names: []string{aliceName}})
+	if err != nil {
+		t.Fatalf("DyProfileService.LookupAccountBatch: %v", err)
+	}
+	if len(lookup.Accounts) != 1 || lookup.Accounts[0].Id != alice {
+		t.Fatalf("DyProfileService.LookupAccountBatch = %+v, want account %s", lookup.Accounts, alice)
+	}
+
+	search, err := profileClient.SearchAccount(ctx, &gen.DySearchAccountRequest{Query: aliceName})
+	if err != nil {
+		t.Fatalf("DyProfileService.SearchAccount: %v", err)
+	}
+	if len(search.Accounts) == 0 {
+		t.Fatalf("DyProfileService.SearchAccount found no account for %q", aliceName)
+	}
 }
 
 // TestGetAccountHydratesProfile guards the single-account read that

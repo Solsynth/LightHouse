@@ -30,6 +30,41 @@ func (s *dyProfileService) GetAccount(ctx context.Context, req *gen.DyGetAccount
 	return accounts.GetAccount(ctx, req)
 }
 
+// The batch and lookup reads carry the same contract as the single read:
+// Passport's DyProfileService implemented them, and the fleet's shared
+// RemoteAccountService (Messager, Sphere) calls them by name. Missing any of
+// them leaves every hydrated account reference null on the wire.
+
+func (s *dyProfileService) GetBotAccount(ctx context.Context, req *gen.DyGetBotAccountRequest) (*gen.DyAccount, error) {
+	accounts := &dyAccountService{d: s.d}
+	return accounts.GetBotAccount(ctx, req)
+}
+
+func (s *dyProfileService) GetAccountBatch(ctx context.Context, req *gen.DyGetAccountBatchRequest) (*gen.DyGetAccountBatchResponse, error) {
+	accounts := &dyAccountService{d: s.d}
+	return accounts.GetAccountBatch(ctx, req)
+}
+
+func (s *dyProfileService) GetBotAccountBatch(ctx context.Context, req *gen.DyGetBotAccountBatchRequest) (*gen.DyGetAccountBatchResponse, error) {
+	accounts := &dyAccountService{d: s.d}
+	return accounts.GetBotAccountBatch(ctx, req)
+}
+
+func (s *dyProfileService) LookupAccountBatch(ctx context.Context, req *gen.DyLookupAccountBatchRequest) (*gen.DyGetAccountBatchResponse, error) {
+	accounts := &dyAccountService{d: s.d}
+	return accounts.LookupAccountBatch(ctx, req)
+}
+
+func (s *dyProfileService) SearchAccount(ctx context.Context, req *gen.DySearchAccountRequest) (*gen.DyGetAccountBatchResponse, error) {
+	accounts := &dyAccountService{d: s.d}
+	return accounts.SearchAccount(ctx, req)
+}
+
+func (s *dyProfileService) ListAccounts(ctx context.Context, req *gen.DyListAccountsRequest) (*gen.DyListAccountsResponse, error) {
+	accounts := &dyAccountService{d: s.d}
+	return accounts.ListAccounts(ctx, req)
+}
+
 // GetProfile returns the Stargate-owned profile row, including the active badge
 // reference converted by auth.ProfileToProto.
 func (s *dyProfileService) GetProfile(ctx context.Context, req *gen.DyGetProfileRequest) (*gen.DyAccountProfile, error) {

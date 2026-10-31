@@ -41,6 +41,7 @@ type Profile struct {
 	LastSeenAt         *Time                       `json:"last_seen_at,omitempty"`
 	Verification       *SnVerificationMark         `json:"verification,omitempty"`
 	ActiveBadge        *any                        `json:"active_badge"`
+	Board              []any                       `json:"board"`
 	Experience         int                         `json:"experience"`
 	Level              int                         `json:"level"`
 	LevelingProgress   float64                     `json:"leveling_progress"`

@@ -104,7 +104,7 @@ Modules own their schema:
 - `app.solian.id.accountrecords` owns experience/social-credit records,
   `badges`, the account board and the `DyExperienceService` /
   `DySocialCreditService` gRPC receivers. It provides the local `badges` and
-  `verification` ports, so badge hydration and rewards no longer dial Passport.
+  `verification`/`boards` ports, so badge, verification and board hydration no longer dial Passport.
 - `app.solian.id.accountevents` owns `account_check_in_results`,
   `user_calendar_events`, calendar subscriptions and `notable_days`:
   check-in/rewards, calendar/merged/countdown/search, the CN holiday seed,
