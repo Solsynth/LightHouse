@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"src.solsynth.dev/sosys/stargate/accountrecords"
 	"src.solsynth.dev/sosys/stargate/httpserver/progressionctl"
 	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/ports"
@@ -63,10 +64,15 @@ func (i *instance) Configure(ctx context.Context, host *module.Host) error {
 	log := coreLog(host)
 	store := progression.NewStore(host.Core.DB)
 	set := ports.FromRegistry(host.Ports)
+	var records *accountrecords.Store
+	if host.Enabled["app.solian.id.accountrecords"] {
+		records = accountrecords.NewStore(host.Core.DB)
+		records.Perks = set.Perks
+	}
 
 	service := progression.NewService(progression.Deps{
 		Store:      store,
-		Experience: experienceAdapter{store: host.Core.Store},
+		Experience: experienceAdapter{store: host.Core.Store, records: records},
 		Badges:     badgeAdapter{port: set.Badges},
 		Wallet:     walletAdapter{payments: set.Payments},
 		Packets:    packetAdapter{bus: host.Core.NATS},
@@ -136,16 +142,24 @@ func badgeIconsPath(host *module.Host) string {
 // Passport's ExperienceService + ProfileFieldUpdatedEvent round trip. The
 // account curve, level and progress are recomputed on every profile read.
 type experienceAdapter struct {
-	store *store.Store
+	store   *store.Store
+	records *accountrecords.Store
 }
 
 func (a experienceAdapter) AddRecord(ctx context.Context, reasonType, reason string, delta int64, accountID uuid.UUID) error {
-	if a.store == nil || delta == 0 {
+	if delta == 0 {
 		return nil
 	}
-	// The perk multiplier is applied by the caller that owns the subscription
-	// port; progression XP is granted at face value like the C# listener did
-	// before the leveling service applied its own bonus.
+	// Prefer the account-records ledger: Passport's progression reward went
+	// through ExperienceService, so the XP record is part of /leveling. When
+	// that module is disabled, keep the profile-only fallback.
+	if a.records != nil {
+		_, err := a.records.AddExperience(ctx, accountID, reasonType, reason, delta)
+		return err
+	}
+	if a.store == nil {
+		return nil
+	}
 	amount := int(delta)
 	return a.store.ApplyProfileFieldPatch(ctx, accountID, &store.ProfileFieldPatch{ExperienceDelta: &amount})
 }

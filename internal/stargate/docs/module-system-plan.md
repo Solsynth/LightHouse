@@ -493,7 +493,8 @@ whose schema diverged.
 - [x] Quest periods (none/daily/weekly/monthly) computed in the account's time
       zone (UTC when unset), streak counting with best-streak, and meta
       equality filters.
-- [x] Rewards: profile XP through the accounts store, badges through the
+- [x] Rewards: XP through `app.solian.id.accountrecords` (the experience
+      ledger plus the profile patch), badges through the
       `badges` port, source points through the `payments` `Creditor`, and the
       `progression.completed` websocket packet through the event bus. All are
       optional; without them progress still advances.
