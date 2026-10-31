@@ -37,7 +37,7 @@ func Register(api *gin.RouterGroup, d Deps) {
 	me.GET("/leveling", d.getLeveling)
 	me.GET("/credits", d.getCredits)
 	me.GET("/credits/history", d.getCreditsHistory)
-	me.GET("/connections", d.getConnections)
+	me.GET("/connections", d.requirePerm(permission.AccountsConnectionsView), d.getConnections)
 	me.GET("/board", d.requirePerm(permission.AccountsProfileBoardManage), d.getBoard)
 	me.PUT("/board", d.requirePerm(permission.AccountsProfileBoardManage), d.replaceBoard)
 

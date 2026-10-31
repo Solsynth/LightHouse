@@ -38,8 +38,7 @@ func Register(api *gin.RouterGroup, d Deps) {
 	affiliations.POST("/purchase", middleware.RequireAuth(), d.purchaseInvite)
 	affiliations.POST("", middleware.RequireAuth(),
 		middleware.AskPermission(d.Perm, permission.AffiliationsManage), d.createSpell)
-	affiliations.POST("/:spell/results", middleware.RequireAuth(),
-		middleware.AskPermission(d.Perm, permission.AffiliationsResultsManage), d.recordResult)
+	affiliations.POST("/:spell/results", d.recordResult)
 	affiliations.GET("", middleware.RequireAuth(), d.listSpells)
 	affiliations.GET("/:id", middleware.RequireAuth(), d.getSpell)
 	affiliations.GET("/:id/results", middleware.RequireAuth(), d.listResults)

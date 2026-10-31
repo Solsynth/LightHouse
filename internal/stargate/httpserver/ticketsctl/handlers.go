@@ -307,12 +307,12 @@ func (d Deps) addMessage(c *gin.Context) {
 		internalError(c, d.Log, err)
 		return
 	}
-	allowed, err := d.canAccessTicket(c.Request.Context(), account, ticket)
+	admin, err := d.isAdmin(c.Request.Context(), account)
 	if err != nil {
 		internalError(c, d.Log, err)
 		return
 	}
-	if !allowed {
+	if !admin && ticket.CreatorId != senderID {
 		forbidden(c, "You do not have permission to reply to tickets.")
 		return
 	}
@@ -348,12 +348,12 @@ func (d Deps) updateStatus(c *gin.Context) {
 		internalError(c, d.Log, err)
 		return
 	}
-	allowed, err := d.canAccessTicket(c.Request.Context(), account, existing)
+	admin, err := d.isAdmin(c.Request.Context(), account)
 	if err != nil {
 		internalError(c, d.Log, err)
 		return
 	}
-	if !allowed {
+	if !admin {
 		forbidden(c, "You do not have permission to update ticket status.")
 		return
 	}
