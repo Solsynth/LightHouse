@@ -441,6 +441,17 @@ func (i *instance) deliverMessage(ctx context.Context, room *store.ChatRoomEntit
 	if len(accountIDs) == 0 {
 		return
 	}
+	senderAccount := i.account(ctx, sender.AccountID.String())
+	title, body, meta := chatPushPayload(room, entity, sender, senderAccount)
+	i.sendPush(ctx, accountIDs, "messages.new", title, body, meta)
+}
+
+// chatPushPayload renders the title, body and meta of a `messages.new` push.
+// Clients display the chat push as a communication notification driven by
+// meta: sender_name and pfp give it the member identity instead of the bare
+// room subject, and image feeds the media attachment, mirroring the C#
+// BuildNotification/BuildNotificationMeta contract.
+func chatPushPayload(room *store.ChatRoomEntity, entity *store.ChatMessageEntity, sender *store.ChatMemberEntity, senderAccount *gen.DyAccount) (string, string, map[string]string) {
 	roomSubject := "Unknown"
 	if room.Type == int(model.ChatRoomDirectMessage) && room.Name == nil {
 		roomSubject = "DM"
@@ -457,7 +468,6 @@ func (i *instance) deliverMessage(ctx context.Context, room *store.ChatRoomEntit
 	if body == "" {
 		body = "Attachment"
 	}
-	senderAccount := i.account(ctx, sender.AccountID.String())
 	senderName := memberDisplayName(sender, senderAccount)
 	title := senderName + " (" + roomSubject + ")"
 	meta := map[string]string{
@@ -467,10 +477,7 @@ func (i *instance) deliverMessage(ctx context.Context, room *store.ChatRoomEntit
 		"message_id":  entity.ID.String(),
 		"room_id":     room.ID.String(),
 	}
-	// Notification clients render the chat push as a communication
-	// notification: sender_name/pfp give it the member identity instead of the
-	// bare room subject, matching the C# BuildNotificationMeta contract.
-	if pfp := senderAccount.GetPicture().GetId(); pfp != "" {
+	if pfp := accountPictureID(senderAccount); pfp != "" {
 		meta["pfp"] = pfp
 	}
 	if room.Name != nil && strings.TrimSpace(*room.Name) != "" {
@@ -479,7 +486,7 @@ func (i *instance) deliverMessage(ctx context.Context, room *store.ChatRoomEntit
 	if image := firstImageAttachmentID(entity.Attachments); image != "" {
 		meta["image"] = image
 	}
-	i.sendPush(ctx, accountIDs, "messages.new", title, body, meta)
+	return title, body, meta
 }
 
 // --- system messages ------------------------------------------------------
@@ -520,6 +527,20 @@ func memberDisplayName(member *store.ChatMemberEntity, account *gen.DyAccount) s
 		return strings.TrimSpace(account.GetNick())
 	}
 	return "Someone"
+}
+
+// accountPictureID resolves the account avatar file id. Profile RPC accounts
+// carry it on the nested profile (DyAccount.Picture is only set by callers
+// that embed the gateway wire shape), the same split accountProfilePicture
+// handles in Sphere.
+func accountPictureID(account *gen.DyAccount) string {
+	if account == nil {
+		return ""
+	}
+	if file := account.GetProfile().GetPicture(); file != nil && file.GetId() != "" {
+		return file.GetId()
+	}
+	return account.GetPicture().GetId()
 }
 
 // firstImageAttachmentID returns the first image attachment's file id, the
