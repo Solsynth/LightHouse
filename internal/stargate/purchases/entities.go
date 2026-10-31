@@ -25,7 +25,7 @@ type AffiliationSpellEntity struct {
 	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
 	Spell      string         `gorm:"column:spell;size:1024;not null"`
-	Type       int            `gorm:"column:type"`
+	Type       int            `gorm:"column:type;type:integer"`
 	ExpiresAt  *time.Time     `gorm:"column:expires_at"`
 	AffectedAt *time.Time     `gorm:"column:affected_at"`
 	Meta       datatypes.JSON `gorm:"column:meta;type:jsonb;default:{}"`

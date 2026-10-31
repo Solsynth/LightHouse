@@ -449,46 +449,46 @@ type AffiliationResultEntity struct {
 // ---------------------------------------------------------------------------
 
 type AccountStatusEntity struct {
-	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
-	AccountID     uuid.UUID       `gorm:"column:account_id"`
-	AppIdentifier *string         `gorm:"column:app_identifier"`
-	Attitude      int             `gorm:"column:attitude"`
+	AccountID     uuid.UUID       `gorm:"column:account_id;type:uuid"`
+	AppIdentifier *string         `gorm:"column:app_identifier;type:varchar(4096)"`
+	Attitude      int             `gorm:"column:attitude;type:integer"`
 	Background    *datatypes.JSON `gorm:"column:background;type:jsonb"`
 	ClearedAt     *time.Time      `gorm:"column:cleared_at"`
 	Icon          *datatypes.JSON `gorm:"column:icon;type:jsonb"`
 	IsAutomated   bool            `gorm:"column:is_automated"`
-	Label         *string         `gorm:"column:label"`
+	Label         *string         `gorm:"column:label;type:varchar(1024)"`
 	Meta          *datatypes.JSON `gorm:"column:meta;type:jsonb"`
-	Symbol        *string         `gorm:"column:symbol"`
-	Type          int             `gorm:"column:type"`
+	Symbol        *string         `gorm:"column:symbol;type:varchar(128)"`
+	Type          int             `gorm:"column:type;type:integer"`
 }
 
 func (AccountStatusEntity) TableName() string { return "account_statuses" }
 
 type PresenceActivityEntity struct {
-	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
-	AccountID      uuid.UUID       `gorm:"column:account_id"`
-	Caption        *string         `gorm:"column:caption"`
-	CatalogID      *uuid.UUID      `gorm:"column:catalog_id"`
+	AccountID      uuid.UUID       `gorm:"column:account_id;type:uuid"`
+	Caption        *string         `gorm:"column:caption;type:varchar(4096)"`
+	CatalogID      *uuid.UUID      `gorm:"column:catalog_id;type:uuid"`
 	EndedAt        *time.Time      `gorm:"column:ended_at"`
-	LargeImage     *string         `gorm:"column:large_image"`
+	LargeImage     *string         `gorm:"column:large_image;type:varchar(4096)"`
 	LeaseExpiresAt time.Time       `gorm:"column:lease_expires_at"`
-	LeaseMinutes   int             `gorm:"column:lease_minutes"`
-	ManualID       *string         `gorm:"column:manual_id"`
+	LeaseMinutes   int             `gorm:"column:lease_minutes;type:integer"`
+	ManualID       *string         `gorm:"column:manual_id;type:varchar(4096)"`
 	Meta           *datatypes.JSON `gorm:"column:meta;type:jsonb"`
-	Provider       *string         `gorm:"column:provider"`
+	Provider       *string         `gorm:"column:provider;type:varchar(256)"`
 	QueryableTerms datatypes.JSON  `gorm:"column:queryable_terms;type:jsonb"`
-	ReferenceID    *string         `gorm:"column:reference_id"`
-	SmallImage     *string         `gorm:"column:small_image"`
+	ReferenceID    *string         `gorm:"column:reference_id;type:varchar(1024)"`
+	SmallImage     *string         `gorm:"column:small_image;type:varchar(4096)"`
 	StartedAt      *time.Time      `gorm:"column:started_at"`
-	Subtitle       *string         `gorm:"column:subtitle"`
-	SubtitleURL    *string         `gorm:"column:subtitle_url"`
-	Title          *string         `gorm:"column:title"`
-	TitleURL       *string         `gorm:"column:title_url"`
-	Type           *string         `gorm:"column:type"`
-	Visibility     int             `gorm:"column:visibility"`
+	Subtitle       *string         `gorm:"column:subtitle;type:varchar(4096)"`
+	SubtitleURL    *string         `gorm:"column:subtitle_url;type:varchar(4096)"`
+	Title          *string         `gorm:"column:title;type:varchar(4096)"`
+	TitleURL       *string         `gorm:"column:title_url;type:varchar(4096)"`
+	Type           *string         `gorm:"column:type;type:text"`
+	Visibility     int             `gorm:"column:visibility;type:integer"`
 }
 
 func (PresenceActivityEntity) TableName() string { return "presence_activities" }
@@ -496,41 +496,41 @@ func (PresenceActivityEntity) TableName() string { return "presence_activities" 
 // PresenceActivityTagEntity is a plain join row: no created_at/updated_at/
 // deleted_at columns, keyed by (activity_id, slug).
 type PresenceActivityTagEntity struct {
-	ActivityID uuid.UUID `gorm:"column:activity_id;primaryKey"`
-	Slug       string    `gorm:"column:slug;primaryKey"`
-	Name       *string   `gorm:"column:name"`
+	ActivityID uuid.UUID `gorm:"column:activity_id;primaryKey;type:uuid"`
+	Slug       string    `gorm:"column:slug;primaryKey;type:varchar(256)"`
+	Name       *string   `gorm:"column:name;type:varchar(256)"`
 }
 
 func (PresenceActivityTagEntity) TableName() string { return "presence_activity_tags" }
 
 type PresenceCatalogItemEntity struct {
-	ID uuid.UUID `gorm:"column:id;primaryKey"`
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	EntityBase
-	AccountID      uuid.UUID      `gorm:"column:account_id"`
-	Caption        *string        `gorm:"column:caption"`
-	CatalogKey     *string        `gorm:"column:catalog_key"`
-	LargeImage     *string        `gorm:"column:large_image"`
+	AccountID      uuid.UUID      `gorm:"column:account_id;type:uuid"`
+	Caption        *string        `gorm:"column:caption;type:varchar(4096)"`
+	CatalogKey     *string        `gorm:"column:catalog_key;type:varchar(1024)"`
+	LargeImage     *string        `gorm:"column:large_image;type:varchar(4096)"`
 	LastActiveAt   *time.Time     `gorm:"column:last_active_at"`
 	Meta           datatypes.JSON `gorm:"column:meta;type:jsonb"`
-	Name           *string        `gorm:"column:name"`
-	Provider       *string        `gorm:"column:provider"`
+	Name           *string        `gorm:"column:name;type:varchar(4096)"`
+	Provider       *string        `gorm:"column:provider;type:varchar(256)"`
 	QueryableTerms datatypes.JSON `gorm:"column:queryable_terms;type:jsonb"`
-	ReferenceID    *string        `gorm:"column:reference_id"`
-	SessionCount   int            `gorm:"column:session_count"`
-	SmallImage     *string        `gorm:"column:small_image"`
-	Subtitle       *string        `gorm:"column:subtitle"`
-	SubtitleURL    *string        `gorm:"column:subtitle_url"`
-	TitleURL       *string        `gorm:"column:title_url"`
-	TotalSeconds   int64          `gorm:"column:total_seconds"`
-	Visibility     int            `gorm:"column:visibility"`
+	ReferenceID    *string        `gorm:"column:reference_id;type:varchar(1024)"`
+	SessionCount   int            `gorm:"column:session_count;type:integer"`
+	SmallImage     *string        `gorm:"column:small_image;type:varchar(4096)"`
+	Subtitle       *string        `gorm:"column:subtitle;type:varchar(4096)"`
+	SubtitleURL    *string        `gorm:"column:subtitle_url;type:varchar(4096)"`
+	TitleURL       *string        `gorm:"column:title_url;type:varchar(4096)"`
+	TotalSeconds   int64          `gorm:"column:total_seconds;type:bigint"`
+	Visibility     int            `gorm:"column:visibility;type:integer"`
 }
 
 func (PresenceCatalogItemEntity) TableName() string { return "presence_catalog_items" }
 
 type PresenceCatalogTagEntity struct {
-	CatalogID uuid.UUID `gorm:"column:catalog_id;primaryKey"`
-	Slug      string    `gorm:"column:slug;primaryKey"`
-	Name      *string   `gorm:"column:name"`
+	CatalogID uuid.UUID `gorm:"column:catalog_id;primaryKey;type:uuid"`
+	Slug      string    `gorm:"column:slug;primaryKey;type:varchar(256)"`
+	Name      *string   `gorm:"column:name;type:varchar(256)"`
 }
 
 func (PresenceCatalogTagEntity) TableName() string { return "presence_catalog_tags" }
