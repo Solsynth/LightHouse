@@ -70,12 +70,16 @@ func normalize(descriptor protoreflect.MessageDescriptor, value any) any {
 	}
 	// ModelBase-shaped fleet messages always carry created_at/updated_at (and
 	// a nullable deleted_at) in the C# wire shape. protojson emits null for an
-	// unset Timestamp, and reference objects such as SnAccountBadgeRef have no
-	// timestamp fields in the proto at all. Dart parses createdAt/updatedAt
-	// with DateTime.parse, so restore the zero Instant wherever C# would have
-	// serialized it.
+	// unset Timestamp, and reference objects such as SnAccountBadgeRef or the
+	// realm snapshots have no timestamp fields in the proto at all. Dart
+	// parses createdAt/updatedAt with DateTime.parse, so restore the zero
+	// Instant wherever C# would have serialized it.
 	switch descriptor.FullName() {
-	case "proto.DyBadgeReferenceObject", "proto.DyAccountStatus":
+	case "proto.DyBadgeReferenceObject", "proto.DyAccountStatus",
+		"proto.DyRealm", "proto.DyRealmMember", "proto.DyRealmLabel",
+		"proto.DyAccount", "proto.DyAccountProfile", "proto.DyAccountContact",
+		"proto.DyAccountAuthFactor", "proto.DyAccountBadge",
+		"proto.DyAccountConnection", "proto.DyMagicSpell", "proto.DyRelationship":
 		fillModelTimestamps(object)
 	}
 	return object

@@ -160,6 +160,45 @@ func TestMessageFillsStatusModelTimestamps(t *testing.T) {
 	}
 }
 
+// Account snapshots embed ModelBase too. A proto without timestamps must still
+// carry the non-nullable created_at/updated_at and the nullable deleted_at the
+// Dart SnAccount parser expects.
+func TestMessageFillsAccountModelTimestamps(t *testing.T) {
+	embedded := wireMap(t, accountjson.FromProto(&gen.DyAccount{Id: "acc-1"}))
+	for _, key := range []string{"created_at", "updated_at"} {
+		if embedded[key] != "0001-01-01T00:00:00Z" {
+			t.Errorf("account.%s = %#v, want the zero Instant", key, embedded[key])
+		}
+	}
+	if value, ok := embedded["deleted_at"]; !ok || value != nil {
+		t.Errorf("account.deleted_at = %#v (present %v), want null", value, ok)
+	}
+}
+
+// Realm snapshots are ModelBase-shaped in C# but the fleet proto has no
+// timestamp fields. Embedding one in a chat room must still yield the keys the
+// Dart SnRealm parser requires.
+func TestMessageFillsRealmModelTimestamps(t *testing.T) {
+	realm := &gen.DyRealm{Id: "realm-1", Slug: "test", Name: "Test"}
+
+	embedded := wireMap(t, accountjson.Message(realm))
+	for _, key := range []string{"created_at", "updated_at"} {
+		if embedded[key] != "0001-01-01T00:00:00Z" {
+			t.Errorf("realm.%s = %#v, want the zero Instant", key, embedded[key])
+		}
+	}
+	if value, ok := embedded["deleted_at"]; !ok || value != nil {
+		t.Errorf("realm.deleted_at = %#v (present %v), want null", value, ok)
+	}
+
+	member := wireMap(t, accountjson.Message(&gen.DyRealmMember{RealmId: "realm-1", AccountId: "acc-1"}))
+	for _, key := range []string{"created_at", "updated_at"} {
+		if member[key] != "0001-01-01T00:00:00Z" {
+			t.Errorf("realm member %s = %#v, want the zero Instant", key, member[key])
+		}
+	}
+}
+
 // StatusAttitude is the enum whose proto numbering shifts because of the
 // UNSPECIFIED zero. The C# SnAccountStatus.FromProtoValue mapped it back to
 // the model values, so chat/status payloads must not expose 3 for Neutral.
