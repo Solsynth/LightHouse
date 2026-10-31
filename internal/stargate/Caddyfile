@@ -77,6 +77,12 @@ api.solian.app {
     rewrite @pm_me_namecard /stargate{path}
     @pm_me_passbook path /passport/accounts/me/passbook/member
     rewrite @pm_me_passbook /stargate{path}
+    @pm_me_progression path /passport/accounts/me/progression /passport/accounts/me/progression/*
+    rewrite @pm_me_progression /stargate{path}
+    @pm_me_statuses path /passport/accounts/me/statuses /passport/accounts/me/statuses/*
+    rewrite @pm_me_statuses /stargate{path}
+    @pm_me_punishments path /passport/accounts/me/punishments /passport/accounts/me/punishments/*
+    rewrite @pm_me_punishments /stargate{path}
 
     # search and id/{id} — must precede @pm_name (both would match the
     # single-segment {name} pattern)
