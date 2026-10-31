@@ -5,10 +5,21 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 	"google.golang.org/grpc"
 
 	"src.solsynth.dev/sosys/stargate/model"
 )
+
+func init() {
+	// SnWallet amounts are C# decimals, which System.Text.Json wrote as bare
+	// numbers. shopspring quotes decimal.Decimal by default, and clients parse
+	// amount/price as num, so the quoted form fails their type check. The
+	// switch is process-wide; every struct this package marshals to HTTP
+	// carries the fleet shape, and the custom Decimal types in realm/purchases
+	// marshal themselves regardless.
+	decimal.MarshalJSONWithoutQuotes = true
+}
 
 // RegisterHTTP mounts every wallet HTTP surface on the /api router group.
 func RegisterHTTP(api *gin.RouterGroup, d *Deps) {

@@ -1,6 +1,7 @@
 package wallet
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -98,5 +99,44 @@ func TestTruncateToThreeDecimals(t *testing.T) {
 	}
 	if got := truncate3(amount); got.String() != "12.345" {
 		t.Fatalf("truncated = %s", got)
+	}
+}
+
+// Clients parse wallet amounts as JSON numbers. shopspring quotes
+// decimal.Decimal by default, which the C# fleet never did.
+func TestWalletDecimalsMarshalUnquoted(t *testing.T) {
+	raw, err := json.Marshal(Wallet{
+		ID: "wallet-1",
+		Pockets: []Pocket{{
+			ID:              "pocket-1",
+			Currency:        "golds",
+			Amount:          decimal.RequireFromString("12.50"),
+			HeldAmount:      decimal.RequireFromString("0.25"),
+			AvailableAmount: decimal.RequireFromString("12.25"),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal wallet: %v", err)
+	}
+
+	var decoded struct {
+		Pockets []map[string]any `json:"pockets"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("decode wallet: %v", err)
+	}
+	if len(decoded.Pockets) != 1 {
+		t.Fatalf("pockets = %d, want 1", len(decoded.Pockets))
+	}
+	for key, want := range map[string]float64{
+		"amount":           12.50,
+		"held_amount":      0.25,
+		"available_amount": 12.25,
+	} {
+		got, ok := decoded.Pockets[0][key].(float64)
+		if !ok || got != want {
+			t.Errorf("%s = %#v (%T), want the number %v",
+				key, decoded.Pockets[0][key], decoded.Pockets[0][key], want)
+		}
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"strconv"
+	"strings"
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -51,6 +52,15 @@ func Message(message proto.Message) any {
 	return normalize(message.ProtoReflect().Descriptor(), decoded)
 }
 
+// decimalFields are proto3 strings that the C# models declared as decimal.
+// protojson can only carry those as text, but System.Text.Json wrote a bare
+// number and clients parse them as num, so a quoted value is a type error on
+// their side. Keyed by message because the field name alone is not a promise
+// that the value is numeric (`id` is not).
+var decimalFields = map[protoreflect.FullName]map[protoreflect.Name]bool{
+	"proto.DyRealm": {"boost_points": true},
+}
+
 // normalize rewrites one decoded protojson object: enum names become numbers,
 // JSON blobs become parsed values.
 func normalize(descriptor protoreflect.MessageDescriptor, value any) any {
@@ -67,6 +77,9 @@ func normalize(descriptor protoreflect.MessageDescriptor, value any) any {
 			continue
 		}
 		object[key] = normalizeField(field, item)
+		if decimalFields[descriptor.FullName()][field.Name()] {
+			object[key] = decimalNumber(item)
+		}
 	}
 	// ModelBase-shaped fleet messages always carry created_at/updated_at (and
 	// a nullable deleted_at) in the C# wire shape. protojson emits null for an
@@ -248,6 +261,24 @@ func unquoteInteger(value any) any {
 		if _, unsignedErr := strconv.ParseUint(text, 10, 64); unsignedErr != nil {
 			return value
 		}
+	}
+	return json.Number(text)
+}
+
+// decimalNumber renders a decimal string as a bare JSON number, keeping the
+// stored digits. An unset or unparseable value becomes 0, which is what an
+// unset C# decimal field serialized as.
+func decimalNumber(value any) any {
+	text, ok := value.(string)
+	if !ok {
+		return value
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return json.Number("0")
+	}
+	if _, err := strconv.ParseFloat(text, 64); err != nil {
+		return json.Number("0")
 	}
 	return json.Number(text)
 }

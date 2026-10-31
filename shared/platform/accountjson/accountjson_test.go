@@ -285,3 +285,24 @@ func TestMessageKeepsNonJSONBytes(t *testing.T) {
 		t.Fatal("data must be preserved")
 	}
 }
+
+// DyRealm.boost_points is a proto3 string because C# stores a decimal, but
+// System.Text.Json emitted a bare number. Chat rooms embed the realm, and a
+// client that reads boost_points as num rejects the quoted form.
+func TestMessageEmitsBoostPointsAsNumber(t *testing.T) {
+	for _, tc := range []struct {
+		points string
+		want   float64
+	}{
+		{"1234", 1234},
+		{"12.5", 12.5},
+		{"", 0},
+	} {
+		realm := &gen.DyRealm{Id: "realm-1", BoostPoints: tc.points}
+		embedded := wireMap(t, accountjson.Message(realm))
+		if embedded["boost_points"] != tc.want {
+			t.Errorf("boost_points(%q) = %#v (%T), want the number %v",
+				tc.points, embedded["boost_points"], embedded["boost_points"], tc.want)
+		}
+	}
+}
