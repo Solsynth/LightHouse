@@ -99,7 +99,10 @@ function statusLabel(status: string, progress: number): string {
                 :class="task.status === 'cancelled' ? 'bg-faint' : 'bg-primary pulse-soft'"
                 aria-hidden="true"
               />
-              <span class="min-w-0 flex-1 truncate text-[12px] text-base-content" :title="task.name">
+              <span
+                class="min-w-0 flex-1 truncate text-[12px] text-base-content"
+                :title="task.name"
+              >
                 {{ task.name }}
               </span>
               <span class="shrink-0 text-[11px] tabular-nums text-faint">
@@ -113,7 +116,11 @@ function statusLabel(status: string, progress: number): string {
               >
                 <Close16 class="h-3.5 w-3.5" />
               </IconButton>
-              <IconButton v-else :label="t('transfers.dismiss', { name: task.name })" @click="uploads.dismiss(task.id)">
+              <IconButton
+                v-else
+                :label="t('transfers.dismiss', { name: task.name })"
+                @click="uploads.dismiss(task.id)"
+              >
                 <Close16 class="h-3.5 w-3.5" />
               </IconButton>
             </div>

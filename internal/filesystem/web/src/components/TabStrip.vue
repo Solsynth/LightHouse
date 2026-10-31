@@ -2,7 +2,14 @@
 import { useI18n } from 'vue-i18n'
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Close16, Folder16, Image16, StoragePool16, TrashCan16, WarningAlt16 } from '@carbon/icons-vue'
+import {
+  Close16,
+  Folder16,
+  Image16,
+  StoragePool16,
+  TrashCan16,
+  WarningAlt16,
+} from '@carbon/icons-vue'
 import type { Component } from 'vue'
 
 import { useTabStore, type DriveTab, type TabKind } from '@/stores/tabs'
@@ -76,7 +83,11 @@ function onDrop(index: number, event: DragEvent) {
           type="button"
           role="tab"
           class="flex min-w-0 flex-1 items-center gap-1.5 pl-3 pr-1 text-left text-xs transition-colors duration-150"
-          :class="tab.id === activePath ? 'border-t-2 border-primary text-base-content' : 'border-t-2 border-transparent text-faint hover:text-dim'"
+          :class="
+            tab.id === activePath
+              ? 'border-t-2 border-primary text-base-content'
+              : 'border-t-2 border-transparent text-faint hover:text-dim'
+          "
           :aria-selected="tab.id === activePath"
           :aria-current="tab.id === activePath ? 'page' : undefined"
           :title="tab.note ? `${tab.name} · ${tab.note}` : tab.name"

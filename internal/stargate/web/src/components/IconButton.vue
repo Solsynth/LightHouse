@@ -18,9 +18,7 @@ const emit = defineEmits<{ click: [] }>()
     type="button"
     class="btn btn-ghost btn-xs px-1"
     :class="
-      props.tone === 'danger'
-        ? 'text-dim hover:text-error'
-        : 'text-dim hover:text-base-content'
+      props.tone === 'danger' ? 'text-dim hover:text-error' : 'text-dim hover:text-base-content'
     "
     :title="props.label"
     :aria-label="props.label"

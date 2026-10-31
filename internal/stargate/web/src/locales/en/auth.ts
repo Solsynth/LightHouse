@@ -5,7 +5,7 @@ export default {
     intro: 'Sign in with your Solar Network account.',
     continueIntro: 'Complete the verification this sign-in asks for.',
     accountLabel: 'Account or email',
-    accountPlaceholder: 'name or name{\'@\'}example.com',
+    accountPlaceholder: "name or name{'@'}example.com",
     checking: 'Checking…',
     passkeyTile: 'Passkey',
     qrTile: 'Scan to Sign In',
@@ -31,7 +31,8 @@ export default {
     errorLocked: 'That account is locked.',
     errorUntrusted: 'Only a trusted session can approve a sign-in.',
     errorRequestFailed: 'The request failed.',
-    errorRedirectRefused: 'That sign-in link points somewhere this service cannot sign you in. Continue on your account page.',
+    errorRedirectRefused:
+      'That sign-in link points somewhere this service cannot sign you in. Continue on your account page.',
   },
   createAccount: {
     title: 'Create an Account',
@@ -67,14 +68,17 @@ export default {
   },
   callback: {
     title: 'Continuing Sign-In',
-    handingOff: 'Handing this request to the identity service. If nothing happens, continue manually.',
-    missingProvider: 'This callback is missing a provider. Return to sign-in and choose a provider again.',
+    handingOff:
+      'Handing this request to the identity service. If nothing happens, continue manually.',
+    missingProvider:
+      'This callback is missing a provider. Return to sign-in and choose a provider again.',
     continueManual: 'Continue to the Identity Service',
     backToSignIn: 'Back to Sign-In',
   },
   captcha: {
     title: 'Verify You Are Human',
-    intro: 'Complete the challenge to continue. The result is returned to the page that asked for it.',
+    intro:
+      'Complete the challenge to continue. The result is returned to the page that asked for it.',
     verified: 'Verification complete. Return to the form that asked for it.',
     tokenNote: 'Opened from a form that needs verification, this page continues automatically.',
     errorInvalidRedirect: 'The redirect address is invalid.',

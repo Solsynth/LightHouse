@@ -61,13 +61,25 @@ const phase = computed<'lookup' | 'pending' | 'closed' | 'missing'>(() => {
 const terminal = computed(() => {
   const value = status.value?.status
   if (value === 'approved') {
-    return { tone: 'success', title: t('device.terminalApproved'), hint: t('device.terminalApprovedHint') }
+    return {
+      tone: 'success',
+      title: t('device.terminalApproved'),
+      hint: t('device.terminalApprovedHint'),
+    }
   }
   if (value === 'declined') {
-    return { tone: 'error', title: t('device.terminalDeclined'), hint: t('device.terminalDeclinedHint') }
+    return {
+      tone: 'error',
+      title: t('device.terminalDeclined'),
+      hint: t('device.terminalDeclinedHint'),
+    }
   }
   if (value === 'expired') {
-    return { tone: 'warning', title: t('device.terminalExpired'), hint: t('device.terminalExpiredHint') }
+    return {
+      tone: 'warning',
+      title: t('device.terminalExpired'),
+      hint: t('device.terminalExpiredHint'),
+    }
   }
   return { tone: 'warning', title: t('device.terminalOther'), hint: t('device.terminalOtherHint') }
 })
@@ -166,7 +178,11 @@ onMounted(() => {
       </button>
     </form>
 
-    <div v-if="loading" class="mt-6 overflow-hidden rounded-card border border-line" aria-hidden="true">
+    <div
+      v-if="loading"
+      class="mt-6 overflow-hidden rounded-card border border-line"
+      aria-hidden="true"
+    >
       <span class="skeleton mx-4 my-2.5 h-2 w-24" />
       <div class="space-y-3 border-t border-line px-4 py-3">
         <span class="skeleton h-3 w-2/3" />
@@ -218,10 +234,20 @@ onMounted(() => {
           </p>
 
           <div class="mt-5 flex flex-wrap gap-2">
-            <button type="button" class="btn btn-primary btn-sm" :disabled="busy" @click="decide(true)">
+            <button
+              type="button"
+              class="btn btn-primary btn-sm"
+              :disabled="busy"
+              @click="decide(true)"
+            >
               {{ busy ? t('device.submitting') : t('device.approve') }}
             </button>
-            <button type="button" class="btn btn-ghost btn-sm" :disabled="busy" @click="decide(false)">
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm"
+              :disabled="busy"
+              @click="decide(false)"
+            >
               {{ t('device.deny') }}
             </button>
           </div>

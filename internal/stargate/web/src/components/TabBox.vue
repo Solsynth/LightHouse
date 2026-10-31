@@ -21,9 +21,7 @@ const emit = defineEmits<{ select: [key: string] }>()
 const root = ref<HTMLElement | null>(null)
 
 const tabClass = (current: boolean) =>
-  current
-    ? 'bg-base-300 text-base-content'
-    : 'text-faint hover:bg-base-300/50 hover:text-dim'
+  current ? 'bg-base-300 text-base-content' : 'text-faint hover:bg-base-300/50 hover:text-dim'
 
 /**
  * The strip scrolls instead of wrapping once the tabs are wider than the card,

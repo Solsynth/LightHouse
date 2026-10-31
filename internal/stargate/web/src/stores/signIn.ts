@@ -46,9 +46,7 @@ export const useSignInStore = defineStore('signIn', () => {
   /** Loads the factors this challenge accepts, skipping the ones already used. */
   async function loadFactors() {
     if (!challenge.value) return
-    const list = await request<AuthFactor[]>(
-      `/auth/challenge/${challenge.value.id}/factors`,
-    )
+    const list = await request<AuthFactor[]>(`/auth/challenge/${challenge.value.id}/factors`)
     const blacklist = new Set(challenge.value.blacklist_factors)
     factors.value = list.filter(
       (factor) => !blacklist.has(factor.id) && !usedFactorIds.value.includes(factor.id),
@@ -69,15 +67,16 @@ export const useSignInStore = defineStore('signIn', () => {
     busy.value = true
     error.value = ''
     try {
-      challenge.value = await request<AuthChallenge>(
-        `/auth/challenge/${challenge.value.id}`,
-        { method: 'PATCH', body: { factor_id: factorId, password: secret } },
-      )
+      challenge.value = await request<AuthChallenge>(`/auth/challenge/${challenge.value.id}`, {
+        method: 'PATCH',
+        body: { factor_id: factorId, password: secret },
+      })
       usedFactorIds.value = [...usedFactorIds.value, factorId]
       password.value = ''
       if (!complete.value) await loadFactors()
     } catch (caught) {
-      error.value = caught instanceof Error ? caught.message : translate('errors.credentialRejected')
+      error.value =
+        caught instanceof Error ? caught.message : translate('errors.credentialRejected')
       throw caught
     } finally {
       busy.value = false

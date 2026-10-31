@@ -95,8 +95,7 @@ async function toggle(factor: AuthFactor) {
     }
     await load()
   } catch (caught) {
-    error.value =
-      caught instanceof StargateError ? caught.message : t('factors.errorUpdate')
+    error.value = caught instanceof StargateError ? caught.message : t('factors.errorUpdate')
   } finally {
     busy.value = false
   }
@@ -130,17 +129,17 @@ onMounted(load)
 
 <template>
   <div>
-    <PageHeader
-      :title="t('factors.title')"
-      :description="t('factors.description')"
-    />
+    <PageHeader :title="t('factors.title')" :description="t('factors.description')" />
 
     <SecurityNav />
 
     <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <ConsolePanel :title="t('factors.configured')" :note="loading ? undefined : t('factors.totalNote', { n: factors.length })">
+      <ConsolePanel
+        :title="t('factors.configured')"
+        :note="loading ? undefined : t('factors.totalNote', { n: factors.length })"
+      >
         <LoadingSkeleton v-if="loading" variant="rows" :rows="4" />
 
         <p v-else-if="!factors.length" class="voice py-6">
@@ -158,10 +157,7 @@ onMounted(load)
                 <span class="text-xs text-base-content">
                   {{ factorTypeLabel(factor.type) }}
                 </span>
-                <span
-                  class="chip"
-                  :class="factor.enabled_at ? 'text-success' : 'text-warning'"
-                >
+                <span class="chip" :class="factor.enabled_at ? 'text-success' : 'text-warning'">
                   {{ factor.enabled_at ? t('common.enabled') : t('common.disabled') }}
                 </span>
                 <span class="chip">{{ t('factors.weight', { n: factor.trustworthy }) }}</span>
@@ -174,9 +170,7 @@ onMounted(load)
                 <template v-if="factor.enabled_at">
                   · {{ t('factors.enabledAt', { time: relative(factor.enabled_at) }) }}
                 </template>
-                <template v-if="factor.expired_at">
-                  · {{ remaining(factor.expired_at) }}
-                </template>
+                <template v-if="factor.expired_at"> · {{ remaining(factor.expired_at) }} </template>
               </p>
             </div>
             <div class="flex items-center gap-1">
@@ -243,9 +237,13 @@ onMounted(load)
               class="mt-4 border border-warning/50 bg-warning/5 p-3"
             >
               <p class="text-2xs uppercase tracking-[0.12em] text-warning">
-                {{ created.type === 5 ? t('factors.recoveryCode') : t('factors.authenticatorSecret') }}
+                {{
+                  created.type === 5 ? t('factors.recoveryCode') : t('factors.authenticatorSecret')
+                }}
               </p>
-              <p class="mt-2 break-all font-mono text-xs text-base-content">{{ createdSecret() }}</p>
+              <p class="mt-2 break-all font-mono text-xs text-base-content">
+                {{ createdSecret() }}
+              </p>
               <p class="mt-2 voice text-[12px] text-faint">
                 {{ t('factors.shownOnce') }}
               </p>

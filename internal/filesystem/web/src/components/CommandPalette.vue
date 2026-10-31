@@ -336,11 +336,16 @@ function onKeydown(event: KeyboardEvent) {
             </template>
           </div>
 
-          <div class="flex items-center gap-3 border-t border-line px-4 py-2 text-[11px] text-faint">
+          <div
+            class="flex items-center gap-3 border-t border-line px-4 py-2 text-[11px] text-faint"
+          >
             <span class="flex items-center gap-1"
-              ><span class="kbd">↑</span><span class="kbd">↓</span> {{ t('palette.navigate') }}</span
+              ><span class="kbd">↑</span><span class="kbd">↓</span>
+              {{ t('palette.navigate') }}</span
             >
-            <span class="flex items-center gap-1"><span class="kbd">↵</span> {{ t('palette.run') }}</span>
+            <span class="flex items-center gap-1"
+              ><span class="kbd">↵</span> {{ t('palette.run') }}</span
+            >
             <span class="ml-auto flex items-center gap-1"
               ><span class="kbd">⌘</span><span class="kbd">K</span> {{ t('palette.toggle') }}</span
             >

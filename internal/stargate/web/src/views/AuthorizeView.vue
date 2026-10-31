@@ -30,7 +30,9 @@ const scopeLabels = computed<Record<string, string>>(() => ({
   '*': t('authorize.scopeAll'),
 }))
 
-const name = computed(() => info.value?.client_name || info.value?.client_id || t('authorize.thisApp'))
+const name = computed(
+  () => info.value?.client_name || info.value?.client_id || t('authorize.thisApp'),
+)
 
 /**
  * The requesting app's own background takes over the shell's backdrop while
@@ -52,7 +54,8 @@ function queryParams(): URLSearchParams {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(route.query)) {
     if (typeof value === 'string') params.set(key, value)
-    else if (Array.isArray(value)) value.forEach((entry) => entry !== null && params.append(key, entry))
+    else if (Array.isArray(value))
+      value.forEach((entry) => entry !== null && params.append(key, entry))
   }
   return params
 }
@@ -67,10 +70,7 @@ async function load() {
   try {
     info.value = await authApi.authorizeInfo(params)
   } catch (caught) {
-    error.value =
-      caught instanceof StargateError
-        ? caught.message
-        : t('authorize.errorRead')
+    error.value = caught instanceof StargateError ? caught.message : t('authorize.errorRead')
   } finally {
     loading.value = false
   }
@@ -89,8 +89,7 @@ async function decide(approve: boolean) {
     }
     await router.push('/account')
   } catch (caught) {
-    error.value =
-      caught instanceof StargateError ? caught.message : t('authorize.errorSubmit')
+    error.value = caught instanceof StargateError ? caught.message : t('authorize.errorSubmit')
   } finally {
     busy.value = false
   }
@@ -110,7 +109,11 @@ onMounted(load)
       >{{ t('authorize.introSuffix') }}
     </p>
 
-    <div v-if="loading" class="mt-6 overflow-hidden rounded-card border border-line" aria-hidden="true">
+    <div
+      v-if="loading"
+      class="mt-6 overflow-hidden rounded-card border border-line"
+      aria-hidden="true"
+    >
       <div class="space-y-3 border-t border-line px-4 py-3">
         <span class="skeleton h-3 w-2/3" />
         <span class="skeleton h-3 w-1/2" />
@@ -134,7 +137,10 @@ onMounted(load)
 
           <p class="mt-4 text-2xs text-dim" :title="info.client_id">{{ info.client_id }}</p>
 
-          <div v-if="info.policy_uri || info.terms_of_service_uri" class="mt-4 flex flex-wrap gap-3">
+          <div
+            v-if="info.policy_uri || info.terms_of_service_uri"
+            class="mt-4 flex flex-wrap gap-3"
+          >
             <a
               v-if="info.policy_uri"
               :href="info.policy_uri"
@@ -188,7 +194,12 @@ onMounted(load)
             >
               {{ busy ? t('authorize.submitting') : t('authorize.approve') }}
             </button>
-            <button type="button" class="btn btn-ghost btn-sm" :disabled="busy" @click="decide(false)">
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm"
+              :disabled="busy"
+              @click="decide(false)"
+            >
               {{ t('authorize.deny') }}
             </button>
           </div>

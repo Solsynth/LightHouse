@@ -141,7 +141,9 @@ export class SnfsPicker {
     this.close()
     const id = ++this.requestId
     const wrapped = 'options' in request || 'token' in request || 'code' in request
-    const options = wrapped ? ((request as SnfsPickerRequest).options ?? {}) : (request as PickerOptions)
+    const options = wrapped
+      ? ((request as SnfsPickerRequest).options ?? {})
+      : (request as PickerOptions)
     this.options = options
     this.token = wrapped
       ? (request as SnfsPickerRequest).token || (request as SnfsPickerRequest).code
@@ -271,7 +273,12 @@ export class SnfsPicker {
     if (!this.frame) return
     const data = event.data
     // Handle auth completion message from login popup forwarded to the host
-    if (isPickerMessage(data) && (data.type === 'picker:auth-success' || data.type === 'POPUP_AUTH_SUCCESS' || data.type === 'AUTH_SUCCESS')) {
+    if (
+      isPickerMessage(data) &&
+      (data.type === 'picker:auth-success' ||
+        data.type === 'POPUP_AUTH_SUCCESS' ||
+        data.type === 'AUTH_SUCCESS')
+    ) {
       const token = typeof data.token === 'string' ? data.token : undefined
       if (token) this.token = token
       this.frame.contentWindow?.postMessage(
@@ -289,7 +296,12 @@ export class SnfsPicker {
     if (message.type === 'picker:ready') {
       if (this.token) {
         this.frame?.contentWindow?.postMessage(
-          { channel: PICKER_CHANNEL, type: 'picker:open', options: this.options, token: this.token },
+          {
+            channel: PICKER_CHANNEL,
+            type: 'picker:open',
+            options: this.options,
+            token: this.token,
+          },
           this.origin,
         )
       }

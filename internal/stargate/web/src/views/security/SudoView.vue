@@ -50,11 +50,7 @@ function finish() {
 
     <div v-else class="rounded-card border border-line bg-base-200/30 p-5">
       <SudoFlow @done="onDone" />
-      <button
-        type="button"
-        class="mt-5 text-2xs text-dim hover:text-base-content"
-        @click="finish"
-      >
+      <button type="button" class="mt-5 text-2xs text-dim hover:text-base-content" @click="finish">
         {{ t('common.cancel') }}
       </button>
     </div>

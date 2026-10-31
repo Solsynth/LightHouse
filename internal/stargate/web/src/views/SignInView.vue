@@ -16,7 +16,13 @@ import { getAssertion, passkeyFailure, passkeysSupported } from '@/lib/webauthn'
 import { deviceIdentity } from '@/lib/device'
 import { MODULES } from '@/lib/modules'
 import { useModulesStore } from '@/stores/modules'
-import { handoffTargetUrl, landingQuery, requestedLanding, resolveLanding, type Landing } from '@/lib/signInTarget'
+import {
+  handoffTargetUrl,
+  landingQuery,
+  requestedLanding,
+  resolveLanding,
+  type Landing,
+} from '@/lib/signInTarget'
 import ProviderMark from '@/components/ProviderMark.vue'
 import { providerLabel } from '@/lib/providers'
 import FactorRow from '@/components/FactorRow.vue'
@@ -121,9 +127,7 @@ const passkeySupported = passkeysSupported()
  * module read fails open, matching `hasAll`: a transient failure must not hide
  * a way the deployment actually offers.
  */
-const qrServed = computed(
-  () => !modules.loaded || modules.capabilities.includes('auth.qr-login'),
-)
+const qrServed = computed(() => !modules.loaded || modules.capabilities.includes('auth.qr-login'))
 
 /**
  * Passkey and QR are this console's own ways in: they sit together in one row
@@ -321,7 +325,7 @@ async function finish() {
           {
             channel: 'snfs-picker',
             type: 'picker:auth-success',
-            token: pair?.access_token,
+            token: pair?.token,
           },
           '*',
         )
@@ -373,7 +377,9 @@ onMounted(async () => {
   if (session.signedIn) {
     if (window.opener && window.location.search.includes('popup=1')) {
       try {
-        const grant = await authApi.handoffToken({ target_uri: window.location.href }).catch(() => null)
+        const grant = await authApi
+          .handoffToken({ target_uri: window.location.href })
+          .catch(() => null)
         window.opener.postMessage(
           {
             channel: 'snfs-picker',
@@ -406,155 +412,164 @@ onBeforeUnmount(() => {
     </div>
 
     <Transition name="step" mode="out-in">
-    <QrLoginPanel v-if="mode === 'qr'" key="qr" @approved="qrApproved" @back="mode = 'identify'" />
-
-    <form v-else-if="!started" key="identify" @submit.prevent="identify">
-      <TextField
-        id="account"
-        v-model="account"
-        :label="t('signIn.accountLabel')"
-        :placeholder="t('signIn.accountPlaceholder')"
-        autocomplete="username"
-        autocapitalize="off"
-        spellcheck="false"
-        :disabled="busy"
+      <QrLoginPanel
+        v-if="mode === 'qr'"
+        key="qr"
+        @approved="qrApproved"
+        @back="mode = 'identify'"
       />
-      <button type="submit" class="btn btn-primary mt-4 w-full" :disabled="busy || !account.trim()">
-        {{ busy ? t('signIn.checking') : t('common.continue') }}
-      </button>
 
-      <div v-if="deviceWays.length || providers.length" class="mt-5 pt-1">
-        <p class="field-label">{{ t('signIn.orContinueWith') }}</p>
-        <div v-if="deviceWays.length" class="grid grid-cols-2 gap-2">
+      <form v-else-if="!started" key="identify" @submit.prevent="identify">
+        <TextField
+          id="account"
+          v-model="account"
+          :label="t('signIn.accountLabel')"
+          :placeholder="t('signIn.accountPlaceholder')"
+          autocomplete="username"
+          autocapitalize="off"
+          spellcheck="false"
+          :disabled="busy"
+        />
+        <button
+          type="submit"
+          class="btn btn-primary mt-4 w-full"
+          :disabled="busy || !account.trim()"
+        >
+          {{ busy ? t('signIn.checking') : t('common.continue') }}
+        </button>
+
+        <div v-if="deviceWays.length || providers.length" class="mt-5 pt-1">
+          <p class="field-label">{{ t('signIn.orContinueWith') }}</p>
+          <div v-if="deviceWays.length" class="grid grid-cols-2 gap-2">
+            <button
+              v-if="passkeySupported"
+              type="button"
+              class="btn btn-outline"
+              :disabled="busy"
+              @click="passkeyDiscoverable"
+            >
+              <FingerprintRecognition16 aria-hidden="true" />
+              {{ t('signIn.passkeyTile') }}
+            </button>
+            <button
+              v-if="qrServed"
+              type="button"
+              class="btn btn-outline"
+              :disabled="busy"
+              @click="mode = 'qr'"
+            >
+              <QrCode16 aria-hidden="true" />
+              {{ t('signIn.qrTile') }}
+            </button>
+          </div>
+          <div
+            v-if="providers.length"
+            class="flex flex-wrap items-center gap-2"
+            :class="{ 'mt-2': deviceWays.length }"
+          >
+            <a
+              v-for="provider in providers"
+              :key="provider"
+              :href="landingPending ? undefined : providerUrl(provider)"
+              class="btn btn-outline btn-square size-10 text-base-content"
+              :class="{ 'pointer-events-none opacity-50': landingPending }"
+              :aria-disabled="landingPending"
+              :title="providerLabel(provider)"
+              :aria-label="t('signIn.continueWith', { provider: providerLabel(provider) })"
+            >
+              <ProviderMark :provider="provider" />
+            </a>
+          </div>
+        </div>
+      </form>
+
+      <div v-else key="challenge">
+        <header class="flex items-center justify-between pb-3">
+          <div class="min-w-0">
+            <p class="truncate text-xs text-base-content">{{ signIn.account }}</p>
+            <p class="text-2xs text-faint">
+              {{
+                t('signIn.stepsRemaining', {
+                  remain: signIn.challenge?.step_remain,
+                  total: signIn.challenge?.step_total,
+                })
+              }}
+              <template v-if="signIn.challenge?.expired_at">
+                · {{ t('signIn.timeLeft', { time: remaining(signIn.challenge.expired_at) }) }}
+              </template>
+            </p>
+          </div>
+          <button type="button" class="text-2xs text-dim hover:text-base-content" @click="restart">
+            {{ t('signIn.changeAccount') }}
+          </button>
+        </header>
+
+        <div class="pt-4">
           <button
-            v-if="passkeySupported"
+            v-if="canUsePasskey"
             type="button"
-            class="btn btn-outline"
+            class="btn btn-outline mb-4 w-full"
             :disabled="busy"
-            @click="passkeyDiscoverable"
+            @click="passkeyBound"
           >
             <FingerprintRecognition16 aria-hidden="true" />
-            {{ t('signIn.passkeyTile') }}
+            {{ t('signIn.passkeyVerify') }}
           </button>
-          <button
-            v-if="qrServed"
-            type="button"
-            class="btn btn-outline"
-            :disabled="busy"
-            @click="mode = 'qr'"
-          >
-            <QrCode16 aria-hidden="true" />
-            {{ t('signIn.qrTile') }}
-          </button>
-        </div>
-        <div
-          v-if="providers.length"
-          class="flex flex-wrap items-center gap-2"
-          :class="{ 'mt-2': deviceWays.length }"
-        >
-          <a
-            v-for="provider in providers"
-            :key="provider"
-            :href="landingPending ? undefined : providerUrl(provider)"
-            class="btn btn-outline btn-square size-10 text-base-content"
-            :class="{ 'pointer-events-none opacity-50': landingPending }"
-            :aria-disabled="landingPending"
-            :title="providerLabel(provider)"
-            :aria-label="t('signIn.continueWith', { provider: providerLabel(provider) })"
-          >
-            <ProviderMark :provider="provider" />
-          </a>
-        </div>
-      </div>
-    </form>
 
-    <div v-else key="challenge">
-      <header class="flex items-center justify-between pb-3">
-        <div class="min-w-0">
-          <p class="truncate text-xs text-base-content">{{ signIn.account }}</p>
-          <p class="text-2xs text-faint">
-            {{
-              t('signIn.stepsRemaining', {
-                remain: signIn.challenge?.step_remain,
-                total: signIn.challenge?.step_total,
-              })
-            }}
-            <template v-if="signIn.challenge?.expired_at">
-              · {{ t('signIn.timeLeft', { time: remaining(signIn.challenge.expired_at) }) }}
-            </template>
+          <p v-if="!signIn.factors.length" class="py-3 text-xs text-dim">
+            {{ t('signIn.waitingOther') }}
           </p>
+
+          <div v-else-if="choiceFactors.length" class="relative">
+            <Transition name="step" mode="out-in">
+              <div v-if="!selectedFactor" key="choose">
+                <p class="field-label">{{ t('signIn.chooseMethod') }}</p>
+                <div class="space-y-1.5">
+                  <button
+                    v-for="factor in choiceFactors"
+                    :key="factor.id"
+                    type="button"
+                    class="flex w-full flex-col rounded-chip border border-line-soft px-3 py-2.5 text-left transition-colors hover:border-line hover:bg-base-300/60"
+                    :disabled="busy"
+                    @click="chooseFactor(factor)"
+                  >
+                    <span class="text-xs text-base-content">
+                      {{ factorTypeLabel(factor.type) }}
+                    </span>
+                    <span class="mt-0.5 text-2xs text-faint">
+                      {{ factorTypeDescription(factor.type) }}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <div v-else-if="selectedFactor" key="chosen">
+                <div v-if="choiceFactors.length > 1" class="mb-2 flex justify-end">
+                  <button
+                    type="button"
+                    class="text-2xs text-dim hover:text-base-content"
+                    @click="selectedFactorId = null"
+                  >
+                    {{ t('signIn.useAnother') }}
+                  </button>
+                </div>
+                <FactorRow
+                  :factor="selectedFactor"
+                  :busy="busy"
+                  :code-sent="codeSentIds.includes(selectedFactor.id)"
+                  :needs-code="needsCode(selectedFactor)"
+                  @send-code="sendCode(selectedFactor)"
+                  @submit="(secret) => submit(selectedFactor, secret)"
+                />
+              </div>
+            </Transition>
+          </div>
         </div>
-        <button type="button" class="text-2xs text-dim hover:text-base-content" @click="restart">
-          {{ t('signIn.changeAccount') }}
-        </button>
-      </header>
 
-      <div class="pt-4">
-        <button
-          v-if="canUsePasskey"
-          type="button"
-          class="btn btn-outline mb-4 w-full"
-          :disabled="busy"
-          @click="passkeyBound"
-        >
-          <FingerprintRecognition16 aria-hidden="true" />
-          {{ t('signIn.passkeyVerify') }}
-        </button>
-
-        <p v-if="!signIn.factors.length" class="py-3 text-xs text-dim">
-          {{ t('signIn.waitingOther') }}
+        <p v-if="error || signIn.error" class="note note-error mt-3">
+          {{ error || signIn.error }}
         </p>
-
-        <div v-else-if="choiceFactors.length" class="relative">
-          <Transition name="step" mode="out-in">
-            <div v-if="!selectedFactor" key="choose">
-              <p class="field-label">{{ t('signIn.chooseMethod') }}</p>
-              <div class="space-y-1.5">
-                <button
-                  v-for="factor in choiceFactors"
-                  :key="factor.id"
-                  type="button"
-                  class="flex w-full flex-col rounded-chip border border-line-soft px-3 py-2.5 text-left transition-colors hover:border-line hover:bg-base-300/60"
-                  :disabled="busy"
-                  @click="chooseFactor(factor)"
-                >
-                  <span class="text-xs text-base-content">
-                    {{ factorTypeLabel(factor.type) }}
-                  </span>
-                  <span class="mt-0.5 text-2xs text-faint">
-                    {{ factorTypeDescription(factor.type) }}
-                  </span>
-                </button>
-              </div>
-            </div>
-
-            <div v-else-if="selectedFactor" key="chosen">
-              <div v-if="choiceFactors.length > 1" class="mb-2 flex justify-end">
-                <button
-                  type="button"
-                  class="text-2xs text-dim hover:text-base-content"
-                  @click="selectedFactorId = null"
-                >
-                  {{ t('signIn.useAnother') }}
-                </button>
-              </div>
-              <FactorRow
-                :factor="selectedFactor"
-                :busy="busy"
-                :code-sent="codeSentIds.includes(selectedFactor.id)"
-                :needs-code="needsCode(selectedFactor)"
-                @send-code="sendCode(selectedFactor)"
-                @submit="(secret) => submit(selectedFactor, secret)"
-              />
-            </div>
-          </Transition>
-        </div>
       </div>
-
-      <p v-if="error || signIn.error" class="note note-error mt-3">
-        {{ error || signIn.error }}
-      </p>
-    </div>
     </Transition>
 
     <div v-if="started && !selectedFactor" class="mt-4 flex items-center gap-2 text-2xs text-faint">

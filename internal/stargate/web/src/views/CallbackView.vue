@@ -11,7 +11,8 @@ const provider = typeof route.params.provider === 'string' ? route.params.provid
 const query = new URLSearchParams()
 for (const [key, value] of Object.entries(route.query)) {
   if (typeof value === 'string') query.set(key, value)
-  else if (Array.isArray(value)) value.forEach((entry) => entry !== null && query.append(key, entry))
+  else if (Array.isArray(value))
+    value.forEach((entry) => entry !== null && query.append(key, entry))
 }
 const suffix = query.toString()
 const target = `/api/auth/callback/${encodeURIComponent(provider)}${suffix ? `?${suffix}` : ''}`

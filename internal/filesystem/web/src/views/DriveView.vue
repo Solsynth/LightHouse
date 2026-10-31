@@ -105,7 +105,10 @@ watch(
     tabs.sync({
       id: path,
       kind: kind === 'drive' ? 'folder' : kind,
-      name: kind === 'drive' && folderParam.value ? name : t(`nav.${kind === 'drive' ? 'drive' : kind}`),
+      name:
+        kind === 'drive' && folderParam.value
+          ? name
+          : t(`nav.${kind === 'drive' ? 'drive' : kind}`),
       note: vault.showingLabel,
     })
   },

@@ -54,9 +54,7 @@ const confirmNoun = computed(() => {
   return t(key, { n: formatCount(count) }, count)
 })
 const sizeClause = computed(() =>
-  totalBytes.value > 0
-    ? t('dialog.sizeClause', { size: formatBytes(totalBytes.value) })
-    : '',
+  totalBytes.value > 0 ? t('dialog.sizeClause', { size: formatBytes(totalBytes.value) }) : '',
 )
 const shortcutRows = computed<[string, string][]>(() => [
   [t('shortcuts.palette'), '⌘ K'],
@@ -188,7 +186,9 @@ async function toggleShare() {
           <template v-if="dialog.kind === 'new-folder'">
             <form @submit.prevent="submitFolder">
               <div class="px-5 pb-4 pt-5">
-                <h2 id="dialog-title" class="title text-[18px] text-base-content">{{ t('dialog.newFolder') }}</h2>
+                <h2 id="dialog-title" class="title text-[18px] text-base-content">
+                  {{ t('dialog.newFolder') }}
+                </h2>
                 <p class="voice mt-1">{{ t('dialog.newFolderNote') }}</p>
                 <label class="field-label mt-4">{{ t('dialog.folderName') }}</label>
                 <input
@@ -202,7 +202,9 @@ async function toggleShare() {
                 />
               </div>
               <div class="flex justify-end gap-2 border-t border-line px-5 py-3">
-                <button class="btn btn-ghost btn-sm" type="button" @click="close">{{ t('dialog.cancel') }}</button>
+                <button class="btn btn-ghost btn-sm" type="button" @click="close">
+                  {{ t('dialog.cancel') }}
+                </button>
                 <button
                   class="btn btn-primary btn-sm"
                   type="submit"
@@ -217,7 +219,9 @@ async function toggleShare() {
           <template v-else-if="dialog.kind === 'rename'">
             <form @submit.prevent="submitRename">
               <div class="px-5 pb-4 pt-5">
-                <h2 id="dialog-title" class="title text-[18px] text-base-content">{{ t('dialog.rename') }}</h2>
+                <h2 id="dialog-title" class="title text-[18px] text-base-content">
+                  {{ t('dialog.rename') }}
+                </h2>
                 <p class="voice mt-1">{{ t('dialog.renameNote') }}</p>
                 <label class="field-label mt-4">{{ t('dialog.nameLabel') }}</label>
                 <input
@@ -230,7 +234,9 @@ async function toggleShare() {
                 />
               </div>
               <div class="flex justify-end gap-2 border-t border-line px-5 py-3">
-                <button class="btn btn-ghost btn-sm" type="button" @click="close">{{ t('dialog.cancel') }}</button>
+                <button class="btn btn-ghost btn-sm" type="button" @click="close">
+                  {{ t('dialog.cancel') }}
+                </button>
                 <button
                   class="btn btn-primary btn-sm"
                   type="submit"
@@ -257,7 +263,9 @@ async function toggleShare() {
               />
             </div>
             <div class="flex justify-end gap-2 border-t border-line px-5 py-3">
-              <button class="btn btn-ghost btn-sm" type="button" @click="close">{{ t('dialog.cancel') }}</button>
+              <button class="btn btn-ghost btn-sm" type="button" @click="close">
+                {{ t('dialog.cancel') }}
+              </button>
               <button
                 class="btn btn-primary btn-sm"
                 type="button"
@@ -283,7 +291,9 @@ async function toggleShare() {
               </div>
             </div>
             <div class="flex justify-end gap-2 border-t border-line px-5 py-3">
-              <button class="btn btn-ghost btn-sm" type="button" @click="close">{{ t('dialog.cancel') }}</button>
+              <button class="btn btn-ghost btn-sm" type="button" @click="close">
+                {{ t('dialog.cancel') }}
+              </button>
               <button
                 class="btn btn-primary btn-sm"
                 type="button"
@@ -311,7 +321,9 @@ async function toggleShare() {
               </div>
             </div>
             <div class="flex justify-end gap-2 border-t border-line px-5 py-3">
-              <button class="btn btn-ghost btn-sm" type="button" @click="close">{{ t('dialog.cancel') }}</button>
+              <button class="btn btn-ghost btn-sm" type="button" @click="close">
+                {{ t('dialog.cancel') }}
+              </button>
               <button
                 class="btn btn-error btn-sm"
                 type="button"
@@ -355,7 +367,9 @@ async function toggleShare() {
                 >
                   <span
                     class="absolute top-[3px] size-3.5 rounded-full transition-[left] duration-150"
-                    :class="shareIsPublic ? 'left-[17px] bg-primary-content' : 'left-[3px] bg-faint'"
+                    :class="
+                      shareIsPublic ? 'left-[17px] bg-primary-content' : 'left-[3px] bg-faint'
+                    "
                   />
                 </button>
               </div>
@@ -372,13 +386,17 @@ async function toggleShare() {
               </div>
             </div>
             <div class="flex justify-end gap-2 border-t border-line px-5 py-3">
-              <button class="btn btn-primary btn-sm" type="button" @click="close">{{ t('dialog.done') }}</button>
+              <button class="btn btn-primary btn-sm" type="button" @click="close">
+                {{ t('dialog.done') }}
+              </button>
             </div>
           </template>
 
           <template v-else>
             <div class="px-5 py-5 pr-12">
-              <h2 id="dialog-title" class="title text-[18px] text-base-content">{{ t('shortcuts.title') }}</h2>
+              <h2 id="dialog-title" class="title text-[18px] text-base-content">
+                {{ t('shortcuts.title') }}
+              </h2>
               <p class="voice mt-1">{{ t('shortcuts.note') }}</p>
               <dl class="mt-4 divide-y divide-line-soft text-[11px]">
                 <div
@@ -394,7 +412,9 @@ async function toggleShare() {
               </dl>
             </div>
             <div class="flex justify-end border-t border-line px-5 py-3">
-              <button class="btn btn-primary btn-sm" type="button" @click="close">{{ t('dialog.close') }}</button>
+              <button class="btn btn-primary btn-sm" type="button" @click="close">
+                {{ t('dialog.close') }}
+              </button>
             </div>
           </template>
         </div>

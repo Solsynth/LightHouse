@@ -71,7 +71,12 @@ const usedPercent = computed(() =>
         {{ t('status.transferring', { n: uploads.activeCount, percent: uploads.overallProgress }) }}
       </span>
       <span class="tabular-nums">
-        {{ t('status.usedOfQuota', { used: formatBytes(vault.usedBytes), quota: formatBytes(vault.quotaBytes) }) }}
+        {{
+          t('status.usedOfQuota', {
+            used: formatBytes(vault.usedBytes),
+            quota: formatBytes(vault.quotaBytes),
+          })
+        }}
         <span class="text-faint/70">· {{ usedPercent }}</span>
       </span>
     </span>

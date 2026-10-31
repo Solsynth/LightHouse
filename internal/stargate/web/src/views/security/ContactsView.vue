@@ -87,9 +87,7 @@ async function togglePublic(contact: Contact) {
   busy.value = true
   try {
     await securityApi.setContactPublic(contact.id, !contact.is_public)
-    notice.ok(
-      contact.is_public ? t('contacts.noticeHidden') : t('contacts.noticeShown'),
-    )
+    notice.ok(contact.is_public ? t('contacts.noticeHidden') : t('contacts.noticeShown'))
     await load()
   } catch (caught) {
     notice.fail(caught instanceof Error ? caught.message : t('contacts.errorVisibility'))
@@ -119,17 +117,17 @@ onMounted(load)
 
 <template>
   <div>
-    <PageHeader
-      :title="t('contacts.title')"
-      :description="t('contacts.description')"
-    />
+    <PageHeader :title="t('contacts.title')" :description="t('contacts.description')" />
 
     <SecurityNav />
 
     <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <ConsolePanel :title="t('contacts.contacts')" :note="loading ? undefined : t('contacts.totalNote', { n: contacts.length })">
+      <ConsolePanel
+        :title="t('contacts.contacts')"
+        :note="loading ? undefined : t('contacts.totalNote', { n: contacts.length })"
+      >
         <LoadingSkeleton v-if="loading" variant="rows" :rows="4" />
 
         <p v-else-if="!contacts.length" class="voice py-6">
@@ -146,19 +144,23 @@ onMounted(load)
               <div class="flex flex-wrap items-center gap-2">
                 <span class="break-all text-xs text-base-content">{{ contact.content }}</span>
                 <span class="chip">{{ contactTypeLabel(contact.type) }}</span>
-                <span v-if="contact.is_primary" class="chip text-primary">{{ t('contacts.primary') }}</span>
-                <span v-if="contact.is_public" class="chip text-accent">{{ t('contacts.public') }}</span>
-                <span
-                  class="chip"
-                  :class="contact.verified_at ? 'text-success' : 'text-warning'"
-                >
+                <span v-if="contact.is_primary" class="chip text-primary">{{
+                  t('contacts.primary')
+                }}</span>
+                <span v-if="contact.is_public" class="chip text-accent">{{
+                  t('contacts.public')
+                }}</span>
+                <span class="chip" :class="contact.verified_at ? 'text-success' : 'text-warning'">
                   {{ contact.verified_at ? t('contacts.verified') : t('contacts.unverified') }}
                 </span>
               </div>
               <p class="mt-1 text-2xs text-faint">
                 {{ t('contacts.added', { time: relative(contact.created_at) }) }}
                 <template v-if="contact.verified_at">
-                  · {{ t('contacts.verifiedAt', { date: utcStamp(contact.verified_at).slice(0, 10) }) }}
+                  ·
+                  {{
+                    t('contacts.verifiedAt', { date: utcStamp(contact.verified_at).slice(0, 10) })
+                  }}
                 </template>
               </p>
             </div>
@@ -201,12 +203,7 @@ onMounted(load)
       </ConsolePanel>
 
       <ConsolePanel :title="t('contacts.addContact')">
-        <TextField
-          id="contact-type"
-          v-model.number="type"
-          as="select"
-          :label="t('contacts.type')"
-        >
+        <TextField id="contact-type" v-model.number="type" as="select" :label="t('contacts.type')">
           <option :value="0">{{ contactTypeLabel(0) }}</option>
           <option :value="1">{{ contactTypeLabel(1) }}</option>
           <option :value="2">{{ contactTypeLabel(2) }}</option>
@@ -217,7 +214,9 @@ onMounted(load)
           v-model="content"
           root-class="mt-4"
           :label="t('contacts.value')"
-          :placeholder="type === 0 ? t('contacts.emailPlaceholder') : t('contacts.valuePlaceholder')"
+          :placeholder="
+            type === 0 ? t('contacts.emailPlaceholder') : t('contacts.valuePlaceholder')
+          "
           autocapitalize="off"
           spellcheck="false"
         />

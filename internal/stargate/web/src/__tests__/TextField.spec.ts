@@ -128,4 +128,33 @@ describe('TextField', () => {
     expect(wrapper.get('.field').classes()).toContain('field-bare')
     expect(wrapper.get('input').attributes('aria-label')).toBe('Search')
   })
+
+  it('renders legend notch when field has label and omits it when bare', () => {
+    const labelled = mount(TextField, { props: { label: 'Password', modelValue: '' } })
+    expect(labelled.find('.field-legend').exists()).toBe(true)
+    expect(labelled.find('.field-legend').text()).toBe('Password')
+
+    const bare = mount(TextField, { props: { modelValue: '', bare: true } })
+    expect(bare.find('.field-legend').exists()).toBe(false)
+  })
+
+  it('supports suffix icon and suffix/action slots', () => {
+    const plain = mount(TextField, { props: { label: 'Code', modelValue: '' } })
+    expect(plain.get('.field').classes()).not.toContain('has-suffix')
+    expect(plain.find('.field-suffix').exists()).toBe(false)
+
+    const withSuffixSlot = mount(TextField, {
+      props: { label: 'Code', modelValue: '' },
+      slots: { suffix: '<span class="test-icon">icon</span>' },
+    })
+    expect(withSuffixSlot.get('.field').classes()).toContain('has-suffix')
+    expect(withSuffixSlot.find('.field-suffix .test-icon').exists()).toBe(true)
+
+    const withActionSlot = mount(TextField, {
+      props: { label: 'Password', modelValue: '' },
+      slots: { action: '<button class="field-action">reveal</button>' },
+    })
+    expect(withActionSlot.get('.field').classes()).toContain('has-suffix')
+    expect(withActionSlot.find('.field-action').exists()).toBe(true)
+  })
 })

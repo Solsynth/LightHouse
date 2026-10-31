@@ -44,7 +44,7 @@
   --color-error-content: #171618;
 
   --radius-selector: 4px;
-  --radius-field: 20px;
+  --radius-field: 10px;
   --radius-box: 12px;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
@@ -100,7 +100,7 @@
   --color-error-content: #ffffff;
 
   --radius-selector: 4px;
-  --radius-field: 20px;
+  --radius-field: 10px;
   --radius-box: 12px;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
@@ -144,7 +144,7 @@
      surface. `--radius-control` is the one value a button uses. */
   --radius-mark: 4px;
   --radius-chip: 6px;
-  --radius-input: 20px;
+  --radius-input: 10px;
   --radius-control: 6px;
   --radius-card: 12px;
   --radius-sheet: 16px;
@@ -297,15 +297,14 @@
      to 2 px and taking the signal colour, and an error keeps that same edge
      in the error tone.
 
-     The radius is Solian's `SolRadius.input` (20 px). At the console's 40–44 px
-     control height that resolves to a capsule, which is what the app's own
-     fields look like; a textarea keeps the same corner and reads as a soft
-     rounded box.
+     The radius is 10 px (`--radius-input`), matching the console's rounded
+     rectangle scale. The field is an outlined shape with a notched floating
+     label and an optional suffix icon/action.
 
-     The label is animated rather than static: at rest it sits where the value
-     will be, so an empty form still reads as a list of questions; on focus or
-     a value it rises into a caption. A control with no caption reserves no
-     caption line, so a label-less row keeps its natural height.
+     The label is animated rather than static: at rest it sits centered on the
+     value line. On focus or with a value, it rises into a notch cut along the
+     top border edge. A control with no caption reserves no notch line, keeping
+     clean symmetric margins.
 
      Sizes are named after the buttons they sit beside, so a row of field and
      button lines up without a per-row height override:
@@ -315,60 +314,115 @@
     min-inline-size: 0;
   }
 
-  /* The box is the positioned ancestor: the caption and the indicator belong
-     to the control's edge, not to the field plus its helper text. */
+  /* The box is the positioned ancestor: the outline, caption, and suffix
+     belong to the control's edge, not to the field plus its helper text. */
   .field-box {
     position: relative;
+    border-radius: var(--radius-input);
   }
 
-  .field-control {
-    display: block;
-    inline-size: 100%;
-    width: 100%;
+  .field-outline {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    padding: 0 calc(var(--field-inset) - 4px);
     border: 1px solid var(--field-line);
     border-radius: var(--radius-input);
     background-color: var(--field-fill);
-    color: var(--color-base-content);
-    font-family: var(--font-sans);
-    font-size: 13.5px;
-    line-height: 1.35;
+    pointer-events: none;
+    box-sizing: border-box;
+    min-inline-size: 0;
+    text-align: left;
     transition:
       background-color 150ms ease,
       border-color 150ms ease,
       box-shadow 150ms ease;
   }
 
-  .field-control:hover:not(:disabled):not(:focus) {
+  .field-box:hover:not(.is-disabled) .field-outline {
     background-color: var(--field-fill-hover);
     border-color: color-mix(in oklab, var(--field-line) 65%, var(--color-base-content));
   }
 
-  /* Focus is the border itself, thickened to 2 px with an inset ring so the
-     box does not move by a pixel the way a real border-width change would.
-     The global focus outline is suppressed for the same reason: it would draw
-     a second edge a few pixels outside this one. */
-  .field-control:focus,
-  .field-control:focus-visible {
-    outline: none;
+  /* Focus is the outline thickened to 2 px in the signal colour via an inset
+     ring so the control does not move by a pixel. */
+  .field:focus-within:not(.is-disabled) .field-outline {
     border-color: var(--color-primary);
     box-shadow: inset 0 0 0 1px var(--color-primary);
     background-color: var(--field-fill-focus);
   }
 
   /* Invalid fields keep the error edge whether or not they hold focus. */
-  .field.is-invalid .field-control {
+  .field.is-invalid .field-outline {
     border-color: var(--color-error);
   }
 
-  .field.is-invalid .field-control:focus,
-  .field.is-invalid .field-control:focus-visible {
+  .field.is-invalid:focus-within .field-outline {
     box-shadow: inset 0 0 0 1px var(--color-error);
+  }
+
+  .field.is-disabled .field-outline {
+    cursor: not-allowed;
+    border-color: color-mix(in oklab, var(--field-line) 50%, transparent);
+    background-color: color-mix(in oklab, var(--field-fill) 60%, var(--color-base-100));
+  }
+
+  .field-legend {
+    float: unset;
+    display: block;
+    width: auto;
+    padding: 0;
+    height: 11px;
+    font-size: var(--field-label-float);
+    line-height: 11px;
+    visibility: hidden;
+    max-width: 0.01px;
+    white-space: nowrap;
+    overflow: hidden;
+    transition: max-width 150ms cubic-bezier(0, 0, 0.2, 1);
+  }
+
+  .field-legend > span {
+    padding: 0 4px;
+    display: inline-block;
+    opacity: 0;
+    visibility: visible;
+  }
+
+  .field.is-floated .field-legend,
+  .field:focus-within .field-legend {
+    max-width: 1000px;
+  }
+
+  .field-control {
+    display: block;
+    position: relative;
+    z-index: 1;
+    inline-size: 100%;
+    width: 100%;
+    block-size: var(--field-height);
+    min-block-size: var(--field-height);
+    padding: 0 var(--field-inset);
+    border: none;
+    border-radius: var(--radius-input);
+    outline: none;
+    background: transparent;
+    color: var(--color-base-content);
+    font-family: var(--font-sans);
+    font-size: 13.5px;
+    line-height: var(--field-height);
+    caret-color: var(--color-primary);
+    transition: color 150ms ease;
+  }
+
+  .field.has-suffix .field-control,
+  .field:has(.field-action) .field-control {
+    padding-inline-end: calc(var(--field-inset) + 28px);
   }
 
   .field-control:disabled {
     cursor: not-allowed;
     color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
-    background-color: color-mix(in oklab, var(--field-fill) 60%, var(--color-base-100));
   }
 
   .field-control::placeholder {
@@ -380,52 +434,32 @@
     color: color-mix(in oklab, var(--color-faint) 80%, transparent);
   }
 
-  /* Sizes: height, horizontal inset, and the two label positions. */
+  /* Sizes: height, horizontal inset, and the label sizes. */
   .field-md {
     --field-height: 44px;
-    --field-inset: 16px;
+    --field-inset: 14px;
     --field-label-rest: 13.5px;
-    --field-label-float: 10px;
-    --field-label-top: 5px;
-    --field-text-top: 18px;
+    --field-label-float: 10.5px;
   }
 
   .field-sm {
     --field-height: 40px;
-    --field-inset: 15px;
+    --field-inset: 13px;
     --field-label-rest: 13px;
-    --field-label-float: 9.5px;
-    --field-label-top: 4px;
-    --field-text-top: 15px;
+    --field-label-float: 10px;
   }
 
   .field-xs {
     --field-height: 32px;
-    --field-inset: 12px;
+    --field-inset: 10px;
     --field-label-rest: 12px;
     --field-label-float: 9px;
-    --field-label-top: 4px;
-    --field-text-top: 12px;
-  }
-
-  .field-control {
-    block-size: var(--field-height);
-    min-block-size: var(--field-height);
-    padding: 0 var(--field-inset);
-  }
-
-  /* A labelled field reserves the caption line, so the value sits low enough
-     for the risen label to have its own room. The paddings are tuned so the
-     natural height meets `--field-height`: a field and the button beside it
-     then line up without a per-row override. */
-  .field:not(.field-bare) .field-control {
-    block-size: auto;
-    padding: var(--field-text-top) var(--field-inset) 4px;
   }
 
   .field textarea.field-control {
+    block-size: auto;
     min-block-size: calc(var(--field-height) * 2);
-    padding-block: var(--field-text-top) 10px;
+    padding-block: 10px;
     line-height: 1.5;
     resize: vertical;
   }
@@ -438,8 +472,6 @@
     background-image:
       linear-gradient(45deg, transparent 50%, currentColor 50%),
       linear-gradient(135deg, currentColor 50%, transparent 50%);
-    /* The arrow is positioned from the box's own bottom-right corner, so it
-       follows the field's height instead of the fill's centre. */
     background-position:
       calc(100% - 15px) calc(50% + 1px),
       calc(100% - 10px) calc(50% + 1px);
@@ -449,18 +481,24 @@
     background-repeat: no-repeat;
   }
 
+  .field.has-suffix select.field-control,
+  .field:has(.field-action) select.field-control {
+    padding-inline-end: calc(var(--field-inset) + 36px);
+  }
+
   .field-label-float {
     position: absolute;
-    z-index: 1;
-    inset-inline-start: var(--field-inset);
+    z-index: 2;
+    inset-inline-start: calc(var(--field-inset) - 4px);
     inset-block-start: 50%;
     translate: 0 -50%;
     color: var(--color-faint);
     font-size: var(--field-label-rest);
     font-weight: 500;
-    line-height: 1.1;
+    line-height: 1;
     pointer-events: none;
     transform-origin: left center;
+    padding: 0 4px;
     transition:
       inset-block-start 160ms cubic-bezier(0.2, 0.7, 0.2, 1),
       translate 160ms cubic-bezier(0.2, 0.7, 0.2, 1),
@@ -469,25 +507,27 @@
       color 160ms ease;
   }
 
-  /* The caption rises for a value, and also for focus: an empty focused field
-     shows its placeholder, so leaving the caption on the value line would
-     print the two on top of each other. */
+  /* The caption rises to the top border for a value or focus. */
   .field.is-floated .field-label-float,
   .field:focus-within .field-label-float {
-    inset-block-start: var(--field-label-top);
-    translate: 0 0;
+    inset-block-start: 0;
+    translate: 0 -50%;
     font-size: var(--field-label-float);
     font-weight: 600;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.03em;
   }
 
-  .field:focus-within .field-label-float {
+  .field:focus-within:not(.is-disabled) .field-label-float {
     color: var(--color-primary);
   }
 
   .field.is-invalid .field-label-float,
   .field.is-invalid:focus-within .field-label-float {
     color: var(--color-error);
+  }
+
+  .field.is-disabled .field-label-float {
+    color: color-mix(in oklab, var(--color-faint) 60%, transparent);
   }
 
   .field-hint {
@@ -505,9 +545,29 @@
     color: var(--color-warning);
   }
 
+  /* Suffix icon */
+  .field-suffix {
+    position: absolute;
+    z-index: 2;
+    inset-inline-end: 12px;
+    inset-block-start: 50%;
+    translate: 0 -50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-faint);
+    pointer-events: none;
+    transition: color 150ms ease;
+  }
+
+  .field:focus-within:not(.is-disabled) .field-suffix {
+    color: var(--color-base-content);
+  }
+
   /* A trailing control inside the field, e.g. the password reveal. */
   .field-action {
     position: absolute;
+    z-index: 2;
     inset-inline-end: 6px;
     inset-block-start: 50%;
     translate: 0 -50%;
@@ -526,10 +586,6 @@
   .field-action:hover {
     color: var(--color-base-content);
     background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
-  }
-
-  .field:has(.field-action) .field-control {
-    padding-inline-end: calc(var(--field-inset) + 30px);
   }
 
   /* Checkbox and radio: Material's square mark, on the same 4 px unit as the

@@ -75,19 +75,13 @@ function subline(file: CloudFile): string {
         tabindex="0"
         role="listitem"
         class="row-in group relative flex cursor-pointer flex-col p-1.5 transition-colors duration-200"
-        :class="
-          vault.selection.includes(file.id)
-            ? 'bg-primary/[0.07]'
-            : 'hover:bg-base-200/60'
-        "
+        :class="vault.selection.includes(file.id) ? 'bg-primary/[0.07]' : 'hover:bg-base-200/60'"
         :style="{ animationDelay: `${Math.min(index, 12) * 18}ms` }"
         :aria-selected="vault.selection.includes(file.id)"
         @click="open(file)"
         @keydown="onKeydown($event, file)"
       >
-        <div
-          class="relative aspect-[4/3] overflow-hidden border border-line bg-base-200/30"
-        >
+        <div class="relative aspect-[4/3] overflow-hidden border border-line bg-base-200/30">
           <img
             v-if="showPreview(file)"
             :src="previewUrl(file.id)"
@@ -123,7 +117,10 @@ function subline(file: CloudFile): string {
         </div>
 
         <div class="flex min-w-0 flex-col gap-0.5 px-1 pb-0.5 pt-2.5">
-          <span class="truncate text-[12.5px] font-medium text-base-content" :title="displayName(file)">
+          <span
+            class="truncate text-[12.5px] font-medium text-base-content"
+            :title="displayName(file)"
+          >
             {{ displayName(file) }}
           </span>
           <span class="truncate text-[11px] text-faint">

@@ -39,8 +39,7 @@ async function load() {
   try {
     stats.value = await adminApi.cacheStats()
   } catch (caught) {
-    error.value =
-      caught instanceof StargateError ? caught.message : t('admin.cache.errorStats')
+    error.value = caught instanceof StargateError ? caught.message : t('admin.cache.errorStats')
     stats.value = null
   } finally {
     loading.value = false

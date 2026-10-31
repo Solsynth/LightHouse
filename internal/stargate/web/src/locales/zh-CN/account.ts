@@ -26,7 +26,8 @@ export default {
     noBio: '还没有简介。其他账号会在你的资料页看到这部分内容。',
     birthday: '生日',
     art: '个人形象',
-    artHint: '头像与背景都是云盘文件。可以从 SnFS 云盘中选择，或直接上传新图片——不会复制到云盘目录中。',
+    artHint:
+      '头像与背景都是云盘文件。可以从 SnFS 云盘中选择，或直接上传新图片——不会复制到云盘目录中。',
     choosePicture: '选择头像',
     chooseBackground: '选择背景',
     chooseArtHint: '仅限图片。如果云盘里还没有，可以直接上传。',

@@ -27,7 +27,7 @@ export default defineConfigWithVueTs(
     // silently loses that piece. RouterLink/RouterView are registered
     // globally by app.use(router) and are the only exceptions.
     rules: {
-      'vue/no-undef-components': ['error', { ignorePatterns: ['^Router(Link|View)$'] }],
+      'vue/no-undef-components': ['error', { ignorePatterns: ['^Router(Link|View)$', '^sk-'] }],
     },
   },
   {

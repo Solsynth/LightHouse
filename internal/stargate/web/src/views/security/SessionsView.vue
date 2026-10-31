@@ -36,8 +36,7 @@ async function load() {
     sessions.value = result.items
     total.value = result.total
   } catch (caught) {
-    error.value =
-      caught instanceof StargateError ? caught.message : t('sessions.errorLoad')
+    error.value = caught instanceof StargateError ? caught.message : t('sessions.errorLoad')
   } finally {
     loading.value = false
   }
@@ -69,10 +68,7 @@ onMounted(load)
 
 <template>
   <div>
-    <PageHeader
-      :title="t('sessions.title')"
-      :description="t('sessions.description')"
-    >
+    <PageHeader :title="t('sessions.title')" :description="t('sessions.description')">
       <template #actions>
         <IconButton :label="t('common.refresh')" :disabled="loading" @click="load">
           <Renew16 aria-hidden="true" />
@@ -84,10 +80,7 @@ onMounted(load)
 
     <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
-    <ConsolePanel
-      :title="t('sessions.activeSessions')"
-      :note="t('sessions.note', { total })"
-    >
+    <ConsolePanel :title="t('sessions.activeSessions')" :note="t('sessions.note', { total })">
       <LoadingSkeleton v-if="loading" :rows="4" :columns="[3, 2, 2, 2, 1]" header />
 
       <p v-else-if="!sessions.length" class="voice py-6">
@@ -103,7 +96,9 @@ onMounted(load)
               <th scope="col">{{ t('sessions.type') }}</th>
               <th scope="col">{{ t('sessions.granted') }}</th>
               <th scope="col">{{ t('common.expires') }}</th>
-              <th scope="col"><span class="sr-only">{{ t('common.actions') }}</span></th>
+              <th scope="col">
+                <span class="sr-only">{{ t('common.actions') }}</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -115,9 +110,15 @@ onMounted(load)
                     :class="item.is_online ? 'bg-success' : 'bg-line'"
                     :title="item.is_online ? t('sessions.connectedNow') : t('common.offline')"
                   />
-                  <span class="text-xs text-base-content">{{ describeAgent(item.user_agent) }}</span>
-                  <span v-if="item.is_current" class="chip text-primary">{{ t('sessions.thisBrowser') }}</span>
-                  <span v-if="item.trusted" class="chip text-accent">{{ t('sessions.trusted') }}</span>
+                  <span class="text-xs text-base-content">{{
+                    describeAgent(item.user_agent)
+                  }}</span>
+                  <span v-if="item.is_current" class="chip text-primary">{{
+                    t('sessions.thisBrowser')
+                  }}</span>
+                  <span v-if="item.trusted" class="chip text-accent">{{
+                    t('sessions.trusted')
+                  }}</span>
                 </div>
                 <p class="mt-1 text-2xs text-faint" :title="item.id">{{ shortId(item.id) }}</p>
               </td>

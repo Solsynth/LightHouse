@@ -261,11 +261,9 @@ onMounted(load)
 
         <ConsolePanel
           :title="t('admin.accountDetail.panelFactors')"
-          :note="
-            `${detail.auth_factors.length} · ${t('admin.accountDetail.passkeys', {
-              n: detail.passkey_count,
-            })}`
-          "
+          :note="`${detail.auth_factors.length} · ${t('admin.accountDetail.passkeys', {
+            n: detail.passkey_count,
+          })}`"
         >
           <p v-if="!detail.auth_factors.length" class="voice py-3 text-[12px]">
             {{ t('admin.accountDetail.noFactors') }}
@@ -356,7 +354,12 @@ onMounted(load)
       @confirm="confirmAction"
     />
 
-    <dialog v-if="suspendOpen" class="modal modal-open" aria-modal="true" aria-labelledby="suspend-title">
+    <dialog
+      v-if="suspendOpen"
+      class="modal modal-open"
+      aria-modal="true"
+      aria-labelledby="suspend-title"
+    >
       <div
         class="modal-box max-w-md overflow-hidden rounded-sheet border border-line bg-base-100 p-0 shadow-[0_30px_80px_-40px_rgb(0_0_0/0.7)]"
       >

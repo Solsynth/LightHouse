@@ -3,13 +3,7 @@ import { useI18n } from 'vue-i18n'
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { Component } from 'vue'
-import {
-  CircleDash16,
-  Folder16,
-  StoragePool16,
-  TrashCan16,
-  WarningAlt16,
-} from '@carbon/icons-vue'
+import { CircleDash16, Folder16, StoragePool16, TrashCan16, WarningAlt16 } from '@carbon/icons-vue'
 
 import { formatBytes, formatCount } from '@/lib/format'
 import { useUiStore } from '@/stores/ui'
@@ -79,10 +73,7 @@ function selectPool(poolId: string | null) {
     :class="ui.sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
     :aria-label="t('app.console')"
   >
-    <nav
-      class="flex-1 overflow-y-auto px-2.5 py-3 scroll-region"
-      :aria-label="t('nav.locations')"
-    >
+    <nav class="flex-1 overflow-y-auto px-2.5 py-3 scroll-region" :aria-label="t('nav.locations')">
       <div class="relative">
         <span
           v-if="activeIndex >= 0"
@@ -96,7 +87,9 @@ function selectPool(poolId: string | null) {
           :to="item.to"
           class="relative flex h-9 items-center gap-2 pl-3.5 pr-2.5 text-xs transition-colors duration-150"
           :class="
-            isCurrent(item) ? 'text-base-content' : 'text-dim hover:bg-base-200/60 hover:text-base-content'
+            isCurrent(item)
+              ? 'text-base-content'
+              : 'text-dim hover:bg-base-200/60 hover:text-base-content'
           "
           :aria-current="isCurrent(item) ? 'page' : undefined"
           @click="navigate"
@@ -154,7 +147,10 @@ function selectPool(poolId: string | null) {
           </span>
         </button>
 
-        <p v-if="vault.poolRows.length === 0 && !vault.volumeLoading" class="px-2.5 py-1 text-2xs text-faint">
+        <p
+          v-if="vault.poolRows.length === 0 && !vault.volumeLoading"
+          class="px-2.5 py-1 text-2xs text-faint"
+        >
           {{ t('storage.noPools') }}
         </p>
       </div>
@@ -183,7 +179,10 @@ function selectPool(poolId: string | null) {
 
       <div class="px-2.5 pb-1 pt-2.5">
         <div class="h-[2px] w-full overflow-hidden bg-line-soft">
-          <div class="h-full bg-primary transition-[width] duration-700 ease-out" :style="{ width: usedWidth }" />
+          <div
+            class="h-full bg-primary transition-[width] duration-700 ease-out"
+            :style="{ width: usedWidth }"
+          />
         </div>
         <div class="mt-1.5 flex items-center justify-between text-2xs text-faint">
           <span>{{ formatBytes(vault.usedBytes) }} {{ t('storage.used') }}</span>

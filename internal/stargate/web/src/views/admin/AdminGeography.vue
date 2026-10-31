@@ -28,8 +28,7 @@ async function load() {
   try {
     buckets.value = await adminApi.geography(precision.value)
   } catch (caught) {
-    error.value =
-      caught instanceof StargateError ? caught.message : t('admin.geography.errorLoad')
+    error.value = caught instanceof StargateError ? caught.message : t('admin.geography.errorLoad')
   } finally {
     loading.value = false
   }
@@ -45,10 +44,7 @@ onMounted(load)
 
 <template>
   <div>
-    <PageHeader
-      :title="t('admin.geography.title')"
-      :description="t('admin.geography.description')"
-    >
+    <PageHeader :title="t('admin.geography.title')" :description="t('admin.geography.description')">
       <template #actions>
         <div class="flex gap-0.5 rounded-control border border-line p-0.5">
           <button
@@ -74,8 +70,14 @@ onMounted(load)
     <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
     <ConsolePanel
-      :title="precision === 'country' ? t('admin.geography.byCountry') : t('admin.geography.byCity')"
-      :note="loading ? undefined : t('admin.geography.panelNote', { buckets: buckets.length, total: totalUsers })"
+      :title="
+        precision === 'country' ? t('admin.geography.byCountry') : t('admin.geography.byCity')
+      "
+      :note="
+        loading
+          ? undefined
+          : t('admin.geography.panelNote', { buckets: buckets.length, total: totalUsers })
+      "
     >
       <LoadingSkeleton v-if="loading" :rows="5" :columns="[2, 1, 3, 2]" header />
 
@@ -96,7 +98,11 @@ onMounted(load)
           <tbody>
             <tr v-for="bucket in buckets" :key="`${bucket.country_code}:${bucket.city ?? ''}`">
               <td class="text-xs text-base-content">
-                {{ bucket.city ? `${bucket.city}, ${bucket.country ?? bucket.country_code}` : bucket.country ?? bucket.country_code }}
+                {{
+                  bucket.city
+                    ? `${bucket.city}, ${bucket.country ?? bucket.country_code}`
+                    : (bucket.country ?? bucket.country_code)
+                }}
                 <span class="ml-1 text-2xs text-faint">{{ bucket.country_code }}</span>
               </td>
               <td class="text-xs tabular-nums text-dim">{{ bucket.user_count }}</td>

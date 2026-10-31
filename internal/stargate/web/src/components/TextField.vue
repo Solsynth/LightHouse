@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, useAttrs, useId } from 'vue'
+import { computed, ref, useAttrs, useId, useSlots, type Component } from 'vue'
 
 // Every attribute belongs to the control, never to the layout box around it:
 // an `aria-label` on a `<div>` describes nothing. The root still needs
@@ -7,26 +7,20 @@ import { computed, ref, useAttrs, useId } from 'vue'
 defineOptions({ inheritAttrs: false })
 
 /**
- * The console's single field: a Material-style filled control whose label
- * animates between two positions.
+ * The console's single field: a Material-style outlined control with a notched
+ * floating label and an optional suffix icon/action.
  *
- * At rest the label sits on the value line, so an empty form reads as a list of
- * questions instead of a row of blank boxes. On focus, or once there is a
- * value, it rises into a caption above the value and stays there. The
- * indicator along the bottom edge grows from the centre while focused, and is
- * painted permanently in the error tone when `invalid` is set, so a failed
- * field is visible without the pointer being in it.
+ * At rest the label sits centered on the value line. On focus, or once there is a
+ * value, it floats up into a notch on the top border and stays there. Focus
+ * thickens the outline to 2 px in the signal colour, and an invalid field
+ * keeps the error tone.
  *
  * A field whose name lives in the surrounding chrome — a search box in a
- * toolbar, a filter in a table header — sets `bare`: no caption, no reserved
- * caption line, and its name comes from `aria-label` through attribute
- * fallthrough.
+ * toolbar, a filter in a table header — sets `bare`: no caption, no notch, and
+ * its name comes from `aria-label` through attribute fallthrough.
  *
- * The component renders the control itself rather than wrapping a slot, so
- * `v-model`, `id`, `type`, `inputmode`, `autocomplete`, `rows`, `@keydown`, and
- * the rest stay on a real `<input>`/`<textarea>`/`<select>` and behave exactly
- * as written. Attributes land on the control, not on the wrapper, because the
- * wrapper is a layout box and an `aria-*` on it would describe nothing.
+ * Suffix icons/actions can be supplied via `suffixIcon` prop or the `#suffix` /
+ * `#action` slots. When no suffix is present, the field retains balanced padding.
  */
 const props = withDefaults(
   defineProps<{
@@ -54,6 +48,8 @@ const props = withDefaults(
     controlClass?: string
     /** Extra classes for the wrapper, for spacing at the call site. */
     rootClass?: string
+    /** Optional suffix icon component. */
+    suffixIcon?: Component | string
     /** Vue's `.number` modifier on a component `v-model`. */
     modelModifiers?: { number?: boolean }
   }>(),
@@ -63,6 +59,7 @@ const props = withDefaults(
 const model = defineModel<string | number>({ default: '' })
 
 const attrs = useAttrs()
+const slots = useSlots()
 
 const generatedId = useId()
 /**
@@ -86,13 +83,16 @@ const filled = computed(() => {
 })
 
 /**
- * A caption exists only when the field has one and is not `bare`. Everything
- * that reserves space for the caption keys off this, so a label-less row keeps
- * its natural height instead of carrying an empty line above the value.
+ * A caption exists only when the field has one and is not `bare`.
  */
 const hasLabel = computed(() => Boolean(props.label) && !props.bare)
 
 const floated = computed(() => filled.value || !hasLabel.value)
+
+/** Whether a suffix icon or action slot is provided. */
+const hasSuffix = computed(
+  () => Boolean(props.suffixIcon) || Boolean(slots.suffix) || Boolean(slots.action),
+)
 
 /**
  * Writes the control's value back through `v-model`. A select with `.number`
@@ -118,10 +118,23 @@ defineExpose({
       'field',
       `field-${props.size}`,
       props.rootClass,
-      { 'field-bare': !hasLabel, 'is-floated': floated, 'is-invalid': props.invalid },
+      {
+        'field-bare': !hasLabel,
+        'is-floated': floated,
+        'is-invalid': props.invalid,
+        'is-disabled': props.disabled,
+        'has-suffix': hasSuffix,
+      },
     ]"
   >
     <div class="field-box">
+      <!-- Outlined border notch container -->
+      <fieldset aria-hidden="true" class="field-outline">
+        <legend v-if="hasLabel" class="field-legend">
+          <span>{{ props.label }}</span>
+        </legend>
+      </fieldset>
+
       <label v-if="hasLabel" :for="controlId" class="field-label-float">
         {{ props.label }}
       </label>
@@ -167,6 +180,17 @@ defineExpose({
         :aria-invalid="props.invalid || undefined"
         @input="commit"
       />
+
+      <div v-if="props.suffixIcon || $slots.suffix" class="field-suffix">
+        <slot name="suffix">
+          <component
+            :is="props.suffixIcon"
+            v-if="props.suffixIcon"
+            class="size-4 shrink-0"
+            aria-hidden="true"
+          />
+        </slot>
+      </div>
 
       <slot name="action" />
     </div>

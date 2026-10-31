@@ -110,10 +110,12 @@ onMounted(begin)
   <div>
     <div v-if="challenge" class="mb-4 flex items-center justify-between text-2xs text-faint">
       <span>
-        {{ t('elevation.steps', {
-          done: challenge.step_total - challenge.step_remain,
-          total: challenge.step_total,
-        }) }}
+        {{
+          t('elevation.steps', {
+            done: challenge.step_total - challenge.step_remain,
+            total: challenge.step_total,
+          })
+        }}
       </span>
       <span>{{ t('elevation.timeLeft', { time: remaining(challenge.expired_at) }) }}</span>
     </div>

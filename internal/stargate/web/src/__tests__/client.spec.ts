@@ -46,7 +46,11 @@ describe('request', () => {
     fetchMock
       .mockResolvedValueOnce(
         jsonResponse(
-          { code: 'AUTH_SUDO_REQUIRED', message: 'This action requires re-authentication.', status: 403 },
+          {
+            code: 'AUTH_SUDO_REQUIRED',
+            message: 'This action requires re-authentication.',
+            status: 403,
+          },
           403,
         ),
       )
@@ -64,7 +68,12 @@ describe('request', () => {
 
   it('refreshes once on 401 and replays the request', async () => {
     fetchMock
-      .mockResolvedValueOnce(jsonResponse({ code: 'UNAUTHORIZED', message: 'Authentication is required.', status: 401 }, 401))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          { code: 'UNAUTHORIZED', message: 'Authentication is required.', status: 401 },
+          401,
+        ),
+      )
       .mockResolvedValueOnce(jsonResponse({ token: 'x' }))
       .mockResolvedValueOnce(jsonResponse({ name: 'operator' }))
 
@@ -76,7 +85,11 @@ describe('request', () => {
   it('does not loop when the replay is refused again', async () => {
     const refused = () =>
       jsonResponse(
-        { code: 'AUTH_SUDO_REQUIRED', message: 'This action requires re-authentication.', status: 403 },
+        {
+          code: 'AUTH_SUDO_REQUIRED',
+          message: 'This action requires re-authentication.',
+          status: 403,
+        },
         403,
       )
     fetchMock.mockResolvedValueOnce(refused()).mockResolvedValueOnce(refused())
@@ -119,10 +132,7 @@ describe('OIDC error envelope', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
-        jsonResponse(
-          { error: 'unauthorized_client', error_description: 'Client not found' },
-          400,
-        ),
+        jsonResponse({ error: 'unauthorized_client', error_description: 'Client not found' }, 400),
       ),
     )
     const { request } = await import('@/lib/api/client')

@@ -45,8 +45,7 @@ async function load() {
     logs.value = result.items
     total.value = result.total
   } catch (caught) {
-    error.value =
-      caught instanceof StargateError ? caught.message : t('activity.errorLoad')
+    error.value = caught instanceof StargateError ? caught.message : t('activity.errorLoad')
   } finally {
     loading.value = false
   }
@@ -83,10 +82,7 @@ onMounted(load)
 
 <template>
   <div>
-    <PageHeader
-      :title="t('activity.title')"
-      :description="t('activity.description')"
-    >
+    <PageHeader :title="t('activity.title')" :description="t('activity.description')">
       <template #actions>
         <IconButton :label="t('common.refresh')" :disabled="loading" @click="load">
           <Renew16 aria-hidden="true" />
@@ -97,13 +93,17 @@ onMounted(load)
     <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
     <div v-if="actions.length" class="mb-4 flex flex-wrap items-center gap-2">
-      <span class="text-2xs uppercase tracking-[0.12em] text-faint">{{ t('activity.filter') }}</span>
+      <span class="text-2xs uppercase tracking-[0.12em] text-faint">{{
+        t('activity.filter')
+      }}</span>
       <button
         v-for="action in actions"
         :key="action"
         type="button"
         class="chip transition-colors"
-        :class="filter === action ? 'border-primary/60 text-base-content' : 'hover:text-base-content'"
+        :class="
+          filter === action ? 'border-primary/60 text-base-content' : 'hover:text-base-content'
+        "
         @click="setFilter(action)"
       >
         {{ action }}
@@ -140,12 +140,7 @@ onMounted(load)
             </tr>
           </thead>
           <tbody>
-            <tr
-              v-for="log in logs"
-              :key="log.id"
-              class="cursor-pointer"
-              @click="copyRow(log)"
-            >
+            <tr v-for="log in logs" :key="log.id" class="cursor-pointer" @click="copyRow(log)">
               <td class="whitespace-nowrap text-xs tabular-nums text-dim">
                 {{ utcStamp(log.created_at).slice(0, 19).replace('T', ' ') }}
               </td>
@@ -168,7 +163,13 @@ onMounted(load)
           <span>{{ t('activity.copyHint') }}</span>
           <div class="flex items-center gap-3">
             <span v-if="!loading" class="tabular-nums">
-              {{ t('activity.range', { from: offset + 1, to: Math.min(offset + pageSize, total), total }) }}
+              {{
+                t('activity.range', {
+                  from: offset + 1,
+                  to: Math.min(offset + pageSize, total),
+                  total,
+                })
+              }}
             </span>
             <button
               type="button"

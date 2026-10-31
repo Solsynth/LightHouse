@@ -252,7 +252,6 @@ function isFocused(index: number, id: string): boolean {
   const held = focused.value[index]
   return held ? held === id : rowsAt(index)[0]?.id === id
 }
-
 </script>
 
 <template>
@@ -271,7 +270,9 @@ function isFocused(index: number, id: string): boolean {
           :ref="(el) => setColumnEl(index, el)"
           class="scroll-region min-h-0 flex-1 overflow-y-auto py-1"
         >
-          <p v-if="isResolving(index)" class="voice px-3 py-2 text-[12px]">{{ t('status.reading') }}</p>
+          <p v-if="isResolving(index)" class="voice px-3 py-2 text-[12px]">
+            {{ t('status.reading') }}
+          </p>
           <div v-else-if="failedAt(index)" class="px-3 py-2">
             <p class="voice text-[12px]">{{ t('error.loadFolderBody') }}</p>
             <button class="btn btn-ghost btn-sm mt-1" type="button" @click="loadColumn(index)">
@@ -346,7 +347,10 @@ function isFocused(index: number, id: string): boolean {
               class="flex items-center gap-2 border-b border-line-soft py-1.5 last:border-b-0"
             >
               <FileGlyph :file="child" />
-              <span class="min-w-0 flex-1 truncate text-[12.5px] text-dim" :title="displayName(child)">
+              <span
+                class="min-w-0 flex-1 truncate text-[12.5px] text-dim"
+                :title="displayName(child)"
+              >
                 {{ displayName(child) }}
               </span>
               <span class="shrink-0 text-2xs tabular-nums text-faint">{{ childMeta(child) }}</span>

@@ -48,10 +48,7 @@ function quotaWidth(mb: number): string {
 <template>
   <div class="min-h-0 flex-1 overflow-y-auto scroll-region bg-base-100">
     <div class="px-5 py-6 sm:px-7 sm:py-8">
-      <PageHeader
-        :title="t('storage.title')"
-        :description="t('storage.description')"
-      >
+      <PageHeader :title="t('storage.title')" :description="t('storage.description')">
         <template #actions>
           <button
             class="btn btn-outline btn-sm"
@@ -103,7 +100,11 @@ function quotaWidth(mb: number): string {
                   {{ formatBytes(vault.usedBytes) }}
                 </div>
                 <div class="mt-1 text-[11px] text-faint">
-                  {{ t('storage.ofQuota', { percent: formatPercent(vault.usedBytes, vault.quotaBytes, 1) }) }}
+                  {{
+                    t('storage.ofQuota', {
+                      percent: formatPercent(vault.usedBytes, vault.quotaBytes, 1),
+                    })
+                  }}
                 </div>
               </div>
               <div>
@@ -161,7 +162,9 @@ function quotaWidth(mb: number): string {
                 </div>
               </div>
 
-              <div class="flex items-baseline justify-between gap-3 border-t border-line-soft pt-3 text-[12px]">
+              <div
+                class="flex items-baseline justify-between gap-3 border-t border-line-soft pt-3 text-[12px]"
+              >
                 <span class="text-faint">{{ t('storage.totalQuota') }}</span>
                 <span class="tabular-nums text-base-content">{{
                   formatBytes(totalQuotaMb * MiB)

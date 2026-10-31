@@ -112,16 +112,31 @@ export function fileKind(file: CloudFile): FileKind {
     return { label: translate('label.audio'), icon: Music16, tone: 'text-faint', group: 'audio' }
   }
   if (extension === 'pdf') {
-    return { label: translate('label.pdf'), icon: DocumentPdf16, tone: 'text-faint', group: 'document' }
+    return {
+      label: translate('label.pdf'),
+      icon: DocumentPdf16,
+      tone: 'text-faint',
+      group: 'document',
+    }
   }
   if (slideExtensions[extension]) {
-    return { label: translate('label.slides'), icon: PresentationFile16, tone: 'text-faint', group: 'document' }
+    return {
+      label: translate('label.slides'),
+      icon: PresentationFile16,
+      tone: 'text-faint',
+      group: 'document',
+    }
   }
   if (sheetExtensions[extension]) {
     return { label: translate('label.sheet'), icon: DataTable16, tone: 'text-faint', group: 'data' }
   }
   if (archiveExtensions[extension]) {
-    return { label: translate('label.archive'), icon: Archive16, tone: 'text-faint', group: 'archive' }
+    return {
+      label: translate('label.archive'),
+      icon: Archive16,
+      tone: 'text-faint',
+      group: 'archive',
+    }
   }
   if (codeExtensions[extension]) {
     return { label: translate('label.source'), icon: Code16, tone: 'text-faint', group: 'code' }
@@ -130,7 +145,12 @@ export function fileKind(file: CloudFile): FileKind {
     return { label: translate('label.data'), icon: DataBase16, tone: 'text-faint', group: 'data' }
   }
   if (documentExtensions[extension] || family === 'text') {
-    return { label: translate('label.document'), icon: Document16, tone: 'text-dim', group: 'document' }
+    return {
+      label: translate('label.document'),
+      icon: Document16,
+      tone: 'text-dim',
+      group: 'document',
+    }
   }
   return {
     label: extension ? extension.toUpperCase() : translate('label.file'),

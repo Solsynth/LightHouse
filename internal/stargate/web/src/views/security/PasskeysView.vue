@@ -41,10 +41,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [list, configured] = await Promise.all([
-      securityApi.passkeys(),
-      securityApi.factors(),
-    ])
+    const [list, configured] = await Promise.all([securityApi.passkeys(), securityApi.factors()])
     passkeys.value = list ?? []
     factors.value = configured ?? []
   } catch (caught) {
@@ -83,8 +80,7 @@ async function addPasskey() {
     notice.ok(t('passkeys.noticeAdded'))
     await load()
   } catch (caught) {
-    error.value =
-      caught instanceof StargateError ? caught.message : passkeyFailure(caught)
+    error.value = caught instanceof StargateError ? caught.message : passkeyFailure(caught)
   } finally {
     adding.value = false
   }

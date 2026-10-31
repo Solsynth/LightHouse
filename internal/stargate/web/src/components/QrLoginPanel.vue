@@ -178,9 +178,7 @@ void start()
     <!-- The plate is white in both themes because a camera reads the code, and
          the padding is its quiet zone: the tile used to sit flush against the
          modules, so a rounded corner would have clipped a finder pattern. -->
-    <div
-      class="mt-4 flex items-center justify-center rounded-card border border-line bg-white p-3"
-    >
+    <div class="mt-4 flex items-center justify-center rounded-card border border-line bg-white p-3">
       <img
         v-if="image && status !== 'declined' && status !== 'expired'"
         :src="image"
@@ -197,7 +195,9 @@ void start()
 
     <p
       class="mt-3 flex items-center gap-2 text-2xs"
-      :class="status === 'scanned' ? 'text-primary' : status === 'waiting' ? 'text-faint' : 'text-error'"
+      :class="
+        status === 'scanned' ? 'text-primary' : status === 'waiting' ? 'text-faint' : 'text-error'
+      "
     >
       <span v-if="status === 'waiting'" class="dot animate-pulse bg-info" aria-hidden="true" />
       <template v-if="status === 'loading'">{{ t('common.loading') }}</template>

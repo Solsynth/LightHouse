@@ -5,7 +5,7 @@ export default {
     intro: '使用你的 Solar Network 账号登录。',
     continueIntro: '完成本次登录要求的验证。',
     accountLabel: '账号或邮箱',
-    accountPlaceholder: '用户名或 name{\'@\'}example.com',
+    accountPlaceholder: "用户名或 name{'@'}example.com",
     checking: '检查中…',
     passkeyTile: '通行密钥',
     qrTile: '扫码登录',

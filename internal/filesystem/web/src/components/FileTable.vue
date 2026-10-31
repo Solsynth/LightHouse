@@ -138,7 +138,9 @@ function sortState(key: 'name' | 'size' | 'date') {
               <span class="h-3 w-40 rounded bg-base-300 pulse-soft" />
             </div>
           </td>
-          <td class="hidden md:table-cell"><span class="block h-3 w-12 rounded bg-base-300/70" /></td>
+          <td class="hidden md:table-cell">
+            <span class="block h-3 w-12 rounded bg-base-300/70" />
+          </td>
           <td class="hidden sm:table-cell">
             <span class="ml-auto block h-3 w-10 rounded bg-base-300/70" />
           </td>
@@ -154,11 +156,7 @@ function sortState(key: 'name' | 'size' | 'date') {
           :key="file.id"
           tabindex="0"
           class="row-in group h-[46px] cursor-default border-b border-line-soft transition-colors duration-150 focus-visible:bg-primary/[0.06]"
-          :class="
-            vault.selection.includes(file.id)
-              ? 'bg-primary/[0.06]'
-              : 'hover:bg-base-200/40'
-          "
+          :class="vault.selection.includes(file.id) ? 'bg-primary/[0.06]' : 'hover:bg-base-200/40'"
           :style="{ animationDelay: `${Math.min(index, 12) * 16}ms` }"
           :aria-selected="vault.selection.includes(file.id)"
           @click="open(file)"

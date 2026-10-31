@@ -146,12 +146,7 @@ async function send(url: string, init: RequestInit): Promise<Response> {
       if (await refreshSession()) continue
     }
 
-    if (
-      attempt === 0 &&
-      error.needsElevation &&
-      !elevationInFlight &&
-      elevationHandler !== null
-    ) {
+    if (attempt === 0 && error.needsElevation && !elevationInFlight && elevationHandler !== null) {
       elevationInFlight = true
       try {
         await elevationHandler()
@@ -208,7 +203,11 @@ export async function requestPage<T>(path: string, query?: Query): Promise<Page<
 }
 
 /** Sends a request whose body is a bare JSON string (the device-label routes). */
-export async function sendString(path: string, value: string, method: Method = 'PATCH'): Promise<void> {
+export async function sendString(
+  path: string,
+  value: string,
+  method: Method = 'PATCH',
+): Promise<void> {
   await send(buildUrl(path), {
     method,
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },

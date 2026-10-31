@@ -134,7 +134,11 @@ onMounted(load)
       "
     >
       <template #actions>
-        <button type="button" class="btn btn-ghost btn-sm" @click="router.push('/admin/permissions')">
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm"
+          @click="router.push('/admin/permissions')"
+        >
           {{ t('admin.permissionGroup.allGroups') }}
         </button>
       </template>
@@ -145,10 +149,7 @@ onMounted(load)
     <LoadingSkeleton v-if="loading" compact :rows="6" :columns="[4, 3, 2, 1]" header />
 
     <div v-else-if="detail" class="grid gap-6 lg:grid-cols-2">
-      <ConsolePanel
-        :title="t('admin.permissionGroup.granted')"
-        :note="`${detail.node_total}`"
-      >
+      <ConsolePanel :title="t('admin.permissionGroup.granted')" :note="`${detail.node_total}`">
         <div class="mb-4 flex items-start gap-2">
           <TextField
             v-model="permissionKey"
@@ -199,10 +200,7 @@ onMounted(load)
         </ul>
       </ConsolePanel>
 
-      <ConsolePanel
-        :title="t('admin.permissionGroup.members')"
-        :note="`${detail.member_total}`"
-      >
+      <ConsolePanel :title="t('admin.permissionGroup.members')" :note="`${detail.member_total}`">
         <div class="mb-4 flex items-start gap-2">
           <TextField
             v-model="memberActor"

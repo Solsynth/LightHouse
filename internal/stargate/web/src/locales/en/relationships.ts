@@ -18,10 +18,8 @@ export default {
     mutedTitle: 'Muted',
     totalNote: '{n} total',
     unknownAccount: 'Unavailable account',
-    emptyFriends:
-      'No friends yet. Search for an account and send a request to start the graph.',
-    emptyRequests:
-      'No pending requests. Requests expire after seven days if nobody answers.',
+    emptyFriends: 'No friends yet. Search for an account and send a request to start the graph.',
+    emptyRequests: 'No pending requests. Requests expire after seven days if nobody answers.',
     emptyClose: 'No close friends. Mark a friend as close to keep them separate.',
     emptyBlocked: 'Nobody is blocked. A blocked account cannot see or reach this one.',
     emptyMuted: 'Nobody is muted. Muting hides an account without notifying them.',

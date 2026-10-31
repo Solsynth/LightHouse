@@ -39,9 +39,11 @@ export default {
     identity: 'Identity',
     identityHint: 'Shown on the consent screen a person sees before authorizing.',
     pictureId: 'Picture file id',
-    pictureIdHint: 'A Drive file id. The consent screen renders it as the app mark; empty shows a monogram.',
+    pictureIdHint:
+      'A Drive file id. The consent screen renders it as the app mark; empty shows a monogram.',
     backgroundId: 'Background file id',
-    backgroundIdHint: 'A Drive file id. Painted behind the consent screen; empty leaves the account backdrop.',
+    backgroundIdHint:
+      'A Drive file id. Painted behind the consent screen; empty leaves the account backdrop.',
     clearArt: 'Clear',
 
     oauth: 'OAuth Configuration',
@@ -73,7 +75,8 @@ export default {
     save: 'Save changes',
     saving: 'Saving…',
     noticeSaved: 'Application saved.',
-    noticeCreated: 'Application created. Add a redirect URI before a production client can be used.',
+    noticeCreated:
+      'Application created. Add a redirect URI before a production client can be used.',
     savedSecretsHint: 'Secrets are not shown again after creation or rotation.',
 
     links: 'Links',
@@ -100,7 +103,8 @@ export default {
     issuing: 'Creating…',
     noSecrets: 'No secrets yet. Create one before the client tries to exchange a code.',
     secretIssued: 'secret issued',
-    secretIssuedHint: 'This is the only time the secret is shown. Store it where the client reads its configuration.',
+    secretIssuedHint:
+      'This is the only time the secret is shown. Store it where the client reads its configuration.',
     secretSecret: 'secret',
     metadataOnly: 'metadata only',
     rotate: 'Rotate',
@@ -119,6 +123,7 @@ export default {
     danger: 'Danger Zone',
     dangerHint: 'Deleting a registration cannot be undone. Recreating it means a new client id.',
     requireSudo: 'This action asks you to re-verify first.',
-    createRedirectHint: 'A production client needs at least one redirect URI before it can be saved.',
+    createRedirectHint:
+      'A production client needs at least one redirect URI before it can be saved.',
   },
 }

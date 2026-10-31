@@ -39,7 +39,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     >
       <header class="border-b border-line px-6 py-5">
         <p class="eyebrow">{{ t('elevation.required') }}</p>
-        <h2 id="elevation-title" class="mt-1 text-sm text-base-content">{{ t('elevation.title') }}</h2>
+        <h2 id="elevation-title" class="mt-1 text-sm text-base-content">
+          {{ t('elevation.title') }}
+        </h2>
         <p class="voice mt-2">
           {{ t('elevation.description') }}
         </p>

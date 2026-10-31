@@ -22,7 +22,9 @@ const input = ref<HTMLInputElement | null>(null)
 
 const onDrive = computed(() => route.meta.mode === 'drive')
 const canUpload = computed(() => onDrive.value)
-const identityName = computed(() => session.identity?.nick || session.identity?.name || t('session.account'))
+const identityName = computed(
+  () => session.identity?.nick || session.identity?.name || t('session.account'),
+)
 
 function openPicker() {
   if (!canUpload.value) return
@@ -50,7 +52,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <header class="relative z-30 flex h-[52px] shrink-0 items-center gap-2 border-b border-line bg-ink px-3 md:px-4">
+  <header
+    class="relative z-30 flex h-[52px] shrink-0 items-center gap-2 border-b border-line bg-ink px-3 md:px-4"
+  >
     <button
       class="btn btn-ghost btn-xs grid size-7 place-items-center px-0 lg:hidden"
       type="button"
@@ -70,8 +74,12 @@ onBeforeUnmount(() => {
       :title="`${t('app.product')} — ${t('app.fullName')}`"
     >
       <BrandMark :size="21" />
-      <span class="text-[13px] font-semibold tracking-[0.14em] text-base-content">{{ t('app.product') }}</span>
-      <span class="hidden text-2xs tracking-[0.04em] text-faint sm:inline">{{ t('app.network') }}</span>
+      <span class="text-[13px] font-semibold tracking-[0.14em] text-base-content">{{
+        t('app.product')
+      }}</span>
+      <span class="hidden text-2xs tracking-[0.04em] text-faint sm:inline">{{
+        t('app.network')
+      }}</span>
     </RouterLink>
 
     <div class="ml-2 hidden flex-1 md:flex">

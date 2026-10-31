@@ -3,7 +3,8 @@
 The built-in web client for the Solar Network File System. A desktop-like file
 manager built with Vue 3, Pinia, Vue Router, Tailwind 4 and daisyUI, styled as
 the quiet sibling of the Solar Network console (IBM Plex, ink ground,
-periwinkle signal).
+periwinkle signal). See [`docs/design-system.md`](docs/design-system.md) for
+the UI design system.
 
 ## Requirements
 

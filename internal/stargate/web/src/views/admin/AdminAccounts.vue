@@ -40,8 +40,7 @@ async function load() {
     rows.value = result.items
     total.value = result.total
   } catch (caught) {
-    error.value =
-      caught instanceof StargateError ? caught.message : t('admin.accounts.errorLoad')
+    error.value = caught instanceof StargateError ? caught.message : t('admin.accounts.errorLoad')
   } finally {
     loading.value = false
   }
@@ -74,11 +73,21 @@ onMounted(load)
         autocapitalize="off"
       />
       <label class="flex cursor-pointer items-center gap-2 py-2 text-2xs text-dim">
-        <input v-model="onlyPunished" class="checkbox checkbox-xs" type="checkbox" @change="search" />
+        <input
+          v-model="onlyPunished"
+          class="checkbox checkbox-xs"
+          type="checkbox"
+          @change="search"
+        />
         {{ t('admin.accounts.restrictedOnly') }}
       </label>
       <label class="flex cursor-pointer items-center gap-2 py-2 text-2xs text-dim">
-        <input v-model="onlyActivated" class="checkbox checkbox-xs" type="checkbox" @change="search" />
+        <input
+          v-model="onlyActivated"
+          class="checkbox checkbox-xs"
+          type="checkbox"
+          @change="search"
+        />
         {{ t('admin.accounts.activatedOnly') }}
       </label>
       <button type="submit" class="btn btn-primary shrink-0" :disabled="loading">

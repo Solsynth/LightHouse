@@ -48,9 +48,13 @@ function loadScript(src: string, id: string): Promise<void> {
     if (existing.dataset.loaded === 'true') return Promise.resolve()
     return new Promise((resolve, reject) => {
       existing.addEventListener('load', () => resolve(), { once: true })
-      existing.addEventListener('error', () => reject(new Error(t('captchaWidget.loadFailed', { src }))), {
-        once: true,
-      })
+      existing.addEventListener(
+        'error',
+        () => reject(new Error(t('captchaWidget.loadFailed', { src }))),
+        {
+          once: true,
+        },
+      )
     })
   }
 

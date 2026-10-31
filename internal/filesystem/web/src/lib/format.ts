@@ -136,14 +136,16 @@ function formatLocale(): string {
 }
 
 function relativeFormatter(): Intl.RelativeTimeFormat {
-  return cache(`relative:${formatLocale()}`, () =>
-    new Intl.RelativeTimeFormat(formatLocale(), { numeric: 'auto' }),
+  return cache(
+    `relative:${formatLocale()}`,
+    () => new Intl.RelativeTimeFormat(formatLocale(), { numeric: 'auto' }),
   )
 }
 
 function dateFormatter(key: string, options: Intl.DateTimeFormatOptions) {
-  return cache(`date:${key}:${formatLocale()}`, () =>
-    new Intl.DateTimeFormat(formatLocale(), options),
+  return cache(
+    `date:${key}:${formatLocale()}`,
+    () => new Intl.DateTimeFormat(formatLocale(), options),
   ) as Intl.DateTimeFormat
 }
 

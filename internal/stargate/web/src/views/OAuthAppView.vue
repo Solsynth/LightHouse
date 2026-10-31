@@ -85,12 +85,20 @@ const grantHint = computed<Record<string, string>>(() => ({
 }))
 
 const allScopes = computed(() => {
-  const set = new Set([...knownScopes, ...(app.value?.oauth_config.allowed_scopes ?? []), ...form.value.scopes])
+  const set = new Set([
+    ...knownScopes,
+    ...(app.value?.oauth_config.allowed_scopes ?? []),
+    ...form.value.scopes,
+  ])
   return [...set]
 })
 
 const allGrants = computed(() => {
-  const set = new Set([...knownGrants, ...(app.value?.oauth_config.allowed_grant_types ?? []), ...form.value.grants])
+  const set = new Set([
+    ...knownGrants,
+    ...(app.value?.oauth_config.allowed_grant_types ?? []),
+    ...form.value.grants,
+  ])
   return [...set]
 })
 
@@ -281,7 +289,10 @@ onMounted(() => {
 
 <template>
   <div>
-    <PageHeader :title="app?.name || t('oauthApps.detailTitle')" :description="app?.description || t('oauthApps.description')">
+    <PageHeader
+      :title="app?.name || t('oauthApps.detailTitle')"
+      :description="app?.description || t('oauthApps.description')"
+    >
       <template #actions>
         <RouterLink to="/developers" class="btn btn-ghost btn-sm">
           {{ t('oauthApps.backToApps') }}
@@ -425,7 +436,9 @@ onMounted(() => {
                     />
                     <span>
                       <span class="font-mono text-base-content">{{ scope }}</span>
-                      <span v-if="scopeHint[scope]" class="ml-2 text-faint">{{ scopeHint[scope] }}</span>
+                      <span v-if="scopeHint[scope]" class="ml-2 text-faint">{{
+                        scopeHint[scope]
+                      }}</span>
                     </span>
                   </label>
                 </li>
@@ -465,7 +478,9 @@ onMounted(() => {
                     />
                     <span>
                       <span class="font-mono text-base-content">{{ grant }}</span>
-                      <span v-if="grantHint[grant]" class="ml-2 text-faint">{{ grantHint[grant] }}</span>
+                      <span v-if="grantHint[grant]" class="ml-2 text-faint">{{
+                        grantHint[grant]
+                      }}</span>
                     </span>
                   </label>
                 </li>
@@ -475,7 +490,11 @@ onMounted(() => {
             <ul class="mt-5 space-y-2">
               <li>
                 <label class="flex cursor-pointer items-start gap-2 text-xs">
-                  <input v-model="form.requirePkce" type="checkbox" class="checkbox checkbox-xs mt-0.5" />
+                  <input
+                    v-model="form.requirePkce"
+                    type="checkbox"
+                    class="checkbox checkbox-xs mt-0.5"
+                  />
                   <span>
                     <span class="text-base-content">{{ t('oauthApps.requirePkce') }}</span>
                     <span class="ml-2 text-faint">{{ t('oauthApps.requirePkceHint') }}</span>
@@ -484,7 +503,11 @@ onMounted(() => {
               </li>
               <li>
                 <label class="flex cursor-pointer items-start gap-2 text-xs">
-                  <input v-model="form.allowOfflineAccess" type="checkbox" class="checkbox checkbox-xs mt-0.5" />
+                  <input
+                    v-model="form.allowOfflineAccess"
+                    type="checkbox"
+                    class="checkbox checkbox-xs mt-0.5"
+                  />
                   <span>
                     <span class="text-base-content">{{ t('oauthApps.allowOfflineAccess') }}</span>
                     <span class="ml-2 text-faint">{{ t('oauthApps.allowOfflineAccessHint') }}</span>
@@ -493,7 +516,11 @@ onMounted(() => {
               </li>
               <li>
                 <label class="flex cursor-pointer items-start gap-2 text-xs">
-                  <input v-model="form.publicClient" type="checkbox" class="checkbox checkbox-xs mt-0.5" />
+                  <input
+                    v-model="form.publicClient"
+                    type="checkbox"
+                    class="checkbox checkbox-xs mt-0.5"
+                  />
                   <span>
                     <span class="text-base-content">{{ t('oauthApps.publicClient') }}</span>
                     <span class="ml-2 text-faint">{{ t('oauthApps.publicClientHint') }}</span>
@@ -539,12 +566,23 @@ onMounted(() => {
           >
             <p class="voice mb-3 text-[12px]">{{ t('oauthApps.secretsHint') }}</p>
 
-            <div v-if="issued" class="mb-4 rounded-card border border-warning/40 bg-warning/10 p-3.5">
+            <div
+              v-if="issued"
+              class="mb-4 rounded-card border border-warning/40 bg-warning/10 p-3.5"
+            >
               <div class="flex items-center justify-between gap-2">
-                <p class="text-2xs uppercase tracking-[0.12em] text-warning">{{ t('oauthApps.secretIssued') }}</p>
-                <CopyButton v-if="issued.secret" :value="issued.secret" :label="t('oauthApps.secretSecret')" />
+                <p class="text-2xs uppercase tracking-[0.12em] text-warning">
+                  {{ t('oauthApps.secretIssued') }}
+                </p>
+                <CopyButton
+                  v-if="issued.secret"
+                  :value="issued.secret"
+                  :label="t('oauthApps.secretSecret')"
+                />
               </div>
-              <p v-if="issued.secret" class="mt-2 break-all font-mono text-xs text-base-content">{{ issued.secret }}</p>
+              <p v-if="issued.secret" class="mt-2 break-all font-mono text-xs text-base-content">
+                {{ issued.secret }}
+              </p>
               <p class="voice mt-2 text-[12px] text-faint">{{ t('oauthApps.secretIssuedHint') }}</p>
             </div>
 
@@ -577,12 +615,19 @@ onMounted(() => {
                   <option value="api_key">{{ t('oauthApps.typeApiKey') }}</option>
                 </TextField>
               </div>
-              <button type="button" class="btn btn-primary w-full" :disabled="busy" @click="issueSecret">
+              <button
+                type="button"
+                class="btn btn-primary w-full"
+                :disabled="busy"
+                @click="issueSecret"
+              >
                 {{ busy ? t('oauthApps.issuing') : t('oauthApps.issueSecret') }}
               </button>
             </div>
 
-            <p v-if="!secrets.length" class="voice mt-3 text-[12px]">{{ t('oauthApps.noSecrets') }}</p>
+            <p v-if="!secrets.length" class="voice mt-3 text-[12px]">
+              {{ t('oauthApps.noSecrets') }}
+            </p>
             <ul v-else class="mt-3">
               <li
                 v-for="secret in secrets"
@@ -603,7 +648,11 @@ onMounted(() => {
                   </p>
                 </div>
                 <div class="flex shrink-0 items-center gap-1">
-                  <IconButton :label="t('oauthApps.rotate')" :disabled="busy" @click="rotateSecret(secret)">
+                  <IconButton
+                    :label="t('oauthApps.rotate')"
+                    :disabled="busy"
+                    @click="rotateSecret(secret)"
+                  >
                     <Renew16 aria-hidden="true" />
                   </IconButton>
                   <IconButton
@@ -621,7 +670,12 @@ onMounted(() => {
 
           <ConsolePanel :title="t('oauthApps.danger')" :note="t('oauthApps.requireSudo')">
             <p class="voice mb-3 text-[12px]">{{ t('oauthApps.dangerHint') }}</p>
-            <button type="button" class="btn btn-error btn-sm" :disabled="busy" @click="confirmDelete = true">
+            <button
+              type="button"
+              class="btn btn-error btn-sm"
+              :disabled="busy"
+              @click="confirmDelete = true"
+            >
               {{ t('oauthApps.deleteAction') }}
             </button>
           </ConsolePanel>

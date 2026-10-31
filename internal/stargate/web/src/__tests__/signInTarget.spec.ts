@@ -115,11 +115,14 @@ describe('resolveLanding', () => {
   // mint a code for a host no client is registered for, and the sign-in reports
   // a refused redirect although the app was in fact signed in.
   it('lands a cookie subdomain by navigation, not by hand-off', async () => {
-    vi.stubGlobal('fetch', policyResponse({
-      cookie_hosts: ['solian.app', 'id.solian.app'],
-      handoff_hosts: ['solsynth.dev'],
-      require_https: true,
-    }))
+    vi.stubGlobal(
+      'fetch',
+      policyResponse({
+        cookie_hosts: ['solian.app', 'id.solian.app'],
+        handoff_hosts: ['solsynth.dev'],
+        require_https: true,
+      }),
+    )
     const { resolveLanding: resolve } = await import('@/lib/signInTarget')
     await expect(resolve('https://web.solian.app/')).resolves.toEqual({
       target: 'https://web.solian.app/',
@@ -128,11 +131,14 @@ describe('resolveLanding', () => {
   })
 
   it('marks a hand-off host as a code exchange', async () => {
-    vi.stubGlobal('fetch', policyResponse({
-      cookie_hosts: ['solian.app'],
-      handoff_hosts: ['solsynth.dev'],
-      require_https: true,
-    }))
+    vi.stubGlobal(
+      'fetch',
+      policyResponse({
+        cookie_hosts: ['solian.app'],
+        handoff_hosts: ['solsynth.dev'],
+        require_https: true,
+      }),
+    )
     const { resolveLanding: resolve } = await import('@/lib/signInTarget')
     await expect(resolve('https://dx.solsynth.dev/releases')).resolves.toEqual({
       target: 'https://dx.solsynth.dev/releases',
@@ -141,11 +147,14 @@ describe('resolveLanding', () => {
   })
 
   it('refuses a target outside both host lists', async () => {
-    vi.stubGlobal('fetch', policyResponse({
-      cookie_hosts: ['solian.app'],
-      handoff_hosts: [],
-      require_https: true,
-    }))
+    vi.stubGlobal(
+      'fetch',
+      policyResponse({
+        cookie_hosts: ['solian.app'],
+        handoff_hosts: [],
+        require_https: true,
+      }),
+    )
     const { resolveLanding: resolve } = await import('@/lib/signInTarget')
     await expect(resolve('https://evil.example/cb')).resolves.toBeNull()
   })
@@ -166,15 +175,16 @@ describe('handoffTargetUrl', () => {
   it('lands on the issuer-validated target with the code appended', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () =>
-        new Response(
-          JSON.stringify({
-            code: 'single-use-code',
-            redirect_uri: 'https://dx.solsynth.dev/releases?page=2',
-            expires_in: 60,
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              code: 'single-use-code',
+              redirect_uri: 'https://dx.solsynth.dev/releases?page=2',
+              expires_in: 60,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
       ),
     )
     const { handoffTargetUrl } = await import('@/lib/signInTarget')
@@ -197,6 +207,6 @@ describe('handoffTargetUrl', () => {
       ),
     )
     const { handoffTargetUrl } = await import('@/lib/signInTarget')
-    await expect(handoffTargetUrl('https://evil.example/')).rejects.toThrow()
+    await expect(handoffTargetUrl('https://evil.example/')).rejects.toThrow('The request failed.')
   })
 })

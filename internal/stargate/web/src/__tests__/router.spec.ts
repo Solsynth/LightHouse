@@ -28,8 +28,6 @@ describe('magic-spell link', () => {
   })
 })
 
-
-
 /**
  * Friend-request pushes carry this action URI, and the fleet declares the same
  * path as an app link. A route rename would send every notification to the

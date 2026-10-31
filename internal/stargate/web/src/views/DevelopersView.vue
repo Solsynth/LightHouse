@@ -61,8 +61,7 @@ async function load() {
     owned.value = appList ?? []
     keys.value = keyList ?? []
   } catch (caught) {
-    error.value =
-      caught instanceof StargateError ? caught.message : t('developers.errorLoad')
+    error.value = caught instanceof StargateError ? caught.message : t('developers.errorLoad')
   } finally {
     loading.value = false
   }
@@ -168,10 +167,7 @@ onMounted(load)
 
 <template>
   <div>
-    <PageHeader
-      :title="t('developers.title')"
-      :description="t('developers.description')"
-    />
+    <PageHeader :title="t('developers.title')" :description="t('developers.description')" />
 
     <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
@@ -244,7 +240,9 @@ onMounted(load)
                 <th scope="col">{{ t('oauthApps.status') }}</th>
                 <th scope="col">{{ t('oauthApps.scopes') }}</th>
                 <th scope="col">{{ t('oauthApps.updated') }}</th>
-                <th scope="col"><span class="sr-only">{{ t('common.actions') }}</span></th>
+                <th scope="col">
+                  <span class="sr-only">{{ t('common.actions') }}</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -269,7 +267,8 @@ onMounted(load)
                       v-for="scope in app.oauth_config.allowed_scopes"
                       :key="scope"
                       class="chip"
-                    >{{ scope }}</span>
+                      >{{ scope }}</span
+                    >
                   </span>
                 </td>
                 <td class="text-xs text-dim">{{ relative(app.updated_at ?? app.created_at) }}</td>
@@ -287,7 +286,10 @@ onMounted(load)
         </div>
       </ConsolePanel>
 
-      <ConsolePanel :title="t('developers.authorizedApps')" :note="loading ? undefined : t('developers.appsNote', { n: apps.length })">
+      <ConsolePanel
+        :title="t('developers.authorizedApps')"
+        :note="loading ? undefined : t('developers.appsNote', { n: apps.length })"
+      >
         <LoadingSkeleton v-if="loading" :rows="3" :columns="[3, 2, 1, 1]" header />
         <p v-else-if="!apps.length" class="voice py-4 text-[12px]">
           {{ t('developers.noApps') }}
@@ -301,13 +303,17 @@ onMounted(load)
                 <th scope="col">{{ t('developers.scopes') }}</th>
                 <th scope="col">{{ t('developers.authorized') }}</th>
                 <th scope="col">{{ t('common.lastUsed') }}</th>
-                <th scope="col"><span class="sr-only">{{ t('common.actions') }}</span></th>
+                <th scope="col">
+                  <span class="sr-only">{{ t('common.actions') }}</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="app in apps" :key="app.id">
                 <td>
-                  <p class="text-xs text-base-content">{{ app.app_name ?? app.app_slug ?? app.app_id }}</p>
+                  <p class="text-xs text-base-content">
+                    {{ app.app_name ?? app.app_slug ?? app.app_id }}
+                  </p>
                   <p class="text-2xs text-faint" :title="app.app_id">{{ shortId(app.app_id) }}</p>
                 </td>
                 <td class="max-w-[240px]">
@@ -334,12 +340,16 @@ onMounted(load)
 
         <template v-if="scopes.length" #footer>
           <p class="text-2xs text-faint">
-            {{ t('developers.grantedScopes') }} <span class="text-dim">{{ scopes.join(' · ') }}</span>
+            {{ t('developers.grantedScopes') }}
+            <span class="text-dim">{{ scopes.join(' · ') }}</span>
           </p>
         </template>
       </ConsolePanel>
 
-      <ConsolePanel :title="t('developers.apiKeys')" :note="loading ? undefined : t('developers.keysNote', { n: keys.length })">
+      <ConsolePanel
+        :title="t('developers.apiKeys')"
+        :note="loading ? undefined : t('developers.keysNote', { n: keys.length })"
+      >
         <div class="mb-4 flex flex-wrap items-start gap-2">
           <TextField
             id="key-label"
@@ -361,7 +371,9 @@ onMounted(load)
 
         <div v-if="issued" class="mb-4 border border-warning/50 bg-warning/5 p-3">
           <div class="flex items-center justify-between gap-2">
-            <p class="text-2xs uppercase tracking-[0.12em] text-warning">{{ t('developers.tokenIssued') }}</p>
+            <p class="text-2xs uppercase tracking-[0.12em] text-warning">
+              {{ t('developers.tokenIssued') }}
+            </p>
             <CopyButton :value="issued.token" :label="t('developers.token')" />
           </div>
           <p class="mt-2 break-all font-mono text-xs text-base-content">{{ issued.token }}</p>
@@ -383,7 +395,9 @@ onMounted(load)
                 <th scope="col">{{ t('common.id') }}</th>
                 <th scope="col">{{ t('common.created') }}</th>
                 <th scope="col">{{ t('common.expires') }}</th>
-                <th scope="col"><span class="sr-only">{{ t('common.actions') }}</span></th>
+                <th scope="col">
+                  <span class="sr-only">{{ t('common.actions') }}</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -432,9 +446,11 @@ onMounted(load)
     <ConfirmAction
       v-if="pendingDeauth"
       :title="t('developers.removeAppTitle')"
-      :body="t('developers.removeAppBody', {
-        app: pendingDeauth.app_name ?? pendingDeauth.app_slug ?? t('developers.defaultAppName'),
-      })"
+      :body="
+        t('developers.removeAppBody', {
+          app: pendingDeauth.app_name ?? pendingDeauth.app_slug ?? t('developers.defaultAppName'),
+        })
+      "
       :action="t('developers.removeAppAction')"
       tone="error"
       :busy="busy"

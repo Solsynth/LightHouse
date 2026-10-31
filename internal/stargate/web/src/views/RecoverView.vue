@@ -22,7 +22,6 @@ const busy = ref(false)
 const error = ref('')
 const sent = ref(false)
 
-
 async function requestReset() {
   if (!account.value.trim()) return
   busy.value = true
@@ -94,11 +93,7 @@ onMounted(async () => {
         {{ t('recover.accepted') }}
       </p>
 
-      <button
-        type="submit"
-        class="btn btn-primary mt-5 w-full"
-        :disabled="busy || !account.trim()"
-      >
+      <button type="submit" class="btn btn-primary mt-5 w-full" :disabled="busy || !account.trim()">
         {{ busy ? t('recover.requesting') : t('recover.submit') }}
       </button>
     </form>
@@ -106,8 +101,7 @@ onMounted(async () => {
     <p class="voice mt-6 text-[12px]">
       <RouterLink :to="{ name: 'sign-in', query: landingQuery(route.query) }" class="link-quiet">{{
         t('recover.backToSignIn')
-      }}</RouterLink
-      >
+      }}</RouterLink>
     </p>
   </div>
 </template>

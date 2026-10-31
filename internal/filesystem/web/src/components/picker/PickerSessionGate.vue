@@ -36,7 +36,7 @@ function signIn() {
     window.open(
       url.toString(),
       'SolianAuth',
-      `width=${w},height=${h},top=${top},left=${left},status=no,menubar=no,toolbar=no`
+      `width=${w},height=${h},top=${top},left=${left},status=no,menubar=no,toolbar=no`,
     )
   } catch {
     window.open(session.authUrl, '_blank')

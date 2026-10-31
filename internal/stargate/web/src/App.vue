@@ -152,9 +152,7 @@ const avatarFailed = ref(false)
 // The consent screen lends the requesting app's own background to the shell,
 // so that page is painted by the app being authorized rather than by the
 // account authorizing it. Any other page falls back to the account backdrop.
-const backdropUrl = computed(
-  () => ui.appBackdrop || (background.value ? backgroundUrl.value : ''),
-)
+const backdropUrl = computed(() => ui.appBackdrop || (background.value ? backgroundUrl.value : ''))
 const backdropFailed = ref(false)
 
 const menuOpen = ref(false)
@@ -421,7 +419,9 @@ function changeLocale(event: Event) {
 
     <footer
       class="relative z-10 flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 text-2xs text-faint"
-      :class="fullBleed ? 'mt-0 border-t border-line px-page py-3.5 sm:px-page-wide' : ['mt-8', cardWidth]"
+      :class="
+        fullBleed ? 'mt-0 border-t border-line px-page py-3.5 sm:px-page-wide' : ['mt-8', cardWidth]
+      "
     >
       <span>{{ t('app.copyright', { year }) }}</span>
       <div class="flex items-center gap-3">

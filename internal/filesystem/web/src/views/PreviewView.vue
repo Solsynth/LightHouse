@@ -197,7 +197,9 @@ async function toggleVisibility() {
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col bg-ink">
-    <div class="flex min-h-[44px] shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-3 py-1.5 md:px-4">
+    <div
+      class="flex min-h-[44px] shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-3 py-1.5 md:px-4"
+    >
       <button class="btn btn-ghost btn-xs" type="button" @click="backToFolder">
         <ArrowLeft16 />
         {{ t('preview.back') }}
@@ -251,7 +253,10 @@ async function toggleVisibility() {
     <div class="flex min-h-0 flex-1">
       <!-- The bytes are the tab. Everything else in this route is supporting
            metadata, so the surface keeps the largest share of the space. -->
-      <section class="flex min-w-0 flex-1 flex-col border-r border-line" :aria-label="t('preview.content')">
+      <section
+        class="flex min-w-0 flex-1 flex-col border-r border-line"
+        :aria-label="t('preview.content')"
+      >
         <div v-if="loading" class="grid flex-1 place-items-center">
           <div class="w-full max-w-[320px] px-5">
             <div class="loading-scan h-[2px] w-full bg-line-soft" />
@@ -328,15 +333,21 @@ async function toggleVisibility() {
             />
           </div>
           <div class="min-h-0 flex-1 overflow-auto scroll-region bg-ink/60">
-            <p v-if="sourceState === 'loading'" class="voice px-4 py-4">{{ t('preview.reading') }}</p>
+            <p v-if="sourceState === 'loading'" class="voice px-4 py-4">
+              {{ t('preview.reading') }}
+            </p>
             <p v-else-if="sourceState !== 'ready'" class="voice px-4 py-4 text-center">
               {{ sourceError || t('preview.nothingToRead') }}
             </p>
             <div v-else class="flex text-2xs leading-[1.7]">
-              <div class="shrink-0 select-none border-r border-line-soft px-3 py-3 text-right tabular-nums text-faint">
+              <div
+                class="shrink-0 select-none border-r border-line-soft px-3 py-3 text-right tabular-nums text-faint"
+              >
                 <div v-for="(_, index) in sourceLines" :key="index">{{ index + 1 }}</div>
               </div>
-              <pre class="min-w-0 flex-1 overflow-x-auto px-4 py-3 text-base-content"><code>{{ source }}</code></pre>
+              <pre
+                class="min-w-0 flex-1 overflow-x-auto px-4 py-3 text-base-content"
+              ><code>{{ source }}</code></pre>
             </div>
           </div>
         </template>
@@ -360,14 +371,12 @@ async function toggleVisibility() {
 
       <aside
         class="hidden w-[312px] shrink-0 flex-col overflow-y-auto scroll-region lg:flex"
-:aria-label="t('preview.details')"
+        :aria-label="t('preview.details')"
       >
         <template v-if="file">
           <div class="border-b border-line px-4 py-4">
             <h1 class="title break-words text-sm text-base-content">{{ displayName(file) }}</h1>
-            <p class="mt-1.5 text-2xs text-faint">
-              {{ kindLabel(file) }} · {{ poolName }}
-            </p>
+            <p class="mt-1.5 text-2xs text-faint">{{ kindLabel(file) }} · {{ poolName }}</p>
           </div>
 
           <div class="border-b border-line px-4 py-3.5">
@@ -399,7 +408,7 @@ async function toggleVisibility() {
                 :value="publicLink"
                 readonly
                 class="input h-8 min-w-0 flex-1 px-2.5 text-2xs text-dim"
-:aria-label="t('preview.publicLink')"
+                :aria-label="t('preview.publicLink')"
                 @focus="($event.target as HTMLInputElement).select()"
               />
               <CopyButton :value="publicLink" label="publicLink" />

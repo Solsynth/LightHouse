@@ -142,7 +142,10 @@ function restoreSelection() {
         <ArrowUp16 />
       </IconButton>
 
-      <nav class="flex min-w-0 items-center gap-1.5 overflow-hidden text-[12.5px]" :aria-label="t('drive.breadcrumb')">
+      <nav
+        class="flex min-w-0 items-center gap-1.5 overflow-hidden text-[12.5px]"
+        :aria-label="t('drive.breadcrumb')"
+      >
         <template v-for="(crumb, index) in vault.crumbs" :key="crumb.id ?? 'root'">
           <span v-if="index > 0" class="shrink-0 text-line" aria-hidden="true">/</span>
           <button
@@ -283,7 +286,9 @@ function restoreSelection() {
             v-model="search"
             type="text"
             class="input h-8 bg-base-200/70 pl-8 pr-8"
-            :placeholder="mode === 'recycle' ? t('drive.searchRecycled') : t('drive.searchThisLocation')"
+            :placeholder="
+              mode === 'recycle' ? t('drive.searchRecycled') : t('drive.searchThisLocation')
+            "
             autocomplete="off"
             spellcheck="false"
             @input="onSearchInput"
@@ -301,7 +306,11 @@ function restoreSelection() {
           </button>
         </label>
 
-        <div class="flex items-center rounded-lg bg-base-200/70 p-0.5" role="group" :aria-label="t('drive.filterKind')">
+        <div
+          class="flex items-center rounded-lg bg-base-200/70 p-0.5"
+          role="group"
+          :aria-label="t('drive.filterKind')"
+        >
           <button
             v-for="entry in kinds"
             :key="entry.key"
@@ -319,7 +328,11 @@ function restoreSelection() {
           </button>
         </div>
 
-        <div class="ml-auto flex items-center gap-1" role="group" :aria-label="t('drive.sortOrder')">
+        <div
+          class="ml-auto flex items-center gap-1"
+          role="group"
+          :aria-label="t('drive.sortOrder')"
+        >
           <span class="mr-1 hidden text-[11px] text-faint md:inline">{{ t('drive.sort') }}</span>
           <button
             v-for="entry in sorts"

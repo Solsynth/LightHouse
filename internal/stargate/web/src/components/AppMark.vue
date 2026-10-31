@@ -67,7 +67,11 @@ const box = computed(() => ({ width: `${props.size}px`, height: `${props.size}px
     :class="[flat ? 'rounded-mark' : 'rounded-chip', monogram ? 'text-base-content' : 'text-faint']"
     aria-hidden="true"
   >
-    <span v-if="monogram" class="font-sans font-semibold" :style="{ fontSize: `${Math.round(props.size * 0.36)}px` }">
+    <span
+      v-if="monogram"
+      class="font-sans font-semibold"
+      :style="{ fontSize: `${Math.round(props.size * 0.36)}px` }"
+    >
       {{ monogram }}
     </span>
     <Plug16 v-else />

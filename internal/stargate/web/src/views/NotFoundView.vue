@@ -12,8 +12,12 @@ const { t } = useI18n()
       {{ t('notFound.body') }}
     </p>
     <div class="mt-6 flex gap-3">
-      <RouterLink to="/account" class="btn btn-primary btn-sm">{{ t('notFound.goToAccount') }}</RouterLink>
-      <RouterLink to="/activity" class="btn btn-ghost btn-sm">{{ t('notFound.activity') }}</RouterLink>
+      <RouterLink to="/account" class="btn btn-primary btn-sm">{{
+        t('notFound.goToAccount')
+      }}</RouterLink>
+      <RouterLink to="/activity" class="btn btn-ghost btn-sm">{{
+        t('notFound.activity')
+      }}</RouterLink>
     </div>
   </div>
 </template>

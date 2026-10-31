@@ -19,7 +19,6 @@ const props = withDefaults(
   { initialId: null, exclude: () => [] },
 )
 
-
 const { t } = useI18n()
 const emit = defineEmits<{
   change: [payload: { id: string | null; path: string }]
@@ -133,7 +132,9 @@ function jump(index: number) {
     <div
       class="flex items-center justify-between gap-2 border-t border-line px-3 py-1.5 text-[11px]"
     >
-      <span class="truncate text-faint">{{ t('folderPicker.destination', { path: pathLabel }) }}</span>
+      <span class="truncate text-faint">{{
+        t('folderPicker.destination', { path: pathLabel })
+      }}</span>
       <span :class="canMoveHere ? 'text-success' : 'text-error'">
         {{ canMoveHere ? t('folderPicker.writable') : t('folderPicker.unavailable') }}
       </span>

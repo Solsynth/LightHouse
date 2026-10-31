@@ -31,7 +31,8 @@ export default {
     downloadInstead: 'Download instead',
     cannotRender: 'This file can’t be shown here.',
     imageFailed: 'The image could not be rendered.',
-    noReader: 'SnFS has no reader for this format yet, so the metadata is all this tab can offer. Download the file to open it locally.',
+    noReader:
+      'SnFS has no reader for this format yet, so the metadata is all this tab can offer. Download the file to open it locally.',
     clipboardDenied: 'The browser refused clipboard access.',
     noTabFile: 'This tab has no file to show.',
     readFailed: 'The file could not be read.',
@@ -63,7 +64,8 @@ export default {
     moveTitle: 'Move {selection}',
     moveNote: 'Choose a destination. The file keeps its identity.',
     recycleTitle: 'Recycle {selection}?',
-    recycleBody: '{noun}{size} will leave the drive. You can restore it from the Recycle Bin until it is purged.',
+    recycleBody:
+      '{noun}{size} will leave the drive. You can restore it from the Recycle Bin until it is purged.',
     purgeTitle: 'Delete {selection} forever?',
     purgeBody: '{noun}{size} will be erased from storage and the index.',
     purgeWarning: 'This can’t be undone.',

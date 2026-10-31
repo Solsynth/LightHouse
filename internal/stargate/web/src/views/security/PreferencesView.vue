@@ -40,8 +40,7 @@ async function load() {
     mode.value = preferences.mode
     saved.value = preferences.mode
   } catch (caught) {
-    error.value =
-      caught instanceof StargateError ? caught.message : t('preferences.errorLoad')
+    error.value = caught instanceof StargateError ? caught.message : t('preferences.errorLoad')
   } finally {
     loading.value = false
   }
@@ -53,10 +52,11 @@ async function save() {
   try {
     const preferences = await securityApi.updatePreferences(mode.value)
     saved.value = preferences.mode
-    notice.ok(t('preferences.noticeMode', { mode: modeNames.value[preferences.mode] ?? preferences.mode }))
+    notice.ok(
+      t('preferences.noticeMode', { mode: modeNames.value[preferences.mode] ?? preferences.mode }),
+    )
   } catch (caught) {
-    error.value =
-      caught instanceof StargateError ? caught.message : t('preferences.errorSave')
+    error.value = caught instanceof StargateError ? caught.message : t('preferences.errorSave')
   } finally {
     saving.value = false
   }
@@ -67,10 +67,7 @@ onMounted(load)
 
 <template>
   <div>
-    <PageHeader
-      :title="t('preferences.title')"
-      :description="t('preferences.description')"
-    />
+    <PageHeader :title="t('preferences.title')" :description="t('preferences.description')" />
 
     <SecurityNav />
 

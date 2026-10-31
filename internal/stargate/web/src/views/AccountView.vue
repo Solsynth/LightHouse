@@ -354,11 +354,7 @@ onMounted(loadForm)
                 v-model="form.middle_name"
                 :label="t('account.middleName')"
               />
-              <TextField
-                id="last_name"
-                v-model="form.last_name"
-                :label="t('account.lastName')"
-              />
+              <TextField id="last_name" v-model="form.last_name" :label="t('account.lastName')" />
             </div>
             <div class="grid gap-4 sm:grid-cols-3">
               <TextField id="pronouns" v-model="form.pronouns" :label="t('account.pronouns')" />

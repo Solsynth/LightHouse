@@ -1,14 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { computed } from 'vue'
-import {
-  ArrowRight16,
-  CloudOffline16,
-  Login16,
-  Moon16,
-  Renew16,
-  Sun16,
-} from '@carbon/icons-vue'
+import { ArrowRight16, CloudOffline16, Login16, Moon16, Renew16, Sun16 } from '@carbon/icons-vue'
 
 import BrandMark from './BrandMark.vue'
 import IconButton from './IconButton.vue'
@@ -26,7 +19,9 @@ const state = computed(() => session.state)
   <slot v-if="state === 'ready'" />
 
   <div v-else class="relative flex h-dvh flex-col overflow-hidden bg-ink text-base-content">
-    <header class="relative z-10 flex h-[52px] shrink-0 items-center gap-3 border-b border-line px-4">
+    <header
+      class="relative z-10 flex h-[52px] shrink-0 items-center gap-3 border-b border-line px-4"
+    >
       <BrandMark :size="21" />
       <span class="text-[14px] font-semibold tracking-[-0.01em]">{{ t('app.product') }}</span>
       <span class="hidden text-[11px] text-faint sm:inline">{{ t('app.fullName') }}</span>

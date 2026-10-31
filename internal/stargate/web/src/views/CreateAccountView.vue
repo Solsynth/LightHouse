@@ -81,8 +81,7 @@ async function submit() {
       fieldErrors.value = caught.fields ?? {}
       error.value = caught.message
     } else {
-      error.value =
-        caught instanceof Error ? caught.message : t('createAccount.errorCreateFailed')
+      error.value = caught instanceof Error ? caught.message : t('createAccount.errorCreateFailed')
     }
   } finally {
     busy.value = false

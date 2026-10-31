@@ -26,7 +26,8 @@ export default {
     noBio: 'No bio yet. This is what other accounts read on your profile.',
     birthday: 'birthday',
     art: 'Profile art',
-    artHint: 'Pictures and backgrounds are Drive files. Pick one from your SnFS drive, or upload a new image — nothing is copied into the drive tree.',
+    artHint:
+      'Pictures and backgrounds are Drive files. Pick one from your SnFS drive, or upload a new image — nothing is copied into the drive tree.',
     choosePicture: 'Choose picture',
     chooseBackground: 'Choose background',
     chooseArtHint: 'Images only. Upload a new one if it is not in the drive yet.',

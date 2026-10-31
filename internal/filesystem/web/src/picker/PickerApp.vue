@@ -69,8 +69,12 @@ function adoptHost(origin: string) {
 function onMessage(event: MessageEvent) {
   const data = event.data
   // Handle auth completion message from login popup (e.g. SolianAuth popup)
-  if (data && typeof data === 'object' && ('type' in data)) {
-    if (data.type === 'picker:auth-success' || data.type === 'POPUP_AUTH_SUCCESS' || data.type === 'AUTH_SUCCESS') {
+  if (data && typeof data === 'object' && 'type' in data) {
+    if (
+      data.type === 'picker:auth-success' ||
+      data.type === 'POPUP_AUTH_SUCCESS' ||
+      data.type === 'AUTH_SUCCESS'
+    ) {
       tokenReceived.value = true
       if (signedOutTimer) window.clearTimeout(signedOutTimer)
       const token = typeof data.token === 'string' ? data.token : undefined

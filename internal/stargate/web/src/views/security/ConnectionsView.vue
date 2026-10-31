@@ -76,8 +76,7 @@ async function load() {
   try {
     connections.value = (await appApi.connections()) ?? []
   } catch (caught) {
-    error.value =
-      caught instanceof StargateError ? caught.message : t('connections.errorLoad')
+    error.value = caught instanceof StargateError ? caught.message : t('connections.errorLoad')
   } finally {
     loading.value = false
   }
@@ -87,11 +86,7 @@ async function toggleVisibility(connection: Connection) {
   busy.value = true
   try {
     await appApi.setConnectionVisibility(connection.id, !connection.is_public)
-    notice.ok(
-      connection.is_public
-        ? t('connections.noticeHidden')
-        : t('connections.noticeShown'),
-    )
+    notice.ok(connection.is_public ? t('connections.noticeHidden') : t('connections.noticeShown'))
     await load()
   } catch (caught) {
     notice.fail(caught instanceof Error ? caught.message : t('connections.errorVisibility'))
@@ -183,7 +178,6 @@ onMounted(async () => {
         </li>
       </ul>
     </ConsolePanel>
-
 
     <ConsolePanel
       v-if="connectable.length"

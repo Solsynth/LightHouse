@@ -64,10 +64,7 @@ onMounted(load)
 
 <template>
   <div>
-    <PageHeader
-      :title="t('admin.overview.title')"
-      :description="t('admin.overview.description')"
-    >
+    <PageHeader :title="t('admin.overview.title')" :description="t('admin.overview.description')">
       <template #actions>
         <IconButton :label="t('common.refresh')" :disabled="loading" @click="load">
           <Renew16 aria-hidden="true" />
@@ -105,7 +102,11 @@ onMounted(load)
           {{ t('admin.overview.statHitRatio') }}
         </p>
         <p class="mt-2 text-2xl font-normal numeric text-base-content">
-          {{ cacheAvailable ? `${(stats!.hit_ratio * 100).toFixed(1)}%` : t('admin.overview.statOffline') }}
+          {{
+            cacheAvailable
+              ? `${(stats!.hit_ratio * 100).toFixed(1)}%`
+              : t('admin.overview.statOffline')
+          }}
         </p>
         <p class="mt-1 text-2xs text-faint">
           {{
@@ -149,7 +150,10 @@ onMounted(load)
               <span class="tabular-nums text-faint">{{ count }}</span>
             </div>
             <div class="mt-1.5 h-[3px] w-full bg-base-300">
-              <div class="h-[3px] bg-primary/70" :style="{ width: `${(count / largest) * 100}%` }" />
+              <div
+                class="h-[3px] bg-primary/70"
+                :style="{ width: `${(count / largest) * 100}%` }"
+              />
             </div>
           </li>
         </ul>
@@ -193,12 +197,16 @@ onMounted(load)
             <div class="flex justify-between">
               <dt class="text-faint">{{ t('admin.overview.shortcutCache') }}</dt>
               <dd :class="cacheAvailable ? 'text-success' : 'text-warning'">
-                {{ cacheAvailable ? t('admin.overview.connected') : t('admin.overview.unavailable') }}
+                {{
+                  cacheAvailable ? t('admin.overview.connected') : t('admin.overview.unavailable')
+                }}
               </dd>
             </div>
             <div v-if="cacheAvailable" class="flex justify-between">
               <dt class="text-faint">{{ t('admin.overview.commands') }}</dt>
-              <dd class="tabular-nums text-dim">{{ compactNumber(stats!.total_commands_processed) }}</dd>
+              <dd class="tabular-nums text-dim">
+                {{ compactNumber(stats!.total_commands_processed) }}
+              </dd>
             </div>
             <div v-if="cacheAvailable" class="flex justify-between">
               <dt class="text-faint">{{ t('admin.overview.evicted') }}</dt>

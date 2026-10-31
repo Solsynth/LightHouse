@@ -53,12 +53,10 @@ const axis = computed(() => vault.usedFraction > 0.86)
         viewBox="0 0 120 120"
         class="h-full w-full -rotate-90"
         role="img"
-        :aria-label="
-          `${volumeCaption}: ${t('status.usedOfQuota', {
-            used: formatBytes(vault.usedBytes),
-            quota: formatBytes(vault.quotaBytes),
-          })}`
-        "
+        :aria-label="`${volumeCaption}: ${t('status.usedOfQuota', {
+          used: formatBytes(vault.usedBytes),
+          quota: formatBytes(vault.quotaBytes),
+        })}`"
       >
         <circle
           cx="60"
@@ -83,7 +81,9 @@ const axis = computed(() => vault.usedFraction > 0.86)
       </svg>
 
       <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
-        <span class="text-[11px] text-faint">{{ hasQuota ? volumeCaption : t('storage.noQuota') }}</span>
+        <span class="text-[11px] text-faint">{{
+          hasQuota ? volumeCaption : t('storage.noQuota')
+        }}</span>
         <div
           class="title mt-1.5 tabular-nums"
           :class="[percentClass, axis ? 'text-error' : 'text-base-content']"
@@ -92,7 +92,12 @@ const axis = computed(() => vault.usedFraction > 0.86)
           }}<span v-if="hasQuota" class="text-[0.46em] font-normal text-dim">%</span>
         </div>
         <span v-if="size !== 'sm'" class="mt-2 text-[11px] tabular-nums text-faint">
-          {{ t('status.usedOfQuota', { used: formatBytes(vault.usedBytes), quota: formatBytes(vault.quotaBytes) }) }}
+          {{
+            t('status.usedOfQuota', {
+              used: formatBytes(vault.usedBytes),
+              quota: formatBytes(vault.quotaBytes),
+            })
+          }}
         </span>
         <span v-else class="mt-1 text-[11px] tabular-nums text-faint">
           {{ t('storage.usedAmount', { size: formatBytes(vault.usedBytes) }) }}

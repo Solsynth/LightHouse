@@ -32,10 +32,11 @@ choices already encoded in `web/src/assets/main.css`,
    the palette from Solian's own seed-derived ramp, so a console surface and a
    Solian screen of the same role belong to the same family without pretending
    to be the same size. Roundness is a family, not a per-page choice.
-7. **A field is one rounded outline.** Every control is a filled, fully
-   rounded shape drawn by a single border on all four sides — never an
-   underline or a bar beneath it. Focus is that same border thickening and
-   taking the signal colour; an error is that border in the error tone.
+7. **A field is an outlined shape with a notched caption.** Every control is
+   enclosed by a 1 px border with an 8–10 px radius, cutting a notch along the
+   top edge when the caption rises. Focus thickens that outline to 2 px in the
+   signal colour, and an error tints it in the error tone. Suffix icons or
+   actions can sit on the trailing edge.
 
 ## 2. Color
 
@@ -143,17 +144,14 @@ amplitude changes. Use the token; never write a raw `rounded-[Npx]` in a view.
 | --- | --- | --- | --- |
 | `--radius-mark` | 4 px | `rounded-mark` | app marks, small inline art |
 | `--radius-chip` | 6 px | `rounded-chip` | chips, status notes, skeletons |
-| `--radius-input` | 20 px | `rounded-input` / `--radius-field` | inputs, selects, textareas |
+| `--radius-input` | 10 px | `rounded-input` / `--radius-field` | inputs, selects, textareas |
 | `--radius-control` | 6 px | `rounded-control` | buttons, tab rail, segmented controls |
 | `--radius-card` | 12 px | `rounded-card` / `--radius-box` | panels, menus, wells, option blocks |
 | `--radius-sheet` | 16 px | `rounded-sheet` | the page card, dialogs |
 
-Fields are the exception to the tight scale: they keep Solian's
-`SolRadius.input` (20 px), which at the console's 40–44 px control height
-resolves to a capsule. That is what the app's own fields look like, and a
-field is a different object from the surfaces around it.
-
-Controls are a **6 px rounded rectangle**, not a capsule. At 40 px tall a
+Fields use `--radius-input` (10 px), giving a clean rounded-rectangle outline
+with flat horizontal top and bottom segments that house the notched floating
+label. Controls are a **6 px rounded rectangle**, not a capsule. At 40 px tall a
 capsule removes the corner entirely and the button stops reading as a surface;
 `--radius-control` is the one value a button, a tab, and a segmented control
 share. A square button keeps that corner rather than becoming a circle, so
@@ -361,14 +359,18 @@ printing `0 total` or `Page 1 of 1`.
 
 ### Forms
 
-Every field is `TextField`. It renders a filled, fully rounded control in the
-style of Solian's input theme: one 1 px outline on all four sides, a 20 px
-radius (a capsule at control height), and a caption that animates between two
-positions. At rest the caption sits on the value line, so an empty form still
-reads as a list of questions; on focus or a value it rises into a small
-caption above the value and stays there. Focus thickens the outline to 2 px in
-the signal colour using an inset ring, so the box never shifts by a pixel. An
-invalid field keeps that outline in the error tone, with or without focus.
+Every field is `TextField`. It renders an outlined control with a notched
+floating label, drawn by a 1 px border with a 10 px radius and an optional
+trailing suffix icon or action. At rest the caption sits centered on the value
+line; on focus or with a value it rises into a notch cut along the top border
+edge and stays there. Focus thickens the outline to 2 px in the signal colour
+using an inset ring, so the box never shifts by a pixel. An invalid field keeps
+that outline in the error tone, with or without focus.
+
+Suffix icons (such as passkeys/fingerprints, view-password toggles, or verify
+triggers) are supported via `suffixIcon` prop or the `#suffix` / `#action` slot.
+Not all fields require a suffix icon; controls without one retain clean,
+balanced horizontal padding.
 
 There is no underline and no accent bar. Do not add one.
 
@@ -382,9 +384,10 @@ class="field-label">`, not a field label.
 | `label` | the visible caption; omit for a label-less row |
 | `as` | `input` (default), `textarea`, `select` |
 | `size` | `md` (44 px), `sm` (40 px, default), `xs` (32 px) — matches the button beside it |
-| `bare` | no caption and no reserved caption line, for chrome-level controls; name it with `aria-label` |
+| `bare` | no caption and no notch, for chrome-level controls; name it with `aria-label` |
 | `invalid` / `hint` | error tone on the outline and caption, helper text below |
 | `hintTone` | `warning` tints a hint without marking the field invalid |
+| `suffixIcon` | optional trailing icon component or glyph |
 | `controlClass` | classes for the control itself, e.g. `font-mono` |
 | `rootClass` | classes for the wrapper, for layout spacing at the call site |
 

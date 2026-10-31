@@ -138,7 +138,9 @@ onMounted(load)
                   <th scope="col">{{ t('admin.permissions.colPermissions') }}</th>
                   <th scope="col">{{ t('admin.permissions.colMembers') }}</th>
                   <th scope="col">{{ t('common.updated') }}</th>
-                  <th scope="col"><span class="sr-only">{{ t('common.actions') }}</span></th>
+                  <th scope="col">
+                    <span class="sr-only">{{ t('common.actions') }}</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
