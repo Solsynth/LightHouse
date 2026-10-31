@@ -15,13 +15,13 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
-	models "src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/ports"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/store"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/accountjson"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/authn"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/httpx"
 )
@@ -87,24 +87,12 @@ func (s *server) memberModel(ctx context.Context, entity *store.ChatMemberEntity
 	member := store.MemberToModel(entity)
 	if s.accounts != nil {
 		if account, err := s.accounts.GetAccount(ctx, entity.AccountID.String()); err == nil && account != nil {
-			member.Account = accountRefOf(account)
+			// Clients decode member.account as a full SnAccount, so a partial
+			// hand-built object makes every required field it omits null.
+			member.Account = accountjson.FromProto(account)
 		}
 	}
 	return member
-}
-
-func accountRefOf(account *gen.DyAccount) *accountRef {
-	ref := &accountRef{
-		ID:       account.GetId(),
-		Name:     account.GetName(),
-		Nick:     account.GetNick(),
-		Region:   account.GetRegion(),
-		Language: account.GetLanguage(),
-	}
-	if picture := account.GetPicture(); picture != nil {
-		ref.Picture = models.FromProtoValue(picture)
-	}
-	return ref
 }
 
 func (s *server) displayName(ctx context.Context, member *store.ChatMemberEntity, fallback string) string {

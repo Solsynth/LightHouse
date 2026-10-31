@@ -32,15 +32,3 @@ type KickParticipantRequest struct {
 	BanDurationMinutes *int    `json:"ban_duration_minutes"`
 	Reason             *string `json:"reason"`
 }
-
-// accountRef is the subset of SnAccount embedded in call participant
-// profiles. The chat module owns the full account wire shape; this module only
-// needs the identity fields clients render in a call roster.
-type accountRef struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Nick     string `json:"nick"`
-	Region   string `json:"region"`
-	Language string `json:"language"`
-	Picture  any    `json:"picture"`
-}
