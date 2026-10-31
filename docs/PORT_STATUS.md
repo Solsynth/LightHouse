@@ -302,8 +302,9 @@ The remaining Passport domains live in:
 Verified against a fresh PostgreSQL and a running Stargate (single-user auth,
 one seeded account, permissions inserted directly):
 
-- the module set boots with all new tables; the notable-day seed writes 15 CN
-  rows and is idempotent;
+- the module set boots on a fresh PostgreSQL; all 22 new tables and the
+  partial live-unique indexes are created, and the notable-day seed writes 15
+  CN rows idempotently;
 - `/api/accounts/me` hydrates experience/social-credit/leveling fields;
   `/credits`, `/credits/history`, `/leveling`, `/badges`, `/actions`,
   `/connections` and `/board` answer with the C# shapes, and the hourly social
