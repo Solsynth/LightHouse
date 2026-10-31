@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/stargate/model"
+	"src.solsynth.dev/sosys/stargate/store"
 )
 
 // ErrNotFound marks a missing notable day, calendar event, subscription or
@@ -261,16 +262,8 @@ func userEventFromEntity(entity *UserCalendarEventEntity) *UserCalendarEvent {
 	if len(entity.Meta) > 0 {
 		decodeJSON(entity.Meta, &event.Meta)
 	}
-	if len(entity.Icon) > 0 && string(entity.Icon) != "null" {
-		icon := &model.SnCloudFileReferenceObject{}
-		decodeJSON(entity.Icon, icon)
-		event.Icon = icon
-	}
-	if len(entity.Background) > 0 && string(entity.Background) != "null" {
-		background := &model.SnCloudFileReferenceObject{}
-		decodeJSON(entity.Background, background)
-		event.Background = background
-	}
+	event.Icon = store.DecodeFileReference(&entity.Icon)
+	event.Background = store.DecodeFileReference(&entity.Background)
 	if entity.DeletedAt.Valid {
 		event.DeletedAt = model.NewTime(entity.DeletedAt.Time)
 	}

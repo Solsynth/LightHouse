@@ -52,7 +52,7 @@ const legacyReference = `{
 
 func TestDecodeFileReferenceNormalizesLegacyKeys(t *testing.T) {
 	raw := datatypes.JSON(legacyReference)
-	reference := decodeFileReference(&raw)
+	reference := DecodeFileReference(&raw)
 	if reference == nil {
 		t.Fatal("reference = nil, want decoded reference")
 	}
@@ -86,15 +86,15 @@ func TestDecodeFileReferenceNormalizesLegacyKeys(t *testing.T) {
 }
 
 func TestDecodeFileReferenceHandlesNull(t *testing.T) {
-	if decodeFileReference(nil) != nil {
+	if DecodeFileReference(nil) != nil {
 		t.Error("nil column should decode to nil")
 	}
 	empty := datatypes.JSON(nil)
-	if decodeFileReference(&empty) != nil {
+	if DecodeFileReference(&empty) != nil {
 		t.Error("empty column should decode to nil")
 	}
 	literalNull := datatypes.JSON("null")
-	if decodeFileReference(&literalNull) != nil {
+	if DecodeFileReference(&literalNull) != nil {
 		t.Error("JSON null column should decode to nil")
 	}
 }

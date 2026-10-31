@@ -65,10 +65,10 @@ func decodeJSONValue(raw datatypes.JSON, destination any) error {
 	return nil
 }
 
-// decodeJSONObject decodes a legacy C# jsonb value object into a typed
+// DecodeJSONObject decodes a legacy C# jsonb value object into a typed
 // destination, normalizing the top-level keys to snake_case first. A nil or
 // JSON-null column leaves destination untouched.
-func decodeJSONObject(raw *datatypes.JSON, destination any) error {
+func DecodeJSONObject(raw *datatypes.JSON, destination any) error {
 	if raw == nil || len(*raw) == 0 {
 		return nil
 	}
@@ -78,18 +78,18 @@ func decodeJSONObject(raw *datatypes.JSON, destination any) error {
 	return nil
 }
 
-// decodeFileReference decodes a jsonb file-reference column into the wire
+// DecodeFileReference decodes a jsonb file-reference column into the wire
 // model. Rows written by the legacy C# fleet carry System.Text.Json PascalCase
 // keys ("Id", "FileMeta", "MimeType"), and a typed decode would silently drop
 // every key whose snake_case tag does not match case-insensitively — clients
 // strict-cast the object, so the blob is normalized before decoding. A nil or
 // JSON-null column yields nil.
-func decodeFileReference(raw *datatypes.JSON) *model.SnCloudFileReferenceObject {
+func DecodeFileReference(raw *datatypes.JSON) *model.SnCloudFileReferenceObject {
 	if raw == nil || len(*raw) == 0 {
 		return nil
 	}
 	var reference *model.SnCloudFileReferenceObject
-	if err := decodeJSONObject(raw, &reference); err != nil {
+	if err := DecodeJSONObject(raw, &reference); err != nil {
 		return nil
 	}
 	return reference

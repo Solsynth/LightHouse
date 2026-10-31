@@ -267,8 +267,8 @@ func oauthAppFromEntity(entity *OAuthAppEntity) *model.OAuthApp {
 		},
 		// The art columns are nullable jsonb: nil is SQL NULL, so a cleared
 		// reference decodes to a nil Picture/Background.
-		Picture:    decodeFileReference(entity.Picture),
-		Background: decodeFileReference(entity.Background),
+		Picture:    DecodeFileReference(entity.Picture),
+		Background: DecodeFileReference(entity.Background),
 		CreatedAt:  timePtr(&entity.CreatedAt),
 		UpdatedAt:  timePtr(&entity.UpdatedAt),
 		DeletedAt:  deletedTime(entity.DeletedAt),

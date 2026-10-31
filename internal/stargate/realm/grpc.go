@@ -15,6 +15,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/auth"
 	"src.solsynth.dev/sosys/stargate/localization"
 	"src.solsynth.dev/sosys/stargate/model"
+	"src.solsynth.dev/sosys/stargate/store"
 )
 
 // GRPCDeps is everything the DyRealmService port needs.
@@ -310,8 +311,8 @@ func realmToProto(entity *RealmEntity) *gen.DyRealm {
 		Id: entity.ID.String(), Name: entity.Name, Slug: entity.Slug,
 		IsCommunity: entity.IsCommunity, IsPublic: entity.IsPublic,
 		Description:  entity.Description,
-		Picture:      cloudFileToProto(decodeFileRef(entity.Picture)),
-		Background:   cloudFileToProto(decodeFileRef(entity.Background)),
+		Picture:      auth.CloudFileToProto(store.DecodeFileReference(entity.Picture)),
+		Background:   auth.CloudFileToProto(store.DecodeFileReference(entity.Background)),
 		Verification: verificationToProto(decodeVerification(entity.Verification)),
 		AccountId:    entity.AccountID.String(),
 		BoostPoints:  entity.BoostPoints.String(),
@@ -346,26 +347,6 @@ func memberToProto(row *RealmMemberEntity) *gen.DyRealmMember {
 		member.Account = auth.AccountToProto(row.Account)
 	}
 	return member
-}
-
-func cloudFileToProto(ref *model.SnCloudFileReferenceObject) *gen.DyCloudFile {
-	if ref == nil {
-		return nil
-	}
-	out := &gen.DyCloudFile{
-		Id: ref.Id, Name: ref.Name, MimeType: ref.MimeType, Hash: ref.Hash,
-		Size: ref.Size, HasCompression: ref.HasCompression, ContentType: ref.MimeType, Url: ref.Url,
-	}
-	if ref.Width != nil {
-		out.Width = ref.Width
-	}
-	if ref.Height != nil {
-		out.Height = ref.Height
-	}
-	if ref.Blurhash != "" {
-		out.Blurhash = new(ref.Blurhash)
-	}
-	return out
 }
 
 func verificationToProto(mark *model.SnVerificationMark) *gen.DyVerificationMark {

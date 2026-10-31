@@ -1,13 +1,13 @@
 package realm
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 
 	"src.solsynth.dev/sosys/stargate/model"
+	"src.solsynth.dev/sosys/stargate/store"
 )
 
 // Wire types for the realm HTTP surface. Field order and names follow
@@ -177,8 +177,8 @@ func RealmFromEntity(entity *RealmEntity) *Realm {
 	return &Realm{
 		Id: entity.ID, Slug: entity.Slug, Name: entity.Name, Description: entity.Description,
 		IsCommunity: entity.IsCommunity, IsPublic: entity.IsPublic,
-		Picture:            decodeFileRef(entity.Picture),
-		Background:         decodeFileRef(entity.Background),
+		Picture:            store.DecodeFileReference(entity.Picture),
+		Background:         store.DecodeFileReference(entity.Background),
 		Verification:       decodeVerification(entity.Verification),
 		AccountId:          entity.AccountID,
 		BoostPoints:        entity.BoostPoints,
@@ -275,23 +275,12 @@ func ExperienceFromEntity(entity *RealmExperienceRecordEntity) *ExperienceRecord
 	}
 }
 
-func decodeFileRef(raw *datatypes.JSON) *model.SnCloudFileReferenceObject {
-	if raw == nil || len(*raw) == 0 || string(*raw) == "null" {
-		return nil
-	}
-	var ref model.SnCloudFileReferenceObject
-	if err := json.Unmarshal(*raw, &ref); err != nil {
-		return nil
-	}
-	return &ref
-}
-
 func decodeVerification(raw *datatypes.JSON) *model.SnVerificationMark {
 	if raw == nil || len(*raw) == 0 || string(*raw) == "null" {
 		return nil
 	}
 	var mark model.SnVerificationMark
-	if err := json.Unmarshal(*raw, &mark); err != nil {
+	if err := store.DecodeJSONObject(raw, &mark); err != nil {
 		return nil
 	}
 	return &mark

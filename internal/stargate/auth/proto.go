@@ -129,15 +129,17 @@ func ProfileToProto(p *model.Profile) *gen.DyAccountProfile {
 			VerifiedBy:  derefOrEmpty(p.Verification.VerifiedBy),
 		}
 	}
-	proto.Picture = cloudFileToProto(p.Picture)
-	proto.Background = cloudFileToProto(p.Background)
+	proto.Picture = CloudFileToProto(p.Picture)
+	proto.Background = CloudFileToProto(p.Background)
 	proto.ActiveBadge = badgeRefToProto(p.ActiveBadge)
 	return proto
 }
 
-// cloudFileToProto maps the stored file reference back to the DyCloudFile
-// wire shape, mirroring SnCloudFileReferenceObject.ToProtoValue.
-func cloudFileToProto(f *model.SnCloudFileReferenceObject) *gen.DyCloudFile {
+// CloudFileToProto maps the stored file reference back to the DyCloudFile
+// wire shape, mirroring SnCloudFileReferenceObject.ToProtoValue. Every caller
+// that emits a stored reference must use it: a hand-rolled literal drops
+// file_meta/user_meta and the downstream SDK reads an empty object.
+func CloudFileToProto(f *model.SnCloudFileReferenceObject) *gen.DyCloudFile {
 	if f == nil {
 		return nil
 	}
