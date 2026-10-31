@@ -314,6 +314,7 @@ const (
 	NfcAdminManage = "nfc.admin.manage"
 
 	// ── Tickets ──
+	TicketsAdmin          = "tickets.admin"
 	TicketsCreate         = "tickets.create"
 	TicketsUpdate         = "tickets.update"
 	TicketsDelete         = "tickets.delete"
@@ -710,6 +711,7 @@ var AllKeys = []string{
 	NfcTagsLock,
 	NfcAdminManage,
 
+	TicketsAdmin,
 	TicketsCreate,
 	TicketsUpdate,
 	TicketsDelete,

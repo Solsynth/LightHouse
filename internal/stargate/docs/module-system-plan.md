@@ -239,17 +239,17 @@ fails startup.
 
 | Port | Consumers | Providers |
 |---|---|---|
-| `files` | profiles, nfc | `app.solian.drive` |
-| `badges` | profiles, nfc, progression | `app.solian.pass` |
-| `verification` | profiles, nfc | `app.solian.pass` |
-| `perks` | profiles | `app.solian.wallet` (feature), `app.solian.wallet.remote` |
-| `payments` | realm (boosts), progression (reward points) | `app.solian.wallet` (feature), `app.solian.wallet.remote` |
-| `orderEvents` | realm (boosts, in-process) | `app.solian.wallet` (feature) |
-| `email` | auth, spells, admin | `app.solian.ring` |
-| `push` | auth, admin, relationships | `app.solian.ring` |
-| `presence` | security, admin | `app.solian.blade` |
+| `files` | profiles, nfc, accountevents, tickets | `app.solian.drive` |
+| `badges` | profiles, nfc, progression | `app.solian.id.accountrecords` (feature), `app.solian.pass` |
+| `verification` | profiles, nfc | `app.solian.id.accountrecords` (feature), `app.solian.pass` |
+| `perks` | profiles, accountrecords, accountevents | `app.solian.wallet` (feature), `app.solian.wallet.remote` |
+| `payments` | realm (boosts), progression/accountevents (points), purchases (orders) | `app.solian.wallet` (feature), `app.solian.wallet.remote` |
+| `orderEvents` | realm (boosts), purchases (fulfilment) | `app.solian.wallet` (feature) |
+| `email` | auth, spells, admin, tickets | `app.solian.ring` |
+| `push` | auth, admin, relationships, tickets, wellbeing | `app.solian.ring` |
+| `presence` | security, admin, nearby | `app.solian.blade` |
 | `oauthClients` | oidc, security, token auth | `app.solian.id.oauthapps`, `app.solian.develop` |
-| `nfcTokens` | auth | `app.solian.id.nfc`, `app.solian.pass` |
+| `nfcTokens` | auth | `app.solian.id.nfc` (feature), `app.solian.pass` |
 | `verificationSpells` | auth | `app.solian.id.spells` |
 
 Provider selection:
@@ -273,13 +273,25 @@ startup.
 | `app.solian.id.accounts` | feature | `/api/{identity,factors,sessions,devices,contacts,api-keys,connections}`, account/bot/authorized-app gRPC | auth | core tables |
 | `app.solian.id.profiles` | feature | `/api/accounts/**` profile/public routes, profile gRPC | accounts | core tables |
 | `app.solian.id.relationships` | feature | `/api/relationships/**`, `/api/friends/overview`, followers/following, `GET /api/accounts/{name}/relationships` (anonymous totals; `mutual_friends` with a session), the six `DyProfileService` relationship RPCs | profiles | `account_relationships` |
-| `app.solian.id.spells` | feature | `/api/spells/**` | accounts | `magic_spells`, `affiliation_*` (later phase) |
+| `app.solian.id.spells` | feature | `/api/spells/**` | accounts | `magic_spells` |
 | `app.solian.id.social` | feature | `/api/auth/login/{provider}`, callbacks | auth, accounts | none |
 | `app.solian.id.oidc` | feature | `/api/oidc/**`, `/.well-known/openid-configuration` | auth, accounts | none |
 | `app.solian.id.oauthapps` | feature | `/api/oauth-apps/**`, provides `oauthClients` | auth | `oauth_apps`, `oauth_app_secrets` |
 | `app.solian.id.realm` | feature | `/api/realms/**`, `/api/realms/public`, `/api/admin/realms/**`, the ten `DyRealmService` RPCs | auth, accounts | `realms`, `realm_members`, `realm_labels`, `realm_boost_contributions`, `realm_experience_records`, `realm_role_permissions`, `realm_user_permissions`, `realm_post_moderation_logs` |
 | `app.solian.id.progression` | feature | `/api/accounts/me/progression/**`, `/api/admin/progression/**`, `/.well-known/badges`, action-log consumer | auth, accounts | `achievement_definitions`, `quest_definitions`, `account_achievements`, `account_quest_progresses`, `progress_reward_grants`, `progress_event_receipts` |
 | `app.solian.id.domaintrust` | feature | `/api/domain-blocks/**` (rule CRUD, public `validate`/`check`, metrics), `DyDomainBlockService` | auth | `domain_blocks`, `domain_validation_metrics` |
+| `app.solian.id.accountrecords` | feature | `/api/accounts/me/{actions,badges,leveling,credits,connections,board}`, public badge/board/credit routes, admin badge/board/credit/verification routes, `DyExperienceService`, `DySocialCreditService`; provides `badges`/`verification` | auth, accounts | `experience_records`, `social_credit_records`, `badges`, `account_board_items` |
+| `app.solian.id.accountevents` | feature | `/api/accounts/me/{check-in,calendar/**}`, public account calendar/timeline, `/api/notable-days/**`, `/api/fortune*` | accounts, accountrecords, presences | `account_check_in_results`, `user_calendar_events`, `calendar_event_subscriptions`, `notable_days` |
+| `app.solian.id.tickets` | feature | `/api/tickets/**`, `/api/admin/tickets/on-call/**` | accounts | `tickets`, `ticket_messages`, `ticket_on_call_admins` |
+| `app.solian.id.purchases` | feature | `/api/affiliations/**`, `/api/accounts/me/name-change-card/**` | accounts | `affiliation_spells`, `affiliation_results`, `affiliation_spell_purchases`, `name_change_card_purchases` |
+| `app.solian.id.nfc` | feature | `/api/nfc/**`, `/api/admin/nfc/**`, `DyNfcService`; provides `nfcTokens` | auth, accounts | `nfc_tags` |
+| `app.solian.id.passkit` | feature | `/api/passkit/v1/**`, `/api/accounts/me/passbook/member` | accounts | `apple_passes`, `apple_pass_registrations` |
+| `app.solian.id.presenceartworks` | feature | `/api/presence/artworks/**` | accounts | `presence_artworks` |
+| `app.solian.id.ipcheck` | feature | `/api/ip-check`, `/api/ip-check/geo` | — | none |
+| `app.solian.id.rewind` | feature | `/api/rewind/**` | accounts, accountevents | `rewind_points` |
+| `app.solian.id.nearby` | feature | `/api/nearby/**` | accounts (relationships optional) | `nearby_devices`, `nearby_presence_tokens` |
+| `app.solian.id.wellbeing` | feature | `/api/admin/stats`, `/api/admin/accounts/metrics/activity`, night-owl test/job | accounts, profiles | none |
+| `app.solian.id.presenceproviders` | feature | `/api/admin/accounts/presences/steam/**`, Steam/Last.fm scan jobs | accounts, presences, files/presence optional | none |
 | `app.solian.e2ee` | feature | `/api/e2ee/**`, MLS gRPC | accounts | `e2ee_*`, `mls_*` (later phase) |
 | `app.solian.admin` | feature | `/api/admin/**`, actions/punishments | accounts | core tables |
 | `app.solian.wellknown` | feature | `/.well-known/*` docs | — | none |
@@ -488,7 +500,7 @@ whose schema diverged.
       `[modules.settings."app.solian.id.progression"]` overrides the set.
 - [x] No importer: the tables keep Passport's names and columns, so a legacy
       database is used in place.
-- [ ] Examination and Meet (location pins) are deliberately out of scope for
+- [x] Examination and Meet (location pins) are deliberately out of scope for
       this port; their Passport tables and routes stay in the C# service.
 - [ ] Action-log publishers: Stargate publishes its own tracked actions, but
       the Go Sphere/Messager processes do not emit `action_logs.*` yet, so
@@ -517,16 +529,54 @@ whose schema diverged.
 - [x] The wallet seeds its subscription catalog on boot (Passport called
       `EnsureSeededAsync`), with the Stellar and Creator plans as defaults, so
       `perk_level` reaches `DyProfileService` without hand-created rows.
-- [ ] NFC remains Passport-only; no Go service dials it, so it does not block
-      removing the Passport gRPC target.
+- [x] NFC, check-in/calendar, tickets, purchases, PassKit, rewind and the rest
+      of the account domains are ported (Phase 4f/5 below); Passport is only
+      needed for Examination, Meet and location pins.
+
+### Phase 4f — the rest of Passport
+
+- [x] `app.solian.id.accountrecords`: `experience_records`,
+      `social_credit_records`, `badges` and `account_board_items`, the current
+      account record routes, public badge/board/credit reads, admin
+      badge/board/verification routes, `DyExperienceService` and
+      `DySocialCreditService`. It provides the local `badges`/`verification`
+      ports and refreshes `account_profiles.social_credits` hourly.
+- [x] `app.solian.id.accountevents`: check-in with streak gold/source points/
+      XP, daily and merged calendar, event CRUD/recurrence/visibility,
+      subscriptions, countdown/search, timeline, the CN notable-day seed and
+      the fortune surface.
+- [x] `app.solian.id.tickets`: tickets, messages, status/assign, on-call
+      roster, push/email notifications.
+- [x] `app.solian.id.purchases`: affiliation spells/results/purchases and
+      name-change cards, fulfilled through `orderEvents`.
+- [x] `app.solian.id.nfc`: `nfc_tags`, literal NTAG 424 SUN crypto (RFC 4493
+      vectors in tests), HTTP/admin routes, `DyNfcService` and the local
+      `nfcTokens` provider.
+- [x] `app.solian.id.passkit`: Apple Wallet pass registration/web service and
+      signed `.pkpass` generation (PKCS#7) when configured.
+- [x] `app.solian.id.presenceartworks`, `app.solian.id.ipcheck`,
+      `app.solian.id.rewind`, `app.solian.id.nearby` and
+      `app.solian.id.wellbeing`: S3 artwork store, geo diagnostics, rewind
+      aggregation, BLE presence tokens and account activity/night-owl jobs.
+- [x] `app.solian.id.presenceproviders`: Steam/Last.fm scans and the three
+      presence stages.
+- [ ] Fortune reports use Passport's deterministic fallback; there is no
+      MiChan/personality client in Stargate.
+- [ ] Lunar notable-day projection uses an embedded new-year table and a mean
+      synodic month, so month-boundary dates can differ by a day.
+- [ ] Publisher renames through a name-change card need a publisher gRPC
+      client; account and realm renames are implemented.
+- [ ] No legacy importer: the new modules keep Passport's table and column
+      names and are used in place.
 
 ### Phase 5 — NFC
 
-- [ ] `app.solian.id.nfc` model, AutoMigrate + index SQL.
-- [ ] NTAG 424 SUN crypto (RFC 4493 AES-CMAC tests).
-- [ ] HTTP routes, admin route, `DyNfcService`.
-- [ ] Provides `nfcTokens`; auth NFC factor uses the port.
-- [ ] Legacy NFC tag importer from Passport.
+- [x] `app.solian.id.nfc` model, AutoMigrate + index SQL.
+- [x] NTAG 424 SUN crypto (RFC 4493 AES-CMAC tests).
+- [x] HTTP routes, admin route, `DyNfcService`.
+- [x] Provides `nfcTokens`; auth NFC factor uses the port.
+- [ ] Legacy NFC tag importer from Passport (tables are used in place, so a
+      copy is only needed when the source and target databases differ).
 
 ### Phase 6 — private submodule
 

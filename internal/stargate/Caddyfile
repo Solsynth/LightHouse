@@ -45,10 +45,8 @@ api.solian.app {
     rewrite @padlock /stargate{path}
 
     # ---- old clients: moved Passport routes -> Stargate ----
-    # /passport/accounts/me and its moved sub-paths.
-    # Do NOT widen @pm_me into /passport/accounts/me*: /me/badges, /me/check-in,
-    # /me/calendar*, /me/credits*, /me/leveling, /me/progression*, /me/statuses,
-    # /me/activation/*, /me/passbook/* stay in Passport.
+    # Activation/tests and Meet pins deliberately stay in Passport; every
+    # other Passport surface below is served by Stargate now.
     @pm_me path /passport/accounts/me
     rewrite @pm_me /stargate{path}
     @pm_me_board path /passport/accounts/me/board
@@ -59,6 +57,26 @@ api.solian.app {
     rewrite @pm_me_followers /stargate{path}
     @pm_me_following path /passport/accounts/me/following
     rewrite @pm_me_following /stargate{path}
+    # /accounts/me: check-in, calendar, badges, credits, leveling, actions,
+    # connections, board, name-change cards and the member passbook.
+    @pm_me_checkin path /passport/accounts/me/check-in
+    rewrite @pm_me_checkin /stargate{path}
+    @pm_me_calendar path /passport/accounts/me/calendar /passport/accounts/me/calendar/*
+    rewrite @pm_me_calendar /stargate{path}
+    @pm_me_badges path /passport/accounts/me/badges /passport/accounts/me/badges/*
+    rewrite @pm_me_badges /stargate{path}
+    @pm_me_credits path /passport/accounts/me/credits /passport/accounts/me/credits/*
+    rewrite @pm_me_credits /stargate{path}
+    @pm_me_leveling path /passport/accounts/me/leveling
+    rewrite @pm_me_leveling /stargate{path}
+    @pm_me_actions path /passport/accounts/me/actions
+    rewrite @pm_me_actions /stargate{path}
+    @pm_me_connections path /passport/accounts/me/connections
+    rewrite @pm_me_connections /stargate{path}
+    @pm_me_namecard path /passport/accounts/me/name-change-card /passport/accounts/me/name-change-card/*
+    rewrite @pm_me_namecard /stargate{path}
+    @pm_me_passbook path /passport/accounts/me/passbook/member
+    rewrite @pm_me_passbook /stargate{path}
 
     # search and id/{id} — must precede @pm_name (both would match the
     # single-segment {name} pattern)
@@ -80,6 +98,16 @@ api.solian.app {
     rewrite @pm_name_picture /stargate{path}
     @pm_name_background path /passport/accounts/*/background
     rewrite @pm_name_background /stargate{path}
+    @pm_name_calendar path /passport/accounts/*/calendar /passport/accounts/*/calendar/*
+    rewrite @pm_name_calendar /stargate{path}
+    @pm_name_timeline path /passport/accounts/*/timeline
+    rewrite @pm_name_timeline /stargate{path}
+    @pm_name_badges path /passport/accounts/*/badges
+    rewrite @pm_name_badges /stargate{path}
+    @pm_name_credits path /passport/accounts/*/credits
+    rewrite @pm_name_credits /stargate{path}
+    @pm_name_statuses path /passport/accounts/*/statuses
+    rewrite @pm_name_statuses /stargate{path}
 
     # /passport/accounts/{name} — exactly one segment (e.g. /accounts/littlesheep).
     # Does not match /accounts/{name}/timeline|badges|calendar*|statuses|credits.
@@ -95,6 +123,12 @@ api.solian.app {
     # the social graph; Solian still calls the /passport prefix.
     @pm_friends path /passport/friends*
     rewrite @pm_friends /stargate{path}
+    # Remaining moved domain roots: notable days, check-in/calendar support,
+    # purchases, tickets, NFC, PassKit, IP diagnostics, rewind, nearby
+    # BLE presence, fortune, artworks, realm/domain-trust and their admin
+    # surfaces. Meet pins and examination tests are intentionally absent.
+    @pm_domains path_regexp pm_domains ^/passport/(notable-days|affiliations|tickets|nfc|passkit|ip-check|rewind|nearby|fortune|presence/artworks|realms|domain-blocks|admin/(accounts|nfc|tickets|stats|progression|realms|domain-blocks))(/.+)?$
+    rewrite @pm_domains /stargate{path}
 
     reverse_proxy localhost:5001
 }

@@ -277,9 +277,73 @@ Known gaps:
   buying a plan through an external provider (Paddle/Afdian/Apple) was not
   exercised in this environment, so provider webhooks still need the
   credentials set in `[modules.settings."app.solian.wallet"]`.
-- **NFC** remains Passport-only. No Go service dials it, so it does not block
-  removing the Passport target, but the NFC routes and `DyNfcService` are not
-  served by Stargate yet.
+- **NFC, presence providers and PassKit generation** need their runtime
+  credentials (NFC tag keys, Steam/Last.fm API keys, Apple Wallet
+  certificates) before the positive paths can be exercised; the routes and
+  crypto/pass tests are unit-tested, and unconfigured endpoints answer 503 or
+  per-item `missing_api_key` rather than failing the process.
 - **Domain trust metrics are buffered per process** and flushed once a minute,
   so a crash loses at most the last minute of validation counters (Passport
   used the same buffer model).
+
+## Account records, events and Passport extras
+
+The remaining Passport domains live in:
+
+- `accountrecords/` + `httpserver/accountrecordsctl/` +
+  `modules/accountrecords/` (`app.solian.id.accountrecords`);
+- `accountevents/` + `httpserver/accounteventsctl/` +
+  `modules/accountevents/` (`app.solian.id.accountevents`);
+- `tickets/`, `purchases/`, `nfc/`, `passkit/`, `presenceartworks/`,
+  `ipcheck/`, `rewind/`, `nearby/`, `wellbeing/` and `presenceproviders/`
+  with their controller/module counterparts.
+
+Verified against a fresh PostgreSQL and a running Stargate (single-user auth,
+one seeded account, permissions inserted directly):
+
+- the module set boots with all new tables; the notable-day seed writes 15 CN
+  rows and is idempotent;
+- `/api/accounts/me` hydrates experience/social-credit/leveling fields;
+  `/credits`, `/credits/history`, `/leveling`, `/badges`, `/actions`,
+  `/connections` and `/board` answer with the C# shapes, and the hourly social
+  credit recalculation moved `account_profiles.social_credits` from 100 to 80
+  after a −20 record;
+- check-in writes `account_check_in_results`, grants 10 source points and 100
+  XP (the XP record is visible in `/leveling`), refuses a second same-day
+  check-in with `PASSPORT_CHECK_IN_NOT_AVAILABLE`, and returns the
+  version-2 fallback fortune report; the calendar returns every day of the
+  month, event CRUD/tags/list/countdown work, and the public
+  calendar/timeline routes answer for a named account;
+- a ticket creates with its first message and hydrates creator/messages;
+  affiliation create/consume and name-change-card order work; the name-change
+  card correctly refuses to use an unpaid card;
+- NFC tag listing/admin, PassKit root and registration routes, IP diagnostics,
+  rewind creation/public toggles, nearby token issuance, BLE resolve
+  validation and the S3-not-configured 503 path answer as documented;
+- `GET /api/admin/stats` and `/api/admin/accounts/metrics/activity` report the
+  seeded account; the night-owl test endpoint returns 503 when no push port is
+  configured; presence-provider admin scans return an empty `items` list when
+  no connections exist.
+
+Known gaps:
+
+- **AI fortune**: no MiChan/personality client exists, so check-in reports are
+  always Passport's deterministic fallback. The fallback text is Chinese in
+  both locales, matching the C# fallback.
+- **Lunar notable days**: no lunar-calendar dependency; projection uses an
+  embedded 2020–2040 new-year table plus a mean synodic month, so a
+  month-boundary date can be one day off.
+- **Publisher renames**: name-change cards support account and realm targets;
+  the publisher target needs a publisher gRPC client and answers
+  `NAME_CHANGE_CARD_USE_FAILED` until one is configured.
+- **Push fidelity**: `ports.Push` carries only title/body, so ticket and
+  night-owl topics/action URIs/savable flags are not transmitted.
+- **Presence providers** were not exercised against live Steam/Last.fm APIs;
+  the parser, stage classification and route registration are tested, and
+  missing keys produce `missing_api_key` items.
+- **PassKit** generation was not exercised with real Apple certificates; the
+  signed-archive/manifest tests cover the packaging and PKCS#7 path, and an
+  unconfigured deployment answers 503.
+- **No importers** ship for these modules: the tables keep Passport's names
+  and columns, so the legacy database can be used in place.
+- **Examination and Meet/location pins remain Passport-only** by request.
