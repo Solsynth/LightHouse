@@ -100,12 +100,31 @@ var passportTables = []string{
 	"nfc_tags",
 	"apple_passes",
 	"apple_pass_registrations",
+	// Account statuses and presence activities (app.solian.id.presences).
+	// Catalog items precede their tag rows, activities precede theirs.
+	"account_statuses",
+	"presence_catalog_items",
+	"presence_catalog_tags",
+	"presence_activities",
+	"presence_activity_tags",
+	// Magic spells (core table, legacy rows lived in Passport).
+	"magic_spells",
 	// Artworks and rewind.
 	"presence_artworks",
 	"rewind_points",
 	// Domain trust (app.solian.id.domaintrust).
 	"domain_blocks",
 	"domain_validation_metrics",
+}
+
+// copiedTables lists every table the migration reads from the sources and
+// writes into the target, in FK-safe copy order. The truncate set and the
+// "target already has data" probe are both derived from it so they cannot
+// drift from the copy lists.
+func copiedTables() []string {
+	tables := make([]string, 0, len(padlockTables)+len(passportTables))
+	tables = append(tables, padlockTables...)
+	return append(tables, passportTables...)
 }
 
 func main() {
@@ -180,22 +199,8 @@ func main() {
 	// Module-owned tables may be absent when the module is disabled; only
 	// truncate what actually exists.
 	if !incremental {
-		truncateCandidates := []string{
-			"mls_device_memberships", "mls_group_states", "mls_key_packages",
-			"e2ee_envelopes", "e2ee_sessions", "e2ee_one_time_pre_keys", "e2ee_key_bundles", "e2ee_devices",
-			"permission_group_members", "permission_nodes", "permission_groups",
-			"action_logs", "auth_challenges", "auth_sessions", "auth_clients", "api_keys",
-			"account_contacts", "account_connections", "authorized_apps", "punishments",
-			"account_passkeys", "account_auth_factors", "account_relationships",
-			"realm_post_moderation_logs", "realm_user_permissions", "realm_role_permissions",
-			"realm_experience_records", "realm_boost_contributions", "realm_members", "realm_labels", "realms",
-			"progress_event_receipts", "progress_reward_grants", "account_quest_progresses",
-			"account_achievements", "quest_definitions", "achievement_definitions",
-			"domain_validation_metrics", "domain_blocks",
-			"account_profiles", "accounts",
-		}
-		existing := make([]string, 0, len(truncateCandidates))
-		for _, table := range truncateCandidates {
+		existing := make([]string, 0, len(padlockTables)+len(passportTables))
+		for _, table := range copiedTables() {
 			ok, err := targetTableExists(ctx, target, table)
 			if err != nil {
 				log.Fatalf("check target table %s: %v", table, err)
@@ -209,41 +214,79 @@ func main() {
 				log.Fatalf("truncate target: %v", err)
 			}
 		}
+		// The rows are gone, so the completion records must go too: a stale
+		// row would make a later --incremental run skip a table this run was
+		// unable to copy (for instance because the module was disabled).
+		if _, err := target.Exec(ctx, `DELETE FROM migration_state WHERE table_name = ANY($1)`, copiedTables()); err != nil {
+			log.Fatalf("reset migration state: %v", err)
+		}
 	}
 
-	total := int64(0)
-	skipped := 0
-	copyOne := func(source *pgxpool.Pool, table string) {
-		if incremental && !force {
-			done, err := tableDone(ctx, target, table)
-			if err != nil {
-				log.Fatalf("check state for %s: %v", table, err)
-			}
-			if done {
-				log.Printf("skip %s: already migrated (--incremental)", table)
-				skipped++
-				return
-			}
-		}
-		n, err := copyTable(ctx, source, target, table, incremental)
-		if err != nil {
-			log.Fatalf("copy %s: %v", table, err)
-		}
-		if err := markTableDone(ctx, target, table, n); err != nil {
-			log.Fatalf("record state for %s: %v", table, err)
-		}
-		log.Printf("padlock.%-26s %d rows", table, n)
-		total += n
-	}
+	total, skipped := int64(0), 0
 	for _, table := range padlockTables {
-		copyOne(padlock, table)
+		copied, wasSkipped := copyOne(ctx, padlock, target, "padlock", table, incremental, incremental && !force)
+		total += copied
+		if wasSkipped {
+			skipped++
+		}
 	}
 	if passport != nil {
 		for _, table := range passportTables {
-			copyOne(passport, table)
+			copied, wasSkipped := copyOne(ctx, passport, target, "passport", table, incremental, incremental && !force)
+			total += copied
+			if wasSkipped {
+				skipped++
+			}
 		}
 	}
-	log.Printf("done: %d rows copied (%d tables skipped as already migrated)", total, skipped)
+	log.Printf("done: %d rows copied (%d tables skipped)", total, skipped)
+}
+
+// copyOne copies a single table and records its completion. incremental seeds
+// the dedupe from the target's existing rows; resume (--incremental without
+// --force) additionally skips tables already copied. The second result reports
+// that the table was not copied: it was already complete, or it is missing on
+// one side.
+func copyOne(ctx context.Context, source *pgxpool.Pool, target *pgx.Conn, sourceName, table string, incremental, resume bool) (int64, bool) {
+	if resume {
+		done, err := tableDone(ctx, target, table)
+		if err != nil {
+			log.Fatalf("check state for %s: %v", table, err)
+		}
+		if done {
+			// Older runs recorded completion for tables they had skipped
+			// (no source table, module disabled), so a state row proves
+			// nothing on its own. An empty or absent target table cannot
+			// hold the copied rows: drop the record and copy it.
+			rows, exists, err := targetTableRows(ctx, target, table)
+			if err != nil {
+				log.Fatalf("check target rows for %s: %v", table, err)
+			}
+			if exists && rows > 0 {
+				log.Printf("skip %s: already migrated (--incremental)", table)
+				return 0, true
+			}
+			log.Printf("re-copy %s: recorded as migrated but the target is empty", table)
+			if err := clearTableState(ctx, target, table); err != nil {
+				log.Fatalf("reset state for %s: %v", table, err)
+			}
+		}
+	}
+	n, copied, err := copyTable(ctx, source, target, table, incremental)
+	if err != nil {
+		log.Fatalf("copy %s: %v", table, err)
+	}
+	if !copied {
+		// The table is missing on one side. Record nothing: a later run,
+		// after the module is enabled or the legacy table reappears, must
+		// still copy it instead of skipping it as complete.
+		return 0, true
+	}
+	if err := markTableDone(ctx, target, table, n); err != nil {
+		log.Fatalf("record state for %s: %v", table, err)
+	}
+	log.Printf("%s.%-26s %d rows", sourceName, table, n)
+	return n, false
 }
 
 // migration_state tracks per-table completion for --incremental runs.
@@ -262,6 +305,30 @@ func tableDone(ctx context.Context, dst *pgx.Conn, table string) (bool, error) {
 	return exists, err
 }
 
+// clearTableState forgets a table's completion record so the next run copies
+// it again.
+func clearTableState(ctx context.Context, dst *pgx.Conn, table string) error {
+	_, err := dst.Exec(ctx, `DELETE FROM migration_state WHERE table_name = $1`, table)
+	return err
+}
+
+// targetTableRows returns the row count of a target table and whether that
+// table exists at all.
+func targetTableRows(ctx context.Context, db querier, table string) (int64, bool, error) {
+	var exists bool
+	if err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = $1)`, table).Scan(&exists); err != nil {
+		return 0, false, err
+	}
+	if !exists {
+		return 0, false, nil
+	}
+	var count int64
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM `+pgx.Identifier{table}.Sanitize()).Scan(&count); err != nil {
+		return 0, true, err
+	}
+	return count, true, nil
+}
+
 func markTableDone(ctx context.Context, dst *pgx.Conn, table string, rowsCopied int64) error {
 	_, err := dst.Exec(ctx, `INSERT INTO migration_state (table_name, rows_copied) VALUES ($1, $2)
 		ON CONFLICT (table_name) DO UPDATE SET rows_copied = EXCLUDED.rows_copied, completed_at = now()`,
@@ -275,32 +342,36 @@ type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
+// seedOwnedTables are copied into the target but also populated by a boot
+// seed, so rows in them on a freshly booted target are expected and must not
+// trip the "target already has data" guard.
+//
+// The permission_* tables are seeded by the permission registry, and the
+// progression catalog plus the CN notable days by their modules. The catalogs
+// are upserted by name/key, so copying the legacy rows over them is safe.
+var seedOwnedTables = map[string]struct{}{
+	"permission_groups":        {},
+	"permission_nodes":         {},
+	"permission_group_members": {},
+	"achievement_definitions":  {},
+	"quest_definitions":        {},
+	"notable_days":             {},
+}
+
 // targetHasData reports whether any table the migration copies into already
-// holds rows. The permission_* tables are excluded: the boot-time permission
-// seed populates them on a fresh database, so their presence is expected and
-// not a sign of prior data.
+// holds rows. The list is derived from the copy lists so a newly added table
+// cannot be left out; seed-owned tables are excluded.
 func targetHasData(ctx context.Context, db querier) (bool, string, error) {
+	candidates := make([]string, 0, len(padlockTables)+len(passportTables))
+	for _, table := range copiedTables() {
+		if _, seeded := seedOwnedTables[table]; seeded {
+			continue
+		}
+		candidates = append(candidates, table)
+	}
 	var tables []string
 	rows, err := db.Query(ctx, `SELECT tablename FROM pg_tables
-		WHERE schemaname = 'public' AND tablename = ANY($1)`,
-		[]string{
-			"account_contacts", "account_connections", "account_auth_factors", "account_passkeys",
-			"punishments", "auth_sessions", "auth_challenges", "auth_clients", "api_keys",
-			"authorized_apps", "action_logs", "e2ee_devices", "e2ee_key_bundles", "e2ee_one_time_pre_keys",
-			"e2ee_sessions", "e2ee_envelopes", "mls_key_packages", "mls_group_states",
-			"mls_device_memberships",
-			"realms", "realm_members", "realm_labels", "realm_boost_contributions",
-			"realm_experience_records", "realm_role_permissions", "realm_user_permissions",
-			"realm_post_moderation_logs",
-			"account_achievements", "account_quest_progresses", "progress_reward_grants",
-			"progress_event_receipts", "domain_blocks", "domain_validation_metrics",
-			"experience_records", "social_credit_records", "badges", "account_board_items",
-			"notable_days", "account_check_in_results", "user_calendar_events", "calendar_event_subscriptions",
-			"tickets", "ticket_messages", "ticket_on_call_admins",
-			"affiliation_spells", "affiliation_results", "affiliation_spell_purchases",
-			"name_change_card_purchases", "nfc_tags", "apple_passes", "apple_pass_registrations",
-			"presence_artworks", "rewind_points",
-		})
+		WHERE schemaname = 'public' AND tablename = ANY($1)`, candidates)
 	if err != nil {
 		return false, "", err
 	}
@@ -319,7 +390,7 @@ func targetHasData(ctx context.Context, db querier) (bool, string, error) {
 
 	for _, table := range tables {
 		var count int64
-		if err := db.QueryRow(ctx, fmt.Sprintf(`SELECT count(*) FROM %s`, table)).Scan(&count); err != nil {
+		if err := db.QueryRow(ctx, fmt.Sprintf(`SELECT count(*) FROM %s`, pgx.Identifier{table}.Sanitize())).Scan(&count); err != nil {
 			// Missing table (schema not applied yet) is fine.
 			continue
 		}
@@ -389,18 +460,6 @@ func outgoingFKs(ctx context.Context, db querier, table string) ([]fkRef, error)
 	return fks, rows.Err()
 }
 
-// copyTable streams every row of the source table into the target table,
-// reconciling schema drift: columns present in both are copied verbatim;
-// target-only NOT NULL columns (e.g. epoch, added by newer migrations) are
-// copyTable streams every row of the source table into the target table,
-// reconciling schema drift: columns present in both are copied verbatim;
-// target-only NOT NULL columns (e.g. epoch, added by newer migrations) are
-// zero-filled by type. Rows are deduplicated against every unique index the
-// TARGET declares (the live source may predate them and carry duplicates);
-// in incremental mode the target's existing keys seed the dedupe so a
-// re-run only inserts missing rows. A missing source table is skipped
-// (returns 0) so shared-DB deployments where some tables were never migrated
-// do not abort.
 // targetTableExists reports whether a table exists in the target schema.
 func targetTableExists(ctx context.Context, db querier, table string) (bool, error) {
 	var exists bool
@@ -408,62 +467,86 @@ func targetTableExists(ctx context.Context, db querier, table string) (bool, err
 	return exists, err
 }
 
-func copyTable(ctx context.Context, src *pgxpool.Pool, dst *pgx.Conn, table string, incremental bool) (int64, error) {
+// copyTable streams every row of the source table into the target table,
+// reconciling schema drift: columns present in both are copied verbatim;
+// target-only NOT NULL columns (e.g. epoch, added by newer migrations) are
+// zero-filled by type. Rows are deduplicated against every unique index the
+// TARGET declares (the live source may predate them and carry duplicates);
+// in incremental mode the target's existing keys seed the dedupe so a
+// re-run only inserts missing rows.
+//
+// The second result reports whether the table was copied. A table missing
+// from the source or from the target (module disabled) is skipped with
+// copied = false, so shared-DB deployments where some tables were never
+// migrated do not abort, and the caller records no completion for it.
+func copyTable(ctx context.Context, src *pgxpool.Pool, dst *pgx.Conn, table string, incremental bool) (int64, bool, error) {
 	var exists bool
 	if err := src.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = $1)`, table).Scan(&exists); err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	if !exists {
 		log.Printf("skip %s: not present in source", table)
-		return 0, nil
+		return 0, false, nil
 	}
 	targetExists, err := targetTableExists(ctx, dst, table)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	if !targetExists {
 		log.Printf("skip %s: not present in target (module disabled?)", table)
-		return 0, nil
+		return 0, false, nil
 	}
 
-	// Column inventory on both sides.
+	// Column inventory on both sides. A column whose target type differs from
+	// the source type (a module entity tag once let AutoMigrate widen uuid to
+	// text, integer to bigint and varchar(n) to text) is read through an
+	// explicit cast: pgx encodes the COPY row for the TARGET type, so the value
+	// has to arrive already in that type instead of failing with "cannot find
+	// encode plan".
 	srcCols, err := tableColumns(ctx, src, table)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	dstCols, err := tableColumns(ctx, dst, table)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
-	srcSet := map[string]struct{}{}
+	srcSet := map[string]columnInfo{}
 	for _, c := range srcCols {
-		srcSet[c.name] = struct{}{}
+		srcSet[c.name] = c
 	}
 	var copyCols []string
 	var fillCols []columnInfo // target-only columns to zero-fill
-	var selectCols []string   // columns present in BOTH sides
+	var selectCols []string   // columns present in BOTH sides, as read expressions
 	for _, c := range dstCols {
-		if _, ok := srcSet[c.name]; ok {
-			copyCols = append(copyCols, c.name)
-			selectCols = append(selectCols, c.name)
-		} else if c.notNull {
-			fillCols = append(fillCols, c)
-			copyCols = append(copyCols, c.name)
+		src, ok := srcSet[c.name]
+		if !ok {
+			if c.notNull {
+				fillCols = append(fillCols, c)
+				copyCols = append(copyCols, c.name)
+			}
+			continue
+		}
+		copyCols = append(copyCols, c.name)
+		if src.typ == c.typ {
+			selectCols = append(selectCols, quoteIdent(c.name))
+		} else {
+			selectCols = append(selectCols, quoteIdent(c.name)+"::"+c.typ)
 		}
 	}
 	if len(copyCols) == 0 {
-		return 0, nil
+		return 0, true, nil
 	}
 	colPos := make(map[string]int, len(copyCols))
 	for i, col := range copyCols {
 		colPos[col] = i
 	}
 
-	query := fmt.Sprintf(`SELECT %s FROM %s`, quoteCols(selectCols), table)
+	query := fmt.Sprintf(`SELECT %s FROM %s`, joinStrings(selectCols), table)
 	if override, ok := sourceQueryOverrides[table]; ok {
-		query = strings.ReplaceAll(override, "<COLS>", quoteCols(selectCols))
+		query = strings.ReplaceAll(override, "<COLS>", joinStrings(selectCols))
 	} else if fks, err := outgoingFKs(ctx, dst, table); err != nil {
-		return 0, err
+		return 0, false, err
 	} else if len(fks) > 0 {
 		// The source data can carry orphaned FK references (EF soft-delete
 		// is app-level), and the live source database may predate the FK
@@ -495,7 +578,7 @@ func copyTable(ctx context.Context, src *pgxpool.Pool, dst *pgx.Conn, table stri
 	// the target's existing rows so re-runs only insert what is missing.
 	uniques, err := uniqueIndexes(ctx, dst, table)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	seen := make([]map[string]struct{}, len(uniques))
 	for i := range seen {
@@ -514,26 +597,26 @@ func copyTable(ctx context.Context, src *pgxpool.Pool, dst *pgx.Conn, table stri
 			}
 			tRows, err := dst.Query(ctx, targetQuery)
 			if err != nil {
-				return 0, err
+				return 0, false, err
 			}
 			for tRows.Next() {
 				vals, err := tRows.Values()
 				if err != nil {
 					tRows.Close()
-					return 0, err
+					return 0, false, err
 				}
 				seen[i][keyOf(vals, cols)] = struct{}{}
 			}
 			tRows.Close()
 			if err := tRows.Err(); err != nil {
-				return 0, err
+				return 0, false, err
 			}
 		}
 	}
 
 	rows, err := src.Query(ctx, query)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	defer rows.Close()
 
@@ -576,7 +659,7 @@ func copyTable(ctx context.Context, src *pgxpool.Pool, dst *pgx.Conn, table stri
 	for rows.Next() {
 		values, err := rows.Values()
 		if err != nil {
-			return copied, err
+			return copied, true, err
 		}
 		row := make([]any, len(copyCols))
 		for i, fi := range idx {
@@ -610,20 +693,20 @@ func copyTable(ctx context.Context, src *pgxpool.Pool, dst *pgx.Conn, table stri
 		batch = append(batch, row)
 		if len(batch) >= 500 {
 			if err := flush(); err != nil {
-				return copied, err
+				return copied, true, err
 			}
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return copied, err
+		return copied, true, err
 	}
 	if err := flush(); err != nil {
-		return copied, err
+		return copied, true, err
 	}
 	if deduped > 0 {
 		log.Printf("note: %s dropped %d duplicate rows (target unique constraints)", table, deduped)
 	}
-	return copied, nil
+	return copied, true, nil
 }
 
 // uniqueIndex describes one unique index's key columns. liveOnly marks a
@@ -756,10 +839,13 @@ func tableColumns(ctx context.Context, db querier, table string) ([]columnInfo, 
 	return cols, rows.Err()
 }
 
+// quoteIdent quotes one column name.
+func quoteIdent(name string) string { return `"` + name + `"` }
+
 func quoteCols(cols []string) string {
 	quoted := make([]string, len(cols))
 	for i, c := range cols {
-		quoted[i] = `"` + c + `"`
+		quoted[i] = quoteIdent(c)
 	}
 	return joinStrings(quoted)
 }
