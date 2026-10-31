@@ -89,6 +89,7 @@ func normalize(descriptor protoreflect.MessageDescriptor, value any) any {
 	// Instant wherever C# would have serialized it.
 	switch descriptor.FullName() {
 	case "proto.DyBadgeReferenceObject", "proto.DyAccountStatus",
+		"proto.DySubscriptionReferenceObject",
 		"proto.DyRealm", "proto.DyRealmMember", "proto.DyRealmLabel",
 		"proto.DyAccount", "proto.DyAccountProfile", "proto.DyAccountContact",
 		"proto.DyAccountAuthFactor", "proto.DyAccountBadge",

@@ -71,6 +71,7 @@ func AccountToProto(a *model.Account) *gen.DyAccount {
 			FinalPrice:  sub.FinalPrice,
 			AccountId:   sub.AccountId,
 			CreatedAt:   toProtoTime(sub.CreatedAt),
+			UpdatedAt:   toProtoTime(sub.UpdatedAt),
 		}
 		perkLevel := int32(sub.PerkLevel)
 		proto.PerkLevel = &perkLevel

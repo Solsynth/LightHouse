@@ -306,3 +306,25 @@ func TestMessageEmitsBoostPointsAsNumber(t *testing.T) {
 		}
 	}
 }
+
+// Dart's SnWalletSubscriptionRef casts created_at/updated_at as non-null
+// strings. The perk reference rides inside every embedded account (chat
+// members, publishers, surveys); when the producer leaves the Timestamps
+// unset, protojson emits null and the client throws "type 'Null' is not a
+// subtype of type 'String' in type cast". C# always serialized both.
+func TestMessageFillsSubscriptionReferenceTimestamps(t *testing.T) {
+	account := &gen.DyAccount{
+		Id: "acc-1",
+		PerkSubscription: &gen.DySubscriptionReferenceObject{
+			Id:         "sub-1",
+			Identifier: "dy_plus",
+		},
+	}
+
+	subscription := fileOf(t, wireMap(t, accountjson.FromProto(account)), "perk_subscription")
+	for _, key := range []string{"created_at", "updated_at"} {
+		if subscription[key] != "0001-01-01T00:00:00Z" {
+			t.Errorf("perk_subscription.%s = %#v, want the zero Instant", key, subscription[key])
+		}
+	}
+}

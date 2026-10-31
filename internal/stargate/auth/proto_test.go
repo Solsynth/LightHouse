@@ -2,6 +2,7 @@ package auth
 
 import (
 	"testing"
+	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
@@ -20,6 +21,8 @@ func TestAccountToProtoPerk(t *testing.T) {
 		accountID = "11111111-1111-1111-1111-111111111111"
 		subID     = "b78f8d4a-4d2e-4a5c-9a4b-9b8f7a6e5d4c"
 	)
+	createdAt := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	updatedAt := createdAt.Add(time.Hour)
 	valid := &model.SnSubscriptionReferenceObject{
 		Id:          subID,
 		Identifier:  "dy_plus",
@@ -29,6 +32,8 @@ func TestAccountToProtoPerk(t *testing.T) {
 		BasePrice:   "19.99",
 		FinalPrice:  "14.99",
 		AccountId:   accountID,
+		CreatedAt:   model.NewTime(createdAt),
+		UpdatedAt:   model.NewTime(updatedAt),
 	}
 
 	tests := []struct {
@@ -75,6 +80,14 @@ func TestAccountToProtoPerk(t *testing.T) {
 			}
 			if proto.PerkLevel == nil || *proto.PerkLevel != 2 {
 				t.Errorf("PerkLevel = %v, want 2", proto.PerkLevel)
+			}
+			// SnWalletSubscriptionRef.createdAt/updatedAt are non-nullable in
+			// the Dart SDK; both must survive the proto hop.
+			if got := proto.PerkSubscription.CreatedAt; got == nil || !got.AsTime().Equal(createdAt) {
+				t.Errorf("CreatedAt = %v, want %v", got, createdAt)
+			}
+			if got := proto.PerkSubscription.UpdatedAt; got == nil || !got.AsTime().Equal(updatedAt) {
+				t.Errorf("UpdatedAt = %v, want %v", got, updatedAt)
 			}
 		})
 	}
