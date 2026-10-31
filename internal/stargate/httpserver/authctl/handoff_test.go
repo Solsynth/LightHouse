@@ -348,3 +348,41 @@ func TestHandoffRenewExtendsTheHandedOffSession(t *testing.T) {
 		t.Fatalf("renew with a wrong secret = %d, want 401", status)
 	}
 }
+
+// TestHandoffTokenMintsFreshTokenForAllowedTarget proves an authenticated session can obtain
+// a fresh access token for embedding a service (like fs.solian.app picker or dx.solsynth.dev).
+func TestHandoffTokenMintsFreshTokenForAllowedTarget(t *testing.T) {
+	h := newHandoffHarness(t)
+
+	// A target under cookieDomain (e.g. https://fs.solian.app/picker with cookieDomain = .solian.app)
+	h.cfg.Auth.CookieDomain = ".solian.app"
+	status, body := h.post(t, "/api/auth"+handoff.TokenPathSuffix, map[string]any{
+		"target_uri": "https://fs.solian.app/picker",
+	})
+	if status != http.StatusOK {
+		t.Fatalf("token status = %d body=%s", status, body)
+	}
+	var res handoff.RedeemWireResponse
+	if err := json.Unmarshal(body, &res); err != nil {
+		t.Fatalf("decode token: %v", err)
+	}
+	if res.Token == "" {
+		t.Fatal("expected non-empty access token")
+	}
+
+	// An allowed hand-off host target (dx.solsynth.dev)
+	status, body = h.post(t, "/api/auth"+handoff.TokenPathSuffix, map[string]any{
+		"target_uri": "https://dx.solsynth.dev/picker",
+	})
+	if status != http.StatusOK {
+		t.Fatalf("token status = %d body=%s", status, body)
+	}
+
+	// An unauthorized target must be refused
+	status, _ = h.post(t, "/api/auth"+handoff.TokenPathSuffix, map[string]any{
+		"target_uri": "https://attacker.example.com/picker",
+	})
+	if status != http.StatusBadRequest {
+		t.Fatalf("unauthorized target status = %d, want 400", status)
+	}
+}

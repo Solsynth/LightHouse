@@ -49,6 +49,10 @@ export interface SnfsPickerRequest {
    * is delivered by `postMessage`, never in the frame URL.
    */
   token?: string
+  /**
+   * Legacy alias for token.
+   */
+  code?: string
 }
 
 export interface SnfsPickerHandlers {
@@ -136,10 +140,12 @@ export class SnfsPicker {
   ): Promise<PickerFile[]> {
     this.close()
     const id = ++this.requestId
-    const wrapped = 'options' in request || 'token' in request
+    const wrapped = 'options' in request || 'token' in request || 'code' in request
     const options = wrapped ? ((request as SnfsPickerRequest).options ?? {}) : (request as PickerOptions)
     this.options = options
-    this.token = wrapped ? (request as SnfsPickerRequest).token : undefined
+    this.token = wrapped
+      ? (request as SnfsPickerRequest).token || (request as SnfsPickerRequest).code
+      : undefined
     this.handlers = handlers
 
     const { promise, resolve } = Promise.withResolvers<PickerFile[]>()
@@ -262,12 +268,31 @@ export class SnfsPicker {
   }
 
   private receive(event: MessageEvent) {
-    if (!this.frame || event.source !== this.frame.contentWindow) return
+    if (!this.frame) return
+    const data = event.data
+    // Handle auth completion message from login popup forwarded to the host
+    if (isPickerMessage(data) && (data.type === 'picker:auth-success' || data.type === 'POPUP_AUTH_SUCCESS' || data.type === 'AUTH_SUCCESS')) {
+      const token = typeof data.token === 'string' ? data.token : undefined
+      if (token) this.token = token
+      this.frame.contentWindow?.postMessage(
+        { channel: PICKER_CHANNEL, type: 'picker:open', options: this.options, token: this.token },
+        this.origin,
+      )
+      return
+    }
+
+    if (event.source !== this.frame.contentWindow) return
     if (event.origin !== this.origin) return
     if (!isPickerMessage(event.data)) return
 
     const message = event.data
     if (message.type === 'picker:ready') {
+      if (this.token) {
+        this.frame?.contentWindow?.postMessage(
+          { channel: PICKER_CHANNEL, type: 'picker:open', options: this.options, token: this.token },
+          this.origin,
+        )
+      }
       this.handlers.onReady?.()
       return
     }

@@ -132,15 +132,24 @@ func (t *TokenClient) Renew(ctx context.Context, refreshToken string) (*RedeemWi
 	})
 }
 
+// IssueToken requests a fresh access token for targetURI using bearerToken.
+func (t *TokenClient) IssueToken(ctx context.Context, bearerToken, targetURI string) (*RedeemWireResponse, error) {
+	return t.postWithAuth(ctx, TokenEndpointPath, bearerToken, TokenWireRequest{
+		ClientID:  strings.TrimSpace(t.ClientID),
+		TargetURI: strings.TrimSpace(targetURI),
+	})
+}
+
 // post performs one authenticated-by-body call against an issuer endpoint and
 // decodes the token response. Both legs share it so their error handling cannot
 // drift.
 func (t *TokenClient) post(ctx context.Context, path string, body any) (*RedeemWireResponse, error) {
+	return t.postWithAuth(ctx, path, "", body)
+}
+
+func (t *TokenClient) postWithAuth(ctx context.Context, path, bearerToken string, body any) (*RedeemWireResponse, error) {
 	if strings.TrimSpace(t.BaseURL) == "" {
 		return nil, NewError(CodeServerError, "The hand-off issuer base URL is not configured.")
-	}
-	if strings.TrimSpace(t.ClientID) == "" {
-		return nil, NewError(CodeInvalidRequest, "The hand-off client ID is not configured.")
 	}
 	encoded, err := json.Marshal(body)
 	if err != nil {
@@ -153,6 +162,9 @@ func (t *TokenClient) post(ctx context.Context, path string, body any) (*RedeemW
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")
+	if strings.TrimSpace(bearerToken) != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+bearerToken)
+	}
 
 	resp, err := t.client().Do(httpReq)
 	if err != nil {
@@ -222,6 +234,9 @@ const (
 	// refresh token, never a code, so an issuer may serve it from a different
 	// surface than redeem.
 	RenewEndpointPath = "/api/auth/handoff/renew"
+	// TokenEndpointPath exchanges a caller's authenticated session into a fresh
+	// token for an embedded target without requiring an interactive code round-trip.
+	TokenEndpointPath = "/api/auth/handoff/token"
 )
 
 // SessionLookup resolves the issuer-side session a hand-off is asked for. The
@@ -397,12 +412,61 @@ func MountRenew(group *gin.RouterGroup, deps RenewEndpointDeps) {
 // RenewPathSuffix is the route suffix MountRenew registers.
 const RenewPathSuffix = "/handoff/renew"
 
-// IssuePathSuffix and RedeemPathSuffix are the route suffixes a group mounts,
+// IssuePathSuffix, RedeemPathSuffix, and TokenPathSuffix are the route suffixes a group mounts,
 // so a deployment can nest them under its own prefix.
 const (
 	IssuePathSuffix  = "/handoff/session"
 	RedeemPathSuffix = "/handoff/redeem"
+	TokenPathSuffix  = "/handoff/token"
 )
+
+// TokenWireRequest is the body of a token hand-off request: an authenticated
+// caller requesting a fresh short-lived access token for a target host or
+// client (for instance, an embedded iframe like the SnFS picker).
+type TokenWireRequest struct {
+	ClientID    string `json:"client_id,omitempty"`
+	RedirectURI string `json:"redirect_uri,omitempty"`
+	TargetURI   string `json:"target_uri,omitempty"`
+}
+
+// TokenEndpointDeps wires MountToken to a deployment.
+type TokenEndpointDeps struct {
+	// Session resolves the session being handed off from the caller's auth.
+	Session SessionLookup
+	// Mint turns a resolved session into an access token for the given target.
+	Mint func(ctx context.Context, session SessionRef, target string) (*RedeemWireResponse, error)
+	// Middleware runs before the handler (e.g. RequireAuth, RequireInteractive).
+	Middleware []gin.HandlerFunc
+}
+
+// MountToken registers the token endpoint on group. The caller must be authenticated,
+// as the session it mints for belongs to the caller.
+func MountToken(group *gin.RouterGroup, deps TokenEndpointDeps) {
+	handlers := append(append([]gin.HandlerFunc{}, deps.Middleware...), func(c *gin.Context) {
+		var req TokenWireRequest
+		_ = c.ShouldBindJSON(&req)
+		session, ok := SessionRef{}, false
+		if deps.Session != nil {
+			session, ok = deps.Session(c)
+		}
+		if !ok {
+			c.JSON(http.StatusUnauthorized, errs.Unauthorized(""))
+			return
+		}
+		target := firstNonEmpty(req.TargetURI, req.RedirectURI)
+		if deps.Mint == nil {
+			writeHandoffError(c, NewError(CodeServerError, "The issuer cannot mint a token for this session."))
+			return
+		}
+		response, err := deps.Mint(c.Request.Context(), session, target)
+		if err != nil {
+			writeHandoffError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, response)
+	})
+	group.POST(TokenPathSuffix, handlers...)
+}
 
 // writeHandoffError renders a protocol error in the wire shape and status.
 func writeHandoffError(c *gin.Context, err error) {

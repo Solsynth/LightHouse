@@ -23,9 +23,24 @@ const { t } = useI18n()
 const state = computed(() => session.state)
 
 function signIn() {
-  // A new tab is the only place the shared sign-in page will render, and its
-  // redirect target is this frame's own URL, so the frame reloads signed in.
-  window.open(session.authUrl, '_blank', 'noopener')
+  // A centered popup is used to complete authentication instead of an unlinked new tab.
+  // The popup communicates back via postMessage to window.opener, enabling the embedded
+  // frame to receive the token or session update and close the popup automatically.
+  try {
+    const url = new URL(session.authUrl)
+    url.searchParams.set('popup', '1')
+    const w = 520
+    const h = 680
+    const left = window.screenX + (window.outerWidth - w) / 2
+    const top = window.screenY + (window.outerHeight - h) / 2
+    window.open(
+      url.toString(),
+      'SolianAuth',
+      `width=${w},height=${h},top=${top},left=${left},status=no,menubar=no,toolbar=no`
+    )
+  } catch {
+    window.open(session.authUrl, '_blank')
+  }
   emit('signed-out')
 }
 
@@ -55,7 +70,7 @@ watch(
       <button type="button" class="btn btn-primary btn-sm" @click="signIn">
         {{ t('session.signIn') }}
       </button>
-      <p v-if="props.embedded" class="text-2xs text-faint">Opens in a new tab.</p>
+      <p v-if="props.embedded" class="text-2xs text-faint">Opens in a popup window.</p>
     </template>
 
     <template v-else>

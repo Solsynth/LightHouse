@@ -311,10 +311,24 @@ async function leave() {
 async function finish() {
   busy.value = true
   try {
-    await signIn.exchange()
+    const pair = await signIn.exchange()
     await session.load()
     signIn.reset()
     notice.ok(t('signIn.noticeSignedIn'))
+    if (window.opener && window.location.search.includes('popup=1')) {
+      try {
+        window.opener.postMessage(
+          {
+            channel: 'snfs-picker',
+            type: 'picker:auth-success',
+            token: pair?.access_token,
+          },
+          '*',
+        )
+      } catch {}
+      window.close()
+      return
+    }
     await leave()
   } catch (caught) {
     error.value = messageOf(caught)
@@ -350,13 +364,30 @@ function restart() {
   startPolling()
 }
 
-onMounted(() => {
+onMounted(async () => {
   startPolling()
   void loadProviders()
   // A shared sign-in can be opened by someone who is already signed in (an app
   // links to it, or a previous round trip left the cookie). There is nothing to
   // ask them; resolve the target and hand them back.
-  if (session.signedIn && landingRequested) void leave()
+  if (session.signedIn) {
+    if (window.opener && window.location.search.includes('popup=1')) {
+      try {
+        const grant = await authApi.handoffToken({ target_uri: window.location.href }).catch(() => null)
+        window.opener.postMessage(
+          {
+            channel: 'snfs-picker',
+            type: 'picker:auth-success',
+            token: grant?.token,
+          },
+          '*',
+        )
+      } catch {}
+      window.close()
+      return
+    }
+    if (landingRequested) void leave()
+  }
 })
 onBeforeUnmount(() => {
   if (pollTimer !== undefined) window.clearInterval(pollTimer)

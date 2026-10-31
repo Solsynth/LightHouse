@@ -149,6 +149,8 @@ export const authApi = {
    */
   handoffSession: (body: { redirect_uri: string }) =>
     request<HandoffIssue>('/auth/handoff/session', { method: 'POST', body }),
+  handoffToken: (body: { target_uri?: string; redirect_uri?: string }) =>
+    request<{ token: string; expires_in: number }>('/auth/handoff/token', { method: 'POST', body }),
   authorizeInfo: (query: Record<string, string>) =>
     request<AuthorizeClientInfo>('/auth/open/authorize', { query }),
   authorizeDecision: (form: URLSearchParams) =>

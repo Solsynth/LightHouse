@@ -67,6 +67,19 @@ function adoptHost(origin: string) {
 }
 
 function onMessage(event: MessageEvent) {
+  const data = event.data
+  // Handle auth completion message from login popup (e.g. SolianAuth popup)
+  if (data && typeof data === 'object' && ('type' in data)) {
+    if (data.type === 'picker:auth-success' || data.type === 'POPUP_AUTH_SUCCESS' || data.type === 'AUTH_SUCCESS') {
+      tokenReceived.value = true
+      if (signedOutTimer) window.clearTimeout(signedOutTimer)
+      const token = typeof data.token === 'string' ? data.token : undefined
+      if (token) setAuthToken(token)
+      void session.load()
+      return
+    }
+  }
+
   if (event.source !== window.parent) return
   const message = parseHostMessage(event.data)
   if (!message) return
@@ -78,10 +91,11 @@ function onMessage(event: MessageEvent) {
     // A host on another site cannot share the drive's cookie, so it hands the
     // frame a token instead. Re-resolve the account when one arrives: the
     // gate may already have settled as signed-out.
-    if (message.token) {
+    const rawToken = message.token || (message as Record<string, unknown>).code
+    if (rawToken && typeof rawToken === 'string') {
       tokenReceived.value = true
       if (signedOutTimer) window.clearTimeout(signedOutTimer)
-      setAuthToken(message.token)
+      setAuthToken(rawToken)
       void session.load()
     }
     return
@@ -153,6 +167,21 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 onMounted(() => {
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('popup') === '1' && window.opener) {
+    try {
+      window.opener.postMessage(
+        {
+          channel: PICKER_CHANNEL,
+          type: 'picker:auth-success',
+        },
+        '*',
+      )
+    } catch {}
+    setTimeout(() => window.close(), 150)
+    return
+  }
+
   hostOrigin.value = referrerOrigin()
   window.addEventListener('message', onMessage)
   window.addEventListener('keydown', onKeydown)

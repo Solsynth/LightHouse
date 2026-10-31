@@ -3,6 +3,8 @@ package authctl
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -108,6 +110,11 @@ func registerHandoff(authGroup *gin.RouterGroup, h *handler) {
 		Clients: h.handoffClients,
 		Renew:   h.handoffRenew,
 	})
+	handoff.MountToken(authGroup, handoff.TokenEndpointDeps{
+		Session:    h.handoffSession,
+		Mint:       h.handoffTokenMint,
+		Middleware: []gin.HandlerFunc{middleware.RequireAuth(), middleware.RequireInteractive()},
+	})
 }
 
 // handoffSession resolves the session being handed off.
@@ -157,6 +164,52 @@ func (h *handler) handoffMint(ctx context.Context, grant *handoff.Grant) (*hando
 		return nil, err
 	}
 	return handoffPairResponse(pair), nil
+}
+
+// handoffTokenMint issues a fresh access token for an authenticated caller's session,
+// bound to an embedded frame or delegation target.
+func (h *handler) handoffTokenMint(ctx context.Context, sessionRef handoff.SessionRef, target string) (*handoff.RedeemWireResponse, error) {
+	sessionID, err := uuid.Parse(sessionRef.SessionID)
+	if err != nil {
+		return nil, errs.BadRequest("AUTH_SESSION_INVALID", "The handed-off session identifier is invalid.")
+	}
+	session, err := h.d.Store.GetSessionWithAccount(ctx, sessionID)
+	if err != nil {
+		return nil, handoff.NewError(handoff.CodeInvalidGrant, "The session behind this request is no longer available.")
+	}
+	if session.AccountId != sessionRef.AccountID {
+		return nil, errs.BadRequest("AUTH_SESSION_MISMATCH", "The session does not belong to the handed-off account.")
+	}
+	if target = strings.TrimSpace(target); target != "" {
+		if !h.isAllowedTarget(target) {
+			return nil, handoff.NewError(handoff.CodeInvalidTarget, "The target is not an allowed redirect host.")
+		}
+	}
+	pair, err := h.d.Auth.CreateTokenPair(ctx, session)
+	if err != nil {
+		return nil, err
+	}
+	return handoffPairResponse(pair), nil
+}
+
+// isAllowedTarget checks whether target is a registered hand-off host or under the issuer's cookie domain.
+func (h *handler) isAllowedTarget(target string) bool {
+	parsed, err := url.Parse(target)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	host := parsed.Hostname()
+	if cookieDomain := strings.TrimPrefix(strings.TrimSpace(h.d.Cfg.Auth.CookieDomain), "."); cookieDomain != "" {
+		if host == cookieDomain || strings.HasSuffix(host, "."+cookieDomain) {
+			return true
+		}
+	}
+	for _, client := range h.d.Cfg.Auth.HandoffClients {
+		if handoff.HostAllowed(host, client.RedirectHosts) {
+			return true
+		}
+	}
+	return false
 }
 
 // handoffRenew re-issues a pair for the app's own refresh token, so a hand-off
