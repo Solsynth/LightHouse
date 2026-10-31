@@ -94,9 +94,11 @@ one checkout builds and tests them with a single toolchain (`go 1.27`). Nothing
 is published between them yet — each service still has its own dependency graph
 and `go.sum`. A service's location under `internal/` is only a directory
 choice: the module path in its own `go.mod` is what its packages import by.
-Every module requires `src.solsynth.dev/sosys/lighthouse/shared` and replaces
-it with the local `shared/` directory; the old published module
-`src.solsynth.dev/sosys/go` is no longer used.
+Every module requires `src.solsynth.dev/sosys/lighthouse/shared` at a
+`shared/vX.Y.Z` tag published from this repository. The workspace resolves it
+from the local `shared/` directory, while Docker and CI fetches the tagged
+module from git; the old published module `src.solsynth.dev/sosys/go` is no
+longer used.
 
 Two consequences worth knowing:
 
@@ -104,10 +106,10 @@ Two consequences worth knowing:
   root covers only sphere/messager. Use the Makefile (or `go build
   ./internal/stargate/...` / `go build ./internal/metoer/...` from the root)
   for the whole tree.
-- Docker images build from the repository root so their Dockerfiles can copy
-  `shared/`; `.dockerignore` excludes `go.work`, so each image resolves modules
-  through its own `go.mod` and `replace` directives. Their `Makefile`s keep
-  working from inside the service directory.
+- Docker images build with the service directory as context, so `go.work`
+  never enters an image. Each `go.mod` pins a `shared/vX.Y.Z` tag and fetches
+  it from git. Their `Makefile`s keep working from inside the service
+  directory.
 
 `internal/filesystem` is **not** in `go.work`: it pins `go1.26.2`, and under
 `go1.27` its `golang.org/x/net` v0.54.0 compiles the stdlib-backed http2

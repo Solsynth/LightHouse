@@ -45,8 +45,8 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          # Root context so the Dockerfile can copy the vendored shared/ module.
-          context: .
+          # Context is the child module: the image never sees go.work.
+          context: ./internal/blade
           file: ./internal/blade/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           cache-from: type=gha,scope=blade

@@ -8,9 +8,6 @@ ENV CGO_ENABLED=0 GOWORK=off
 
 RUN apk add --no-cache ca-certificates
 COPY go.mod go.sum ./
-# The root module replaces the vendored shared module with ./shared, so its
-# go.mod has to exist before `go mod download`.
-COPY shared/go.mod shared/go.sum ./shared/
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 COPY . .

@@ -58,11 +58,9 @@ require (
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	src.solsynth.dev/sosys/lighthouse/shared v0.0.0
+	src.solsynth.dev/sosys/lighthouse/shared v0.1.0
 )
-
-replace src.solsynth.dev/sosys/lighthouse/shared => ../../shared

@@ -121,18 +121,21 @@ NOTES.md                original README and porting notes
 `go.work` uses the root, `shared`, Stargate, Blade and Metoer modules so one
 checkout builds and tests them with Go 1.27. Each service keeps its own
 `go.mod` and `go.sum`; a service's directory under `internal/` is only a
-directory choice, and imports go through its module path. The vendored SDK is
-`shared` (module `src.solsynth.dev/sosys/lighthouse/shared`), and every module
-replaces the `src.solsynth.dev/sosys/go` dependency with it.
+directory choice, and imports go through its module path. The shared module
+lives at `shared/` (module `src.solsynth.dev/sosys/lighthouse/shared`) and is
+also published from this repository under `shared/vX.Y.Z` tags. `go.work`
+points at the local copy for workspace builds; each service's `go.mod` requires
+a tag, so Docker and CI fetch it from git instead of a local `replace`.
 
 Two consequences:
 
 - Directory patterns stop at a nested `go.mod`, so `go build ./...` at the root
   covers only Sphere and Messager. Use the Makefile, or build a child module
   explicitly.
-- Docker images build from the repository root so their Dockerfiles can copy
-  `shared/`; `go.work` is excluded by `.dockerignore`, so each image resolves
-  modules through its own `go.mod` and `replace` directives.
+- Docker images build with the service directory as context
+  (`./internal/stargate`, `./internal/metoer`, `./internal/blade`,
+  `./internal/filesystem`), so `go.work` never enters an image. Their `go.mod`
+  pins a `shared/vX.Y.Z` tag and fetches it from git.
 
 `internal/filesystem` is deliberately **not** in `go.work`: it pins Go 1.26.2,
 and under Go 1.27 its `golang.org/x/net` and gRPC versions do not compile

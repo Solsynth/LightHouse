@@ -43,8 +43,7 @@ Both expose:
   every `[modules]` change.
 - A canonical JSON 404 and the fleet `ApiError` envelope.
 
-Images: `Dockerfile.sphere` and `Dockerfile.messager` (root context, like every
-service image, so the vendored `shared/` module is in the build context). Both are
+Images: `Dockerfile.sphere` and `Dockerfile.messager` (root context). Both are
 `golang:1.27-alpine` build → `scratch` runtime: a static CGO-free binary, the
 CA bundle, and `internal/sphere/config.example.toml` (resp. messager) as
 `/app/config.example.toml`. They take their config from `CONFIG_PATH`. No

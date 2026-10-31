@@ -16,14 +16,15 @@ DysonNetwork contract. The module path is
 
 ## Install
 
-This module is vendored at `shared/` in the Lighthouse repository. Service
-modules require it and point at the local copy:
+This module lives at `shared/` in the Lighthouse repository and is published
+from it with tags such as `shared/v0.1.0`. Service modules require the tag, so
+CI and Docker fetch it from git:
 
 ```go
-require src.solsynth.dev/sosys/lighthouse/shared v0.0.0
-
-replace src.solsynth.dev/sosys/lighthouse/shared => ../../shared
+require src.solsynth.dev/sosys/lighthouse/shared v0.1.0
 ```
+
+Workspace builds resolve the local `shared/` directory through `go.work`.
 
 ## Packages
 
@@ -260,7 +261,8 @@ Properties the package enforces so a deployment does not have to:
 
 ## Versioning
 
-The upstream SDK is versioned independently from the runtime services. This
-copy tracks `src.solsynth.dev/sosys/go` and is updated in-tree; the generated
-`proto/` descriptors still carry the upstream `go_package` value, which does
-not affect the Go import path.
+Each published version is a `shared/vX.Y.Z` tag in this repository. Bump the
+tag and the `require` lines when the shared code changes; workspace builds
+still use the local `shared/` directory. The generated `proto/` descriptors
+still carry the upstream `go_package` value, which does not affect the Go
+import path.
