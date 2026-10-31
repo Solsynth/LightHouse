@@ -135,14 +135,10 @@ func (s *service) buildDiscoveryProfile(
 		publisherInterest, collectionInterest, collectionMap, now,
 	)
 
-	publishers := make([]model.Publisher, 0, len(suggestionContext.publishers))
-	for _, candidate := range suggestionContext.publishers {
-		publishers = append(publishers, candidate.publisher)
-	}
 	return model.DiscoveryProfile{
 		GeneratedAt:         model.NewTime(now),
 		Interests:           interests,
-		SuggestedPublishers: publishers,
+		SuggestedPublishers: suggestionContext.publishers,
 		SuggestedAccounts:   suggestionContext.accounts,
 		SuggestedRealms:     suggestionContext.realms,
 		Suppressed:          suggestionContext.suppressed,
@@ -294,15 +290,55 @@ func (s *service) postCollectionMap(ctx context.Context, postIDs []uuid.UUID) ma
 
 // buildDiscoveryInterestEntries mirrors BuildDiscoveryInterestEntries.
 func (s *service) buildDiscoveryInterestEntries(ctx context.Context, profiles []store.PostInterestProfileEntity, now time.Time) []model.InterestEntry {
+	tagIDs := make([]uuid.UUID, 0)
+	categoryIDs := make([]uuid.UUID, 0)
+	publisherIDs := make([]uuid.UUID, 0)
+	collectionIDs := make([]uuid.UUID, 0)
+	for i := range profiles {
+		switch postInterestKind(profiles[i].Kind) {
+		case interestTag:
+			tagIDs = append(tagIDs, profiles[i].ReferenceID)
+		case interestCategory:
+			categoryIDs = append(categoryIDs, profiles[i].ReferenceID)
+		case interestPublisher:
+			publisherIDs = append(publisherIDs, profiles[i].ReferenceID)
+		case interestCollection:
+			collectionIDs = append(collectionIDs, profiles[i].ReferenceID)
+		}
+	}
+	labelsByKind := map[postInterestKind]map[uuid.UUID]string{
+		interestTag:        s.tagLabels(ctx, tagIDs),
+		interestCategory:   s.categoryLabels(ctx, categoryIDs),
+		interestPublisher:  s.publisherLabels(ctx, publisherIDs),
+		interestCollection: s.collectionLabels(ctx, collectionIDs),
+	}
+
 	entries := make([]model.InterestEntry, 0, len(profiles))
 	for i := range profiles {
+		kind := postInterestKind(profiles[i].Kind)
+		label := labelsByKind[kind][profiles[i].ReferenceID]
+		if label == "" {
+			label = profiles[i].ReferenceID.String()
+		}
+		lastInteractedAt := profiles[i].CreatedAt
+		if profiles[i].LastInteractedAt != nil {
+			lastInteractedAt = *profiles[i].LastInteractedAt
+		}
+		if lastInteractedAt.IsZero() {
+			lastInteractedAt = now
+		}
+		lastSignalType := ""
+		if profiles[i].LastSignalType != nil {
+			lastSignalType = *profiles[i].LastSignalType
+		}
 		entries = append(entries, model.InterestEntry{
-			Kind:             profiles[i].Kind,
+			Kind:             kind.String(),
 			ReferenceID:      profiles[i].ReferenceID.String(),
+			Label:            label,
 			Score:            decayedInterestScore(&profiles[i], now),
 			InteractionCount: profiles[i].InteractionCount,
-			LastInteractedAt: store.TimePtr(profiles[i].LastInteractedAt),
-			LastSignalType:   profiles[i].LastSignalType,
+			LastInteractedAt: model.NewTime(lastInteractedAt),
+			LastSignalType:   lastSignalType,
 		})
 	}
 	sort.SliceStable(entries, func(i, j int) bool { return entries[j].Score < entries[i].Score })
@@ -314,10 +350,10 @@ func (s *service) buildDiscoveryInterestEntries(ctx context.Context, profiles []
 
 // discoverySuggestionContext mirrors DiscoverySuggestionContext.
 type discoverySuggestionContext struct {
-	publishers []publisherCandidate
-	accounts   []any
-	realms     []model.RealmRef
-	suppressed []model.DiscoveryPreference
+	publishers []model.DiscoverySuggestion
+	accounts   []model.DiscoverySuggestion
+	realms     []model.DiscoverySuggestion
+	suppressed []model.DiscoverySuggestion
 }
 
 // buildDiscoverySuggestionContext mirrors BuildDiscoverySuggestionContext.
@@ -373,20 +409,31 @@ func (s *service) buildDiscoverySuggestionContext(
 		hiddenRelationship, candidates, tagInterest, categoryInterest,
 		publisherInterest, collectionInterest, collectionMap, now,
 	)
-	accountCandidates := s.buildAccountSuggestions(
+	publisherSuggestions := make([]model.DiscoverySuggestion, 0, len(publisherCandidates))
+	for _, candidate := range publisherCandidates {
+		publisherSuggestions = append(publisherSuggestions, model.DiscoverySuggestion{
+			Kind:        int(discoveryTargetPublisher),
+			ReferenceID: candidate.publisher.ID,
+			Label:       candidate.publisher.Nick,
+			Score:       candidate.score,
+			Reasons:     candidate.reasons,
+			Data:        candidate.publisher,
+		})
+	}
+	accountSuggestions := s.buildAccountSuggestions(
 		ctx, accountID, friends, hiddenByKind[discoveryTargetAccount],
 		hiddenRelationship, publisherCandidates,
 	)
-	realmCandidates := s.buildRealmSuggestions(
-		userRealmIDs, hiddenByKind[discoveryTargetRealm], candidates, publicRealmMap,
+	realmSuggestions := s.buildRealmSuggestions(
+		ctx, userRealmIDs, hiddenByKind[discoveryTargetRealm], candidates, publicRealmMap,
 		tagInterest, categoryInterest, collectionInterest, collectionMap, now,
 	)
-	suppressed := s.buildSuppressedSuggestions(preferences, publicRealmMap)
+	suppressed := s.buildSuppressedSuggestions(ctx, preferences, publicRealmMap)
 
 	return discoverySuggestionContext{
-		publishers: truncate3(publisherCandidates),
-		accounts:   truncate3(accountCandidates),
-		realms:     truncate3(realmCandidates),
+		publishers: truncate3(publisherSuggestions),
+		accounts:   truncate3(accountSuggestions),
+		realms:     truncate3(realmSuggestions),
 		suppressed: suppressed,
 	}
 }
@@ -529,7 +576,7 @@ func (s *service) buildAccountSuggestions(
 	hiddenAccounts map[uuid.UUID]struct{},
 	hiddenRelationship map[uuid.UUID]struct{},
 	publishers []publisherCandidate,
-) []any {
+) []model.DiscoverySuggestion {
 	friendSet := map[uuid.UUID]struct{}{}
 	for _, id := range friends {
 		friendSet[id] = struct{}{}
@@ -569,19 +616,27 @@ func (s *service) buildAccountSuggestions(
 		ids = append(ids, item.accountID.String())
 	}
 	accounts := s.accountBatch(ctx, ids)
-	out := make([]any, 0, len(candidates))
+	out := make([]model.DiscoverySuggestion, 0, len(candidates))
 	for _, item := range candidates {
 		account, ok := accounts[item.accountID.String()]
 		if !ok || account == nil {
 			continue
 		}
-		out = append(out, account)
+		out = append(out, model.DiscoverySuggestion{
+			Kind:        int(discoveryTargetAccount),
+			ReferenceID: item.accountID.String(),
+			Label:       accountNick(account),
+			Score:       item.score,
+			Reasons:     item.reasons,
+			Data:        account,
+		})
 	}
 	return out
 }
 
 // buildRealmSuggestions mirrors BuildRealmSuggestions.
 func (s *service) buildRealmSuggestions(
+	ctx context.Context,
 	userRealmIDs []uuid.UUID,
 	hiddenRealms map[uuid.UUID]struct{},
 	candidates []discoveryCandidate,
@@ -591,7 +646,9 @@ func (s *service) buildRealmSuggestions(
 	collectionInterest map[uuid.UUID]float64,
 	collectionMap map[uuid.UUID][]uuid.UUID,
 	now time.Time,
-) []model.RealmRef {
+) []model.DiscoverySuggestion {
+	tagNames := s.tagLabels(ctx, candidateTagIDs(candidates))
+	categoryNames := s.categoryLabels(ctx, candidateCategoryIDs(candidates))
 	owned := map[uuid.UUID]struct{}{}
 	for _, id := range userRealmIDs {
 		owned[id] = struct{}{}
@@ -631,36 +688,112 @@ func (s *service) buildRealmSuggestions(
 		if _, ok := hiddenRealms[realmID]; ok {
 			continue
 		}
-		ranked = append(ranked, rankedDiscoveryTarget{referenceID: realmID, score: score})
+		ranked = append(ranked, rankedDiscoveryTarget{
+			referenceID: realmID,
+			score:       score,
+			reasons:     buildReasonLabels(group, tagNames, categoryNames),
+		})
 	}
 	sort.SliceStable(ranked, func(i, j int) bool { return ranked[j].score < ranked[i].score })
 	if len(ranked) > 8 {
 		ranked = ranked[:8]
 	}
-	out := make([]model.RealmRef, 0, len(ranked))
+	out := make([]model.DiscoverySuggestion, 0, len(ranked))
 	for _, item := range ranked {
-		if realm, ok := publicRealmMap[item.referenceID]; ok {
-			out = append(out, *realmRefFromProto(realm))
+		realm, ok := publicRealmMap[item.referenceID]
+		if !ok {
+			continue
 		}
+		ref := realmRefFromProto(realm)
+		if ref == nil {
+			continue
+		}
+		out = append(out, model.DiscoverySuggestion{
+			Kind:        int(discoveryTargetRealm),
+			ReferenceID: item.referenceID.String(),
+			Label:       ref.Name,
+			Score:       item.score,
+			Reasons:     item.reasons,
+			Data:        ref,
+		})
 	}
 	return out
 }
 
-// buildSuppressedSuggestions mirrors BuildSuppressedSuggestions, returning the
-// stored preference rows (the profile's suppression list).
+// buildSuppressedSuggestions mirrors BuildSuppressedSuggestions, resolving the
+// stored preference rows into the suggestion snapshots the profile exposes.
 func (s *service) buildSuppressedSuggestions(
+	ctx context.Context,
 	preferences []store.DiscoveryPreferenceEntity,
 	publicRealmMap map[uuid.UUID]*gen.DyRealm,
-) []model.DiscoveryPreference {
-	out := make([]model.DiscoveryPreference, 0, len(preferences))
+) []model.DiscoverySuggestion {
+	publisherIDs := make([]uuid.UUID, 0)
+	accountIDs := make([]string, 0)
 	for i := range preferences {
 		switch discoveryTargetKind(preferences[i].Kind) {
-		case discoveryTargetRealm:
-			if _, ok := publicRealmMap[preferences[i].ReferenceID]; !ok {
-				continue
+		case discoveryTargetPublisher:
+			publisherIDs = append(publisherIDs, preferences[i].ReferenceID)
+		case discoveryTargetAccount:
+			accountIDs = append(accountIDs, preferences[i].ReferenceID.String())
+		}
+	}
+	publishers := map[uuid.UUID]store.PublisherEntity{}
+	if len(publisherIDs) > 0 {
+		var rows []store.PublisherEntity
+		if err := s.db.WithContext(ctx).Where("id IN ?", publisherIDs).Find(&rows).Error; err == nil {
+			for i := range rows {
+				publishers[rows[i].ID] = rows[i]
 			}
 		}
-		out = append(out, discoveryPreferenceToModel(&preferences[i]))
+	}
+	accounts := s.accountBatch(ctx, accountIDs)
+
+	out := make([]model.DiscoverySuggestion, 0, len(preferences))
+	for i := range preferences {
+		preference := &preferences[i]
+		reasons := make([]string, 0, 1)
+		if preference.Reason != nil && *preference.Reason != "" {
+			reasons = append(reasons, *preference.Reason)
+		}
+		var label string
+		var data any
+		switch discoveryTargetKind(preference.Kind) {
+		case discoveryTargetPublisher:
+			row, ok := publishers[preference.ReferenceID]
+			if !ok {
+				continue
+			}
+			publisher := store.PublisherToModel(&row)
+			label = publisher.Nick
+			data = publisher
+		case discoveryTargetAccount:
+			account, ok := accounts[preference.ReferenceID.String()]
+			if !ok || account == nil {
+				continue
+			}
+			label = accountNick(account)
+			data = account
+		case discoveryTargetRealm:
+			realm, ok := publicRealmMap[preference.ReferenceID]
+			if !ok {
+				continue
+			}
+			ref := realmRefFromProto(realm)
+			if ref == nil {
+				continue
+			}
+			label = ref.Name
+			data = ref
+		default:
+			continue
+		}
+		out = append(out, model.DiscoverySuggestion{
+			Kind:        preference.Kind,
+			ReferenceID: preference.ReferenceID.String(),
+			Label:       label,
+			Reasons:     reasons,
+			Data:        data,
+		})
 	}
 	return out
 }
@@ -778,6 +911,44 @@ func (s *service) categoryLabels(ctx context.Context, ids []uuid.UUID) map[uuid.
 		return out
 	}
 	var rows []store.PostCategoryEntity
+	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		return out
+	}
+	for i := range rows {
+		if rows[i].Name != nil && *rows[i].Name != "" {
+			out[rows[i].ID] = *rows[i].Name
+		} else {
+			out[rows[i].ID] = rows[i].Slug
+		}
+	}
+	return out
+}
+
+func (s *service) publisherLabels(ctx context.Context, ids []uuid.UUID) map[uuid.UUID]string {
+	out := map[uuid.UUID]string{}
+	if len(ids) == 0 {
+		return out
+	}
+	var rows []store.PublisherEntity
+	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		return out
+	}
+	for i := range rows {
+		if rows[i].Nick != "" {
+			out[rows[i].ID] = rows[i].Nick
+		} else {
+			out[rows[i].ID] = rows[i].Name
+		}
+	}
+	return out
+}
+
+func (s *service) collectionLabels(ctx context.Context, ids []uuid.UUID) map[uuid.UUID]string {
+	out := map[uuid.UUID]string{}
+	if len(ids) == 0 {
+		return out
+	}
+	var rows []store.PostCollectionEntity
 	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
 		return out
 	}
@@ -1141,13 +1312,24 @@ func (s *service) applyInterestProfileAdjustments(
 		if !ok {
 			continue
 		}
+		lastInteractedAt := profile.CreatedAt
+		if profile.LastInteractedAt != nil {
+			lastInteractedAt = *profile.LastInteractedAt
+		}
+		if lastInteractedAt.IsZero() {
+			lastInteractedAt = occurredAt
+		}
+		lastSignalType := ""
+		if profile.LastSignalType != nil {
+			lastSignalType = *profile.LastSignalType
+		}
 		out = append(out, model.InterestEntry{
-			Kind:             profile.Kind,
+			Kind:             postInterestKind(profile.Kind).String(),
 			ReferenceID:      profile.ReferenceID.String(),
 			Score:            profile.Score,
 			InteractionCount: profile.InteractionCount,
-			LastInteractedAt: store.TimePtr(profile.LastInteractedAt),
-			LastSignalType:   profile.LastSignalType,
+			LastInteractedAt: model.NewTime(lastInteractedAt),
+			LastSignalType:   lastSignalType,
 		})
 	}
 	return out, nil

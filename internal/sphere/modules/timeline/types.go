@@ -383,6 +383,16 @@ func accountRefFromProto(account *gen.DyAccount) any {
 	return accountjson.FromProto(account)
 }
 
+// accountNick reads the display nick from an accountjson snapshot.
+func accountNick(account any) string {
+	object, ok := account.(map[string]any)
+	if !ok {
+		return ""
+	}
+	nick, _ := object["nick"].(string)
+	return nick
+}
+
 // realmRefFromProto maps a DyRealm onto the realm snapshot embedded in posts.
 func realmRefFromProto(realm *gen.DyRealm) *model.RealmRef {
 	if realm == nil {

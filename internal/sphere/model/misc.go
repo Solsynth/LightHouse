@@ -155,20 +155,33 @@ type TimelinePage struct {
 type DiscoveryProfile struct {
 	GeneratedAt         *Time                 `json:"generated_at"`
 	Interests           []InterestEntry       `json:"interests"`
-	SuggestedPublishers []Publisher           `json:"suggested_publishers"`
-	SuggestedAccounts   []any                 `json:"suggested_accounts"`
-	SuggestedRealms     []RealmRef            `json:"suggested_realms"`
-	Suppressed          []DiscoveryPreference `json:"suppressed"`
+	SuggestedPublishers []DiscoverySuggestion `json:"suggested_publishers"`
+	SuggestedAccounts   []DiscoverySuggestion `json:"suggested_accounts"`
+	SuggestedRealms     []DiscoverySuggestion `json:"suggested_realms"`
+	Suppressed          []DiscoverySuggestion `json:"suppressed"`
 }
 
-// InterestEntry is one interest profile entry.
+// DiscoverySuggestion is one ranked recommendation, matching SnDiscoverySuggestion.
+// Data carries the entity snapshot named by Kind.
+type DiscoverySuggestion struct {
+	Kind        int      `json:"kind"`
+	ReferenceID string   `json:"reference_id"`
+	Label       string   `json:"label"`
+	Score       float64  `json:"score"`
+	Reasons     []string `json:"reasons"`
+	Data        any      `json:"data"`
+}
+
+// InterestEntry is one interest profile entry. Kind is the lower-case
+// PostInterestKind name, as SnDiscoveryInterestEntry serializes it.
 type InterestEntry struct {
-	Kind             int     `json:"kind"`
+	Kind             string  `json:"kind"`
 	ReferenceID      string  `json:"reference_id"`
+	Label            string  `json:"label"`
 	Score            float64 `json:"score"`
 	InteractionCount int     `json:"interaction_count"`
 	LastInteractedAt *Time   `json:"last_interacted_at"`
-	LastSignalType   *string `json:"last_signal_type"`
+	LastSignalType   string  `json:"last_signal_type"`
 }
 
 // DiscoveryPreference is one suppressed recommendation.

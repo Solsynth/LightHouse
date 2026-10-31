@@ -242,6 +242,13 @@ type RealmRef struct {
 	Background   any     `json:"background"`
 	Verification any     `json:"verification"`
 	AccountID    string  `json:"account_id"`
+	// Stargate's DyRealm snapshot carries no ModelBase timestamps, but the
+	// Solian client parses realm payloads as SnRealm and requires the keys.
+	// The zero Time marshals as 0001-01-01T00:00:00Z, matching a default
+	// NodaTime Instant, so the fields are always present.
+	CreatedAt Time  `json:"created_at"`
+	UpdatedAt Time  `json:"updated_at"`
+	DeletedAt *Time `json:"deleted_at"`
 	// BoostPoints is the numeric decimal SnRealm serializes; json.Number
 	// keeps it unquoted without pulling a decimal type into this package.
 	BoostPoints json.Number `json:"boost_points"`
