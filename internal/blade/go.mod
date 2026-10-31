@@ -62,5 +62,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	src.solsynth.dev/sosys/lighthouse/shared v0.2.2
+	src.solsynth.dev/sosys/lighthouse/shared v0.2.3
 )
