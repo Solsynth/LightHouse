@@ -41,8 +41,8 @@ type accountAuthFactorSummary struct {
 	Config      map[string]any `json:"config,omitempty"`
 	EnabledAt   *model.Time    `json:"enabled_at,omitempty"`
 	ExpiredAt   *model.Time    `json:"expired_at,omitempty"`
-	CreatedAt   *model.Time    `json:"created_at,omitempty"`
-	UpdatedAt   *model.Time    `json:"updated_at,omitempty"`
+	CreatedAt   *model.Time    `json:"created_at"`
+	UpdatedAt   *model.Time    `json:"updated_at"`
 }
 
 // adminAccountSummaryResponse mirrors AdminAccountSummaryResponse.

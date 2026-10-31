@@ -247,17 +247,9 @@ func (b *Broadcaster) currentStatus(ctx context.Context, accountID uuid.UUID) (*
 
 	if status == nil {
 		// AccountEventService.GetStatus's no-row default: neutral attitude,
-		// uncustomized, labelled from the live presence.
-		label := "Offline"
-		if online {
-			label = "Online"
-		}
-		status = &model.AccountStatus{
-			AccountId:    accountID.String(),
-			Attitude:     model.StatusAttitudeNeutral,
-			Label:        &label,
-			IsCustomized: false,
-		}
+		// uncustomized, labelled from the live presence. The shared helper
+		// also fills the non-nullable id/created_at/updated_at fields.
+		status = model.DefaultAccountStatus(accountID.String(), online)
 	}
 
 	if b.res != nil {

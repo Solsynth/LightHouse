@@ -46,7 +46,7 @@ type qrLoginChallenge struct {
 	DeviceName          *string              `json:"device_name,omitempty"`
 	Platform            model.ClientPlatform `json:"platform"`
 	Status              qrLoginStatus        `json:"status"`
-	CreatedAt           *model.Time          `json:"created_at,omitempty"`
+	CreatedAt           *model.Time          `json:"created_at"`
 	ExpiresAt           *model.Time          `json:"expires_at,omitempty"`
 	ApprovedAt          *model.Time          `json:"approved_at,omitempty"`
 	ApprovedBySessionId *string              `json:"approved_by_session_id,omitempty"`

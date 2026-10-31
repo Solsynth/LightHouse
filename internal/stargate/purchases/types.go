@@ -114,9 +114,9 @@ type AffiliationSpell struct {
 	AffectedAt *model.Time    `json:"affected_at,omitempty"`
 	Meta       map[string]any `json:"meta"`
 	AccountId  *string        `json:"account_id,omitempty"`
-	CreatedAt  *model.Time    `json:"created_at,omitempty"`
-	UpdatedAt  *model.Time    `json:"updated_at,omitempty"`
-	DeletedAt  *model.Time    `json:"deleted_at,omitempty"`
+	CreatedAt  *model.Time    `json:"created_at"`
+	UpdatedAt  *model.Time    `json:"updated_at"`
+	DeletedAt  *model.Time    `json:"deleted_at"`
 }
 
 // AffiliationResult mirrors SnAffiliationResult. Its Spell navigation is
@@ -125,9 +125,9 @@ type AffiliationResult struct {
 	Id                 string      `json:"id"`
 	ResourceIdentifier string      `json:"resource_identifier"`
 	SpellId            string      `json:"spell_id"`
-	CreatedAt          *model.Time `json:"created_at,omitempty"`
-	UpdatedAt          *model.Time `json:"updated_at,omitempty"`
-	DeletedAt          *model.Time `json:"deleted_at,omitempty"`
+	CreatedAt          *model.Time `json:"created_at"`
+	UpdatedAt          *model.Time `json:"updated_at"`
+	DeletedAt          *model.Time `json:"deleted_at"`
 }
 
 // AffiliationSpellPurchase mirrors SnAffiliationSpellPurchase.
@@ -138,9 +138,9 @@ type AffiliationSpellPurchase struct {
 	Amount      Decimal     `json:"amount"`
 	SpellId     *string     `json:"spell_id,omitempty"`
 	FulfilledAt *model.Time `json:"fulfilled_at,omitempty"`
-	CreatedAt   *model.Time `json:"created_at,omitempty"`
-	UpdatedAt   *model.Time `json:"updated_at,omitempty"`
-	DeletedAt   *model.Time `json:"deleted_at,omitempty"`
+	CreatedAt   *model.Time `json:"created_at"`
+	UpdatedAt   *model.Time `json:"updated_at"`
+	DeletedAt   *model.Time `json:"deleted_at"`
 }
 
 // NameChangeCardPurchase mirrors SnNameChangeCardPurchase.
@@ -155,9 +155,9 @@ type NameChangeCardPurchase struct {
 	TargetId    *string     `json:"target_id,omitempty"`
 	OldName     *string     `json:"old_name,omitempty"`
 	NewName     *string     `json:"new_name,omitempty"`
-	CreatedAt   *model.Time `json:"created_at,omitempty"`
-	UpdatedAt   *model.Time `json:"updated_at,omitempty"`
-	DeletedAt   *model.Time `json:"deleted_at,omitempty"`
+	CreatedAt   *model.Time `json:"created_at"`
+	UpdatedAt   *model.Time `json:"updated_at"`
+	DeletedAt   *model.Time `json:"deleted_at"`
 }
 
 // ── settings ──────────────────────────────────────────────────────────────

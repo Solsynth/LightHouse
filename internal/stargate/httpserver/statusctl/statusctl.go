@@ -177,17 +177,10 @@ func (l Loader) Statuses(ctx context.Context, ownerIDs []uuid.UUID, viewer *uuid
 
 // defaultStatus mirrors the synthesized SnAccountStatus GetStatus returns when
 // the account has no active row: neutral, uncustomized, labelled by presence.
+// The shared model helper also fills the non-nullable id/created_at/updated_at
+// fields the Dart SDK requires.
 func defaultStatus(accountID uuid.UUID, online bool) *model.AccountStatus {
-	label := "Offline"
-	if online {
-		label = "Online"
-	}
-	return &model.AccountStatus{
-		Attitude:     model.StatusAttitudeNeutral,
-		Label:        &label,
-		IsCustomized: false,
-		AccountId:    accountID.String(),
-	}
+	return model.DefaultAccountStatus(accountID.String(), online)
 }
 
 func (l Loader) resolvePresence(ctx context.Context, accountID uuid.UUID) (bool, []presence.OnlineDevice, bool, *time.Time, error) {

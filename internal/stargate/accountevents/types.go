@@ -77,9 +77,9 @@ type CheckInResult struct {
 	FortuneReport    *FortuneReport `json:"fortune_report,omitempty"`
 	AccountId        string         `json:"account_id"`
 	BackdatedFrom    *model.Time    `json:"backdated_from,omitempty"`
-	CreatedAt        *model.Time    `json:"created_at,omitempty"`
-	UpdatedAt        *model.Time    `json:"updated_at,omitempty"`
-	DeletedAt        *model.Time    `json:"deleted_at,omitempty"`
+	CreatedAt        *model.Time    `json:"created_at"`
+	UpdatedAt        *model.Time    `json:"updated_at"`
+	DeletedAt        *model.Time    `json:"deleted_at"`
 }
 
 // EventVisibility mirrors EventVisibility.
@@ -132,9 +132,9 @@ type UserCalendarEvent struct {
 	Background  *model.SnCloudFileReferenceObject `json:"background,omitempty"`
 	AccountId   string                            `json:"account_id"`
 	Account     *model.Account                    `json:"account,omitempty"`
-	CreatedAt   *model.Time                       `json:"created_at,omitempty"`
-	UpdatedAt   *model.Time                       `json:"updated_at,omitempty"`
-	DeletedAt   *model.Time                       `json:"deleted_at,omitempty"`
+	CreatedAt   *model.Time                       `json:"created_at"`
+	UpdatedAt   *model.Time                       `json:"updated_at"`
+	DeletedAt   *model.Time                       `json:"deleted_at"`
 }
 
 // NotableHolidayType mirrors NotableHolidayType.
@@ -209,9 +209,9 @@ type StoredNotableDay struct {
 	IsPeriod          bool            `json:"is_period"`
 	HolidayDays       []string        `json:"holiday_days,omitempty"`
 	DisplayOrder      *int            `json:"display_order,omitempty"`
-	CreatedAt         *model.Time     `json:"created_at,omitempty"`
-	UpdatedAt         *model.Time     `json:"updated_at,omitempty"`
-	DeletedAt         *model.Time     `json:"deleted_at,omitempty"`
+	CreatedAt         *model.Time     `json:"created_at"`
+	UpdatedAt         *model.Time     `json:"updated_at"`
+	DeletedAt         *model.Time     `json:"deleted_at"`
 }
 
 // NotableDayRequest is the create/update body (C# NotableDayRequest).
@@ -342,9 +342,9 @@ type CalendarEventSubscription struct {
 	SubscriberId    string      `json:"subscriber_id"`
 	TargetAccountId string      `json:"target_account_id"`
 	Notify          bool        `json:"notify"`
-	CreatedAt       *model.Time `json:"created_at,omitempty"`
-	UpdatedAt       *model.Time `json:"updated_at,omitempty"`
-	DeletedAt       *model.Time `json:"deleted_at,omitempty"`
+	CreatedAt       *model.Time `json:"created_at"`
+	UpdatedAt       *model.Time `json:"updated_at"`
+	DeletedAt       *model.Time `json:"deleted_at"`
 }
 
 // TimelineEventType mirrors TimelineEventType.

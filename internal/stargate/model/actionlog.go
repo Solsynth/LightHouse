@@ -11,7 +11,7 @@ type ActionLog struct {
 	Location  *GeoPoint      `json:"location,omitempty"`
 	AccountId string         `json:"account_id"`
 	SessionId *string        `json:"session_id,omitempty"`
-	CreatedAt *Time          `json:"created_at,omitempty"`
-	UpdatedAt *Time          `json:"updated_at,omitempty"`
-	DeletedAt *Time          `json:"deleted_at,omitempty"`
+	CreatedAt *Time          `json:"created_at"`
+	UpdatedAt *Time          `json:"updated_at"`
+	DeletedAt *Time          `json:"deleted_at"`
 }

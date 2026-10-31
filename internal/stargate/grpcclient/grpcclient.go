@@ -246,9 +246,15 @@ func (p *WalletPerkProvider) GetPerkSubscription(ctx context.Context, accountID 
 		FinalPrice:  resp.FinalPrice,
 		AccountId:   resp.AccountId,
 		CreatedAt:   tsToModel(resp.CreatedAt),
+		UpdatedAt:   tsToModel(resp.UpdatedAt),
 	}
-	if resp.UpdatedAt != nil {
-		ref.UpdatedAt = tsToModel(resp.UpdatedAt)
+	// SnWalletSubscriptionRef.createdAt/updatedAt are non-nullable in the Dart
+	// SDK; a provider that omits them must still produce parseable instants.
+	if ref.CreatedAt == nil {
+		ref.CreatedAt = model.NewTime(time.Now().UTC())
+	}
+	if ref.UpdatedAt == nil {
+		ref.UpdatedAt = ref.CreatedAt
 	}
 	return ref, nil
 }

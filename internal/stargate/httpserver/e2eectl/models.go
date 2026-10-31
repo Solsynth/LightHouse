@@ -45,9 +45,9 @@ type MlsKeyPackage struct {
 	ConsumedAt          *model.Time    `json:"consumed_at,omitempty"`
 	ConsumedByAccountId *string        `json:"consumed_by_account_id,omitempty"`
 	Meta                map[string]any `json:"meta,omitempty"`
-	CreatedAt           *model.Time    `json:"created_at,omitempty"`
-	UpdatedAt           *model.Time    `json:"updated_at,omitempty"`
-	DeletedAt           *model.Time    `json:"deleted_at,omitempty"`
+	CreatedAt           *model.Time    `json:"created_at"`
+	UpdatedAt           *model.Time    `json:"updated_at"`
+	DeletedAt           *model.Time    `json:"deleted_at"`
 }
 
 // MlsDeviceKeyPackage mirrors MlsDeviceKeyPackageResponse.
@@ -101,9 +101,9 @@ type MlsGroupState struct {
 	GroupInfo    []byte         `json:"group_info"`
 	RatchetTree  []byte         `json:"ratchet_tree"`
 	Meta         map[string]any `json:"meta,omitempty"`
-	CreatedAt    *model.Time    `json:"created_at,omitempty"`
-	UpdatedAt    *model.Time    `json:"updated_at,omitempty"`
-	DeletedAt    *model.Time    `json:"deleted_at,omitempty"`
+	CreatedAt    *model.Time    `json:"created_at"`
+	UpdatedAt    *model.Time    `json:"updated_at"`
+	DeletedAt    *model.Time    `json:"deleted_at"`
 }
 
 // MlsDeviceMembership mirrors SnMlsDeviceMembership.
@@ -116,9 +116,9 @@ type MlsDeviceMembership struct {
 	LastSeenEpoch          *int64      `json:"last_seen_epoch,omitempty"`
 	LastReshareRequiredAt  *model.Time `json:"last_reshare_required_at,omitempty"`
 	LastReshareCompletedAt *model.Time `json:"last_reshare_completed_at,omitempty"`
-	CreatedAt              *model.Time `json:"created_at,omitempty"`
-	UpdatedAt              *model.Time `json:"updated_at,omitempty"`
-	DeletedAt              *model.Time `json:"deleted_at,omitempty"`
+	CreatedAt              *model.Time `json:"created_at"`
+	UpdatedAt              *model.Time `json:"updated_at"`
+	DeletedAt              *model.Time `json:"deleted_at"`
 }
 
 // E2eeEnvelope mirrors SnE2eeEnvelope.
@@ -143,9 +143,9 @@ type E2eeEnvelope struct {
 	ExpiresAt           *model.Time    `json:"expires_at,omitempty"`
 	LegacyAccountScoped bool           `json:"legacy_account_scoped"`
 	Meta                map[string]any `json:"meta,omitempty"`
-	CreatedAt           *model.Time    `json:"created_at,omitempty"`
-	UpdatedAt           *model.Time    `json:"updated_at,omitempty"`
-	DeletedAt           *model.Time    `json:"deleted_at,omitempty"`
+	CreatedAt           *model.Time    `json:"created_at"`
+	UpdatedAt           *model.Time    `json:"updated_at"`
+	DeletedAt           *model.Time    `json:"deleted_at"`
 }
 
 // UploadGroupInfoResult is the PUT groupinfo response body.

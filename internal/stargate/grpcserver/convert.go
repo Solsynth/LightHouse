@@ -229,7 +229,23 @@ func accountFromProto(p *gen.DyAccount) *model.Account {
 			CreatedAt:   tsToModel(sub.CreatedAt),
 			UpdatedAt:   tsToModel(sub.UpdatedAt),
 		}
+		// SnWalletSubscriptionRef.createdAt/updatedAt are non-nullable in the
+		// Dart SDK, so fill what the remote proto omitted.
+		if account.PerkSubscription.CreatedAt == nil {
+			account.PerkSubscription.CreatedAt = model.NewTime(time.Now().UTC())
+		}
+		if account.PerkSubscription.UpdatedAt == nil {
+			account.PerkSubscription.UpdatedAt = account.PerkSubscription.CreatedAt
+		}
 		account.PerkLevel = int(sub.PerkLevel)
+	}
+	// SnAccount.createdAt/updatedAt are non-nullable in the Dart SDK; a proto
+	// that omits them must still produce parseable instants.
+	if account.CreatedAt == nil {
+		account.CreatedAt = model.NewTime(time.Now().UTC())
+	}
+	if account.UpdatedAt == nil {
+		account.UpdatedAt = account.CreatedAt
 	}
 	if p.Profile != nil && (p.Profile.Id != "" || p.Profile.AccountId != "") {
 		account.Profile = profileFromProto(p.Profile)
@@ -258,6 +274,13 @@ func profileFromProto(p *gen.DyAccountProfile) *model.Profile {
 		AccountId:        p.AccountId,
 		CreatedAt:        tsToModel(p.CreatedAt),
 		UpdatedAt:        tsToModel(p.UpdatedAt),
+	}
+	// SnAccountProfile.createdAt/updatedAt are non-nullable in the Dart SDK.
+	if profile.CreatedAt == nil {
+		profile.CreatedAt = model.NewTime(time.Now().UTC())
+	}
+	if profile.UpdatedAt == nil {
+		profile.UpdatedAt = profile.CreatedAt
 	}
 	for _, l := range p.Links {
 		profile.Links = append(profile.Links, model.Link{Name: l.Name, Url: l.Url})

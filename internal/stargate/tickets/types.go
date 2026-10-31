@@ -74,9 +74,9 @@ type Ticket struct {
 	Messages   []TicketMessage `json:"messages"`
 	Metadata   map[string]any  `json:"metadata"`
 	Resources  []*string       `json:"resources"`
-	CreatedAt  *model.Time     `json:"created_at,omitempty"`
-	UpdatedAt  *model.Time     `json:"updated_at,omitempty"`
-	DeletedAt  *model.Time     `json:"deleted_at,omitempty"`
+	CreatedAt  *model.Time     `json:"created_at"`
+	UpdatedAt  *model.Time     `json:"updated_at"`
+	DeletedAt  *model.Time     `json:"deleted_at"`
 }
 
 // TicketMessage is SnTicketMessage's wire shape. Ticket is [JsonIgnore] in C#.
@@ -87,9 +87,9 @@ type TicketMessage struct {
 	Sender    *model.Account                     `json:"sender"`
 	Content   string                             `json:"content"`
 	Files     []model.SnCloudFileReferenceObject `json:"files"`
-	CreatedAt *model.Time                        `json:"created_at,omitempty"`
-	UpdatedAt *model.Time                        `json:"updated_at,omitempty"`
-	DeletedAt *model.Time                        `json:"deleted_at,omitempty"`
+	CreatedAt *model.Time                        `json:"created_at"`
+	UpdatedAt *model.Time                        `json:"updated_at"`
+	DeletedAt *model.Time                        `json:"deleted_at"`
 }
 
 // OnCallAdmin is SnTicketOnCallAdmin's wire shape.
@@ -97,9 +97,9 @@ type OnCallAdmin struct {
 	Id        uuid.UUID      `json:"id"`
 	AccountId uuid.UUID      `json:"account_id"`
 	Account   *model.Account `json:"account"`
-	CreatedAt *model.Time    `json:"created_at,omitempty"`
-	UpdatedAt *model.Time    `json:"updated_at,omitempty"`
-	DeletedAt *model.Time    `json:"deleted_at,omitempty"`
+	CreatedAt *model.Time    `json:"created_at"`
+	UpdatedAt *model.Time    `json:"updated_at"`
+	DeletedAt *model.Time    `json:"deleted_at"`
 }
 
 // CreateInput is the POST /tickets body after validation.

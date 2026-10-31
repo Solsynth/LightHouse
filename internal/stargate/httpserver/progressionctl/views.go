@@ -64,9 +64,9 @@ type definitionView struct {
 	Trigger           triggerView   `json:"trigger"`
 	Schedule          *scheduleView `json:"schedule,omitempty"`
 	Reward            rewardView    `json:"reward"`
-	CreatedAt         *TimeJSON     `json:"created_at,omitempty"`
-	UpdatedAt         *TimeJSON     `json:"updated_at,omitempty"`
-	DeletedAt         *TimeJSON     `json:"deleted_at,omitempty"`
+	CreatedAt         *TimeJSON     `json:"created_at"`
+	UpdatedAt         *TimeJSON     `json:"updated_at"`
+	DeletedAt         *TimeJSON     `json:"deleted_at"`
 }
 
 // TimeJSON is a nullable RFC3339 instant.
@@ -139,8 +139,8 @@ type grantView struct {
 	ExperienceGrantedAt   *TimeJSON  `json:"experience_granted_at,omitempty"`
 	SourcePointsGrantedAt *TimeJSON  `json:"source_points_granted_at,omitempty"`
 	NotificationSentAt    *TimeJSON  `json:"notification_sent_at,omitempty"`
-	CreatedAt             *TimeJSON  `json:"created_at,omitempty"`
-	UpdatedAt             *TimeJSON  `json:"updated_at,omitempty"`
+	CreatedAt             *TimeJSON  `json:"created_at"`
+	UpdatedAt             *TimeJSON  `json:"updated_at"`
 }
 
 func grantFromEntity(entity *progression.RewardGrantEntity) grantView {

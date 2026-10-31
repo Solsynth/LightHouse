@@ -1,11 +1,19 @@
 package model
 
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
 // Account status and presence-activity wire types. They mirror
 // DysonNetwork.Shared.Models.AccountEvent.cs (SnAccountStatus,
 // SnPresenceActivity, SnPresenceCatalogItem, SnPresenceTag and their tag
 // join rows) so the existing Dart SDK (solar_network_sdk) keeps parsing the
-// responses: enums are integers, instants are RFC3339 UTC with Z, nulls are
-// omitted.
+// responses: enums are integers, instants are RFC3339 UTC with Z. The
+// created_at/updated_at/deleted_at keys are always emitted (null when unset),
+// because the SDK parses createdAt/updatedAt with DateTime.parse and requires
+// them to be present.
 //
 // The status fields IsOnline, IsIdle, IsIdleSince, IsCustomized and
 // OnlineDevices are computed at read time — they are [NotMapped] in C# and
@@ -83,9 +91,43 @@ type AccountStatus struct {
 	IsInvisible  bool `json:"is_invisible"`
 	IsNotDisturb bool `json:"is_not_disturb"`
 
-	CreatedAt *Time `json:"created_at,omitempty"`
-	UpdatedAt *Time `json:"updated_at,omitempty"`
-	DeletedAt *Time `json:"deleted_at,omitempty"`
+	CreatedAt *Time `json:"created_at"`
+	UpdatedAt *Time `json:"updated_at"`
+	DeletedAt *Time `json:"deleted_at"`
+}
+
+// zeroTime returns a non-nil zero Instant. C#'s ModelBase declares CreatedAt
+// and UpdatedAt non-nullable, so a synthesized status serializes them as
+// 0001-01-01T00:00:00Z instead of omitting the keys. NewTime cannot be used
+// here because it deliberately maps the zero time to nil.
+func zeroTime() *Time {
+	value := Time(time.Time{})
+	return &value
+}
+
+// DefaultAccountStatus mirrors the SnAccountStatus that
+// AccountEventService.GetStatus synthesizes when an account has no active
+// row: neutral attitude, no customization, and the zero Instant for both
+// timestamps. The Dart SDK parses id/created_at/updated_at as non-nullable,
+// so every one of them must be populated; the id is deterministic so repeated
+// reads of the same account keep a stable synthetic identity.
+func DefaultAccountStatus(accountID string, online bool) *AccountStatus {
+	label := "Offline"
+	if online {
+		label = "Online"
+	}
+	return &AccountStatus{
+		Id: uuid.NewSHA1(
+			uuid.NameSpaceURL,
+			[]byte("stargate:default-status:"+accountID),
+		).String(),
+		Attitude:     StatusAttitudeNeutral,
+		Label:        &label,
+		IsCustomized: false,
+		AccountId:    accountID,
+		CreatedAt:    zeroTime(),
+		UpdatedAt:    zeroTime(),
+	}
 }
 
 // PresenceTag mirrors SnPresenceTag: the wire shape of a tag row.
@@ -121,9 +163,9 @@ type PresenceActivity struct {
 	CatalogId      *string              `json:"catalog_id,omitempty"`
 	Catalog        *PresenceCatalogItem `json:"catalog,omitempty"`
 	AccountId      string               `json:"account_id"`
-	CreatedAt      *Time                `json:"created_at,omitempty"`
-	UpdatedAt      *Time                `json:"updated_at,omitempty"`
-	DeletedAt      *Time                `json:"deleted_at,omitempty"`
+	CreatedAt      *Time                `json:"created_at"`
+	UpdatedAt      *Time                `json:"updated_at"`
+	DeletedAt      *Time                `json:"deleted_at"`
 }
 
 // PresenceCatalogItem mirrors SnPresenceCatalogItem; Tags is the wire form of
@@ -148,7 +190,7 @@ type PresenceCatalogItem struct {
 	TotalSeconds   int64              `json:"total_seconds"`
 	SessionCount   int                `json:"session_count"`
 	LastActiveAt   *Time              `json:"last_active_at,omitempty"`
-	CreatedAt      *Time              `json:"created_at,omitempty"`
-	UpdatedAt      *Time              `json:"updated_at,omitempty"`
-	DeletedAt      *Time              `json:"deleted_at,omitempty"`
+	CreatedAt      *Time              `json:"created_at"`
+	UpdatedAt      *Time              `json:"updated_at"`
+	DeletedAt      *Time              `json:"deleted_at"`
 }

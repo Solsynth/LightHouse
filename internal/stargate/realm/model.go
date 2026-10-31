@@ -31,9 +31,9 @@ type Realm struct {
 	BoostPoints        Decimal                           `json:"boost_points"`
 	BoostLevel         int                               `json:"boost_level"`
 	ResourceIdentifier string                            `json:"resource_identifier"`
-	CreatedAt          *model.Time                       `json:"created_at,omitempty"`
-	UpdatedAt          *model.Time                       `json:"updated_at,omitempty"`
-	DeletedAt          *model.Time                       `json:"deleted_at,omitempty"`
+	CreatedAt          *model.Time                       `json:"created_at"`
+	UpdatedAt          *model.Time                       `json:"updated_at"`
+	DeletedAt          *model.Time                       `json:"deleted_at"`
 }
 
 // Label is SnRealmLabel. The realm navigation is [JsonIgnore] in C#.
@@ -45,9 +45,9 @@ type Label struct {
 	Color              *string     `json:"color,omitempty"`
 	Icon               *string     `json:"icon,omitempty"`
 	CreatedByAccountId uuid.UUID   `json:"created_by_account_id"`
-	CreatedAt          *model.Time `json:"created_at,omitempty"`
-	UpdatedAt          *model.Time `json:"updated_at,omitempty"`
-	DeletedAt          *model.Time `json:"deleted_at,omitempty"`
+	CreatedAt          *model.Time `json:"created_at"`
+	UpdatedAt          *model.Time `json:"updated_at"`
+	DeletedAt          *model.Time `json:"deleted_at"`
 }
 
 // Member is SnRealmMember. Level and leveling_progress are the C# [NotMapped]
@@ -65,9 +65,9 @@ type Member struct {
 	Role             int         `json:"role"`
 	JoinedAt         *model.Time `json:"joined_at,omitempty"`
 	LeaveAt          *model.Time `json:"leave_at,omitempty"`
-	CreatedAt        *model.Time `json:"created_at,omitempty"`
-	UpdatedAt        *model.Time `json:"updated_at,omitempty"`
-	DeletedAt        *model.Time `json:"deleted_at,omitempty"`
+	CreatedAt        *model.Time `json:"created_at"`
+	UpdatedAt        *model.Time `json:"updated_at"`
+	DeletedAt        *model.Time `json:"deleted_at"`
 
 	// Hydrated navigations.
 
@@ -90,9 +90,9 @@ type RolePermission struct {
 	CanModerateChat  bool        `json:"can_moderate_chat"`
 	CanManageMembers bool        `json:"can_manage_members"`
 	CanManageRealm   bool        `json:"can_manage_realm"`
-	CreatedAt        *model.Time `json:"created_at,omitempty"`
-	UpdatedAt        *model.Time `json:"updated_at,omitempty"`
-	DeletedAt        *model.Time `json:"deleted_at,omitempty"`
+	CreatedAt        *model.Time `json:"created_at"`
+	UpdatedAt        *model.Time `json:"updated_at"`
+	DeletedAt        *model.Time `json:"deleted_at"`
 }
 
 // UserPermission is SnRealmUserPermission. Nil flags mean "fall through to the
@@ -109,9 +109,9 @@ type UserPermission struct {
 	CanModerateChat  *bool       `json:"can_moderate_chat,omitempty"`
 	CanManageMembers *bool       `json:"can_manage_members,omitempty"`
 	CanManageRealm   *bool       `json:"can_manage_realm,omitempty"`
-	CreatedAt        *model.Time `json:"created_at,omitempty"`
-	UpdatedAt        *model.Time `json:"updated_at,omitempty"`
-	DeletedAt        *model.Time `json:"deleted_at,omitempty"`
+	CreatedAt        *model.Time `json:"created_at"`
+	UpdatedAt        *model.Time `json:"updated_at"`
+	DeletedAt        *model.Time `json:"deleted_at"`
 }
 
 // ExperienceRecord is SnRealmExperienceRecord.
@@ -122,9 +122,9 @@ type ExperienceRecord struct {
 	ReasonType string      `json:"reason_type"`
 	Reason     string      `json:"reason"`
 	Delta      int         `json:"delta"`
-	CreatedAt  *model.Time `json:"created_at,omitempty"`
-	UpdatedAt  *model.Time `json:"updated_at,omitempty"`
-	DeletedAt  *model.Time `json:"deleted_at,omitempty"`
+	CreatedAt  *model.Time `json:"created_at"`
+	UpdatedAt  *model.Time `json:"updated_at"`
+	DeletedAt  *model.Time `json:"deleted_at"`
 }
 
 // BoostStatus is the GET /{slug}/boosts payload.
@@ -322,9 +322,9 @@ type ModerationLog struct {
 	ModeratorAccountId uuid.UUID   `json:"moderator_account_id"`
 	Reason             *string     `json:"reason,omitempty"`
 	ModeratedAt        *model.Time `json:"moderated_at,omitempty"`
-	CreatedAt          *model.Time `json:"created_at,omitempty"`
-	UpdatedAt          *model.Time `json:"updated_at,omitempty"`
-	DeletedAt          *model.Time `json:"deleted_at,omitempty"`
+	CreatedAt          *model.Time `json:"created_at"`
+	UpdatedAt          *model.Time `json:"updated_at"`
+	DeletedAt          *model.Time `json:"deleted_at"`
 }
 
 // ModerationLogFromEntity projects a moderation log row.

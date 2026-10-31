@@ -55,9 +55,9 @@ type AuthSession struct {
 	Location      *GeoPoint   `json:"location,omitempty"`
 	Type          SessionType `json:"type"`
 	AccountId     string      `json:"account_id"`
-	CreatedAt     *Time       `json:"created_at,omitempty"`
-	UpdatedAt     *Time       `json:"updated_at,omitempty"`
-	DeletedAt     *Time       `json:"deleted_at,omitempty"`
+	CreatedAt     *Time       `json:"created_at"`
+	UpdatedAt     *Time       `json:"updated_at"`
+	DeletedAt     *Time       `json:"deleted_at"`
 	IsCurrent     bool        `json:"is_current,omitempty"`
 	ChildrenCount *int        `json:"children_count,omitempty"`
 	// ClientId/ParentSessionId/AppId/ChallengeId/Epoch are persisted columns
@@ -123,9 +123,9 @@ type AuthChallenge struct {
 	ApprovedAt          *Time          `json:"approved_at,omitempty"`
 	DeclinedAt          *Time          `json:"declined_at,omitempty"`
 	ApprovedBySessionId *string        `json:"approved_by_session_id,omitempty"`
-	CreatedAt           *Time          `json:"created_at,omitempty"`
-	UpdatedAt           *Time          `json:"updated_at,omitempty"`
-	DeletedAt           *Time          `json:"deleted_at,omitempty"`
+	CreatedAt           *Time          `json:"created_at"`
+	UpdatedAt           *Time          `json:"updated_at"`
+	DeletedAt           *Time          `json:"deleted_at"`
 	// Purpose discriminates ordinary login challenges from elevation ("sudo")
 	// challenges; empty means an ordinary login challenge.
 	Purpose string `json:"purpose,omitempty"`
@@ -172,9 +172,9 @@ type AuthClient struct {
 	// Trusted indicates whether this device qualifies for challenge
 	// approval/decline.
 	Trusted   bool  `json:"trusted,omitempty"`
-	CreatedAt *Time `json:"created_at,omitempty"`
-	UpdatedAt *Time `json:"updated_at,omitempty"`
-	DeletedAt *Time `json:"deleted_at,omitempty"`
+	CreatedAt *Time `json:"created_at"`
+	UpdatedAt *Time `json:"updated_at"`
+	DeletedAt *Time `json:"deleted_at"`
 }
 
 // AuthClientWithSessions mirrors SnAuthClientWithSessions. Sessions is
@@ -204,10 +204,10 @@ type ApiKey struct {
 	SessionId string  `json:"-"`
 	// Key is only populated on creation/rotation responses.
 	Key       *string `json:"token,omitempty"`
-	CreatedAt *Time   `json:"created_at,omitempty"`
-	UpdatedAt *Time   `json:"updated_at,omitempty"`
+	CreatedAt *Time   `json:"created_at"`
+	UpdatedAt *Time   `json:"updated_at"`
 	ExpiredAt *Time   `json:"expired_at,omitempty"`
-	DeletedAt *Time   `json:"deleted_at,omitempty"`
+	DeletedAt *Time   `json:"deleted_at"`
 }
 
 // AuthorizedApp mirrors SnAuthorizedApp (Padlock Models AuthorizedApp.cs).
@@ -221,9 +221,9 @@ type AuthorizedApp struct {
 	Scopes           []string          `json:"scopes,omitempty"`
 	LastAuthorizedAt *Time             `json:"last_authorized_at,omitempty"`
 	LastUsedAt       *Time             `json:"last_used_at,omitempty"`
-	CreatedAt        *Time             `json:"created_at,omitempty"`
-	UpdatedAt        *Time             `json:"updated_at,omitempty"`
-	DeletedAt        *Time             `json:"deleted_at,omitempty"`
+	CreatedAt        *Time             `json:"created_at"`
+	UpdatedAt        *Time             `json:"updated_at"`
+	DeletedAt        *Time             `json:"deleted_at"`
 }
 
 // AuthorizedAppType mirrors AuthorizedAppType.

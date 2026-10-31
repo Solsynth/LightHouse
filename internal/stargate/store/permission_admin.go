@@ -21,9 +21,9 @@ import (
 type PermissionGroup struct {
 	Id        string      `json:"id"`
 	Key       string      `json:"key"`
-	CreatedAt *model.Time `json:"created_at,omitempty"`
-	UpdatedAt *model.Time `json:"updated_at,omitempty"`
-	DeletedAt *model.Time `json:"deleted_at,omitempty"`
+	CreatedAt *model.Time `json:"created_at"`
+	UpdatedAt *model.Time `json:"updated_at"`
+	DeletedAt *model.Time `json:"deleted_at"`
 }
 
 // PermissionNode mirrors the permission_nodes row.
@@ -36,9 +36,9 @@ type PermissionNode struct {
 	ExpiredAt  *model.Time     `json:"expired_at,omitempty"`
 	AffectedAt *model.Time     `json:"affected_at,omitempty"`
 	GroupId    *string         `json:"group_id,omitempty"`
-	CreatedAt  *model.Time     `json:"created_at,omitempty"`
-	UpdatedAt  *model.Time     `json:"updated_at,omitempty"`
-	DeletedAt  *model.Time     `json:"deleted_at,omitempty"`
+	CreatedAt  *model.Time     `json:"created_at"`
+	UpdatedAt  *model.Time     `json:"updated_at"`
+	DeletedAt  *model.Time     `json:"deleted_at"`
 }
 
 // PermissionMember mirrors the permission_group_members row.
@@ -47,9 +47,9 @@ type PermissionMember struct {
 	Actor      string      `json:"actor"`
 	ExpiredAt  *model.Time `json:"expired_at,omitempty"`
 	AffectedAt *model.Time `json:"affected_at,omitempty"`
-	CreatedAt  *model.Time `json:"created_at,omitempty"`
-	UpdatedAt  *model.Time `json:"updated_at,omitempty"`
-	DeletedAt  *model.Time `json:"deleted_at,omitempty"`
+	CreatedAt  *model.Time `json:"created_at"`
+	UpdatedAt  *model.Time `json:"updated_at"`
+	DeletedAt  *model.Time `json:"deleted_at"`
 }
 
 // PermissionMemberWithGroup adds the group key to a member row.

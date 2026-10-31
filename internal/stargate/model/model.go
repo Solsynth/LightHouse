@@ -1,6 +1,8 @@
 // Package model defines the wire types for the Stargate API. All JSON is
-// snake_case with nulls omitted; enums serialize as integers; times serialize
-// as UTC RFC3339 with second precision via Time.
+// snake_case; enums serialize as integers; times serialize as UTC RFC3339 with
+// second precision via Time. Optional fields are omitted when unset, except
+// created_at/updated_at/deleted_at, which the Dart SDK expects on every record
+// (as null when unset).
 package model
 
 import (
@@ -50,8 +52,8 @@ type SnSubscriptionReferenceObject struct {
 	BasePrice  string `json:"base_price,omitempty"`
 	FinalPrice string `json:"final_price,omitempty"`
 	AccountId  string `json:"account_id"`
-	CreatedAt  *Time  `json:"created_at,omitempty"`
-	UpdatedAt  *Time  `json:"updated_at,omitempty"`
+	CreatedAt  *Time  `json:"created_at"`
+	UpdatedAt  *Time  `json:"updated_at"`
 }
 
 // SnVerificationMark is the verification mark embedded in profiles.

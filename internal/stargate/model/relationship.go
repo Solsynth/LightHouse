@@ -10,9 +10,9 @@ type Relationship struct {
 	DegradeToStatus *RelationshipStatus `json:"degrade_to_status,omitempty"`
 	Status          RelationshipStatus  `json:"status"`
 	Alias           *string             `json:"alias,omitempty"`
-	CreatedAt       *Time               `json:"created_at,omitempty"`
-	UpdatedAt       *Time               `json:"updated_at,omitempty"`
-	DeletedAt       *Time               `json:"deleted_at,omitempty"`
+	CreatedAt       *Time               `json:"created_at"`
+	UpdatedAt       *Time               `json:"updated_at"`
+	DeletedAt       *Time               `json:"deleted_at"`
 }
 
 // RelationshipStatus mirrors RelationshipStatus (Shared Account.cs).

@@ -24,8 +24,9 @@ func TestAccountEventEnumValues(t *testing.T) {
 }
 
 // TestAccountStatusWireShape pins the JSON contract: snake_case keys, integers
-// for enums, RFC3339 UTC "Z" instants, nulls omitted — except the presence
-// flags C# always emits (is_online, is_idle, is_customized, is_automated).
+// for enums, RFC3339 UTC "Z" instants, nulls omitted for optional fields —
+// except the presence flags C# always emits and the created_at/updated_at/
+// deleted_at trio the Dart SDK requires to be present.
 func TestAccountStatusWireShape(t *testing.T) {
 	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
 	label := "Online"
@@ -55,13 +56,16 @@ func TestAccountStatusWireShape(t *testing.T) {
 	for _, key := range []string{
 		"id", "account_id", "attitude", "type", "label", "is_online",
 		"is_automated", "is_idle", "is_customized", "is_invisible",
-		"is_not_disturb", "created_at", "updated_at",
+		"is_not_disturb", "created_at", "updated_at", "deleted_at",
 	} {
 		if _, ok := decoded[key]; !ok {
 			t.Errorf("%s missing from status JSON", key)
 		}
 	}
-	for _, key := range []string{"cleared_at", "symbol", "icon", "background", "meta", "app_identifier", "idle_since", "deleted_at"} {
+	if decoded["deleted_at"] != nil {
+		t.Errorf("deleted_at = %v, want null", decoded["deleted_at"])
+	}
+	for _, key := range []string{"cleared_at", "symbol", "icon", "background", "meta", "app_identifier", "idle_since"} {
 		if _, ok := decoded[key]; ok {
 			t.Errorf("%s must be omitted when unset", key)
 		}
@@ -94,6 +98,37 @@ func TestAccountStatusWireShape(t *testing.T) {
 	}
 }
 
+// TestDefaultAccountStatusWireShape pins the synthesized no-row status: the
+// Dart SDK parses id, created_at and updated_at as non-nullable, so all three
+// must be present even though there is no database row.
+func TestDefaultAccountStatusWireShape(t *testing.T) {
+	status := DefaultAccountStatus("22222222-2222-2222-2222-222222222222", true)
+	raw, err := json.Marshal(status)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if id, _ := decoded["id"].(string); id == "" {
+		t.Error("id is empty; the SDK expects a non-nullable string")
+	}
+	for _, key := range []string{"created_at", "updated_at"} {
+		value, ok := decoded[key].(string)
+		if !ok || value == "" {
+			t.Errorf("%s = %v, want a non-null RFC3339 string", key, decoded[key])
+			continue
+		}
+		if _, err := time.Parse(time.RFC3339, value); err != nil {
+			t.Errorf("%s = %q, want RFC3339: %v", key, value, err)
+		}
+	}
+	if decoded["label"] != "Online" || decoded["is_customized"] != false {
+		t.Errorf("default status = %v, want the Online/uncustomized projection", decoded)
+	}
+}
+
 // TestPresenceActivityWireShape pins the activity/catalog JSON contract.
 func TestPresenceActivityWireShape(t *testing.T) {
 	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
@@ -122,9 +157,19 @@ func TestPresenceActivityWireShape(t *testing.T) {
 			t.Errorf("%s missing from activity JSON", key)
 		}
 	}
-	for _, key := range []string{"type", "provider", "reference_id", "manual_id", "subtitle", "caption", "meta", "started_at", "ended_at", "catalog_id", "catalog", "large_image", "small_image", "title_url", "subtitle_url", "deleted_at"} {
+	for _, key := range []string{"type", "provider", "reference_id", "manual_id", "subtitle", "caption", "meta", "started_at", "ended_at", "catalog_id", "catalog", "large_image", "small_image", "title_url", "subtitle_url"} {
 		if _, ok := decoded[key]; ok {
 			t.Errorf("%s must be omitted when unset", key)
+		}
+	}
+	for _, key := range []string{"created_at", "updated_at", "deleted_at"} {
+		value, ok := decoded[key]
+		if !ok {
+			t.Errorf("%s missing from activity JSON", key)
+			continue
+		}
+		if value != nil {
+			t.Errorf("%s = %v, want null", key, value)
 		}
 	}
 	if got, _ := decoded["visibility"].(float64); got != 2 {

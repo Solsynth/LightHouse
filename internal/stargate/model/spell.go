@@ -24,9 +24,9 @@ type MagicSpell struct {
 	Meta       map[string]any `json:"meta"`
 	AccountId  string         `json:"account_id,omitempty"`
 	Account    *Account       `json:"account,omitempty"` // hydrated on GET
-	CreatedAt  *Time          `json:"created_at,omitempty"`
-	UpdatedAt  *Time          `json:"updated_at,omitempty"`
-	DeletedAt  *Time          `json:"deleted_at,omitempty"`
+	CreatedAt  *Time          `json:"created_at"`
+	UpdatedAt  *Time          `json:"updated_at"`
+	DeletedAt  *Time          `json:"deleted_at"`
 }
 
 // AffiliationSpellType mirrors the AffiliationSpellType enum (stored as int).
@@ -46,9 +46,9 @@ type AffiliationSpell struct {
 	AffectedAt *Time                `json:"affected_at,omitempty"`
 	Meta       map[string]any       `json:"meta"`
 	AccountId  string               `json:"account_id,omitempty"`
-	CreatedAt  *Time                `json:"created_at,omitempty"`
-	UpdatedAt  *Time                `json:"updated_at,omitempty"`
-	DeletedAt  *Time                `json:"deleted_at,omitempty"`
+	CreatedAt  *Time                `json:"created_at"`
+	UpdatedAt  *Time                `json:"updated_at"`
+	DeletedAt  *Time                `json:"deleted_at"`
 }
 
 // AffiliationResult mirrors SnAffiliationResult: who used an affiliation spell.
@@ -56,7 +56,7 @@ type AffiliationResult struct {
 	Id                 string `json:"id"`
 	ResourceIdentifier string `json:"resource_identifier"`
 	SpellId            string `json:"spell_id"`
-	CreatedAt          *Time  `json:"created_at,omitempty"`
-	UpdatedAt          *Time  `json:"updated_at,omitempty"`
-	DeletedAt          *Time  `json:"deleted_at,omitempty"`
+	CreatedAt          *Time  `json:"created_at"`
+	UpdatedAt          *Time  `json:"updated_at"`
+	DeletedAt          *Time  `json:"deleted_at"`
 }

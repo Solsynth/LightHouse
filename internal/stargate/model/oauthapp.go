@@ -25,9 +25,9 @@ type OAuthApp struct {
 	// (nil when the app has none).
 	Picture    *SnCloudFileReferenceObject `json:"picture,omitempty"`
 	Background *SnCloudFileReferenceObject `json:"background,omitempty"`
-	CreatedAt  *Time                       `json:"created_at,omitempty"`
-	UpdatedAt  *Time                       `json:"updated_at,omitempty"`
-	DeletedAt  *Time                       `json:"deleted_at,omitempty"`
+	CreatedAt  *Time                       `json:"created_at"`
+	UpdatedAt  *Time                       `json:"updated_at"`
+	DeletedAt  *Time                       `json:"deleted_at"`
 }
 
 // OAuthAppOauthConfig mirrors SnCustomAppOauthConfig.
@@ -58,6 +58,6 @@ type OAuthAppSecret struct {
 	Description string `json:"description"`
 	ExpiredAt   *Time  `json:"expired_at,omitempty"`
 	IsOidc      bool   `json:"is_oidc"`
-	CreatedAt   *Time  `json:"created_at,omitempty"`
-	UpdatedAt   *Time  `json:"updated_at,omitempty"`
+	CreatedAt   *Time  `json:"created_at"`
+	UpdatedAt   *Time  `json:"updated_at"`
 }

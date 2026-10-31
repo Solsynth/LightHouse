@@ -19,9 +19,9 @@ type Account struct {
 	// PerkSubscription is hydrated from the wallet service when available.
 	PerkSubscription *SnSubscriptionReferenceObject `json:"perk_subscription,omitempty"`
 	PerkLevel        int                            `json:"perk_level"`
-	CreatedAt        *Time                          `json:"created_at,omitempty"`
-	UpdatedAt        *Time                          `json:"updated_at,omitempty"`
-	DeletedAt        *Time                          `json:"deleted_at,omitempty"`
+	CreatedAt        *Time                          `json:"created_at"`
+	UpdatedAt        *Time                          `json:"updated_at"`
+	DeletedAt        *Time                          `json:"deleted_at"`
 }
 
 // Profile is the account profile (SnAccountProfile).
@@ -50,9 +50,9 @@ type Profile struct {
 	Picture            *SnCloudFileReferenceObject `json:"picture,omitempty"`
 	Background         *SnCloudFileReferenceObject `json:"background,omitempty"`
 	AccountId          string                      `json:"account_id,omitempty"`
-	CreatedAt          *Time                       `json:"created_at,omitempty"`
-	UpdatedAt          *Time                       `json:"updated_at,omitempty"`
-	DeletedAt          *Time                       `json:"deleted_at,omitempty"`
+	CreatedAt          *Time                       `json:"created_at"`
+	UpdatedAt          *Time                       `json:"updated_at"`
+	DeletedAt          *Time                       `json:"deleted_at"`
 }
 
 // Link mirrors SnProfileLink.
@@ -70,9 +70,9 @@ type Contact struct {
 	IsPublic   bool   `json:"is_public"`
 	Content    string `json:"content"`
 	AccountId  string `json:"account_id"`
-	CreatedAt  *Time  `json:"created_at,omitempty"`
-	UpdatedAt  *Time  `json:"updated_at,omitempty"`
-	DeletedAt  *Time  `json:"deleted_at,omitempty"`
+	CreatedAt  *Time  `json:"created_at"`
+	UpdatedAt  *Time  `json:"updated_at"`
+	DeletedAt  *Time  `json:"deleted_at"`
 }
 
 // ContactType mirrors AccountContactType.
@@ -92,9 +92,9 @@ type AuthFactor struct {
 	EnabledAt       *Time          `json:"enabled_at,omitempty"`
 	ExpiredAt       *Time          `json:"expired_at,omitempty"`
 	AccountId       string         `json:"account_id"`
-	CreatedAt       *Time          `json:"created_at,omitempty"`
-	UpdatedAt       *Time          `json:"updated_at,omitempty"`
-	DeletedAt       *Time          `json:"deleted_at,omitempty"`
+	CreatedAt       *Time          `json:"created_at"`
+	UpdatedAt       *Time          `json:"updated_at"`
+	DeletedAt       *Time          `json:"deleted_at"`
 	CreatedResponse map[string]any `json:"created_response,omitempty"`
 	// Secret is the bcrypt/TOTP/recovery secret; never serialized.
 	Secret string `json:"-"`
@@ -126,9 +126,9 @@ type Connection struct {
 	LastUsedAt         *Time          `json:"last_used_at,omitempty"`
 	IsPublic           bool           `json:"is_public"`
 	AccountId          string         `json:"account_id"`
-	CreatedAt          *Time          `json:"created_at,omitempty"`
-	UpdatedAt          *Time          `json:"updated_at,omitempty"`
-	DeletedAt          *Time          `json:"deleted_at,omitempty"`
+	CreatedAt          *Time          `json:"created_at"`
+	UpdatedAt          *Time          `json:"updated_at"`
+	DeletedAt          *Time          `json:"deleted_at"`
 	// RegisteredAt is set when this connection created the account (OIDC
 	// registration); NULL for connections linked after account creation.
 	// Registration connections cannot be removed by the account owner.
@@ -145,9 +145,9 @@ type Passkey struct {
 	Label        string `json:"label"`
 	CredentialId string `json:"-"`
 	Credential   string `json:"-"`
-	CreatedAt    *Time  `json:"created_at,omitempty"`
-	UpdatedAt    *Time  `json:"updated_at,omitempty"`
-	DeletedAt    *Time  `json:"deleted_at,omitempty"`
+	CreatedAt    *Time  `json:"created_at"`
+	UpdatedAt    *Time  `json:"updated_at"`
+	DeletedAt    *Time  `json:"deleted_at"`
 }
 
 // PasskeyCredential mirrors AccountService.PasskeyCredential (Padlock): the
@@ -171,9 +171,9 @@ type Punishment struct {
 	BlockedPermissions []string       `json:"blocked_permissions,omitempty"`
 	AccountId          string         `json:"account_id"`
 	CreatorId          *string        `json:"creator_id,omitempty"`
-	CreatedAt          *Time          `json:"created_at,omitempty"`
-	UpdatedAt          *Time          `json:"updated_at,omitempty"`
-	DeletedAt          *Time          `json:"deleted_at,omitempty"`
+	CreatedAt          *Time          `json:"created_at"`
+	UpdatedAt          *Time          `json:"updated_at"`
+	DeletedAt          *Time          `json:"deleted_at"`
 }
 
 // PunishmentType mirrors PunishmentType.

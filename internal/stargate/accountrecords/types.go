@@ -56,9 +56,9 @@ type ExperienceRecord struct {
 	Delta           int64       `json:"delta"`
 	BonusMultiplier float64     `json:"bonus_multiplier"`
 	AccountId       uuid.UUID   `json:"account_id"`
-	CreatedAt       *model.Time `json:"created_at,omitempty"`
-	UpdatedAt       *model.Time `json:"updated_at,omitempty"`
-	DeletedAt       *model.Time `json:"deleted_at,omitempty"`
+	CreatedAt       *model.Time `json:"created_at"`
+	UpdatedAt       *model.Time `json:"updated_at"`
+	DeletedAt       *model.Time `json:"deleted_at"`
 }
 
 // SocialCreditRecord is the wire shape of SnSocialCreditRecord.
@@ -70,9 +70,9 @@ type SocialCreditRecord struct {
 	Status     int         `json:"status"`
 	ExpiredAt  *model.Time `json:"expired_at,omitempty"`
 	AccountId  uuid.UUID   `json:"account_id"`
-	CreatedAt  *model.Time `json:"created_at,omitempty"`
-	UpdatedAt  *model.Time `json:"updated_at,omitempty"`
-	DeletedAt  *model.Time `json:"deleted_at,omitempty"`
+	CreatedAt  *model.Time `json:"created_at"`
+	UpdatedAt  *model.Time `json:"updated_at"`
+	DeletedAt  *model.Time `json:"deleted_at"`
 }
 
 // Badge is the wire shape of SnAccountBadge.
@@ -85,9 +85,9 @@ type Badge struct {
 	ActivatedAt *model.Time    `json:"activated_at,omitempty"`
 	ExpiredAt   *model.Time    `json:"expired_at,omitempty"`
 	AccountId   uuid.UUID      `json:"account_id"`
-	CreatedAt   *model.Time    `json:"created_at,omitempty"`
-	UpdatedAt   *model.Time    `json:"updated_at,omitempty"`
-	DeletedAt   *model.Time    `json:"deleted_at,omitempty"`
+	CreatedAt   *model.Time    `json:"created_at"`
+	UpdatedAt   *model.Time    `json:"updated_at"`
+	DeletedAt   *model.Time    `json:"deleted_at"`
 }
 
 // BoardItem is the wire shape of SnAccountBoardItem.
@@ -101,9 +101,9 @@ type BoardItem struct {
 	CustomAppWidgetKey *string        `json:"custom_app_widget_key,omitempty"`
 	IsEnabled          bool           `json:"is_enabled"`
 	Payload            map[string]any `json:"payload"`
-	CreatedAt          *model.Time    `json:"created_at,omitempty"`
-	UpdatedAt          *model.Time    `json:"updated_at,omitempty"`
-	DeletedAt          *model.Time    `json:"deleted_at,omitempty"`
+	CreatedAt          *model.Time    `json:"created_at"`
+	UpdatedAt          *model.Time    `json:"updated_at"`
+	DeletedAt          *model.Time    `json:"deleted_at"`
 }
 
 // BoardItemRequest is the PUT /board body (both the self and admin routes use

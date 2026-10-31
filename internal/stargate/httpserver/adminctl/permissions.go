@@ -28,8 +28,8 @@ type permissionGroupSummary struct {
 	Key         string      `json:"key"`
 	NodeCount   int         `json:"node_count"`
 	MemberCount int         `json:"member_count"`
-	CreatedAt   *model.Time `json:"created_at,omitempty"`
-	UpdatedAt   *model.Time `json:"updated_at,omitempty"`
+	CreatedAt   *model.Time `json:"created_at"`
+	UpdatedAt   *model.Time `json:"updated_at"`
 }
 
 // permissionGroupDetailResponse mirrors PermissionGroupDetailResponse.

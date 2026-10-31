@@ -484,6 +484,42 @@ func decodeBody[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
 
 // ─────────────────────────  tests  ─────────────────────────
 
+// TestDefaultStatusWireContract pins the synthesized no-row status returned by
+// GET /api/accounts/me/statuses: the Dart SDK parses id, created_at and
+// updated_at as non-nullable, so the default status must carry all three.
+func TestDefaultStatusWireContract(t *testing.T) {
+	h := newHarness(t)
+	h.presence.online = true
+
+	rec := h.do(t, http.MethodGet, "/api/accounts/me/statuses", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var status map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode status: %v", err)
+	}
+	if id, _ := status["id"].(string); id == "" {
+		t.Errorf("id = %v, want a non-empty string", status["id"])
+	}
+	for _, key := range []string{"created_at", "updated_at"} {
+		value, ok := status[key].(string)
+		if !ok || value == "" {
+			t.Errorf("%s = %v, want a non-null RFC3339 string", key, status[key])
+			continue
+		}
+		if _, err := time.Parse(time.RFC3339, value); err != nil {
+			t.Errorf("%s = %q, want RFC3339: %v", key, value, err)
+		}
+	}
+	if _, ok := status["deleted_at"]; !ok {
+		t.Error("deleted_at missing; the key must be present even when null")
+	}
+	if status["label"] != "Online" || status["is_customized"] != false {
+		t.Errorf("status = %v, want the Online/uncustomized projection", status)
+	}
+}
+
 // TestPatchAutomatedRejections pins the two automated-status rejections of
 // PATCH /statuses and their order (both answer 400
 // PASSPORT_STATUS_AUTOMATED_NO_UPDATE, the missing-row 404 after them).
