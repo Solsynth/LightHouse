@@ -68,12 +68,14 @@ func normalize(descriptor protoreflect.MessageDescriptor, value any) any {
 		}
 		object[key] = normalizeField(field, item)
 	}
-	// DyBadgeReferenceObject models C# SnAccountBadgeRef, which embeds
-	// ModelBase. The proto has no timestamp fields, so protojson omits keys the
-	// C# wire shape always carried. Dart's SnAccountBadge casts created_at and
-	// updated_at as non-null strings, so a profile with an active badge fails
-	// to deserialize — and with it every chat summary carrying that sender.
-	if descriptor.FullName() == "proto.DyBadgeReferenceObject" {
+	// ModelBase-shaped fleet messages always carry created_at/updated_at (and
+	// a nullable deleted_at) in the C# wire shape. protojson emits null for an
+	// unset Timestamp, and reference objects such as SnAccountBadgeRef have no
+	// timestamp fields in the proto at all. Dart parses createdAt/updatedAt
+	// with DateTime.parse, so restore the zero Instant wherever C# would have
+	// serialized it.
+	switch descriptor.FullName() {
+	case "proto.DyBadgeReferenceObject", "proto.DyAccountStatus":
 		fillModelTimestamps(object)
 	}
 	return object
@@ -83,15 +85,15 @@ func normalize(descriptor protoreflect.MessageDescriptor, value any) any {
 const zeroInstant = "0001-01-01T00:00:00Z"
 
 // fillModelTimestamps restores the ModelBase keys System.Text.Json always
-// emitted for model-shaped reference objects.
+// emitted for model-shaped messages. An unset proto Timestamp decodes as a
+// present null, so a missing key and a null value are both replaced.
 func fillModelTimestamps(object map[string]any) {
-	if _, ok := object["created_at"]; !ok {
-		object["created_at"] = zeroInstant
+	for _, key := range []string{"created_at", "updated_at"} {
+		if value, ok := object[key]; !ok || value == nil {
+			object[key] = zeroInstant
+		}
 	}
-	if _, ok := object["updated_at"]; !ok {
-		object["updated_at"] = zeroInstant
-	}
-	if _, ok := object["deleted_at"]; !ok {
+	if value, ok := object["deleted_at"]; !ok || value == nil {
 		object["deleted_at"] = nil
 	}
 }
@@ -146,9 +148,10 @@ var alwaysObjectBlobs = map[protoreflect.FullName]bool{
 	"proto.DyCloudFile.user_meta": true,
 }
 
-// decodeJSONBlob turns a base64 `bytes` value into the JSON it encodes. Bytes
-// that are not a JSON object or array (ciphertext, key packages) keep their
-// base64 form, because that is what their consumers expect.
+// decodeJSONBlob turns a base64 `bytes` value into the JSON it encodes. JSON
+// objects, arrays and the literal null are decoded; other bytes (ciphertext,
+// key packages) keep their base64 form, because that is what their consumers
+// expect.
 func decodeJSONBlob(field protoreflect.FieldDescriptor, value any) any {
 	encoded, ok := value.(string)
 	if !ok {
@@ -165,7 +168,13 @@ func decodeJSONBlob(field protoreflect.FieldDescriptor, value any) any {
 		return value
 	}
 	trimmed := bytes.TrimSpace(raw)
-	if len(trimmed) == 0 || (trimmed[0] != '{' && trimmed[0] != '[') {
+	// Objects and arrays are the jsonb columns clients parse; the literal
+	// "null" is how InfraObjectCoder encodes a nil dictionary (for example an
+	// unset account-status meta), so it must become JSON null rather than
+	// leak through as base64. Other scalars stay base64 because binary
+	// payloads can start with a digit or letter.
+	if len(trimmed) == 0 ||
+		(trimmed[0] != '{' && trimmed[0] != '[' && !bytes.Equal(trimmed, []byte("null"))) {
 		return value
 	}
 	decoder := json.NewDecoder(bytes.NewReader(trimmed))
@@ -192,6 +201,20 @@ func enumNumber(field protoreflect.FieldDescriptor, value any) any {
 	for index := range values.Len() {
 		entry := values.Get(index)
 		if string(entry.Name()) == name {
+			// StatusAttitude is the fleet enum whose proto numbering does not
+			// match the C# model: the proto inserts Unspecified at 0, while
+			// StatusAttitude starts at Positive. SnAccountStatus.FromProtoValue
+			// maps Positive/Negative explicitly and everything else to Neutral.
+			if enum.FullName() == "proto.DyStatusAttitude" {
+				switch entry.Number() {
+				case 1:
+					return int64(0)
+				case 2:
+					return int64(1)
+				default:
+					return int64(2)
+				}
+			}
 			return int64(entry.Number())
 		}
 	}

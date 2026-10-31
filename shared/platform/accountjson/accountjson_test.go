@@ -127,6 +127,60 @@ func TestFromProtoRestoresBadgeRefTimestamps(t *testing.T) {
 	}
 }
 
+// InfraObjectCoder encodes a nil dictionary as the literal "null". That is
+// still JSON, so the adapter must expose it as JSON null rather than leaving
+// the base64 blob (bnVsbA==) in the wire payload.
+func TestMessageDecodesJSONNullBlob(t *testing.T) {
+	status := &gen.DyAccountStatus{AccountId: "acc-1", Meta: []byte("null")}
+
+	embedded := wireMap(t, accountjson.Message(status))
+	value, ok := embedded["meta"]
+	if !ok {
+		t.Fatal("meta is missing from the status payload")
+	}
+	if value != nil {
+		t.Errorf("meta = %#v (%T), want JSON null", value, value)
+	}
+}
+
+// DyAccountStatus embeds ModelBase. A producer that omits the timestamps must
+// still produce the C# wire shape: the zero Instant for created_at/updated_at
+// and null for deleted_at.
+func TestMessageFillsStatusModelTimestamps(t *testing.T) {
+	status := &gen.DyAccountStatus{AccountId: "acc-1"}
+
+	embedded := wireMap(t, accountjson.Message(status))
+	for _, key := range []string{"created_at", "updated_at"} {
+		if embedded[key] != "0001-01-01T00:00:00Z" {
+			t.Errorf("status.%s = %#v, want the zero Instant", key, embedded[key])
+		}
+	}
+	if value, ok := embedded["deleted_at"]; !ok || value != nil {
+		t.Errorf("status.deleted_at = %#v (present %v), want null", value, ok)
+	}
+}
+
+// StatusAttitude is the enum whose proto numbering shifts because of the
+// UNSPECIFIED zero. The C# SnAccountStatus.FromProtoValue mapped it back to
+// the model values, so chat/status payloads must not expose 3 for Neutral.
+func TestMessageMapsStatusAttitudeToModelValues(t *testing.T) {
+	for _, tc := range []struct {
+		proto gen.DyStatusAttitude
+		want  float64
+	}{
+		{gen.DyStatusAttitude_DY_POSITIVE, 0},
+		{gen.DyStatusAttitude_DY_NEGATIVE, 1},
+		{gen.DyStatusAttitude_DY_NEUTRAL, 2},
+		{gen.DyStatusAttitude_DY_STATUS_ATTITUDE_UNSPECIFIED, 2},
+	} {
+		status := &gen.DyAccountStatus{AccountId: "acc-1", Attitude: tc.proto}
+		embedded := wireMap(t, accountjson.Message(status))
+		if embedded["attitude"] != tc.want {
+			t.Errorf("attitude(%d) = %#v, want %v", tc.proto, embedded["attitude"], tc.want)
+		}
+	}
+}
+
 // Enums travel as the integers the C# fleet serialized (declaration order),
 // not as protojson's name strings.
 func TestFromProtoEmitsEnumNumbers(t *testing.T) {
