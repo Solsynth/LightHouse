@@ -10,9 +10,6 @@ configs/config.toml
 
 # Build output and docs
 bin
-gateway
-relay
-blade
 *.test
 docs
 docker-compose*.yml
