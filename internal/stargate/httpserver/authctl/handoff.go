@@ -110,10 +110,33 @@ func registerHandoff(authGroup *gin.RouterGroup, h *handler) {
 		Clients: h.handoffClients,
 		Renew:   h.handoffRenew,
 	})
-	handoff.MountToken(authGroup, handoff.TokenEndpointDeps{
-		Session:    h.handoffSession,
-		Mint:       h.handoffTokenMint,
-		Middleware: []gin.HandlerFunc{middleware.RequireAuth(), middleware.RequireInteractive()},
+	authGroup.POST("/handoff/token", middleware.RequireAuth(), middleware.RequireInteractive(), func(c *gin.Context) {
+		var req struct {
+			ClientID    string `json:"client_id,omitempty"`
+			RedirectURI string `json:"redirect_uri,omitempty"`
+			TargetURI   string `json:"target_uri,omitempty"`
+		}
+		_ = c.ShouldBindJSON(&req)
+		session, ok := h.handoffSession(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, errs.Unauthorized(""))
+			return
+		}
+		target := strings.TrimSpace(req.TargetURI)
+		if target == "" {
+			target = strings.TrimSpace(req.RedirectURI)
+		}
+		response, err := h.handoffTokenMint(c.Request.Context(), session, target)
+		if err != nil {
+			status := handoff.HTTPStatusForError(err)
+			code := handoff.ErrorCodeFor(err)
+			c.JSON(status, gin.H{
+				"error":             code,
+				"error_description": err.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusOK, response)
 	})
 }
 

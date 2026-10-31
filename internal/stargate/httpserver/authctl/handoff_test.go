@@ -356,7 +356,7 @@ func TestHandoffTokenMintsFreshTokenForAllowedTarget(t *testing.T) {
 
 	// A target under cookieDomain (e.g. https://fs.solian.app/picker with cookieDomain = .solian.app)
 	h.cfg.Auth.CookieDomain = ".solian.app"
-	status, body := h.post(t, "/api/auth"+handoff.TokenPathSuffix, map[string]any{
+	status, body := h.post(t, "/api/auth/handoff/token", map[string]any{
 		"target_uri": "https://fs.solian.app/picker",
 	})
 	if status != http.StatusOK {
@@ -371,7 +371,7 @@ func TestHandoffTokenMintsFreshTokenForAllowedTarget(t *testing.T) {
 	}
 
 	// An allowed hand-off host target (dx.solsynth.dev)
-	status, body = h.post(t, "/api/auth"+handoff.TokenPathSuffix, map[string]any{
+	status, body = h.post(t, "/api/auth/handoff/token", map[string]any{
 		"target_uri": "https://dx.solsynth.dev/picker",
 	})
 	if status != http.StatusOK {
@@ -379,7 +379,7 @@ func TestHandoffTokenMintsFreshTokenForAllowedTarget(t *testing.T) {
 	}
 
 	// An unauthorized target must be refused
-	status, _ = h.post(t, "/api/auth"+handoff.TokenPathSuffix, map[string]any{
+	status, _ = h.post(t, "/api/auth/handoff/token", map[string]any{
 		"target_uri": "https://attacker.example.com/picker",
 	})
 	if status != http.StatusBadRequest {
