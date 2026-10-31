@@ -155,6 +155,27 @@ func TestRelationshipRPCFriendsFamily(t *testing.T) {
 	if !has.Value {
 		t.Error("HasRelationship(status=CloseFriend) on a CloseFriend row = false, want true")
 	}
+
+	// ListCloseFriends supports both account_id and related_id directions.
+	closeList, err := client.ListCloseFriends(ctx, &gen.DyListRelationshipSimpleRequest{
+		RelationIdentifier: &gen.DyListRelationshipSimpleRequest_AccountId{AccountId: viewer},
+	})
+	if err != nil {
+		t.Fatalf("ListCloseFriends(account_id): %v", err)
+	}
+	if len(closeList.AccountsId) != 1 || closeList.AccountsId[0] != closeFriend {
+		t.Errorf("ListCloseFriends(account_id) = %v, want [%s]", closeList.AccountsId, closeFriend)
+	}
+
+	reverseCloseList, err := client.ListCloseFriends(ctx, &gen.DyListRelationshipSimpleRequest{
+		RelationIdentifier: &gen.DyListRelationshipSimpleRequest_RelatedId{RelatedId: closeFriend},
+	})
+	if err != nil {
+		t.Fatalf("ListCloseFriends(related_id): %v", err)
+	}
+	if len(reverseCloseList.AccountsId) != 1 || reverseCloseList.AccountsId[0] != viewer {
+		t.Errorf("ListCloseFriends(related_id) = %v, want [%s]", reverseCloseList.AccountsId, viewer)
+	}
 }
 
 // TestRelationshipRPCExpiredExcluded pins that expired rows are invisible to
@@ -238,7 +259,7 @@ func TestRelationshipRPCInvalidArguments(t *testing.T) {
 		t.Errorf("ListFriends missing identifier: code = %v, want InvalidArgument", status.Code(err))
 	}
 
-	// ListMuted/ListCloseFriends reject related_id (the C# only took account_id).
+	// ListMuted rejects related_id (the C# only took account_id).
 	_, err = client.ListMuted(ctx, &gen.DyListRelationshipSimpleRequest{
 		RelationIdentifier: &gen.DyListRelationshipSimpleRequest_RelatedId{RelatedId: uuid.NewString()},
 	})
@@ -247,6 +268,14 @@ func TestRelationshipRPCInvalidArguments(t *testing.T) {
 	}
 	if status.Convert(err).Message() != "The account_id must be provided." {
 		t.Errorf("ListMuted related_id message = %q, want the C# wording", status.Convert(err).Message())
+	}
+
+	// ListCloseFriends accepts related_id (used by timeline to resolve viewers on the far side).
+	_, err = client.ListCloseFriends(ctx, &gen.DyListRelationshipSimpleRequest{
+		RelationIdentifier: &gen.DyListRelationshipSimpleRequest_RelatedId{RelatedId: "not-a-uuid"},
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Errorf("ListCloseFriends unparsable related_id: code = %v, want InvalidArgument", status.Code(err))
 	}
 }
 

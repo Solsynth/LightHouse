@@ -212,21 +212,41 @@ func (s *service) relationshipIDs(ctx context.Context, accountID uuid.UUID, kind
 	if s.clients == nil || s.clients.Profile == nil {
 		return nil
 	}
-	request := &gen.DyListRelationshipSimpleRequest{
-		RelationIdentifier: &gen.DyListRelationshipSimpleRequest_RelatedId{RelatedId: accountID.String()},
-	}
 	var (
 		resp *gen.DyListRelationshipSimpleResponse
 		err  error
 	)
 	switch kind {
 	case "blocked":
-		resp, err = s.clients.Profile.ListBlocked(ctx, request)
+		// Query both directions so blocked accounts cannot see each other's posts.
+		accountReq := &gen.DyListRelationshipSimpleRequest{
+			RelationIdentifier: &gen.DyListRelationshipSimpleRequest_AccountId{AccountId: accountID.String()},
+		}
+		resp, err = s.clients.Profile.ListBlocked(ctx, accountReq)
+		if err == nil && resp != nil {
+			relatedReq := &gen.DyListRelationshipSimpleRequest{
+				RelationIdentifier: &gen.DyListRelationshipSimpleRequest_RelatedId{RelatedId: accountID.String()},
+			}
+			if relatedResp, relErr := s.clients.Profile.ListBlocked(ctx, relatedReq); relErr == nil && relatedResp != nil {
+				resp.AccountsId = append(resp.AccountsId, relatedResp.GetAccountsId()...)
+			}
+		}
 	case "muted":
+		// Muted accounts: the viewer only queries accounts they have muted.
+		request := &gen.DyListRelationshipSimpleRequest{
+			RelationIdentifier: &gen.DyListRelationshipSimpleRequest_AccountId{AccountId: accountID.String()},
+		}
 		resp, err = s.clients.Profile.ListMuted(ctx, request)
 	case "close_friends":
+		// Close friends: timeline needs publishers of authors who added the viewer as a close friend.
+		request := &gen.DyListRelationshipSimpleRequest{
+			RelationIdentifier: &gen.DyListRelationshipSimpleRequest_RelatedId{RelatedId: accountID.String()},
+		}
 		resp, err = s.clients.Profile.ListCloseFriends(ctx, request)
 	default:
+		request := &gen.DyListRelationshipSimpleRequest{
+			RelationIdentifier: &gen.DyListRelationshipSimpleRequest_AccountId{AccountId: accountID.String()},
+		}
 		resp, err = s.clients.Profile.ListFriends(ctx, request)
 	}
 	if err != nil {
@@ -234,9 +254,13 @@ func (s *service) relationshipIDs(ctx context.Context, accountID uuid.UUID, kind
 		return nil
 	}
 	out := make([]uuid.UUID, 0, len(resp.GetAccountsId()))
+	seen := make(map[uuid.UUID]struct{}, len(resp.GetAccountsId()))
 	for _, raw := range resp.GetAccountsId() {
 		if id, err := uuid.Parse(raw); err == nil {
-			out = append(out, id)
+			if _, ok := seen[id]; !ok {
+				seen[id] = struct{}{}
+				out = append(out, id)
+			}
 		}
 	}
 	return out

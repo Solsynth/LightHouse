@@ -139,10 +139,11 @@ func (r *relationshipRPCs) ListMuted(ctx context.Context, req *gen.DyListRelatio
 	return r.list(ctx, req, "ListMuted", model.RelationshipMuted, false)
 }
 
-// ListCloseFriends mirrors AccountServiceGrpc.ListCloseFriends. Like
-// ListMuted, the C# only accepts account_id.
+// ListCloseFriends mirrors AccountServiceGrpc.ListCloseFriends.
+// The account_id variant lists the account's close friends; the related_id
+// variant lists the accounts that have it as their close friend (isRelated).
 func (r *relationshipRPCs) ListCloseFriends(ctx context.Context, req *gen.DyListRelationshipSimpleRequest) (*gen.DyListRelationshipSimpleResponse, error) {
-	return r.list(ctx, req, "ListCloseFriends", model.RelationshipCloseFriend, false)
+	return r.list(ctx, req, "ListCloseFriends", model.RelationshipCloseFriend, true)
 }
 
 // list implements the four list RPCs. allowRelated reports whether the C#
