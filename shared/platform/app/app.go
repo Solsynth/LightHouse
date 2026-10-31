@@ -77,20 +77,10 @@ type Options[C any] struct {
 	RegisterCore func(ctx context.Context, host *module.Host[C]) error
 }
 
-// moduleInfo is one entry in GET /api/modules.
-type moduleInfo struct {
-	ID           string   `json:"id"`
-	Kind         string   `json:"kind"`
-	Enabled      bool     `json:"enabled"`
-	Required     bool     `json:"required"`
-	Requires     []string `json:"requires,omitempty"`
-	Capabilities []string `json:"capabilities,omitempty"`
-}
-
 type modulesResponse struct {
-	Service      string       `json:"service"`
-	Modules      []moduleInfo `json:"modules"`
-	Capabilities []string     `json:"capabilities"`
+	Service      string        `json:"service"`
+	Modules      []module.Info `json:"modules"`
+	Capabilities []string      `json:"capabilities"`
 }
 
 type namedInstance[C any] struct {
@@ -285,7 +275,7 @@ func Run[C any](parent context.Context, log *slog.Logger, opts Options[C]) error
 	srv.API().GET("/modules", func(c *gin.Context) {
 		c.JSON(http.StatusOK, modulesResponse{
 			Service:      opts.Name,
-			Modules:      moduleInfos(resolution.Factories, resolution.Enabled),
+			Modules:      module.Infos(resolution.Factories, resolution.Enabled),
 			Capabilities: module.Capabilities(resolution.Factories),
 		})
 	})
@@ -392,21 +382,6 @@ func serviceFallbacks(base *config.Base) map[string]string {
 		"develop":  base.Services.Develop.GRPC,
 		"blade":    bladeTarget,
 	}
-}
-
-func moduleInfos[C any](factories []module.Factory[C], enabled map[string]bool) []moduleInfo {
-	out := make([]moduleInfo, 0, len(factories))
-	for _, factory := range factories {
-		out = append(out, moduleInfo{
-			ID:           factory.ID,
-			Kind:         string(factory.Kind),
-			Enabled:      enabled[factory.ID],
-			Required:     factory.Required,
-			Requires:     factory.Requires,
-			Capabilities: factory.Capabilities,
-		})
-	}
-	return out
 }
 
 // LogLevel maps the LOG_LEVEL env value to a slog level (default debug).

@@ -145,10 +145,11 @@ is upgraded.
 
 ## Modules
 
-Sphere, Messager, Stargate and DysonFS use the same compile-time, Caddy-style
-registry: a `module.Factory[C]` carries the module ID, dependencies, ports,
-GORM models, schema hooks and capabilities; `Configure` mounts its HTTP routes
-and gRPC services. `[modules]` in the TOML selects what runs:
+Sphere, Messager and Stargate use the same compile-time, Caddy-style registry
+from `shared/platform/module`: a `module.Factory[C]` carries the module ID,
+dependencies, ports, GORM models, schema hooks and capabilities; `Configure`
+mounts its HTTP routes and gRPC services. DysonFS keeps its own registry shape.
+`[modules]` in the TOML selects what runs:
 
 ```toml
 [modules]

@@ -9,8 +9,8 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/stargate/model"
-	"src.solsynth.dev/sosys/stargate/module"
 )
 
 // ErrUnavailable marks a port whose backend is disabled or not configured.

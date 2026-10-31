@@ -3,9 +3,9 @@ package oauthapps
 import (
 	"testing"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/stargate/config"
 	"src.solsynth.dev/sosys/stargate/core"
-	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/ports"
 )
 
@@ -115,7 +115,7 @@ func TestProvidePortsPublishesResolvableProvider(t *testing.T) {
 		AllowedScopes: []string{"openid"},
 	}}
 	registry := module.NewPortRegistry()
-	host := &module.Host{
+	host := &module.Host[core.Services]{
 		Core:  &core.Services{Config: cfg},
 		Ports: registry,
 	}

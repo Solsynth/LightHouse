@@ -120,7 +120,8 @@ drop that once the grpc/x-net pair is upgraded.
 
 ## Module system
 
-Both Lighthouse services use the same compile-time registry: a
+All Lighthouse services that use the shared bootstrap (Sphere, Messager and
+Stargate) use the same compile-time registry from `shared/platform/module`: a
 `module.Factory[C]` carries the module ID, dependencies, ports, GORM models,
 schema hooks and capabilities; `Configure` mounts its HTTP routes and gRPC
 services. `[modules]` in the TOML selects what runs:
@@ -133,9 +134,11 @@ disabled = ["app.solian.sphere.fediverse"]
 
 Disabling a module unmounts its surface and, on a fresh database, prevents its
 tables from being created. Existing tables are never dropped. `GET /api/modules`
-reports the resolved set and capabilities. Stargate and DysonFS use the same
-shape (see [`internal/stargate/docs/module-system-plan.md`](internal/stargate/docs/module-system-plan.md)
-and [`internal/filesystem/docs/module-system.md`](internal/filesystem/docs/module-system.md)).
+reports the resolved set and capabilities. Stargate uses the same kernel with
+`C = core.Services` (see
+[`internal/stargate/docs/module-system-plan.md`](internal/stargate/docs/module-system-plan.md));
+DysonFS keeps its own registry shape (see
+[`internal/filesystem/docs/module-system.md`](internal/filesystem/docs/module-system.md)).
 
 `docs/MODULE_CONTRACT.md` is the authoring contract: helpers, wire-type rules,
 persistence conventions and route-fidelity requirements.

@@ -5,27 +5,28 @@ package e2ee
 import (
 	"context"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
+	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/grpcserver"
 	"src.solsynth.dev/sosys/stargate/httpserver/e2eectl"
-	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/modules/common"
 )
 
 // Factory returns the compiled module descriptor.
-func Factory() module.Factory {
-	return module.Factory{
+func Factory() module.Factory[core.Services] {
+	return module.Factory[core.Services]{
 		ID:             "app.solian.e2ee",
 		Kind:           module.KindFeature,
 		DefaultEnabled: true,
 		Requires:       []string{"app.solian.id.accounts"},
 		Capabilities:   []string{"e2ee", "e2ee.mls"},
-		New:            func() module.Instance { return &instance{} },
+		New:            func() module.Instance[core.Services] { return &instance{} },
 	}
 }
 
 type instance struct{}
 
-func (i *instance) Configure(_ context.Context, host *module.Host) error {
+func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]) error {
 	deps := common.E2EE(host.Core)
 	e2eectl.Register(host.API, deps)
 

@@ -18,10 +18,11 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/stargate/accountrecords"
+	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/httpserver/accountrecordsctl"
 	"src.solsynth.dev/sosys/stargate/model"
-	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/ports"
 	"src.solsynth.dev/sosys/stargate/store"
 )
@@ -29,8 +30,8 @@ import (
 const moduleID = "app.solian.id.accountrecords"
 
 // Factory returns the compiled module descriptor.
-func Factory() module.Factory {
-	return module.Factory{
+func Factory() module.Factory[core.Services] {
+	return module.Factory[core.Services]{
 		ID:             moduleID,
 		Kind:           module.KindFeature,
 		DefaultEnabled: true,
@@ -45,7 +46,7 @@ func Factory() module.Factory {
 		Provides: []module.PortID{ports.PortBadges, ports.PortVerification, ports.PortBoards},
 		Models:   accountrecords.Models(),
 		SQL:      schemaHooks(),
-		New:      func() module.Instance { return &instance{} },
+		New:      func() module.Instance[core.Services] { return &instance{} },
 	}
 }
 
@@ -65,7 +66,7 @@ type instance struct {
 // ProvidePorts publishes the local badge/verification providers before any
 // consumer configures. The port registry prefers a feature provider over the
 // Passport integration automatically.
-func (i *instance) ProvidePorts(_ context.Context, host *module.Host) error {
+func (i *instance) ProvidePorts(_ context.Context, host *module.Host[core.Services]) error {
 	if host == nil || host.Core == nil || host.Core.DB == nil || host.Ports == nil {
 		return nil
 	}
@@ -76,7 +77,7 @@ func (i *instance) ProvidePorts(_ context.Context, host *module.Host) error {
 	return nil
 }
 
-func (i *instance) Configure(ctx context.Context, host *module.Host) error {
+func (i *instance) Configure(ctx context.Context, host *module.Host[core.Services]) error {
 	if host == nil || host.Core == nil || host.Core.DB == nil {
 		return errors.New("accountrecords: missing host core database")
 	}
@@ -111,7 +112,7 @@ func (i *instance) Stop(context.Context) error {
 	return nil
 }
 
-func coreLog(host *module.Host) *slog.Logger {
+func coreLog(host *module.Host[core.Services]) *slog.Logger {
 	if host != nil && host.Core != nil && host.Core.Log != nil {
 		return host.Core.Log
 	}
@@ -201,7 +202,7 @@ func (p *verificationPort) Get(ctx context.Context, accountID string) (*model.Sn
 
 // developValidator adapts the Develop custom-app client to the board widget
 // validator. A missing client leaves the store on structural validation.
-func developValidator(host *module.Host) accountrecords.BoardWidgetValidator {
+func developValidator(host *module.Host[core.Services]) accountrecords.BoardWidgetValidator {
 	if host == nil || host.Core == nil || host.Core.Clients == nil || host.Core.Clients.Develop == nil {
 		return nil
 	}

@@ -1,38 +1,94 @@
 package module
 
-import "context"
+import (
+	"context"
 
-// Importer copies legacy data into a module whose table layout changed during
-// the Go port. Implementations must be idempotent, must never truncate the
-// target, and must report how many rows they skipped and why.
-type Importer interface {
-	Module() string
-	// Import copies rows from sourceDSN into targetDSN. A dry run reports the
-	// same counts without writing.
-	Import(ctx context.Context, sourceDSN, targetDSN string, dryRun bool) (ImportReport, error)
+	"gorm.io/gorm"
+)
+
+// ImportOptions controls a module data import.
+type ImportOptions struct {
+	DryRun    bool
+	BatchSize int
 }
 
-// ImportReport is the outcome of one importer run.
-type ImportReport struct {
+// ImportStats reports one module import run. Table names the primary table;
+// Read, Written and Skipped cover every table the run touched. Tables
+// breaks the totals down when a module imports more than one.
+type ImportStats struct {
 	Module  string
-	Tables  []ImportTableReport
-	Skipped []string
+	Table   string
+	Read    int64
+	Written int64
+	Skipped int64
+	Tables  []TableStats
 }
 
-// ImportTableReport is the per-table row count of one importer run.
-type ImportTableReport struct {
-	Table     string
-	Read      int64
-	Written   int64
-	Skipped   int64
-	FirstSeen string
+// TableStats reports one table within an import run.
+type TableStats struct {
+	Table   string
+	Read    int64
+	Written int64
+	Skipped int64
 }
 
-// TotalWritten is the sum of written rows across tables.
-func (r ImportReport) TotalWritten() int64 {
-	var total int64
-	for _, table := range r.Tables {
-		total += table.Written
+// Add folds another run's counters into the receiver, leaving the per-table
+// breakdown in place.
+func (s ImportStats) Add(other ImportStats) ImportStats {
+	s.Read += other.Read
+	s.Written += other.Written
+	s.Skipped += other.Skipped
+	s.Tables = append(s.Tables, other.Tables...)
+	return s
+}
+
+// Importer copies legacy rows into a module's new schema. Implementations
+// must be idempotent, must not truncate the target, and must honor DryRun.
+type Importer interface {
+	Import(ctx context.Context, source, target *gorm.DB, opts ImportOptions) (ImportStats, error)
+}
+
+// ImporterFor finds the importer for a module ID.
+func ImporterFor[C any](factories []Factory[C], id string) (Importer, bool) {
+	for _, factory := range factories {
+		if factory.ID != id || factory.Importer == nil {
+			continue
+		}
+		importer := factory.Importer()
+		if importer == nil {
+			return nil, false
+		}
+		return importer, true
 	}
-	return total
+	return nil, false
+}
+
+// importStateTable records which modules have been imported and how much
+// they moved. It is created on demand: a deployment that never imports has
+// no such table.
+const importStateTable = "module_import_state"
+
+// RecordImport persists one module's import counters, creating the state
+// table when it is missing. Re-running an import overwrites the counters
+// rather than appending, so the table always describes the latest run.
+func RecordImport(ctx context.Context, target *gorm.DB, stats ImportStats) error {
+	if err := target.WithContext(ctx).Exec(`
+		CREATE TABLE IF NOT EXISTS ` + importStateTable + ` (
+			module text NOT NULL,
+			table_name text NOT NULL,
+			rows_read bigint NOT NULL,
+			rows_written bigint NOT NULL,
+			completed_at timestamptz NOT NULL DEFAULT now(),
+			PRIMARY KEY (module, table_name)
+		)`).Error; err != nil {
+		return err
+	}
+	return target.WithContext(ctx).Exec(`
+		INSERT INTO `+importStateTable+` (module, table_name, rows_read, rows_written)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT (module, table_name) DO UPDATE SET
+			rows_read = EXCLUDED.rows_read,
+			rows_written = EXCLUDED.rows_written,
+			completed_at = now()`,
+		stats.Module, stats.Table, stats.Read, stats.Written).Error
 }

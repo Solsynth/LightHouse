@@ -7,16 +7,17 @@ import (
 
 	"gorm.io/gorm"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
+	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/httpserver/profilectl"
-	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/modules/common"
 	"src.solsynth.dev/sosys/stargate/ports"
 	"src.solsynth.dev/sosys/stargate/store"
 )
 
 // Factory returns the compiled module descriptor.
-func Factory() module.Factory {
-	return module.Factory{
+func Factory() module.Factory[core.Services] {
+	return module.Factory[core.Services]{
 		ID:             "app.solian.id.relationships",
 		Kind:           module.KindFeature,
 		DefaultEnabled: true,
@@ -28,7 +29,7 @@ func Factory() module.Factory {
 		Models:   []any{&store.RelationshipEntity{}},
 		SQL:      []module.SchemaHook{relationshipIndexes},
 		Importer: func() module.Importer { return &importer{} },
-		New:      func() module.Instance { return &instance{} },
+		New:      func() module.Instance[core.Services] { return &instance{} },
 	}
 }
 
@@ -40,7 +41,7 @@ func relationshipIndexes(ctx context.Context, db *gorm.DB) error {
 
 type instance struct{}
 
-func (i *instance) Configure(_ context.Context, host *module.Host) error {
+func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]) error {
 	deps := common.Profile(host.Core, ports.FromRegistry(host.Ports))
 	profilectl.RegisterRelationships(host.API, deps)
 	// The anonymous follow totals are part of this module's surface: a

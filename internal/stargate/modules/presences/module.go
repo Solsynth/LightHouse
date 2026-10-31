@@ -7,16 +7,17 @@ package presences
 import (
 	"context"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
+	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/httpserver/statusctl"
-	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/modules/common"
 	"src.solsynth.dev/sosys/stargate/ports"
 	"src.solsynth.dev/sosys/stargate/store"
 )
 
 // Factory returns the compiled module descriptor.
-func Factory() module.Factory {
-	return module.Factory{
+func Factory() module.Factory[core.Services] {
+	return module.Factory[core.Services]{
 		ID:             "app.solian.id.presences",
 		Kind:           module.KindFeature,
 		DefaultEnabled: true,
@@ -36,13 +37,13 @@ func Factory() module.Factory {
 			&store.PresenceCatalogItemEntity{},
 			&store.PresenceCatalogTagEntity{},
 		},
-		New: func() module.Instance { return &instance{} },
+		New: func() module.Instance[core.Services] { return &instance{} },
 	}
 }
 
 type instance struct{}
 
-func (i *instance) Configure(_ context.Context, host *module.Host) error {
+func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]) error {
 	statusctl.Register(host.API, common.Status(host.Core, ports.FromRegistry(host.Ports)))
 	// DyProfileService itself is registered by the profiles module; the two
 	// status RPCs it delegates are served from the shared dependencies, so

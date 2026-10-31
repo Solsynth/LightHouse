@@ -8,11 +8,12 @@ import (
 	"errors"
 	"log/slog"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
+	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/httpserver/realmctl"
 	"src.solsynth.dev/sosys/stargate/httpserver/statusctl"
 	"src.solsynth.dev/sosys/stargate/model"
-	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/ports"
 	"src.solsynth.dev/sosys/stargate/realm"
 )
@@ -24,8 +25,8 @@ import (
 // standalone deployment with the realm module alone still serves realms, it
 // just has no members to authenticate against. relationships is listed because
 // the invite route degrades without it.
-func Factory() module.Factory {
-	return module.Factory{
+func Factory() module.Factory[core.Services] {
+	return module.Factory[core.Services]{
 		ID:             realm.ModuleID,
 		Kind:           module.KindFeature,
 		DefaultEnabled: true,
@@ -43,7 +44,7 @@ func Factory() module.Factory {
 		Models:   realm.Models(),
 		SQL:      schemaHooks(),
 		Importer: func() module.Importer { return realm.NewImporter() },
-		New:      func() module.Instance { return &instance{} },
+		New:      func() module.Instance[core.Services] { return &instance{} },
 	}
 }
 
@@ -61,7 +62,7 @@ type instance struct {
 	stop func()
 }
 
-func (i *instance) Configure(ctx context.Context, host *module.Host) error {
+func (i *instance) Configure(ctx context.Context, host *module.Host[core.Services]) error {
 	if host == nil || host.Core == nil || host.Core.DB == nil {
 		return errors.New("realm: missing host core database")
 	}
@@ -120,7 +121,7 @@ func (i *instance) Stop(context.Context) error {
 	return nil
 }
 
-func coreLog(host *module.Host) *slog.Logger {
+func coreLog(host *module.Host[core.Services]) *slog.Logger {
 	if host != nil && host.Core != nil && host.Core.Log != nil {
 		return host.Core.Log
 	}
@@ -128,7 +129,7 @@ func coreLog(host *module.Host) *slog.Logger {
 }
 
 // perkProvider adapts the perks port to the realm XP multiplier.
-func perkProvider(host *module.Host) realm.PerkProvider {
+func perkProvider(host *module.Host[core.Services]) realm.PerkProvider {
 	if host == nil || host.Ports == nil {
 		return nil
 	}
@@ -168,14 +169,14 @@ func pushPort(set *ports.Set) realm.Push {
 	return set.Push
 }
 
-func relationshipChecker(host *module.Host) realmctl.BlockChecker {
+func relationshipChecker(host *module.Host[core.Services]) realmctl.BlockChecker {
 	if host == nil || host.Core == nil || host.Core.Relationships == nil {
 		return nil
 	}
 	return host.Core.Relationships
 }
 
-func statusLoader(host *module.Host) realmctl.StatusLoader {
+func statusLoader(host *module.Host[core.Services]) realmctl.StatusLoader {
 	if host == nil || host.Core == nil || host.Core.PresenceResolver == nil {
 		return nil
 	}

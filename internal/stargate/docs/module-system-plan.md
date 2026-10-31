@@ -63,12 +63,16 @@ Third-party modules must use their own reverse-DNS prefix.
 
 ## Kernel
 
-Package `internal/stargate/module` contains the SPI, the registry and the resolver.
+The SPI, registry and resolver live in the shared module
+`src.solsynth.dev/sosys/lighthouse/shared/platform/module`, the same kernel
+Sphere and Messager use. A service parameterises it with its own core graph;
+Stargate uses `module.Factory[core.Services]`, so `Host.Core` is
+`*core.Services`.
 
 ```go
 type Kind string // "feature" | "integration"
 
-type Factory struct {
+type Factory[C any] struct {
     ID       string
     Kind     Kind
     DefaultEnabled bool
@@ -96,17 +100,17 @@ type Factory struct {
     // layout of a table that previously lived in Padlock/Passport.
     Importer func() Importer
 
-    New func() Instance
+    New func() Instance[C]
 }
 
-type Instance interface {
-    Configure(context.Context, *Host) error
+type Instance[C any] interface {
+    Configure(context.Context, *Host[C]) error
     Stop(context.Context) error
 }
 ```
 
 `Host` exposes the core services plus the HTTP/gRPC mounting points and the
-port registry. `EnsurePorts` is called for every enabled module before
+port registry. `ProvidePorts` is called for every enabled module before
 `Configure`, so integration modules can publish ports without ordering
 constraints.
 
@@ -346,7 +350,8 @@ whose schema diverged.
 
 ### Phase 0 — kernel and wrapping
 
-- [x] `internal/stargate/module`: Factory, Instance, Host, resolver, ports, importer.
+- [x] Shared kernel `shared/platform/module` (Factory, Instance, Host, resolver,
+      ports, importer), used by Stargate, Sphere and Messager.
 - [x] `internal/stargate/app`: bootstrap extracted from `cmd/stargate/main.go`.
 - [x] Config `[modules]` and env overrides.
 - [x] Wrapper modules for every existing HTTP/gRPC surface.

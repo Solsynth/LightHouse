@@ -18,7 +18,9 @@ written against. Read it fully before writing code.
 ## Module system
 
 A module is a `module.Factory[C]` plus an `Instance[C]`. Sphere modules use
-`C = core.Services`; Messager modules use `C = messagercore.Services`.
+`C = core.Services`; Messager modules use `C = messagercore.Services`; Stargate
+modules use `C = core.Services` from `internal/stargate/core`. The kernel itself
+is `shared/platform/module`.
 
 ```go
 package posts

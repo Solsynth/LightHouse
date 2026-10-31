@@ -4,7 +4,8 @@
 package standard
 
 import (
-	"src.solsynth.dev/sosys/stargate/module"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
+	"src.solsynth.dev/sosys/stargate/core"
 	accounteventsmod "src.solsynth.dev/sosys/stargate/modules/accountevents"
 	accountrecordsmod "src.solsynth.dev/sosys/stargate/modules/accountrecords"
 	"src.solsynth.dev/sosys/stargate/modules/accounts"
@@ -36,8 +37,8 @@ import (
 )
 
 // Modules returns every compiled-in factory.
-func Modules() []module.Factory {
-	return []module.Factory{
+func Modules() []module.Factory[core.Services] {
+	return []module.Factory[core.Services]{
 		// Identity features.
 		auth.Factory(),
 		accounts.Factory(),

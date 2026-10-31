@@ -4,23 +4,24 @@ package wellknown
 import (
 	"context"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
+	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/httpserver/wellknownctl"
-	"src.solsynth.dev/sosys/stargate/module"
 )
 
 // Factory returns the compiled module descriptor.
-func Factory() module.Factory {
-	return module.Factory{
+func Factory() module.Factory[core.Services] {
+	return module.Factory[core.Services]{
 		ID:             "app.solian.wellknown",
 		Kind:           module.KindFeature,
 		DefaultEnabled: true,
-		New:            func() module.Instance { return &instance{} },
+		New:            func() module.Instance[core.Services] { return &instance{} },
 	}
 }
 
 type instance struct{}
 
-func (i *instance) Configure(_ context.Context, host *module.Host) error {
+func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]) error {
 	wellknownctl.RegisterTop(host.Engine, wellknownctl.Deps{})
 	return nil
 }

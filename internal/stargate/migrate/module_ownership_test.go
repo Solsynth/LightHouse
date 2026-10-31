@@ -8,9 +8,9 @@ import (
 
 	"gorm.io/gorm"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/stargate/db"
 	"src.solsynth.dev/sosys/stargate/dbtest"
-	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/modules/standard"
 )
 

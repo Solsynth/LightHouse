@@ -1,11 +1,11 @@
-// Package module implements Lighthouse's compile-time module system, the same
-// Caddy-style registry Stargate uses: modules are linked into a service binary
-// and the registry decides which of them are mounted at runtime.
+// Package module implements the fleet's compile-time module system: modules
+// are linked into a service binary (Caddy style) and the registry decides
+// which of them are mounted at runtime.
 //
-// Each Lighthouse service instantiates the registry with its own core service
-// graph (module.Factory[*spherecore.Services] and
-// module.Factory[*messagercore.Services]), so the two services share the
-// machinery but never share a process, a database or a module set.
+// Every service instantiates the registry with its own core service graph
+// (module.Factory[stargatecore.Services], module.Factory[spherecore.Services]
+// and module.Factory[messagercore.Services]), so services share the machinery
+// but never share a process, a database or a module set.
 package module
 
 import (

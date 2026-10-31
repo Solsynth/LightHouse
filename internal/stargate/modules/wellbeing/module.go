@@ -8,16 +8,17 @@ import (
 	"errors"
 	"log/slog"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
+	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/httpserver/wellbeingctl"
-	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/ports"
 	"src.solsynth.dev/sosys/stargate/wellbeing"
 )
 
 // Factory returns the compiled module descriptor. The module owns no tables:
 // it reads the core account/profile tables and uses Redis for dedupe.
-func Factory() module.Factory {
-	return module.Factory{
+func Factory() module.Factory[core.Services] {
+	return module.Factory[core.Services]{
 		ID:             wellbeing.ModuleID,
 		Kind:           module.KindFeature,
 		DefaultEnabled: true,
@@ -26,7 +27,7 @@ func Factory() module.Factory {
 		Ports: []module.PortRequirement{
 			{ID: ports.PortPush, Optional: true},
 		},
-		New: func() module.Instance { return &instance{} },
+		New: func() module.Instance[core.Services] { return &instance{} },
 	}
 }
 
@@ -34,7 +35,7 @@ type instance struct {
 	stop func()
 }
 
-func (i *instance) Configure(ctx context.Context, host *module.Host) error {
+func (i *instance) Configure(ctx context.Context, host *module.Host[core.Services]) error {
 	if host == nil || host.Core == nil || host.Core.DB == nil {
 		return errors.New("wellbeing: missing host core database")
 	}
@@ -58,7 +59,7 @@ func (i *instance) Stop(context.Context) error {
 	return nil
 }
 
-func coreLog(host *module.Host) *slog.Logger {
+func coreLog(host *module.Host[core.Services]) *slog.Logger {
 	if host != nil && host.Core != nil && host.Core.Log != nil {
 		return host.Core.Log
 	}
@@ -67,7 +68,7 @@ func coreLog(host *module.Host) *slog.Logger {
 
 // pushPort resolves the optional push provider; nil keeps the HTTP route
 // available (503) and the background job idle.
-func pushPort(host *module.Host) ports.Push {
+func pushPort(host *module.Host[core.Services]) ports.Push {
 	if host == nil || host.Ports == nil {
 		return nil
 	}

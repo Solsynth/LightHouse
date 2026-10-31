@@ -24,6 +24,7 @@ import (
 	platformdiscovery "src.solsynth.dev/sosys/lighthouse/shared/platform/discovery"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/stargate/actionlog"
 	"src.solsynth.dev/sosys/stargate/auth"
 	"src.solsynth.dev/sosys/stargate/broadcast"
@@ -37,7 +38,6 @@ import (
 	"src.solsynth.dev/sosys/stargate/httpserver"
 	"src.solsynth.dev/sosys/stargate/middleware"
 	"src.solsynth.dev/sosys/stargate/migrate"
-	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/nats"
 	"src.solsynth.dev/sosys/stargate/permission"
 	presenceresolver "src.solsynth.dev/sosys/stargate/presence"
@@ -48,19 +48,13 @@ import (
 	"src.solsynth.dev/sosys/stargate/store"
 )
 
-// moduleInfo is one entry in GET /api/modules.
-type moduleInfo struct {
-	ID   string `json:"id"`
-	Kind string `json:"kind"`
-}
-
 type modulesResponse struct {
-	Modules      []moduleInfo `json:"modules"`
-	Capabilities []string     `json:"capabilities"`
+	Modules      []module.Info `json:"modules"`
+	Capabilities []string      `json:"capabilities"`
 }
 
 // Run boots Stargate with the supplied compiled-in modules.
-func Run(parent context.Context, log *slog.Logger, factories []module.Factory) error {
+func Run(parent context.Context, log *slog.Logger, factories []module.Factory[core.Services]) error {
 	cfg, err := config.Load("")
 	if err != nil {
 		return err
@@ -254,14 +248,14 @@ func Run(parent context.Context, log *slog.Logger, factories []module.Factory) e
 	}
 	grpcSrv := grpc.NewServer(grpcOpts...)
 
-	host := &module.Host{
+	host := &module.Host[core.Services]{
 		Core: services, Engine: srv.Engine, API: api, GRPC: grpcSrv,
 		Ports: module.NewPortRegistry(), Enabled: resolution.Enabled,
 		Settings: cfg.Modules.Settings, Log: log,
 	}
 	host.Ports.Select(cfg.Ports)
 
-	registered := make([]module.Instance, 0, len(resolution.Factories))
+	registered := make([]module.Instance[core.Services], 0, len(resolution.Factories))
 	instances := make([]namedInstance, 0, len(resolution.Factories))
 	for _, factory := range resolution.Factories {
 		instance := factory.New()
@@ -274,7 +268,7 @@ func Run(parent context.Context, log *slog.Logger, factories []module.Factory) e
 	// Port providers publish before any Configure so consumers can resolve
 	// local or remote implementations regardless of registration order.
 	for _, entry := range instances {
-		if provider, ok := entry.instance.(module.PortProvider); ok {
+		if provider, ok := entry.instance.(module.PortProvider[core.Services]); ok {
 			if err := provider.ProvidePorts(ctx, host); err != nil {
 				return &module.BuildError{Module: entry.factory.ID, Err: err}
 			}
@@ -306,7 +300,7 @@ func Run(parent context.Context, log *slog.Logger, factories []module.Factory) e
 
 	api.GET("/modules", func(c *gin.Context) {
 		c.JSON(http.StatusOK, modulesResponse{
-			Modules:      moduleInfos(resolution.Factories),
+			Modules:      module.Infos(resolution.Factories, resolution.Enabled),
 			Capabilities: module.Capabilities(resolution.Factories),
 		})
 	})
@@ -394,11 +388,11 @@ func Run(parent context.Context, log *slog.Logger, factories []module.Factory) e
 }
 
 type namedInstance struct {
-	factory  module.Factory
-	instance module.Instance
+	factory  module.Factory[core.Services]
+	instance module.Instance[core.Services]
 }
 
-func enabledIDs(resolution *module.Resolution) []string {
+func enabledIDs(resolution *module.Resolution[core.Services]) []string {
 	ids := make([]string, 0, len(resolution.Factories))
 	for _, factory := range resolution.Factories {
 		ids = append(ids, factory.ID)
@@ -434,14 +428,6 @@ func newDiscoveryResolver(cfg *config.Config, log *slog.Logger) (*platformdiscov
 	platformdiscovery.RegisterResolver(resolver)
 	log.Info("blade discovery resolver enabled", "target", cfg.Discovery.Target)
 	return resolver, func() { _ = provider.Close() }
-}
-
-func moduleInfos(factories []module.Factory) []moduleInfo {
-	out := make([]moduleInfo, 0, len(factories))
-	for _, factory := range factories {
-		out = append(out, moduleInfo{ID: factory.ID, Kind: string(factory.Kind)})
-	}
-	return out
 }
 
 // parseLogLevel maps the LOG_LEVEL env value to a slog level (default debug).

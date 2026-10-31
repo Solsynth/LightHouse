@@ -10,15 +10,16 @@ import (
 	"log/slog"
 	"strings"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
+	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/httpserver/presenceprovidersctl"
-	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/ports"
 	"src.solsynth.dev/sosys/stargate/presenceproviders"
 )
 
 // Factory returns the compiled module descriptor.
-func Factory() module.Factory {
-	return module.Factory{
+func Factory() module.Factory[core.Services] {
+	return module.Factory[core.Services]{
 		ID:             presenceproviders.ModuleID,
 		Kind:           module.KindFeature,
 		DefaultEnabled: true,
@@ -32,7 +33,7 @@ func Factory() module.Factory {
 			{ID: ports.PortFiles, Optional: true},
 			{ID: ports.PortPresence, Optional: true},
 		},
-		New: func() module.Instance { return &instance{} },
+		New: func() module.Instance[core.Services] { return &instance{} },
 	}
 }
 
@@ -40,7 +41,7 @@ type instance struct {
 	service *presenceproviders.Service
 }
 
-func (i *instance) Configure(ctx context.Context, host *module.Host) error {
+func (i *instance) Configure(ctx context.Context, host *module.Host[core.Services]) error {
 	if host == nil || host.Core == nil || host.Core.DB == nil || host.Core.Store == nil {
 		return errors.New("presenceproviders: missing host core database")
 	}
@@ -77,7 +78,7 @@ func (i *instance) Stop(context.Context) error {
 	return nil
 }
 
-func coreLog(host *module.Host) *slog.Logger {
+func coreLog(host *module.Host[core.Services]) *slog.Logger {
 	if host != nil && host.Core != nil && host.Core.Log != nil {
 		return host.Core.Log
 	}
@@ -95,7 +96,7 @@ func coreLog(host *module.Host) *slog.Logger {
 // The oidc* names are accepted as aliases, and an unset value falls back to
 // the Oidc TOML section (Oidc:Steam:ApiKey, Oidc:LastFm:ApiKey/ApiSecret) so a
 // deployment that already configured the login providers needs no duplication.
-func resolveSettings(host *module.Host) presenceproviders.Settings {
+func resolveSettings(host *module.Host[core.Services]) presenceproviders.Settings {
 	raw := host.ModuleSettings(presenceproviders.ModuleID)
 	get := func(primary, alias string) string {
 		for _, key := range []string{primary, alias} {

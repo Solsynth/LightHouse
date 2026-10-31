@@ -8,14 +8,15 @@ import (
 	"errors"
 	"log/slog"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
+	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/httpserver/rewindctl"
-	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/rewind"
 )
 
 // Factory returns the compiled module descriptor.
-func Factory() module.Factory {
-	return module.Factory{
+func Factory() module.Factory[core.Services] {
+	return module.Factory[core.Services]{
 		ID:             rewind.ModuleID,
 		Kind:           module.KindFeature,
 		DefaultEnabled: true,
@@ -23,7 +24,7 @@ func Factory() module.Factory {
 		Capabilities:   []string{"rewind"},
 		Models:         rewind.Models(),
 		SQL:            schemaHooks(),
-		New:            func() module.Instance { return &instance{} },
+		New:            func() module.Instance[core.Services] { return &instance{} },
 	}
 }
 
@@ -40,7 +41,7 @@ type instance struct {
 	stop func()
 }
 
-func (i *instance) Configure(ctx context.Context, host *module.Host) error {
+func (i *instance) Configure(ctx context.Context, host *module.Host[core.Services]) error {
 	if host == nil || host.Core == nil || host.Core.DB == nil {
 		return errors.New("rewind: missing host core database")
 	}
@@ -78,7 +79,7 @@ func (i *instance) Stop(context.Context) error {
 	return nil
 }
 
-func coreLog(host *module.Host) *slog.Logger {
+func coreLog(host *module.Host[core.Services]) *slog.Logger {
 	if host != nil && host.Core != nil && host.Core.Log != nil {
 		return host.Core.Log
 	}

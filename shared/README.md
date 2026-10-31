@@ -34,7 +34,7 @@ Workspace builds resolve the local `shared/` directory through `go.work`.
 | `pkg/auth`         | Token extraction, auth middleware, gRPC auth validation |
 | `pkg/cache`        | Shared cache data, flags, groups, and locks             |
 | `pkg/handoff`      | Cross-domain session hand-off between first-party apps |
-| `platform/module`  | Compile-time module registry (Caddy style)              |
+| `platform/module`  | Compile-time module kernel: registry, resolver, ports, schema hooks, importer |
 | `platform/app`     | Process bootstrap (HTTP + gRPC + discovery)             |
 | `platform/config`  | TOML loader and environment overrides                   |
 | `platform/db`      | GORM/PostgreSQL connection setup                        |
@@ -43,6 +43,47 @@ Workspace builds resolve the local `shared/` directory through `go.work`.
 | `platform/authn`   | Inbound token validation and HTTP guards                |
 | `platform/httpx`   | Gin engine, API errors and pagination                   |
 | `platform/jobs`    | Interval and Quartz-cron scheduler                      |
+
+## Module Kernel
+
+`platform/module` is the single compile-time module kernel for the fleet. A
+service parameterises it with its own core graph, so the machinery is shared
+without sharing a process, a database or a module set:
+
+```go
+type Core struct {
+    DB   *gorm.DB
+    Log  *slog.Logger
+    // ...
+}
+
+func Factory() module.Factory[Core] {
+    return module.Factory[Core]{
+        ID:             "app.example.feature",
+        Kind:           module.KindFeature,
+        DefaultEnabled: true,
+        Requires:       []string{"app.example.core"},
+        Ports:          []module.PortRequirement{{ID: "accounts", Optional: true}},
+        Models:         []any{&Entity{}},
+        SQL:            []module.SchemaHook{indexHook},
+        Capabilities:   []string{"feature.read"},
+        New:            func() module.Instance[Core] { return &instance{} },
+    }
+}
+```
+
+`module.Resolve` applies the enabled/disabled config, cascades disables,
+topologically orders modules and records warnings. `module.MigrateSchema` runs
+only the enabled modules' models and hooks. `module.PortRegistry` resolves
+feature/integration ports with explicit `[ports]` selection, and
+`module.Infos` produces the `GET /api/modules` payload. The optional importer
+API (`ImportOptions`, `ImportStats`, `ImporterFor`, `RecordImport`) copies
+legacy rows into a module's new schema with idempotent, dry-run capable
+implementations.
+
+Stargate, Sphere and Messager all use this kernel; DysonFS keeps its own
+registry because its auth module installs middleware before the HTTP engine is
+exposed (`PreHost`), which the shared lifecycle does not model yet.
 
 ## Auth Example
 

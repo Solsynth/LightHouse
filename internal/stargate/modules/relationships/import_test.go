@@ -9,8 +9,9 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
+	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/dbtest"
-	"src.solsynth.dev/sosys/stargate/module"
 )
 
 // TestRelationshipImportRoundTrip verifies the legacy Passport importer
@@ -43,7 +44,7 @@ func TestRelationshipImportRoundTrip(t *testing.T) {
 	// Prepare the module's new schema (AutoMigrate + index hook) as
 	// cmd/stargate-module-import does.
 	factory := Factory()
-	if err := module.MigrateSchema(ctx, target, []module.Factory{factory}); err != nil {
+	if err := module.MigrateSchema(ctx, target, []module.Factory[core.Services]{factory}); err != nil {
 		t.Fatalf("migrate schema: %v", err)
 	}
 

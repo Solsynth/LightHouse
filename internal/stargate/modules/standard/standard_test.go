@@ -3,7 +3,7 @@ package standard
 import (
 	"testing"
 
-	"src.solsynth.dev/sosys/stargate/module"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 )
 
 func TestStandardModulesResolve(t *testing.T) {

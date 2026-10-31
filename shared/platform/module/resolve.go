@@ -26,11 +26,15 @@ type Resolution[C any] struct {
 func Resolve[C any](factories []Factory[C], enabled, disabled []string) (*Resolution[C], error) {
 	byID := make(map[string]Factory[C], len(factories))
 	for _, factory := range factories {
+		factory.ID = strings.TrimSpace(factory.ID)
 		if factory.ID == "" {
 			return nil, fmt.Errorf("module with an empty ID")
 		}
 		if _, exists := byID[factory.ID]; exists {
 			return nil, fmt.Errorf("duplicate module ID %q", factory.ID)
+		}
+		if factory.Kind == "" {
+			factory.Kind = KindFeature
 		}
 		byID[factory.ID] = factory
 	}

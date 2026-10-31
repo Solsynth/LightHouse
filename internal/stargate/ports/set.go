@@ -1,6 +1,6 @@
 package ports
 
-import "src.solsynth.dev/sosys/stargate/module"
+import "src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 
 // Set is the resolved view of every port. Nil fields mean no provider is
 // enabled; consumers must treat that as "feature unavailable".

@@ -9,16 +9,17 @@ import (
 	"errors"
 	"log/slog"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
+	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/httpserver/nfcctl"
-	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/nfc"
 	"src.solsynth.dev/sosys/stargate/ports"
 )
 
 // Factory returns the compiled module descriptor.
-func Factory() module.Factory {
-	return module.Factory{
+func Factory() module.Factory[core.Services] {
+	return module.Factory[core.Services]{
 		ID:             nfc.ModuleID,
 		Kind:           module.KindFeature,
 		DefaultEnabled: true,
@@ -31,7 +32,7 @@ func Factory() module.Factory {
 		Provides: []module.PortID{ports.PortNfcTokens},
 		Models:   nfc.Models(),
 		SQL:      schemaHooks(),
-		New:      func() module.Instance { return &instance{} },
+		New:      func() module.Instance[core.Services] { return &instance{} },
 	}
 }
 
@@ -50,7 +51,7 @@ type instance struct {
 
 // ProvidePorts publishes the local NFC token validator. It runs before any
 // Configure, so the auth module can resolve nfcTokens regardless of order.
-func (i *instance) ProvidePorts(_ context.Context, host *module.Host) error {
+func (i *instance) ProvidePorts(_ context.Context, host *module.Host[core.Services]) error {
 	service, err := i.ensureService(host)
 	if err != nil {
 		return err
@@ -60,7 +61,7 @@ func (i *instance) ProvidePorts(_ context.Context, host *module.Host) error {
 	return nil
 }
 
-func (i *instance) Configure(_ context.Context, host *module.Host) error {
+func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]) error {
 	service, err := i.ensureService(host)
 	if err != nil {
 		return err
@@ -83,7 +84,7 @@ func (i *instance) Configure(_ context.Context, host *module.Host) error {
 
 func (i *instance) Stop(context.Context) error { return nil }
 
-func (i *instance) ensureService(host *module.Host) (*nfc.Service, error) {
+func (i *instance) ensureService(host *module.Host[core.Services]) (*nfc.Service, error) {
 	if i.service != nil {
 		return i.service, nil
 	}
@@ -101,7 +102,7 @@ func (i *instance) ensureService(host *module.Host) (*nfc.Service, error) {
 	return i.service, nil
 }
 
-func coreLog(host *module.Host) *slog.Logger {
+func coreLog(host *module.Host[core.Services]) *slog.Logger {
 	if host != nil && host.Core != nil && host.Core.Log != nil {
 		return host.Core.Log
 	}

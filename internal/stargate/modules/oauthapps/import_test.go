@@ -11,8 +11,9 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
+	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/dbtest"
-	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/store"
 )
 
@@ -48,7 +49,7 @@ func TestOAuthAppImport(t *testing.T) {
 	}
 
 	seedDevelopSource(t, ctx, source)
-	if err := module.MigrateSchema(ctx, target, []module.Factory{Factory()}); err != nil {
+	if err := module.MigrateSchema(ctx, target, []module.Factory[core.Services]{Factory()}); err != nil {
 		t.Fatalf("migrate target schema: %v", err)
 	}
 	seedTargetConflict(t, ctx, target)

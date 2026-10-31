@@ -15,9 +15,9 @@ Examination, Meet, location-pin and BLE-nearby surfaces are deliberately left ou
 - `cmd/stargate-module-import` — per-module legacy data import when a module's
   table layout changed
 - `cmd/stargate-hash-password` — bcrypt hash for `[auth.singleUser]`
-- `module` — compile-time module registry, dependency resolution,
+- `modules/*` — feature modules and ecosystem integrations; the shared kernel
+  (`shared/platform/module`) provides the registry, dependency resolution,
   ports and schema hooks
-- `modules/*` — feature modules and ecosystem integrations
 - `app` — process bootstrap and module lifecycle
 - `core` — shared service graph handed to modules
 - `ports` — interfaces between feature modules and integrations

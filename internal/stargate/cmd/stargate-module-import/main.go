@@ -24,9 +24,10 @@ import (
 
 	"gorm.io/gorm"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/stargate/config"
+	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/db"
-	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/modules/standard"
 )
 
@@ -105,9 +106,9 @@ func main() {
 	}
 }
 
-func runOne(ctx context.Context, factory module.Factory, importer module.Importer, source, target *gorm.DB, opts module.ImportOptions) error {
+func runOne(ctx context.Context, factory module.Factory[core.Services], importer module.Importer, source, target *gorm.DB, opts module.ImportOptions) error {
 	if len(factory.Models) > 0 {
-		if err := module.MigrateSchema(ctx, target, []module.Factory{factory}); err != nil {
+		if err := module.MigrateSchema(ctx, target, []module.Factory[core.Services]{factory}); err != nil {
 			return fmt.Errorf("prepare target schema: %w", err)
 		}
 	}
@@ -131,13 +132,13 @@ func runOne(ctx context.Context, factory module.Factory, importer module.Importe
 	return nil
 }
 
-func findFactory(factories []module.Factory, id string) (module.Factory, bool) {
+func findFactory(factories []module.Factory[core.Services], id string) (module.Factory[core.Services], bool) {
 	for _, factory := range factories {
 		if factory.ID == id {
 			return factory, true
 		}
 	}
-	return module.Factory{}, false
+	return module.Factory[core.Services]{}, false
 }
 
 func closeDB(database *gorm.DB) {

@@ -10,10 +10,11 @@ import (
 
 	"github.com/google/uuid"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/stargate/accountevents"
 	"src.solsynth.dev/sosys/stargate/accountrecords"
+	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/httpserver/accounteventsctl"
-	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/ports"
 )
 
@@ -26,8 +27,8 @@ const ModuleID = "app.solian.id.accountevents"
 // provider a check-in still records its row, it just cannot pay out. Account
 // XP is written through the sibling accountrecords store, which the module
 // requires so its route and table ownership stay stable.
-func Factory() module.Factory {
-	return module.Factory{
+func Factory() module.Factory[core.Services] {
+	return module.Factory[core.Services]{
 		ID:             ModuleID,
 		Kind:           module.KindFeature,
 		DefaultEnabled: true,
@@ -52,7 +53,7 @@ func Factory() module.Factory {
 		},
 		Models: accountevents.Models(),
 		SQL:    schemaHooks(),
-		New:    func() module.Instance { return &instance{} },
+		New:    func() module.Instance[core.Services] { return &instance{} },
 	}
 }
 
@@ -67,7 +68,7 @@ func schemaHooks() []module.SchemaHook {
 
 type instance struct{}
 
-func (i *instance) Configure(ctx context.Context, host *module.Host) error {
+func (i *instance) Configure(ctx context.Context, host *module.Host[core.Services]) error {
 	if host == nil || host.Core == nil || host.Core.DB == nil {
 		return errors.New("accountevents: missing host core database")
 	}
@@ -112,7 +113,7 @@ func (i *instance) Configure(ctx context.Context, host *module.Host) error {
 
 func (i *instance) Stop(context.Context) error { return nil }
 
-func coreLog(host *module.Host) *slog.Logger {
+func coreLog(host *module.Host[core.Services]) *slog.Logger {
 	if host != nil && host.Core != nil && host.Core.Log != nil {
 		return host.Core.Log
 	}

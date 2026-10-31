@@ -4,16 +4,17 @@ package profiles
 import (
 	"context"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
+	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/grpcserver"
 	"src.solsynth.dev/sosys/stargate/httpserver/profilectl"
-	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/modules/common"
 	"src.solsynth.dev/sosys/stargate/ports"
 )
 
 // Factory returns the compiled module descriptor.
-func Factory() module.Factory {
-	return module.Factory{
+func Factory() module.Factory[core.Services] {
+	return module.Factory[core.Services]{
 		ID:             "app.solian.id.profiles",
 		Kind:           module.KindFeature,
 		DefaultEnabled: true,
@@ -24,13 +25,13 @@ func Factory() module.Factory {
 			{ID: ports.PortBadges, Optional: true},
 			{ID: ports.PortPerks, Optional: true},
 		},
-		New: func() module.Instance { return &instance{} },
+		New: func() module.Instance[core.Services] { return &instance{} },
 	}
 }
 
 type instance struct{}
 
-func (i *instance) Configure(_ context.Context, host *module.Host) error {
+func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]) error {
 	profilectl.Register(host.API, common.Profile(host.Core, ports.FromRegistry(host.Ports)))
 	grpcserver.RegisterProfiles(host.GRPC, common.GRPC(host.Core))
 	return nil

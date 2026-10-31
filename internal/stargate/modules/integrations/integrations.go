@@ -17,53 +17,54 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/stargate/auth"
 	"src.solsynth.dev/sosys/stargate/config"
+	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/grpcclient"
 	"src.solsynth.dev/sosys/stargate/model"
-	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/ports"
 )
 
 // Drive provides the files port through DysonFS/Drive.
-func Drive() module.Factory {
+func Drive() module.Factory[core.Services] {
 	return integration("app.solian.drive", []module.PortID{ports.PortFiles})
 }
 
 // Wallet provides subscriptions/perks from a remote wallet service. When the
 // local app.solian.wallet module is enabled it provides the same port as a
 // feature, and the port registry prefers it over this adapter.
-func Wallet() module.Factory {
+func Wallet() module.Factory[core.Services] {
 	return integration("app.solian.wallet.remote", []module.PortID{ports.PortPerks, ports.PortPayments})
 }
 
 // Pass provides badges, verification and remote NFC token validation.
-func Pass() module.Factory {
+func Pass() module.Factory[core.Services] {
 	return integration("app.solian.pass", []module.PortID{ports.PortBadges, ports.PortVerification, ports.PortNfcTokens})
 }
 
 // Ring provides email and push notifications.
-func Ring() module.Factory {
+func Ring() module.Factory[core.Services] {
 	return integration("app.solian.ring", []module.PortID{ports.PortEmail, ports.PortPush})
 }
 
 // Blade provides presence (and service discovery is handled by the app).
-func Blade() module.Factory {
+func Blade() module.Factory[core.Services] {
 	return integration("app.solian.blade", []module.PortID{ports.PortPresence})
 }
 
 // Develop provides custom OAuth/OIDC client lookup.
-func Develop() module.Factory {
+func Develop() module.Factory[core.Services] {
 	return integration("app.solian.develop", []module.PortID{ports.PortOAuthClients})
 }
 
-func integration(id string, provides []module.PortID) module.Factory {
-	return module.Factory{
+func integration(id string, provides []module.PortID) module.Factory[core.Services] {
+	return module.Factory[core.Services]{
 		ID:             id,
 		Kind:           module.KindIntegration,
 		DefaultEnabled: true,
 		Provides:       provides,
-		New:            func() module.Instance { return &instance{id: id} },
+		New:            func() module.Instance[core.Services] { return &instance{id: id} },
 	}
 }
 
@@ -71,10 +72,10 @@ type instance struct {
 	id string
 }
 
-func (i *instance) Configure(context.Context, *module.Host) error { return nil }
-func (i *instance) Stop(context.Context) error                    { return nil }
+func (i *instance) Configure(context.Context, *module.Host[core.Services]) error { return nil }
+func (i *instance) Stop(context.Context) error                                   { return nil }
 
-func (i *instance) ProvidePorts(_ context.Context, host *module.Host) error {
+func (i *instance) ProvidePorts(_ context.Context, host *module.Host[core.Services]) error {
 	c := host.Core
 	switch i.id {
 	case "app.solian.drive":

@@ -21,11 +21,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 	"src.solsynth.dev/sosys/stargate/config"
+	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/httpserver/oauthappctl"
 	"src.solsynth.dev/sosys/stargate/model"
-	"src.solsynth.dev/sosys/stargate/module"
 	"src.solsynth.dev/sosys/stargate/modules/common"
 	"src.solsynth.dev/sosys/stargate/modules/integrations"
 	"src.solsynth.dev/sosys/stargate/ports"
@@ -37,8 +38,8 @@ import (
 const moduleID = "app.solian.id.oauthapps"
 
 // Factory returns the compiled module descriptor.
-func Factory() module.Factory {
-	return module.Factory{
+func Factory() module.Factory[core.Services] {
+	return module.Factory[core.Services]{
 		ID:             moduleID,
 		Kind:           module.KindFeature,
 		DefaultEnabled: true,
@@ -51,7 +52,7 @@ func Factory() module.Factory {
 		SQL:      []module.SchemaHook{appIndexes},
 		Provides: []module.PortID{ports.PortOAuthClients},
 		Importer: func() module.Importer { return &importer{} },
-		New:      func() module.Instance { return &instance{} },
+		New:      func() module.Instance[core.Services] { return &instance{} },
 	}
 }
 
@@ -77,7 +78,7 @@ type instance struct{}
 
 // ProvidePorts publishes the client registry before any module configures,
 // so the OIDC provider resolves clients regardless of Configure order.
-func (i *instance) ProvidePorts(_ context.Context, host *module.Host) error {
+func (i *instance) ProvidePorts(_ context.Context, host *module.Host[core.Services]) error {
 	if host == nil || host.Ports == nil {
 		return errors.New("oauthapps: missing host port registry")
 	}
@@ -89,7 +90,7 @@ func (i *instance) ProvidePorts(_ context.Context, host *module.Host) error {
 	return nil
 }
 
-func (i *instance) Configure(_ context.Context, host *module.Host) error {
+func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]) error {
 	oauthappctl.Register(host.API, common.OAuthApp(host.Core, ports.FromRegistry(host.Ports)))
 	// Token validation resolves an OAuth session's client slug. Point it at
 	// this module's registry so a Stargate-owned app validates without the
@@ -130,15 +131,13 @@ type source struct {
 	log     *slog.Logger
 }
 
-func newSource(host *module.Host) *source {
+func newSource(host *module.Host[core.Services]) *source {
 	src := &source{}
 	if host == nil {
 		return src
 	}
-	if cfg, ok := host.Config().(*config.Config); ok {
-		src.cfg = cfg
-	}
 	if host.Core != nil {
+		src.cfg = host.Core.Config
 		src.store = host.Core.Store
 		src.log = host.Core.Log
 		if host.Core.Clients != nil {
