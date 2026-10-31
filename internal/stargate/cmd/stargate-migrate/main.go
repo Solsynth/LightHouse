@@ -477,7 +477,11 @@ func copyTable(ctx context.Context, src *pgxpool.Pool, dst *pgx.Conn, table stri
 				continue
 			}
 			sel := quoteCols(cols)
-			tRows, err := dst.Query(ctx, fmt.Sprintf(`SELECT %s FROM %s`, sel, table))
+			targetQuery := fmt.Sprintf(`SELECT %s FROM %s`, sel, table)
+			if ui.liveOnly {
+				targetQuery += ` WHERE deleted_at IS NULL`
+			}
+			tRows, err := dst.Query(ctx, targetQuery)
 			if err != nil {
 				return 0, err
 			}
@@ -557,6 +561,9 @@ func copyTable(ctx context.Context, src *pgxpool.Pool, dst *pgx.Conn, table stri
 				if len(ui.cols) == 0 || !allIn(colPos, ui.cols) {
 					continue
 				}
+				if ui.liveOnly && !rowLive(row, colPos) {
+					continue
+				}
 				k := keyOfRow(row, colPos, ui.cols)
 				if _, ok := seen[i][k]; ok {
 					dup = true
@@ -588,20 +595,28 @@ func copyTable(ctx context.Context, src *pgxpool.Pool, dst *pgx.Conn, table stri
 	return copied, nil
 }
 
-// uniqueIndex describes one unique index's key columns.
-type uniqueIndex struct{ cols []string }
+// uniqueIndex describes one unique index's key columns. liveOnly marks a
+// partial index over live rows (`WHERE deleted_at IS NULL`), the shape the
+// module hooks create; soft-deleted source rows are not bound by it.
+type uniqueIndex struct {
+	cols     []string
+	liveOnly bool
+}
 
-// uniqueIndexes lists the target table's unique indexes (PK-backed and plain
-// UNIQUE indexes), read from the catalog like outgoingFKs.
+// uniqueIndexes lists the target table's unique indexes (PK-backed, plain
+// UNIQUE and the module hooks' partial `deleted_at IS NULL` indexes), read
+// from the catalog like outgoingFKs. Other partial predicates are ignored:
+// deduplicating rows a predicate does not constrain would drop data.
 func uniqueIndexes(ctx context.Context, db querier, table string) ([]uniqueIndex, error) {
 	rows, err := db.Query(ctx, `
-		SELECT i.indexrelid::text, a.attname
+		SELECT i.indexrelid::text, a.attname, i.indpred IS NOT NULL
 		FROM pg_index i
 		JOIN pg_class t ON t.oid = i.indrelid AND t.relname = $1
 		JOIN pg_namespace n ON n.oid = t.relnamespace AND n.nspname = 'public'
 		JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord) ON true
 		JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
-		WHERE i.indisunique AND i.indisvalid AND i.indpred IS NULL
+		WHERE i.indisunique AND i.indisvalid
+		  AND (i.indpred IS NULL OR btrim(pg_get_expr(i.indpred, i.indrelid), '()') = 'deleted_at IS NULL')
 		ORDER BY i.indexrelid::text, k.ord`, table)
 	if err != nil {
 		return nil, err
@@ -611,12 +626,13 @@ func uniqueIndexes(ctx context.Context, db querier, table string) ([]uniqueIndex
 	byID := map[string]*uniqueIndex{}
 	for rows.Next() {
 		var id, col string
-		if err := rows.Scan(&id, &col); err != nil {
+		var partial bool
+		if err := rows.Scan(&id, &col, &partial); err != nil {
 			return nil, err
 		}
 		ui, ok := byID[id]
 		if !ok {
-			ui = &uniqueIndex{}
+			ui = &uniqueIndex{liveOnly: partial}
 			byID[id] = ui
 			uniques = append(uniques, *ui)
 		}
@@ -667,6 +683,17 @@ func keyOfRow(row []any, colPos map[string]int, cols []string) string {
 		fmt.Fprintf(&b, "%v|", row[pos])
 	}
 	return b.String()
+}
+
+// rowLive reports whether a copied row satisfies `deleted_at IS NULL`. A
+// source table without the column produces live rows (the target default is
+// NULL).
+func rowLive(row []any, colPos map[string]int) bool {
+	pos, ok := colPos["deleted_at"]
+	if !ok || pos >= len(row) {
+		return true
+	}
+	return row[pos] == nil
 }
 
 type columnInfo struct {
