@@ -178,6 +178,41 @@ func failWith(c *gin.Context, code string, err error, status int) {
 	c.JSON(status, errs.New(code, message, status))
 }
 
+// canonicalProviderKey maps a configured provider name to the payment method
+// identifier used on the wire ("afdian", "paddle", "apple_store"). It mirrors
+// providerAliases, which the catalog resolver already uses for lookups.
+func canonicalProviderKey(key string) (string, bool) {
+	normalized := normalizeSettingKey(key)
+	for canonical, aliases := range providerAliases {
+		for _, alias := range aliases {
+			if normalizeSettingKey(alias) == normalized {
+				return canonical, true
+			}
+		}
+	}
+	return "", false
+}
+
+// providerMappingsWire re-keys stored provider mappings by payment method.
+// Definitions are stored with whatever spelling the seed or admin used
+// ("AppleStore", "Paddle"), while clients key the catalog by payment method
+// identifier and require all three lists to be present.
+func providerMappingsWire(mappings map[string][]string) map[string][]string {
+	wire := map[string][]string{
+		PaymentAfdian:     {},
+		PaymentPaddle:     {},
+		PaymentAppleStore: {},
+	}
+	for key, references := range mappings {
+		canonical, ok := canonicalProviderKey(key)
+		if !ok {
+			canonical = key
+		}
+		wire[canonical] = append(wire[canonical], references...)
+	}
+	return wire
+}
+
 // catalogItemFromDefinition mirrors MapCatalogItem.
 func catalogItemFromDefinition(e *WalletSubscriptionDefinitionEntity) SubscriptionCatalogItem {
 	policy := parsePaymentPolicy(e.PaymentPolicy)
@@ -197,7 +232,7 @@ func catalogItemFromDefinition(e *WalletSubscriptionDefinitionEntity) Subscripti
 		GoldenPointReward:     e.GoldenPointReward,
 		DisplayConfig:         parseDisplayConfig(e.DisplayConfig),
 		AllowedPaymentMethods: methods,
-		ProviderMappings:      parseProviderMappings(e.ProviderMappings),
+		ProviderMappings:      providerMappingsWire(parseProviderMappings(e.ProviderMappings)),
 	}
 }
 
