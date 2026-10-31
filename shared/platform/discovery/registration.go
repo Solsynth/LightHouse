@@ -14,20 +14,18 @@ import (
 	"time"
 
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 // Options mirrors BladeServiceDiscoveryOptions.
 type Options struct {
-	Service           string
-	InstanceID        string
-	HttpEndpoint      string
-	GrpcEndpoint      string
-	RegistrationToken string
-	LeaseSeconds      int
-	Weight            int
+	Service      string
+	InstanceID   string
+	HttpEndpoint string
+	GrpcEndpoint string
+	LeaseSeconds int
+	Weight       int
 }
 
 // Registration owns the register -> renew -> deregister lifecycle.
@@ -82,7 +80,7 @@ func (r *Registration) register(ctx context.Context) (time.Duration, error) {
 		GrpcEndpoint: r.opts.GrpcEndpoint,
 		Weight:       int32(r.opts.Weight),
 	}
-	response, err := r.client.Register(r.authorized(ctx), &gen.DyRegisterServiceInstanceRequest{
+	response, err := r.client.Register(ctx, &gen.DyRegisterServiceInstanceRequest{
 		Instance:     instance,
 		LeaseSeconds: int32(r.opts.LeaseSeconds),
 	})
@@ -101,7 +99,7 @@ func (r *Registration) renewLoop(ctx context.Context, interval time.Duration) {
 			return
 		case <-time.After(interval):
 		}
-		response, err := r.client.Renew(r.authorized(ctx), &gen.DyRenewServiceLeaseRequest{
+		response, err := r.client.Renew(ctx, &gen.DyRenewServiceLeaseRequest{
 			Service:      r.opts.Service,
 			InstanceId:   r.opts.InstanceID,
 			LeaseSeconds: int32(r.opts.LeaseSeconds),
@@ -125,7 +123,7 @@ func (r *Registration) Deregister(ctx context.Context) {
 	if !r.registered {
 		return
 	}
-	_, err := r.client.Deregister(r.authorized(ctx), &gen.DyDeregisterServiceInstanceRequest{
+	_, err := r.client.Deregister(ctx, &gen.DyDeregisterServiceInstanceRequest{
 		Service:    r.opts.Service,
 		InstanceId: r.opts.InstanceID,
 	})
@@ -135,10 +133,6 @@ func (r *Registration) Deregister(ctx context.Context) {
 		return
 	}
 	r.registered = false
-}
-
-func (r *Registration) authorized(ctx context.Context) context.Context {
-	return metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+r.opts.RegistrationToken)
 }
 
 // renewalInterval mirrors BladeServiceRegistrationService.GetRenewalInterval: a

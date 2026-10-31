@@ -56,15 +56,14 @@ type Config struct {
 	// (DyServiceDiscoveryService gRPC) so Blade's /meta capability
 	// aggregator and proxy can resolve and health-check Stargate.
 	Discovery struct {
-		Enabled           bool   `toml:"enabled"`
-		Target            string `toml:"target"` // Blade gRPC endpoint (host:port)
-		RegistrationToken string `toml:"registrationToken"`
-		Service           string `toml:"service"`
-		InstanceID        string `toml:"instanceId"`
-		HttpEndpoint      string `toml:"httpEndpoint"` // absolute URL Blade probes /health on
-		GrpcEndpoint      string `toml:"grpcEndpoint"` // where Blade fetches capabilities
-		LeaseSeconds      int    `toml:"leaseSeconds"`
-		Weight            int    `toml:"weight"`
+		Enabled      bool   `toml:"enabled"`
+		Target       string `toml:"target"` // Blade gRPC endpoint (host:port)
+		Service      string `toml:"service"`
+		InstanceID   string `toml:"instanceId"`
+		HttpEndpoint string `toml:"httpEndpoint"` // absolute URL Blade probes /health on
+		GrpcEndpoint string `toml:"grpcEndpoint"` // where Blade fetches capabilities
+		LeaseSeconds int    `toml:"leaseSeconds"`
+		Weight       int    `toml:"weight"`
 	} `toml:"discovery"`
 
 	Auth struct {
@@ -574,7 +573,6 @@ func applyEnvOverrides(cfg *Config) {
 	setBool("STARGATE_ACCOUNT_ACTIVATION__TESTS_ENABLED", &cfg.AccountActivation.TestsEnabled)
 	setBool("STARGATE_DISCOVERY_ENABLED", &cfg.Discovery.Enabled)
 	setStr("STARGATE_DISCOVERY_TARGET", &cfg.Discovery.Target)
-	setStr("STARGATE_DISCOVERY_REGISTRATION_TOKEN", &cfg.Discovery.RegistrationToken)
 	setStr("STARGATE_DISCOVERY_SERVICE", &cfg.Discovery.Service)
 	setStr("STARGATE_DISCOVERY_INSTANCE_ID", &cfg.Discovery.InstanceID)
 	setStr("STARGATE_DISCOVERY_HTTP_ENDPOINT", &cfg.Discovery.HttpEndpoint)

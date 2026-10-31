@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	platformdiscovery "src.solsynth.dev/sosys/lighthouse/shared/platform/discovery"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/stargate/actionlog"
@@ -120,7 +121,11 @@ func Run(parent context.Context, log *slog.Logger, factories []module.Factory) e
 		log.Info("single-user auth provider enabled", "username", cfg.Auth.SingleUser.Username)
 	}
 
-	clients, err := grpcclient.NewClients(cfg)
+	discoveryResolver, closeDiscovery := newDiscoveryResolver(cfg, log)
+	if closeDiscovery != nil {
+		defer closeDiscovery()
+	}
+	clients, err := grpcclient.NewClientsWithResolver(cfg, discoveryResolver)
 	if err != nil {
 		return err
 	}
@@ -317,13 +322,12 @@ func Run(parent context.Context, log *slog.Logger, factories []module.Factory) e
 	var discoveryReg *discovery.Registration
 	if resolution.Enabled["app.solian.blade"] && cfg.Discovery.Enabled && strings.TrimSpace(cfg.Discovery.Target) != "" {
 		opts := discovery.Options{
-			Service:           cfg.Discovery.Service,
-			InstanceID:        cfg.Discovery.InstanceID,
-			HttpEndpoint:      cfg.Discovery.HttpEndpoint,
-			GrpcEndpoint:      cfg.Discovery.GrpcEndpoint,
-			RegistrationToken: cfg.Discovery.RegistrationToken,
-			LeaseSeconds:      cfg.Discovery.LeaseSeconds,
-			Weight:            cfg.Discovery.Weight,
+			Service:      cfg.Discovery.Service,
+			InstanceID:   cfg.Discovery.InstanceID,
+			HttpEndpoint: cfg.Discovery.HttpEndpoint,
+			GrpcEndpoint: cfg.Discovery.GrpcEndpoint,
+			LeaseSeconds: cfg.Discovery.LeaseSeconds,
+			Weight:       cfg.Discovery.Weight,
 		}
 		if opts.InstanceID == "" {
 			opts.InstanceID = uuid.NewString()
@@ -400,6 +404,36 @@ func enabledIDs(resolution *module.Resolution) []string {
 		ids = append(ids, factory.ID)
 	}
 	return ids
+}
+
+// newDiscoveryResolver wires Stargate's outbound gRPC clients to Blade's
+// registry. The static [services] targets stay as fallbacks for services that
+// have not registered yet, so turning discovery on never turns an integration
+// off by accident.
+func newDiscoveryResolver(cfg *config.Config, log *slog.Logger) (*platformdiscovery.Resolver, func()) {
+	if cfg == nil || !cfg.Discovery.Enabled || strings.TrimSpace(cfg.Discovery.Target) == "" {
+		return nil, nil
+	}
+	provider, err := platformdiscovery.NewRemoteProvider(cfg.Discovery.Target)
+	if err != nil {
+		log.Warn("blade discovery resolver unavailable; using static [services] targets", "error", err)
+		return nil, nil
+	}
+	bladeTarget := cfg.Services.Blade.GRPC
+	if strings.TrimSpace(bladeTarget) == "" {
+		bladeTarget = cfg.Discovery.Target
+	}
+	resolver := platformdiscovery.NewResolver(provider, map[string]string{
+		"wallet":  cfg.Services.Wallet.GRPC,
+		"develop": cfg.Services.Develop.GRPC,
+		"drive":   cfg.Services.Drive.GRPC,
+		"pass":    cfg.Services.Pass.GRPC,
+		"blade":   bladeTarget,
+		"ring":    cfg.Services.Ring.GRPC,
+	})
+	platformdiscovery.RegisterResolver(resolver)
+	log.Info("blade discovery resolver enabled", "target", cfg.Discovery.Target)
+	return resolver, func() { _ = provider.Close() }
 }
 
 func moduleInfos(factories []module.Factory) []moduleInfo {

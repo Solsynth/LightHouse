@@ -149,7 +149,22 @@ func Run[C any](parent context.Context, log *slog.Logger, opts Options[C]) error
 	}
 	defer nc.Close()
 
-	clients, err := grpcclient.New(grpcclient.Targets{
+	var discoveryProvider *discovery.RemoteProvider
+	var discoveryResolver *discovery.Resolver
+	if base.Discovery.Enabled && strings.TrimSpace(base.Discovery.Target) != "" {
+		provider, err := discovery.NewRemoteProvider(base.Discovery.Target)
+		if err != nil {
+			log.Warn("blade discovery resolver unavailable; using static [services] targets", "error", err)
+		} else {
+			discoveryProvider = provider
+			discoveryResolver = discovery.NewResolver(provider, serviceFallbacks(base))
+			discovery.RegisterResolver(discoveryResolver)
+			defer discoveryProvider.Close()
+			log.Info("blade discovery resolver enabled", "target", base.Discovery.Target)
+		}
+	}
+
+	clients, err := grpcclient.NewWithResolver(grpcclient.Targets{
 		Stargate: base.Services.Stargate.GRPC,
 		Sphere:   base.Services.Sphere.GRPC,
 		Messager: base.Services.Messager.GRPC,
@@ -158,18 +173,23 @@ func Run[C any](parent context.Context, log *slog.Logger, opts Options[C]) error
 		Wallet:   base.Services.Wallet.GRPC,
 		Develop:  base.Services.Develop.GRPC,
 		Blade:    base.Services.Blade.GRPC,
-	})
+	}, discoveryResolver)
 	if err != nil {
 		return err
 	}
 	defer clients.Close()
 
+	authTarget := base.Services.Stargate.GRPC
+	authUseTLS := !strings.HasPrefix(strings.ToLower(base.Services.Stargate.GRPC), "http://") &&
+		!strings.HasPrefix(strings.ToLower(base.Services.Stargate.GRPC), "grpc://")
+	if discoveryResolver != nil {
+		authTarget = discovery.Target("stargate")
+	}
 	authenticator, err := authn.New(authn.Options{
-		Target: base.Services.Stargate.GRPC,
-		UseTLS: !strings.HasPrefix(strings.ToLower(base.Services.Stargate.GRPC), "http://") &&
-			!strings.HasPrefix(strings.ToLower(base.Services.Stargate.GRPC), "grpc://"),
-		Cache: rc,
-		Log:   log,
+		Target: authTarget,
+		UseTLS: authUseTLS,
+		Cache:  rc,
+		Log:    log,
 	})
 	if err != nil {
 		return err
@@ -275,13 +295,12 @@ func Run[C any](parent context.Context, log *slog.Logger, opts Options[C]) error
 	var discoveryReg *discovery.Registration
 	if base.Discovery.Enabled && strings.TrimSpace(base.Discovery.Target) != "" {
 		discoveryOpts := discovery.Options{
-			Service:           base.Discovery.Service,
-			InstanceID:        base.Discovery.InstanceID,
-			HttpEndpoint:      base.Discovery.HttpEndpoint,
-			GrpcEndpoint:      base.Discovery.GrpcEndpoint,
-			RegistrationToken: base.Discovery.RegistrationToken,
-			LeaseSeconds:      base.Discovery.LeaseSeconds,
-			Weight:            base.Discovery.Weight,
+			Service:      base.Discovery.Service,
+			InstanceID:   base.Discovery.InstanceID,
+			HttpEndpoint: base.Discovery.HttpEndpoint,
+			GrpcEndpoint: base.Discovery.GrpcEndpoint,
+			LeaseSeconds: base.Discovery.LeaseSeconds,
+			Weight:       base.Discovery.Weight,
 		}
 		if discoveryOpts.InstanceID == "" {
 			discoveryOpts.InstanceID = uuid.NewString()
@@ -351,6 +370,28 @@ func enabledIDs[C any](resolution *module.Resolution[C]) []string {
 		ids = append(ids, factory.ID)
 	}
 	return ids
+}
+
+// serviceFallbacks maps each configured service name to its static [services]
+// target. Blade's discovery resolver uses these only while a service has no
+// registration, so they remain a migration-safe fallback rather than the
+// primary address. Blade itself never registers, so its discovery target is
+// the natural fallback for the outbound websocket client.
+func serviceFallbacks(base *config.Base) map[string]string {
+	bladeTarget := base.Services.Blade.GRPC
+	if strings.TrimSpace(bladeTarget) == "" {
+		bladeTarget = base.Discovery.Target
+	}
+	return map[string]string{
+		"stargate": base.Services.Stargate.GRPC,
+		"sphere":   base.Services.Sphere.GRPC,
+		"messager": base.Services.Messager.GRPC,
+		"ring":     base.Services.Ring.GRPC,
+		"drive":    base.Services.Drive.GRPC,
+		"wallet":   base.Services.Wallet.GRPC,
+		"develop":  base.Services.Develop.GRPC,
+		"blade":    bladeTarget,
+	}
 }
 
 func moduleInfos[C any](factories []module.Factory[C], enabled map[string]bool) []moduleInfo {

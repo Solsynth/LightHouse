@@ -49,7 +49,9 @@ type CacheConfig struct {
 }
 
 // DiscoveryConfig enables Blade's Redis-backed, leased service registry.
-// Registration calls require RegistrationToken when the registry is enabled.
+// In-network services register over the internal gRPC listener without a
+// credential. RegistrationToken protects the public relay control plane
+// (PUT/DELETE /relays/{id}); it is not used by the gRPC API.
 type DiscoveryConfig struct {
 	Enabled            bool   `mapstructure:"enabled"`
 	Prefix             string `mapstructure:"prefix"`

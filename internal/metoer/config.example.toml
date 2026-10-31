@@ -77,6 +77,10 @@ voip = "dev.solsynth.solian.voip"
 #
 # Blade is the only service that serves gRPC plaintext (no TLS); its gRPC
 # port is 7001, not the fleet's TLS 5001.
+#
+# With [discovery] enabled these targets are resolved through Blade's registry.
+# The address here is only the fallback until the sibling registers, and the
+# target may be left empty to use discovery alone.
 [services]
 stargate = { grpc = "" }
 blade = { grpc = "" }
@@ -87,7 +91,6 @@ blade = { grpc = "" }
 # Mirror the C# Blade:ServiceDiscovery settings.
 enabled = false
 target = "blade:7001"
-registrationToken = ""
 service = "metoer"
 instanceId = ""
 # Defaults mirror the C# fallback: http://{service}:{httpPort} and

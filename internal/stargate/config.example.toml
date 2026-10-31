@@ -258,6 +258,10 @@ databasePath = "Keys/GeoLite2-City.mmdb"
 #
 # Keep the table active with empty defaults for simple environment overrides.
 # Each target may be set independently.
+#
+# With [discovery] enabled these targets are resolved through Blade's registry.
+# The address here is only the fallback until the sibling registers, and the
+# target may be left empty to use discovery alone.
 [services]
 develop = { grpc = "" }
 drive = { grpc = "" }
@@ -271,8 +275,7 @@ ring = { grpc = "" }
 # aggregator and proxy resolve this instance (auth.*, e2ee, permissions,
 # admin.*, accounts.*). Mirror the C# Blade:ServiceDiscovery settings.
 enabled = false
-target = "blade:9090"
-registrationToken = ""
+target = "blade:7001"
 service = "stargate"
 instanceId = ""
 # Defaults mirror the C# fallback: http://{service}:{httpPort} and

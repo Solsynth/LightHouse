@@ -9,6 +9,11 @@ The effective registry is their union. This allows a service to be introduced
 through gRPC registration without a Blade configuration deployment, while
 preserving static entries during migration.
 
+The same precedence applies to outbound gRPC: when discovery is enabled, the
+Go services resolve `[services]` targets through the registry and use the
+configured address only while that service has no registration. See
+[SERVICE_DISCOVERY_CLIENT.md](SERVICE_DISCOVERY_CLIENT.md#using-discovery-for-outbound-grpc).
+
 ## Precedence
 
 Registration takes precedence over configuration for the same service name.

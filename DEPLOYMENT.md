@@ -156,6 +156,7 @@ certFile = "Keys/server.crt"
 keyFile  = "Keys/server.key"
 
 [services]
+# Fallbacks only when [discovery] is enabled; Blade resolves the live instance.
 stargate = { grpc = "stargate:9090" }
 ring     = { grpc = "ring:7002" }
 drive    = { grpc = "drive:7004" }
@@ -173,8 +174,7 @@ disabled = []            # e.g. ["app.solian.sphere.fediverse"]
 
 [discovery]
 enabled = true
-target = "blade:7001"
-registrationToken = "{{TOKEN}}"
+target = "blade:7001"    # internal gRPC; no token
 service = "sphere"
 ```
 
@@ -305,13 +305,13 @@ which is the fediverse module's handler.
 
 ### 6.3 Keep the fleet's gRPC names working
 
-Other services dial the logical name `https://_grpc.sphere`. Two ways to keep
-that resolving:
-
-- register the instance with Blade discovery — `[discovery] enabled = true`,
-  `target = "blade:7001"`, `service = "sphere"` (Blade's gRPC listener; HTTP is
-  `:6000`), or
-- change the callers' service address in their own configuration.
+Other services dial the logical name `https://_grpc.sphere`. With Blade
+discovery enabled, the Go services resolve their `[services]` targets through
+the registry, so registering the instance (`[discovery] enabled = true`,
+`target = "blade:7001"`, `service = "sphere"`) is enough: `[services].sphere`
+may keep an address as a fallback or be left empty. You only need to change a
+caller's service address when discovery is disabled or when the caller is not a
+Lighthouse service.
 
 ### 6.4 The sequence
 

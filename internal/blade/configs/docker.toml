@@ -8,7 +8,8 @@
 # Relay control plane: relays register, renew, and withdraw over this gateway's
 # public HTTP(S) entry (PUT/DELETE /relays/{id}) because they live outside the
 # cluster network. registrationToken below is that credential — give every relay
-# the same value in its own discovery.registrationToken.
+# the same value in its own discovery.registrationToken. In-network services use
+# the internal gRPC listener and do not send this token.
 
 siteUrl = "http://localhost:6000"
 

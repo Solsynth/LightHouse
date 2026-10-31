@@ -11,8 +11,7 @@ shared package `src.solsynth.dev/sosys/lighthouse/shared/proto`.
 
 ## Prerequisites
 
-Blade must be configured with discovery enabled, Redis, and a service
-registration secret:
+Blade must be configured with discovery enabled and Redis:
 
 ```toml
 [cache]
@@ -23,12 +22,15 @@ enabled = true
 prefix = "blade:discovery"
 leaseSeconds = 30
 leaderLeaseSeconds = 15
-registrationToken = "replace-with-a-long-random-secret"
 ```
 
-Use an internal address for Blade's gRPC server. Do not expose registration on
-the public internet. Production deployments should also use mTLS between
-services and Blade.
+The internal gRPC registration API is intentionally unauthenticated. Use an
+internal address for Blade's gRPC server and do not expose it on the public
+internet. Production deployments should isolate it at the network layer (or use
+mTLS) rather than relying on a shared token.
+
+`registrationToken` remains in Blade's config for the **public relay control
+plane** (`PUT`/`DELETE /relays/{id}`); in-network services do not use it.
 
 ## Instance identity and endpoints
 
@@ -65,13 +67,11 @@ precedence.
 ## Registration lifecycle
 
 1. Create the gRPC channel to Blade.
-2. Add `authorization: Bearer <registrationToken>` metadata to all mutating
-   calls.
-3. Call `Register` after the service is ready to answer `/health`.
-4. Renew well before expiry—typically every one-third of the granted lease.
-5. If `Renew` returns `NotFound`, call `Register` again; the lease likely
+2. Call `Register` after the service is ready to answer `/health`.
+3. Renew well before expiry—typically every one-third of the granted lease.
+4. If `Renew` returns `NotFound`, call `Register` again; the lease likely
    expired while Blade or Redis was unavailable.
-6. On graceful shutdown, stop accepting work, call `Deregister`, then close
+5. On graceful shutdown, stop accepting work, call `Deregister`, then close
    the gRPC channel. Redis TTL remains the safety net if the process crashes.
 
 `Register` always starts an instance unhealthy. Blade has one Redis-elected
@@ -88,18 +88,16 @@ import (
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
-    "google.golang.org/grpc/metadata"
     gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
-func register(ctx context.Context, bladeAddr, token, instanceID string) (gen.DyServiceDiscoveryServiceClient, *grpc.ClientConn, context.Context, error) {
+func register(ctx context.Context, bladeAddr, instanceID string) (gen.DyServiceDiscoveryServiceClient, *grpc.ClientConn, error) {
     conn, err := grpc.NewClient(bladeAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
     if err != nil {
-        return nil, nil, nil, err
+        return nil, nil, err
     }
     client := gen.NewDyServiceDiscoveryServiceClient(conn)
-    authenticated := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
-    _, err = client.Register(authenticated, &gen.DyRegisterServiceInstanceRequest{
+    _, err = client.Register(ctx, &gen.DyRegisterServiceInstanceRequest{
         Instance: &gen.DyServiceInstance{
             Service: "sphere", InstanceId: instanceID,
             Endpoints: map[string]string{
@@ -112,25 +110,25 @@ func register(ctx context.Context, bladeAddr, token, instanceID string) (gen.DyS
     })
     if err != nil {
         conn.Close()
-        return nil, nil, nil, err
+        return nil, nil, err
     }
-    return client, conn, authenticated, nil
+    return client, conn, nil
 }
 
-func renewLoop(ctx context.Context, client gen.DyServiceDiscoveryServiceClient, authenticated context.Context, instanceID string) {
+func renewLoop(ctx context.Context, client gen.DyServiceDiscoveryServiceClient, instanceID string) {
     ticker := time.NewTicker(10 * time.Second) // one-third of a 30-second lease
     defer ticker.Stop()
     for {
         select {
         case <-ctx.Done():
-            _, _ = client.Deregister(authenticated, &gen.DyDeregisterServiceInstanceRequest{
+            _, _ = client.Deregister(ctx, &gen.DyDeregisterServiceInstanceRequest{
                 Service: "sphere", InstanceId: instanceID,
             })
             return
         case <-ticker.C:
             // Retry transient failures with bounded backoff. If this returns
             // NotFound, register the instance again before the next renewal.
-            _, _ = client.Renew(authenticated, &gen.DyRenewServiceLeaseRequest{
+            _, _ = client.Renew(ctx, &gen.DyRenewServiceLeaseRequest{
                 Service: "sphere", InstanceId: instanceID, LeaseSeconds: 30,
             })
         }
@@ -171,6 +169,39 @@ endpoint := response.Instances[0].GrpcEndpoint
 Cache resolved instances briefly (about one second) and retry a different
 healthy instance on a connection failure. Do not cache forever: registrations,
 health state, and leases can change at any time.
+
+## Using discovery for outbound gRPC
+
+The Go services do not have to be configured with a sibling's address. When
+`[discovery] enabled = true`, the shared platform installs a `blade:///` gRPC
+resolver backed by this same `Resolve` API. Every outbound client follows the
+live registry, and the `[services]` entry becomes a fallback that is used only
+while the sibling has no registration:
+
+```toml
+[discovery]
+enabled = true
+target = "blade:7001"          # the one bootstrap address
+
+[services]
+stargate = { grpc = "" }       # discovered, no hardcoded address
+blade    = { grpc = "" }       # falls back to discovery.target (Blade does not register itself)
+```
+
+A bare address (`stargate:9090`) is still accepted as a static fallback, so a
+rollout can keep the old table while discovery takes over one service at a time.
+If a service has registered instances but none is healthy, the resolver does
+not fall back to the static address; that mirrors Blade's HTTP routing rule.
+
+Blade itself uses the same resolver in-process: its websocket gateway resolves
+`websocket.authService` and `websocket.profileService` from the registry, with
+the matching `[services]` gRPC entry as the fallback. This means a registered
+stargate can move or scale without editing Blade's configuration.
+
+The gRPC resolver polls every five seconds and asks for an immediate refresh
+when gRPC reports a connection failure. Endpoints are deduplicated and served
+with round-robin load balancing. Discovery failures degrade to the configured
+fallback; they never prevent a service from starting.
 
 ## Failure behavior
 

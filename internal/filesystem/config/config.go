@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +35,21 @@ type Config struct {
 	Sentry      SentryConfig      `mapstructure:"sentry"`
 	Modules     ModulesConfig     `mapstructure:"modules"`
 	Ports       map[string]string `mapstructure:"ports"`
+	Discovery   DiscoveryConfig   `mapstructure:"discovery"`
+}
+
+// DiscoveryConfig registers this instance with Blade's service registry and
+// lets outbound targets resolve through it. In-network registration needs no
+// token; only relay control-plane registration uses one.
+type DiscoveryConfig struct {
+	Enabled      bool   `mapstructure:"enabled"`
+	Target       string `mapstructure:"target"`
+	Service      string `mapstructure:"service"`
+	InstanceID   string `mapstructure:"instanceId"`
+	HTTPEndpoint string `mapstructure:"httpEndpoint"`
+	GRPCEndpoint string `mapstructure:"grpcEndpoint"`
+	LeaseSeconds int    `mapstructure:"leaseSeconds"`
+	Weight       int    `mapstructure:"weight"`
 }
 
 // ModulesConfig selects which compiled-in modules run.
@@ -284,6 +300,14 @@ func Load(configPath string) (*Config, error) {
 	viper.SetDefault("auth.syntheticAccountId", "00000000-0000-0000-0000-000000000001")
 	viper.SetDefault("auth.syntheticAccountName", "dyson")
 	viper.SetDefault("auth.syntheticAccountNick", "Dyson")
+	viper.SetDefault("discovery.enabled", false)
+	viper.SetDefault("discovery.target", "blade:7001")
+	viper.SetDefault("discovery.service", "drive")
+	viper.SetDefault("discovery.instanceId", "")
+	viper.SetDefault("discovery.httpEndpoint", "")
+	viper.SetDefault("discovery.grpcEndpoint", "")
+	viper.SetDefault("discovery.leaseSeconds", 30)
+	viper.SetDefault("discovery.weight", 1)
 	viper.SetDefault("workspace.target", "")
 	viper.SetDefault("workspace.useTLS", false)
 	viper.SetDefault("workspace.tlsSkipVerify", false)
@@ -370,6 +394,32 @@ func applyEnvAliases() {
 	}
 	if v := os.Getenv("SENTRY_DSN"); v != "" {
 		viper.Set("sentry.dsn", v)
+	}
+	for env, key := range map[string]string{
+		"DYSONFS_DISCOVERY_TARGET":        "discovery.target",
+		"DYSONFS_DISCOVERY_SERVICE":       "discovery.service",
+		"DYSONFS_DISCOVERY_INSTANCE_ID":   "discovery.instanceId",
+		"DYSONFS_DISCOVERY_HTTP_ENDPOINT": "discovery.httpEndpoint",
+		"DYSONFS_DISCOVERY_GRPC_ENDPOINT": "discovery.grpcEndpoint",
+	} {
+		if value := strings.TrimSpace(os.Getenv(env)); value != "" {
+			viper.Set(key, value)
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("DYSONFS_DISCOVERY_ENABLED")); value != "" {
+		if enabled, err := strconv.ParseBool(value); err == nil {
+			viper.Set("discovery.enabled", enabled)
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("DYSONFS_DISCOVERY_LEASE_SECONDS")); value != "" {
+		if seconds, err := strconv.Atoi(value); err == nil {
+			viper.Set("discovery.leaseSeconds", seconds)
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("DYSONFS_DISCOVERY_WEIGHT")); value != "" {
+		if weight, err := strconv.Atoi(value); err == nil {
+			viper.Set("discovery.weight", weight)
+		}
 	}
 	if v := viper.GetString("CONFIG_MODE"); v != "" {
 		switch v {

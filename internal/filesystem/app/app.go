@@ -13,10 +13,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/reflection"
 
 	sharedcache "src.solsynth.dev/sosys/lighthouse/shared/pkg/cache"
@@ -25,6 +27,7 @@ import (
 	"src.solsynth.dev/sosys/filesystem/config"
 	"src.solsynth.dev/sosys/filesystem/core"
 	"src.solsynth.dev/sosys/filesystem/database"
+	"src.solsynth.dev/sosys/filesystem/discovery"
 	"src.solsynth.dev/sosys/filesystem/dispatch"
 	"src.solsynth.dev/sosys/filesystem/eventbus"
 	"src.solsynth.dev/sosys/filesystem/grpcsvc"
@@ -49,6 +52,10 @@ type Runtime struct {
 
 	httpSrv *http.Server
 	grpcSrv *grpc.Server
+
+	discoveryReg      *discovery.Registration
+	discoveryResolver *discovery.Resolver
+	discoveryConn     *grpc.ClientConn
 
 	resolution *module.Resolution
 }
@@ -183,11 +190,91 @@ func New(ctx context.Context, cfg *config.Config, mode string, factories []modul
 		services.Publisher = core.BusPublisher{Bus: bus}
 	}
 
-	return &Runtime{
+	runtime := &Runtime{
 		Config: cfg, Mode: mode, Core: services,
 		db: db, redis: redisClient, natsConn: natsConn,
 		resolution: resolution,
-	}, nil
+	}
+	if err := runtime.setupDiscovery(); err != nil {
+		if natsConn != nil {
+			natsConn.Close()
+		}
+		if redisClient != nil {
+			_ = redisClient.Close()
+		}
+		return nil, err
+	}
+	return runtime, nil
+}
+
+// setupDiscovery installs the outbound resolver before any module builds its
+// clients, then prepares the registration this instance will run once serving.
+// Master and bundled modes serve HTTP/gRPC and can become routable; worker-only
+// modes still resolve siblings but do not advertise endpoints.
+func (r *Runtime) setupDiscovery() error {
+	cfg := r.Config
+	if !cfg.Discovery.Enabled {
+		return nil
+	}
+	fallback := make(map[string]string)
+	if target := strings.TrimSpace(cfg.Auth.Target); target != "" {
+		fallback["stargate"] = target
+		// Modules read Auth.Target when they dial Stargate. Point them at the
+		// registry; the resolver falls back to the old address until Stargate
+		// registers and passes Blade's health probe.
+		cfg.Auth.Target = discovery.Target("stargate")
+	}
+
+	resolver, err := discovery.NewResolver(cfg.Discovery.Target, fallback)
+	if err != nil {
+		return err
+	}
+	discovery.RegisterResolver(resolver)
+	r.discoveryResolver = resolver
+
+	if !servesHTTP(r.Mode) {
+		return nil
+	}
+	options := discovery.Options{
+		Service:      cfg.Discovery.Service,
+		InstanceID:   cfg.Discovery.InstanceID,
+		HTTPEndpoint: cfg.Discovery.HTTPEndpoint,
+		GRPCEndpoint: cfg.Discovery.GRPCEndpoint,
+		LeaseSeconds: cfg.Discovery.LeaseSeconds,
+		Weight:       cfg.Discovery.Weight,
+	}
+	if options.InstanceID == "" {
+		options.InstanceID = uuid.NewString()
+	}
+	if options.HTTPEndpoint == "" {
+		options.HTTPEndpoint = "http://" + options.Service + ":" + cfg.HTTP.Port
+	}
+	if options.GRPCEndpoint == "" {
+		options.GRPCEndpoint = options.Service + ":" + cfg.GRPC.Port
+	}
+	if err := discovery.Validate(options); err != nil {
+		_ = resolver.Close()
+		r.discoveryResolver = nil
+		return err
+	}
+	conn, err := grpc.NewClient(cfg.Discovery.Target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		_ = resolver.Close()
+		r.discoveryResolver = nil
+		return fmt.Errorf("service discovery: dial %s: %w", cfg.Discovery.Target, err)
+	}
+	r.discoveryConn = conn
+	r.discoveryReg = discovery.NewRegistration(
+		gen.NewDyServiceDiscoveryServiceClient(conn),
+		options,
+		logging.Log,
+	)
+	logging.Log.Info().
+		Str("target", cfg.Discovery.Target).
+		Str("service", options.Service).
+		Str("instance_id", options.InstanceID).
+		Msg("blade service discovery enabled")
+	return nil
 }
 
 func normalizeMode(cfg *config.Config, mode string) string {
@@ -245,6 +332,10 @@ func (r *Runtime) Run(ctx context.Context) error {
 
 	if err := r.serve(ctx, host); err != nil {
 		return err
+	}
+
+	if r.discoveryReg != nil {
+		go r.discoveryReg.Run(ctx)
 	}
 
 	<-ctx.Done()
@@ -373,6 +464,15 @@ func (r *Runtime) serve(ctx context.Context, host *module.Host) error {
 
 // Stop shuts the runtime down.
 func (r *Runtime) Stop(ctx context.Context) error {
+	if r.discoveryReg != nil {
+		r.discoveryReg.Deregister(ctx)
+	}
+	if r.discoveryResolver != nil {
+		_ = r.discoveryResolver.Close()
+	}
+	if r.discoveryConn != nil {
+		_ = r.discoveryConn.Close()
+	}
 	if r.httpSrv != nil {
 		_ = r.httpSrv.Shutdown(ctx)
 	}

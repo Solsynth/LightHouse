@@ -44,6 +44,25 @@ syntheticAccountId = "00000000-0000-0000-0000-000000000001"
 syntheticAccountName = "dyson"
 syntheticAccountNick = "Dyson"
 
+[discovery]
+# Register this DysonFS instance with Blade's service registry. Blade probes
+# {httpEndpoint}/health and routes /drive traffic to the healthy instance.
+# In-network registration is unauthenticated; only relays use a token.
+#
+# When discovery is enabled, [auth] target is resolved through Blade and the
+# configured address becomes the fallback until Stargate registers. Leave
+# [auth] target empty to keep the standalone synthesized-identity mode.
+enabled = false
+target = "blade:7001"
+# Service name Blade routes to. "drive" preserves the fleet's /drive prefix.
+service = "drive"
+instanceId = ""
+# Defaults are http://{service}:{http.port} and {service}:{grpc.port}.
+httpEndpoint = ""
+grpcEndpoint = ""
+leaseSeconds = 30
+weight = 1
+
 [modules]
 # Which compiled-in modules run. Empty enabled = every module whose default is
 # on. See docs/module-system.md for the inventory.

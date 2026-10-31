@@ -11,7 +11,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -29,7 +28,6 @@ type fakeBladeDiscovery struct {
 	registers   int
 	renews      int
 	deregisters int
-	lastAuth    string
 	lease       time.Duration
 	notFoundOn  int // fail the Nth renew with NotFound to force re-register
 }
@@ -38,7 +36,6 @@ func (f *fakeBladeDiscovery) Register(ctx context.Context, req *gen.DyRegisterSe
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.registers++
-	f.lastAuth = authHeader(ctx)
 	return &gen.DyRegisterServiceInstanceResponse{
 		Instance:             req.GetInstance(),
 		LeaseExpiresAtUnixMs: time.Now().Add(f.lease).UnixMilli(),
@@ -49,7 +46,6 @@ func (f *fakeBladeDiscovery) Renew(ctx context.Context, req *gen.DyRenewServiceL
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.renews++
-	f.lastAuth = authHeader(ctx)
 	if f.notFoundOn > 0 && f.renews == f.notFoundOn {
 		return nil, notFoundErr
 	}
@@ -62,23 +58,13 @@ func (f *fakeBladeDiscovery) Deregister(ctx context.Context, req *gen.DyDeregist
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.deregisters++
-	f.lastAuth = authHeader(ctx)
 	return &emptypb.Empty{}, nil
 }
 
-func (f *fakeBladeDiscovery) snapshot() (registers, renews, deregisters int, auth string) {
+func (f *fakeBladeDiscovery) snapshot() (registers, renews, deregisters int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.registers, f.renews, f.deregisters, f.lastAuth
-}
-
-func authHeader(ctx context.Context) string {
-	if md, ok := metadata.FromIncomingContext(ctx); ok {
-		if values := md.Get("authorization"); len(values) > 0 {
-			return values[0]
-		}
-	}
-	return ""
+	return f.registers, f.renews, f.deregisters
 }
 
 func newTestClient(t *testing.T, fake *fakeBladeDiscovery) gen.DyServiceDiscoveryServiceClient {
@@ -119,7 +105,7 @@ func TestRegistrationLifecycle(t *testing.T) {
 	reg := New(client, Options{
 		Service: "stargate", InstanceID: "inst-1",
 		HttpEndpoint: "http://stargate:8080", GrpcEndpoint: "stargate:9090",
-		RegistrationToken: "tok", LeaseSeconds: 30, Weight: 1,
+		LeaseSeconds: 30, Weight: 1,
 	}, discardLog())
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -130,13 +116,13 @@ func TestRegistrationLifecycle(t *testing.T) {
 	}()
 
 	waitFor(t, func() bool {
-		r, _, _, _ := fake.snapshot()
+		r, _, _ := fake.snapshot()
 		return r >= 1
 	}, "register")
 
 	// Lease is 3s; renewal interval is ~1s, so a renew must fire.
 	waitFor(t, func() bool {
-		_, n, _, _ := fake.snapshot()
+		_, n, _ := fake.snapshot()
 		return n >= 1
 	}, "renew")
 
@@ -148,34 +134,10 @@ func TestRegistrationLifecycle(t *testing.T) {
 	}
 
 	reg.Deregister(context.Background())
-	_, _, d, _ := fake.snapshot()
+	_, _, d := fake.snapshot()
 	if d != 1 {
 		t.Fatalf("deregisters = %d, want 1", d)
 	}
-}
-
-// TestRegistrationAuthorization pins the Bearer token on every call.
-func TestRegistrationAuthorization(t *testing.T) {
-	fake := &fakeBladeDiscovery{lease: time.Hour}
-	client := newTestClient(t, fake)
-	reg := New(client, Options{
-		Service: "stargate", InstanceID: "inst-2",
-		GrpcEndpoint:      "stargate:9090",
-		RegistrationToken: "secret-token", LeaseSeconds: 30,
-	}, discardLog())
-
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		reg.Run(ctx)
-		close(done)
-	}()
-	waitFor(t, func() bool {
-		_, _, _, auth := fake.snapshot()
-		return auth == "Bearer secret-token"
-	}, "authorized register")
-	cancel()
-	<-done
 }
 
 // TestRenewalInterval pins the C# GetRenewalInterval math.

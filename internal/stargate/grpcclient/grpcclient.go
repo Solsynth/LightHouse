@@ -2,8 +2,10 @@
 // sibling services (wallet for perks, develop for OIDC clients, drive for
 // files, pass for profiles + NFC token validation, blade for websocket pushes,
 // ring for notifications). Targets come from the [services] config section;
-// when a target is empty the provider degrades gracefully (nil/empty results),
-// matching the C# services' behavior with a dependency down.
+// an empty target leaves the corresponding provider nil unless Blade discovery
+// is enabled, in which case the service name is resolved from the registry.
+// A missing target degrades gracefully (nil/empty results), matching the C#
+// services' behavior with a dependency down.
 package grpcclient
 
 import (
@@ -18,6 +20,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/discovery"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/stargate/config"
@@ -126,55 +129,73 @@ func (c *Clients) FilterServices(enabled map[string]bool) {
 }
 
 // NewClients creates lazy clients only for configured targets. Empty targets
-// leave the corresponding client nil, which disables that integration.
+// leave the corresponding client nil, which disables that integration. Use
+// NewClientsWithResolver when Blade discovery is enabled.
 func NewClients(cfg *config.Config) (*Clients, error) {
+	return NewClientsWithResolver(cfg, nil)
+}
+
+// NewClientsWithResolver resolves each fleet service through Blade while
+// discovery is available and falls back to the configured [services] target
+// when the service has no registration. With a resolver, an empty target still
+// creates a client: the service is discovered at connect time.
+func NewClientsWithResolver(cfg *config.Config, resolver *discovery.Resolver) (*Clients, error) {
 	c := &Clients{}
 	if cfg == nil {
 		return c, nil
 	}
-	dial := func(target string) *grpc.ClientConn {
-		conn, err := Dial(target)
+	dial := func(service, target string, plaintext bool) *grpc.ClientConn {
+		conn, err := dialService(service, target, plaintext, resolver)
 		if err != nil || conn == nil {
 			return nil
 		}
 		c.conns = append(c.conns, conn)
 		return conn
 	}
-	dialInsecure := func(target string) *grpc.ClientConn {
-		conn, err := DialInsecure(target)
-		if err != nil || conn == nil {
-			return nil
-		}
-		c.conns = append(c.conns, conn)
-		return conn
-	}
-	if conn := dial(cfg.Services.Wallet.GRPC); conn != nil {
+	if conn := dial("wallet", cfg.Services.Wallet.GRPC, false); conn != nil {
 		c.Wallet = gen.NewDySubscriptionServiceClient(conn)
 		// The remote wallet also hosts the payment surface the realm boost
 		// flow opens its orders on.
 		c.Payment = gen.NewDyPaymentServiceClient(conn)
 	}
-	if conn := dial(cfg.Services.Develop.GRPC); conn != nil {
+	if conn := dial("develop", cfg.Services.Develop.GRPC, false); conn != nil {
 		c.Develop = gen.NewDyCustomAppServiceClient(conn)
 	}
-	if conn := dial(cfg.Services.Drive.GRPC); conn != nil {
+	if conn := dial("drive", cfg.Services.Drive.GRPC, false); conn != nil {
 		c.Drive = gen.NewDyFileServiceClient(conn)
 	}
-	if conn := dial(cfg.Services.Pass.GRPC); conn != nil {
+	if conn := dial("pass", cfg.Services.Pass.GRPC, false); conn != nil {
 		c.Pass = gen.NewDyProfileServiceClient(conn)
 		// Passport hosts the NFC validation service on the same instance.
 		c.Nfc = gen.NewDyNfcServiceClient(conn)
 	}
-	if conn := dialInsecure(cfg.Services.Blade.GRPC); conn != nil {
+	if conn := dial("blade", cfg.Services.Blade.GRPC, true); conn != nil {
 		// Blade's wsgateway is the fleet's plaintext exception (plaintext h2c);
 		// the TLS-always Dial would fail the handshake and silently degrade
 		// every presence read. See DialInsecure.
 		c.Blade = gen.NewWebSocketServiceClient(conn)
 	}
-	if conn := dial(cfg.Services.Ring.GRPC); conn != nil {
+	if conn := dial("ring", cfg.Services.Ring.GRPC, false); conn != nil {
 		c.Ring = gen.NewDyRingServiceClient(conn)
 	}
 	return c, nil
+}
+
+func dialService(service, target string, plaintext bool, resolver *discovery.Resolver) (*grpc.ClientConn, error) {
+	address := strings.TrimSpace(target)
+	if resolver != nil {
+		address = discovery.Target(service)
+	}
+	if address == "" {
+		return nil, nil
+	}
+	if discovery.IsTarget(address) && resolver == nil {
+		return nil, fmt.Errorf("dial %s: service discovery is not configured", service)
+	}
+	if plaintext {
+		return DialInsecure(address)
+	}
+	return Dial(address)
 }
 
 // Close closes all dialed connections.

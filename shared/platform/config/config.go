@@ -71,6 +71,10 @@ type Base struct {
 	} `toml:"auth"`
 
 	Services struct {
+		// Each target is a gRPC endpoint. With Discovery.Enabled, the target is
+		// resolved through Blade and this value is used only as the fallback
+		// until the sibling has a registration. An empty value is therefore
+		// usable when discovery is enabled.
 		// Stargate is the identity endpoint: DyAuthService,
 		// DyPermissionService, DyAccountService, DyActionLogService,
 		// DyPresenceService, DyMlsService, plus the ported DyProfileService,
@@ -99,17 +103,18 @@ type Base struct {
 	Ports map[string]string `toml:"ports"`
 
 	// Discovery registers this instance with Blade's service discovery so
-	// Blade's capability aggregator and proxy can resolve it.
+	// Blade's capability aggregator and proxy can resolve it. When enabled, the
+	// outbound clients also resolve their [services] targets through Blade;
+	// the configured address remains a fallback until a sibling registers.
 	Discovery struct {
-		Enabled           bool   `toml:"enabled"`
-		Target            string `toml:"target"`
-		RegistrationToken string `toml:"registrationToken"`
-		Service           string `toml:"service"`
-		InstanceID        string `toml:"instanceId"`
-		HttpEndpoint      string `toml:"httpEndpoint"`
-		GrpcEndpoint      string `toml:"grpcEndpoint"`
-		LeaseSeconds      int    `toml:"leaseSeconds"`
-		Weight            int    `toml:"weight"`
+		Enabled      bool   `toml:"enabled"`
+		Target       string `toml:"target"`
+		Service      string `toml:"service"`
+		InstanceID   string `toml:"instanceId"`
+		HttpEndpoint string `toml:"httpEndpoint"`
+		GrpcEndpoint string `toml:"grpcEndpoint"`
+		LeaseSeconds int    `toml:"leaseSeconds"`
+		Weight       int    `toml:"weight"`
 	} `toml:"discovery"`
 
 	Security struct {

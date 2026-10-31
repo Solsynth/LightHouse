@@ -83,15 +83,14 @@ type Config struct {
 	// Discovery registers this instance with Blade's service discovery
 	// (DyServiceDiscoveryService gRPC), mirroring the C# Blade service.
 	Discovery struct {
-		Enabled           bool   `toml:"enabled"`
-		Target            string `toml:"target"` // Blade gRPC endpoint (host:port)
-		RegistrationToken string `toml:"registrationToken"`
-		Service           string `toml:"service"`
-		InstanceID        string `toml:"instanceId"`
-		HttpEndpoint      string `toml:"httpEndpoint"`
-		GrpcEndpoint      string `toml:"grpcEndpoint"`
-		LeaseSeconds      int    `toml:"leaseSeconds"`
-		Weight            int    `toml:"weight"`
+		Enabled      bool   `toml:"enabled"`
+		Target       string `toml:"target"` // Blade gRPC endpoint (host:port)
+		Service      string `toml:"service"`
+		InstanceID   string `toml:"instanceId"`
+		HttpEndpoint string `toml:"httpEndpoint"`
+		GrpcEndpoint string `toml:"grpcEndpoint"`
+		LeaseSeconds int    `toml:"leaseSeconds"`
+		Weight       int    `toml:"weight"`
 	} `toml:"discovery"`
 }
 
@@ -188,7 +187,6 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("METOER_SERVICES_BLADE__GRPC", &cfg.Services.Blade.GRPC)
 	setBool("METOER_DISCOVERY_ENABLED", &cfg.Discovery.Enabled)
 	setStr("METOER_DISCOVERY_TARGET", &cfg.Discovery.Target)
-	setStr("METOER_DISCOVERY_REGISTRATION_TOKEN", &cfg.Discovery.RegistrationToken)
 	setStr("METOER_DISCOVERY_SERVICE", &cfg.Discovery.Service)
 	setStr("METOER_DISCOVERY_INSTANCE_ID", &cfg.Discovery.InstanceID)
 	setStr("METOER_DISCOVERY_HTTP_ENDPOINT", &cfg.Discovery.HttpEndpoint)

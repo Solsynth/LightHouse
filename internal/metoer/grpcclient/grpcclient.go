@@ -1,21 +1,24 @@
 // Package grpcclient holds the outbound gRPC clients Metoer uses to call
 // sibling services: stargate (account, auth, permission, profile,
 // action-log) and blade (websocket connection status, service discovery).
-// Targets come from the [services] config section; when a target is empty
-// the corresponding client is nil and callers degrade gracefully, matching
-// the C# services' behavior with a dependency down.
+// Targets come from the [services] config section; an empty target leaves the
+// corresponding client nil unless Blade discovery is enabled, in which case
+// the service name is resolved from the registry. A missing target degrades
+// gracefully, matching the C# services' behavior with a dependency down.
 package grpcclient
 
 import (
 	"context"
 	"crypto/tls"
 	"log/slog"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/structpb"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/discovery"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/metoer/config"
@@ -54,22 +57,46 @@ type Clients struct {
 	conns    []*grpc.ClientConn
 }
 
-// NewClients dials every configured target.
+// NewClients dials every configured target. Use NewClientsWithResolver when
+// Blade discovery is enabled.
 func NewClients(cfg *config.Config) (*Clients, error) {
+	return NewClientsWithResolver(cfg, nil)
+}
+
+// NewClientsWithResolver follows Blade's registry while it is available and
+// falls back to the configured [services] target for a service with no
+// registration. An empty target still creates a discovery-backed client.
+func NewClientsWithResolver(cfg *config.Config, resolver *discovery.Resolver) (*Clients, error) {
 	c := &Clients{}
-	dial := func(dialFn func(string) (*grpc.ClientConn, error), target string) *grpc.ClientConn {
-		conn, err := dialFn(target)
-		if err != nil {
+	dial := func(service, target string, plaintext bool) *grpc.ClientConn {
+		address := strings.TrimSpace(target)
+		if resolver != nil {
+			address = discovery.Target(service)
+		}
+		if address == "" {
+			return nil
+		}
+		if discovery.IsTarget(address) && resolver == nil {
+			return nil
+		}
+		var conn *grpc.ClientConn
+		var err error
+		if plaintext {
+			conn, err = DialPlaintext(address)
+		} else {
+			conn, err = Dial(address)
+		}
+		if err != nil || conn == nil {
 			return nil
 		}
 		c.conns = append(c.conns, conn)
 		return conn
 	}
-	if conn := dial(Dial, cfg.Services.Stargate.GRPC); conn != nil {
+	if conn := dial("stargate", cfg.Services.Stargate.GRPC, false); conn != nil {
 		c.Stargate = conn
 	}
 	// Blade serves plaintext gRPC, unlike the TLS fleet (stargate et al.).
-	if conn := dial(DialPlaintext, cfg.Services.Blade.GRPC); conn != nil {
+	if conn := dial("blade", cfg.Services.Blade.GRPC, true); conn != nil {
 		c.Blade = conn
 	}
 	return c, nil

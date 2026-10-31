@@ -28,6 +28,9 @@ siteUrl = "https://solian.app"
 serializer = "JSON"
 
 [services]
+# Optional static fallbacks. Registered instances take precedence; a service
+# that registers needs no entry here. Keep an entry while migrating, or remove
+# it to make Blade depend entirely on discovery.
 ring = { http = "http://ring:5000", grpc = "ring:5001" }
 pass = { http = "http://pass:5000", grpc = "pass:5001" }
 drive = { http = "http://drive:5000", grpc = "drive:5001" }
@@ -55,7 +58,8 @@ enabled = true
 prefix = "blade:discovery"
 leaseSeconds = 30
 leaderLeaseSeconds = 15
-registrationToken = "replace-with-a-service-secret"
+# Relay control plane only; in-network gRPC registration needs no token.
+registrationToken = "replace-with-a-relay-secret"
 relayServiceName = "relay"
 
 [server]
@@ -104,16 +108,21 @@ Legacy key `maintaince` is also supported for backward compatibility.
 
 ### Service Discovery
 
-When `discovery.enabled` is set, Blade requires `cache.redisUrl` and a non-empty
-`discovery.registrationToken`. Services register an HTTP/gRPC endpoint through
+When `discovery.enabled` is set, Blade requires `cache.redisUrl`. In-network
+services register an HTTP/gRPC endpoint through
 `DyServiceDiscoveryService/Register`, then renew the lease before it expires.
-Only the Redis-elected Blade replica probes registered HTTP endpoints; all
-replicas read the same healthy instance set for proxy routing. Send the service
-secret as `authorization: Bearer <registrationToken>` for registration, renewal,
-and deregistration calls.
+That internal gRPC API is unauthenticated, so bind it to the cluster network
+only. Only the Redis-elected Blade replica probes registered HTTP endpoints; all
+replicas read the same healthy instance set for proxy routing.
+
+`discovery.registrationToken` is used only by the public relay control plane
+(`PUT`/`DELETE /relays/{id}`). Leave it empty to disable relay registration while
+keeping in-network service discovery enabled.
 
 Configured `[services]` targets remain a fallback until that service has a
-registered instance, allowing incremental migration.
+registered instance, allowing incremental migration. Blade also resolves its
+own outbound gRPC targets (the websocket auth/profile services) through the
+same registry, so those can move without editing `[services]`.
 
 ### L4 Relay Nodes
 

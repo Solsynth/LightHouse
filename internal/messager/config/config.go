@@ -94,7 +94,6 @@ func applyEnv(cfg *Config) {
 	config.SetInt("MESSAGER_SECURITY_MAXTAKE", &cfg.Security.MaxTake)
 	config.SetBool("MESSAGER_DISCOVERY_ENABLED", &cfg.Discovery.Enabled)
 	config.SetStr("MESSAGER_DISCOVERY_TARGET", &cfg.Discovery.Target)
-	config.SetStr("MESSAGER_DISCOVERY_REGISTRATION_TOKEN", &cfg.Discovery.RegistrationToken)
 	config.SetStr("MESSAGER_DISCOVERY_SERVICE", &cfg.Discovery.Service)
 	config.SetStr("MESSAGER_DISCOVERY_INSTANCE_ID", &cfg.Discovery.InstanceID)
 	config.SetStr("MESSAGER_DISCOVERY_HTTP_ENDPOINT", &cfg.Discovery.HttpEndpoint)

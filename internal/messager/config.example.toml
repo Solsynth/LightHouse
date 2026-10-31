@@ -23,6 +23,10 @@ target = ""
 websocketPushSubject = "websocket_push"
 
 # Inbound bearer tokens are validated by Stargate's DyAuthService over gRPC.
+#
+# With [discovery] enabled these targets are resolved through Blade's registry.
+# The address here is only the fallback until the sibling registers, and the
+# target may be left empty to use discovery alone.
 [services]
 # Stargate serves auth, permissions, accounts, action logs, presence, MLS,
 # profiles, realms and domain blocks.
@@ -68,7 +72,6 @@ maxTake = 100
 [discovery]
 enabled = false
 target = "blade:7001"
-registrationToken = ""
 service = "messager"
 instanceId = ""
 httpEndpoint = ""

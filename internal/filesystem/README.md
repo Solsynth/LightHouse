@@ -26,11 +26,22 @@ skipped:
 [auth]
 target = ""
 
+[discovery]
+# Optional: register with Blade. In-network registration has no token.
+enabled = false
+target = "blade:7001"
+service = "drive"
+
 [modules]
 # Empty enabled = every module whose default is on.
 enabled = []
 disabled = ["app.solian.files.media"]
 ```
+
+When `[discovery] enabled = true`, DysonFS registers its HTTP/gRPC endpoints
+with Blade and resolves `[auth] target` through the registry (the configured
+address stays as the fallback until Stargate registers). `service = "drive"`
+keeps the fleet's `/drive` gateway prefix.
 
 Overrides: `DYSONFS_MODULES_ENABLED` / `DYSONFS_MODULES_DISABLED`.
 
@@ -696,6 +707,12 @@ Key settings:
 - `auth.target` also supplies the Padlock permission service; uploads require
   the `files.upload` permission node (or superuser access)
 - `auth.useTLS`
+- `discovery.enabled`
+- `discovery.target`
+- `discovery.service` (default `drive`)
+- `discovery.instanceId`
+- `discovery.httpEndpoint` / `discovery.grpcEndpoint`
+- `discovery.leaseSeconds` / `discovery.weight`
 - `passport.target`
 - `passport.useTLS`
 - `quota.leveling.level1`

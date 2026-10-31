@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	platformdiscovery "src.solsynth.dev/sosys/lighthouse/shared/platform/discovery"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
@@ -119,7 +120,11 @@ func run(log *slog.Logger) error {
 
 	st := store.New(database)
 
-	clients, err := grpcclient.NewClients(cfg)
+	discoveryResolver, closeDiscovery := newDiscoveryResolver(cfg, log)
+	if closeDiscovery != nil {
+		defer closeDiscovery()
+	}
+	clients, err := grpcclient.NewClientsWithResolver(cfg, discoveryResolver)
 	if err != nil {
 		return err
 	}
@@ -230,13 +235,12 @@ func run(log *slog.Logger) error {
 	var discoveryReg *discovery.Registration
 	if cfg.Discovery.Enabled {
 		opts := discovery.Options{
-			Service:           cfg.Discovery.Service,
-			InstanceID:        cfg.Discovery.InstanceID,
-			HttpEndpoint:      cfg.Discovery.HttpEndpoint,
-			GrpcEndpoint:      cfg.Discovery.GrpcEndpoint,
-			RegistrationToken: cfg.Discovery.RegistrationToken,
-			LeaseSeconds:      cfg.Discovery.LeaseSeconds,
-			Weight:            cfg.Discovery.Weight,
+			Service:      cfg.Discovery.Service,
+			InstanceID:   cfg.Discovery.InstanceID,
+			HttpEndpoint: cfg.Discovery.HttpEndpoint,
+			GrpcEndpoint: cfg.Discovery.GrpcEndpoint,
+			LeaseSeconds: cfg.Discovery.LeaseSeconds,
+			Weight:       cfg.Discovery.Weight,
 		}
 		if opts.InstanceID == "" {
 			opts.InstanceID = uuid.NewString()
@@ -326,6 +330,31 @@ func run(log *slog.Logger) error {
 		}
 		return err
 	}
+}
+
+// newDiscoveryResolver wires Metoer's outbound gRPC clients to Blade's
+// registry. The static [services] targets remain fallbacks so enabling
+// discovery does not disable an integration before the sibling registers.
+func newDiscoveryResolver(cfg *config.Config, log *slog.Logger) (*platformdiscovery.Resolver, func()) {
+	if cfg == nil || !cfg.Discovery.Enabled || strings.TrimSpace(cfg.Discovery.Target) == "" {
+		return nil, nil
+	}
+	provider, err := platformdiscovery.NewRemoteProvider(cfg.Discovery.Target)
+	if err != nil {
+		log.Warn("blade discovery resolver unavailable; using static [services] targets", "error", err)
+		return nil, nil
+	}
+	bladeTarget := cfg.Services.Blade.GRPC
+	if strings.TrimSpace(bladeTarget) == "" {
+		bladeTarget = cfg.Discovery.Target
+	}
+	resolver := platformdiscovery.NewResolver(provider, map[string]string{
+		"stargate": cfg.Services.Stargate.GRPC,
+		"blade":    bladeTarget,
+	})
+	platformdiscovery.RegisterResolver(resolver)
+	log.Info("blade discovery resolver enabled", "target", cfg.Discovery.Target)
+	return resolver, func() { _ = provider.Close() }
 }
 
 // pushQueueHandler dispatches async jobs to push/email (queue ↔ push/email

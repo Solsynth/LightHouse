@@ -24,6 +24,7 @@ import (
 	dyauth "src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/cache"
 	eb "src.solsynth.dev/sosys/lighthouse/shared/pkg/eventbus"
+	platformdiscovery "src.solsynth.dev/sosys/lighthouse/shared/platform/discovery"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 	"srv.solsynth.dev/sosys/blade/capabilities"
 	"srv.solsynth.dev/sosys/blade/config"
@@ -83,9 +84,6 @@ func main() {
 		if redisClient == nil {
 			logging.Log.Fatal().Msg("Service discovery requires cache.redisUrl")
 		}
-		if strings.TrimSpace(cfg.Discovery.RegistrationToken) == "" {
-			logging.Log.Fatal().Msg("Service discovery requires discovery.registrationToken")
-		}
 		registry = discovery.NewRegistry(redisClient, cfg.Discovery.Prefix, time.Duration(cfg.Discovery.LeaseSeconds)*time.Second)
 		relayCatalog = discovery.NewCatalog(registry, cfg.Discovery.RelayServiceName)
 		relayAPI = discovery.NewRelayAPI(
@@ -94,7 +92,18 @@ func main() {
 			cfg.Discovery.RegistrationToken,
 			time.Duration(cfg.Discovery.LeaseSeconds)*time.Second,
 		)
+		if strings.TrimSpace(cfg.Discovery.RegistrationToken) == "" {
+			logging.Log.Warn().Msg("discovery.registrationToken is empty; relay registration over the public HTTP entry is disabled")
+		}
 		capabilityAggregator = capabilities.NewWithTLSConfig(registry, cfg.GRPC.ClientTLSSkipVerify, cfg.Endpoints.CoreServiceNames...)
+		fallback := make(map[string]string, len(cfg.Services))
+		for name, endpoint := range cfg.Services {
+			fallback[name] = endpoint.Grpc
+		}
+		platformdiscovery.RegisterResolver(platformdiscovery.NewResolver(
+			discovery.NewRegistryProvider(registry),
+			fallback,
+		))
 		logging.Log.Info().Str("prefix", cfg.Discovery.Prefix).Msg("Enabled Redis-backed service discovery")
 	}
 
@@ -150,6 +159,12 @@ func main() {
 	if cfg.WebSocket.Enabled {
 		authService := cfg.WebSocket.AuthService
 		authGrpcTarget := config.GetServiceGrpc(authService)
+		if registry != nil {
+			// Follow the registry so the auth service can move without a Blade
+			// config change. The static [services] entry remains the resolver
+			// fallback until the instance registers and passes its health check.
+			authGrpcTarget = platformdiscovery.Target(authService)
+		}
 		if authGrpcTarget == "" {
 			logging.Log.Fatal().
 				Str("authService", authService).
@@ -186,6 +201,9 @@ func main() {
 		// Initialize profile service gRPC connection
 		profileService := cfg.WebSocket.ProfileService
 		profileGrpcTarget := config.GetServiceGrpc(profileService)
+		if registry != nil {
+			profileGrpcTarget = platformdiscovery.Target(profileService)
+		}
 		if profileGrpcTarget == "" {
 			logging.Log.Fatal().
 				Str("profileService", profileService).
@@ -385,7 +403,7 @@ func main() {
 			gen.RegisterWebSocketServiceServer(grpcSrv, grpcWSService)
 		}
 		if registry != nil {
-			gen.RegisterDyServiceDiscoveryServiceServer(grpcSrv, discovery.NewGRPCService(registry, cfg.Discovery.RegistrationToken))
+			gen.RegisterDyServiceDiscoveryServiceServer(grpcSrv, discovery.NewGRPCService(registry))
 		}
 		reflection.Register(grpcSrv)
 

@@ -147,7 +147,6 @@ func applyEnv(cfg *Config) {
 	config.SetInt("SPHERE_SECURITY_MAXTAKE", &cfg.Security.MaxTake)
 	config.SetBool("SPHERE_DISCOVERY_ENABLED", &cfg.Discovery.Enabled)
 	config.SetStr("SPHERE_DISCOVERY_TARGET", &cfg.Discovery.Target)
-	config.SetStr("SPHERE_DISCOVERY_REGISTRATION_TOKEN", &cfg.Discovery.RegistrationToken)
 	config.SetStr("SPHERE_DISCOVERY_SERVICE", &cfg.Discovery.Service)
 	config.SetStr("SPHERE_DISCOVERY_INSTANCE_ID", &cfg.Discovery.InstanceID)
 	config.SetStr("SPHERE_DISCOVERY_HTTP_ENDPOINT", &cfg.Discovery.HttpEndpoint)

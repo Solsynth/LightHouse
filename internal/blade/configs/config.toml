@@ -3,14 +3,18 @@ siteUrl = "http://localhost:5173"
 [cache]
 serializer = "JSON"
 
-# Redis-backed service discovery. Services register their own leased instances
-# through Blade's gRPC endpoint. Set registrationToken before enabling outside
-# local development.
+# Redis-backed service discovery. In-network services register their own leased
+# instances through Blade's internal gRPC endpoint; that API is unauthenticated
+# and must stay on the internal network. registrationToken below only protects
+# the public relay control plane.
 [discovery]
 enabled = false
 prefix = "blade:discovery"
 leaseSeconds = 30
 leaderLeaseSeconds = 15
+# Only the public relay control plane uses this. In-network services register
+# over the internal gRPC listener without a credential. Leave it empty to
+# disable relay registration while keeping service discovery enabled.
 registrationToken = ""
 # Registry service name under which L4 relays register; served at GET /relays.
 relayServiceName = "relay"
@@ -20,6 +24,10 @@ url = "nats://nats:RE0zx7Qtady3Akyrn6eZXF@localhost:57132"
 websocketSubjectPrefix = "websocket_"
 
 [services]
+# Static fallbacks only. When [discovery] is enabled, services register their
+# own endpoints and Blade prefers the live instances; these entries are used
+# solely until a service has a registration. Remove an entry to make Blade
+# depend entirely on discovery for that service.
 ring = { http = "http://localhost:8001", grpc = "localhost:7002" }
 drive = { http = "http://localhost:8003", grpc = "localhost:7004" }
 sphere = { http = "http://localhost:8004", grpc = "localhost:7005" }
@@ -31,6 +39,8 @@ wallet = { http = "http://localhost:8009", grpc = "localhost:7010" }
 stargate = { http = "http://localhost:8080", grpc = "localhost:9090" }
 
 [endpoints]
+# Static health-check fallbacks. Registered services are tracked automatically;
+# these names are only needed while a service is still served from [services].
 serviceNames = [
   "ring",
   "drive",

@@ -6,29 +6,25 @@ import (
 	"time"
 
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 	"srv.solsynth.dev/sosys/blade/logging"
 )
 
-// GRPCService exposes the shared discovery contract. Mutating calls require a
-// service credential; resolution is intentionally read-only.
+// GRPCService exposes the shared discovery contract on the internal network.
+// Mutating calls are limited to processes that can reach Blade's gRPC port;
+// relays, which register over the public HTTP entry, use RelayAPI's token.
 type GRPCService struct {
 	gen.UnimplementedDyServiceDiscoveryServiceServer
-	registry          *Registry
-	registrationToken string
+	registry *Registry
 }
 
-func NewGRPCService(registry *Registry, registrationToken string) *GRPCService {
-	return &GRPCService{registry: registry, registrationToken: strings.TrimSpace(registrationToken)}
+func NewGRPCService(registry *Registry) *GRPCService {
+	return &GRPCService{registry: registry}
 }
 
 func (s *GRPCService) Register(ctx context.Context, req *gen.DyRegisterServiceInstanceRequest) (*gen.DyRegisterServiceInstanceResponse, error) {
-	if err := s.authorize(ctx); err != nil {
-		return nil, err
-	}
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request is required")
 	}
@@ -47,9 +43,6 @@ func (s *GRPCService) Register(ctx context.Context, req *gen.DyRegisterServiceIn
 }
 
 func (s *GRPCService) Renew(ctx context.Context, req *gen.DyRenewServiceLeaseRequest) (*gen.DyRenewServiceLeaseResponse, error) {
-	if err := s.authorize(ctx); err != nil {
-		return nil, err
-	}
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request is required")
 	}
@@ -61,9 +54,6 @@ func (s *GRPCService) Renew(ctx context.Context, req *gen.DyRenewServiceLeaseReq
 }
 
 func (s *GRPCService) Deregister(ctx context.Context, req *gen.DyDeregisterServiceInstanceRequest) (*emptypb.Empty, error) {
-	if err := s.authorize(ctx); err != nil {
-		return nil, err
-	}
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "request is required")
 	}
@@ -91,22 +81,6 @@ func (s *GRPCService) Resolve(ctx context.Context, req *gen.DyResolveServiceRequ
 		instances = filtered
 	}
 	return &gen.DyResolveServiceResponse{Instances: instances}, nil
-}
-
-func (s *GRPCService) authorize(ctx context.Context) error {
-	if s.registrationToken == "" {
-		return status.Error(codes.FailedPrecondition, "service discovery registration is not configured")
-	}
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return status.Error(codes.Unauthenticated, "missing authorization")
-	}
-	for _, value := range md.Get("authorization") {
-		if BearerMatches(value, s.registrationToken) {
-			return nil
-		}
-	}
-	return status.Error(codes.Unauthenticated, "invalid service credential")
 }
 
 func leaseFromSeconds(seconds int32, fallback time.Duration) time.Duration {
