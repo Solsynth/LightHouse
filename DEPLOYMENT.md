@@ -237,12 +237,20 @@ Properties of the importer:
   database has that the port does not is ignored.
 - **Soft-deleted rows are copied with their `deleted_at`**, so history survives.
 
-`stargate-migrate` copies the profile, realm, progression and domain-trust
-tables Passport used to own (`realms`, the `realm_*` tables,
-`achievement_definitions`/`quest_definitions` and progress rows,
-`domain_blocks`, `domain_validation_metrics`). The run is resumable: without
-`--incremental` it truncates the tables it owns and re-copies, and with
-`--incremental` it skips completed tables and inserts only missing rows.
+`stargate-migrate` copies every table the Stargate modules serve that exists in
+both the legacy Padlock/Passport schema and the target — auth/account tables from
+Padlock, and from Passport the profile, social, account-record, realm,
+progression, account-event, ticket, purchase, NFC/PassKit, artwork, rewind,
+account-status and presence-activity tables (plus `magic_spells`). The run is
+resumable: without `--incremental` it truncates the tables it owns and re-copies
+(dropping their completion records at the same time), and with `--incremental` it
+skips completed tables and inserts only missing rows.
+
+A table missing from the source or from the target (module disabled) is skipped
+and is **not** recorded as complete, so enabling the module or letting the legacy
+table reappear and re-running with `--incremental` copies it. A completion record
+whose target table is empty is also re-copied, so a record left behind by an older
+build cannot strand a table.
 
 What is deliberately **not** copied:
 

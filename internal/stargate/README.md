@@ -313,6 +313,13 @@ permission groups). UUIDs, bcrypt password hashes and E2EE blobs are copied
 verbatim; schema drift (e.g. an `epoch` column the live DB lacks) is
 zero-filled per type.
 
+`--incremental` resumes: it skips tables already copied and inserts only the
+rows missing from the target. A table missing from the source, or from the
+target because its module is disabled, is reported as skipped and gets no
+completion record, so enabling the module and re-running still copies it. A
+completion record whose target table is empty is discarded and the table is
+copied again.
+
 ## Cutover
 
 1. Point Blade's routes for `/padlock/**`, `/passport/**`, `/api/realms/**`,

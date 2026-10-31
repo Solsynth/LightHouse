@@ -261,12 +261,19 @@ Verified against a live PostgreSQL and a running Stargate:
 - the realm snapshot Sphere embeds now carries the full `SnRealm` field set
   (`is_community`, `verification`, `account_id`, numeric `boost_points`,
   `boost_level`), not just id/slug/name/description;
-- `stargate-migrate` now copies `realms`, the `realm_*` tables, the six
-  progression tables, both domain-trust tables and the new Passport
-  account/event/ticket/purchase/NFC/pass/artwork/rewind tables. A run
-  against a legacy-shaped source copied realm, domain-trust and progression rows
-  (including `progress_reward_grants.reward_token`); a second
-  `--incremental` run copied 0 rows and skipped the completed tables;
+- `stargate-migrate` copies `realms`, the `realm_*` tables, the six progression
+  tables, both domain-trust tables, the new Passport
+  account/event/ticket/purchase/NFC/pass/artwork/rewind tables, the
+  account-status and presence-activity tables and `magic_spells`. A run against
+  a legacy-shaped source copied realm, domain-trust, progression, check-in,
+  status, presence and magic-spell rows; a second `--incremental` run copied 0
+  rows and skipped the completed tables. A table missing on either side is
+  skipped and **not** recorded as migrated, so a later run still copies it;
+- the presence tables keep the types migration 0014 declares. Their entity tags
+  pin `uuid`/`integer`/`varchar(n)` so AutoMigrate neither widens them nor
+  leaves an already-widened database broken: booting the module converts a
+  `text`/`bigint` column back and keeps its rows, which is what made the COPY
+  into `account_statuses` and `presence_*` fail;
 - the module tables store UUID columns as `uuid`, not the `text` GORM chooses
   by default. Fresh databases get the right type from the entity tags and an
   existing database is converted by a schema hook (primary keys included), so
