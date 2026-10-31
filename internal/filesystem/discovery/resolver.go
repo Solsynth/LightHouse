@@ -51,7 +51,7 @@ func NewResolver(target string, fallback map[string]string) (*Resolver, error) {
 	if target == "" {
 		return nil, fmt.Errorf("service discovery: target is empty")
 	}
-	conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(DialTarget(target), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("service discovery: dial %s: %w", target, err)
 	}
@@ -81,6 +81,18 @@ func (r *Resolver) Close() error {
 // Target returns the gRPC target for a logical service name.
 func Target(service string) string {
 	return ResolverScheme + ":///" + strings.TrimSpace(service)
+}
+
+// DialTarget normalizes a configured Blade address into a gRPC dial target.
+// A bare host:port is forced to the dns scheme: RFC 3986 parses "blade:7001"
+// as scheme "blade", which is ResolverScheme, so gRPC would resolve the
+// registry for a service named "7001" instead of dialing the Blade gateway.
+func DialTarget(raw string) string {
+	target := strings.TrimSpace(raw)
+	if target == "" || strings.Contains(target, "://") {
+		return target
+	}
+	return "dns:///" + target
 }
 
 // Resolve returns healthy gRPC endpoints, falling back to the static address

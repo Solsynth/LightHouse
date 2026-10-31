@@ -304,7 +304,7 @@ func Run[C any](parent context.Context, log *slog.Logger, opts Options[C]) error
 		if err := discovery.Validate(discoveryOpts); err != nil {
 			return fmt.Errorf("discovery: %w", err)
 		}
-		conn, err := grpc.NewClient(base.Discovery.Target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := grpc.NewClient(discovery.DialTarget(base.Discovery.Target), grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			log.Warn("blade discovery unavailable; registration disabled", "target", base.Discovery.Target, "error", err)
 		} else {

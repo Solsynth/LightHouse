@@ -257,7 +257,7 @@ func (r *Runtime) setupDiscovery() error {
 		r.discoveryResolver = nil
 		return err
 	}
-	conn, err := grpc.NewClient(cfg.Discovery.Target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(discovery.DialTarget(cfg.Discovery.Target), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		_ = resolver.Close()
 		r.discoveryResolver = nil
