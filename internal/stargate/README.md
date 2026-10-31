@@ -323,9 +323,10 @@ zero-filled per type.
 3. The Go services keep a single `[services].stargate` target: profiles,
    realms and domain blocks are read from it, and the former `passport` key is
    ignored. Remove it from deployment configs.
-4. Run the migration tool (it now copies the realm, progression and
-   domain-trust tables too), restart, and verify with the compat sweep in the
-   plan (`local://stargate-user-domain-plan.md`).
+4. Run the migration tool (it now copies the realm, progression,
+   domain-trust, account-record/event, ticket, purchase, NFC, PassKit,
+   artwork, rewind and nearby tables too), restart, and verify with the
+   compat sweep in the plan (`local://stargate-user-domain-plan.md`).
 5. Keep Passport serving Examination, Meet and the location-pin routes; every
    other Passport domain is served by Stargate.
 

@@ -62,6 +62,11 @@ var passportTables = []string{
 	// Profiles and the social graph.
 	"account_profiles",
 	"account_relationships",
+	// Account records (app.solian.id.accountrecords).
+	"experience_records",
+	"social_credit_records",
+	"badges",
+	"account_board_items",
 	// Realm (app.solian.id.realm).
 	"realms",
 	"realm_labels",
@@ -78,6 +83,28 @@ var passportTables = []string{
 	"account_quest_progresses",
 	"progress_reward_grants",
 	"progress_event_receipts",
+	// Account events (app.solian.id.accountevents).
+	"notable_days",
+	"account_check_in_results",
+	"user_calendar_events",
+	"calendar_event_subscriptions",
+	// Tickets and purchases.
+	"tickets",
+	"ticket_messages",
+	"ticket_on_call_admins",
+	"affiliation_spells",
+	"affiliation_results",
+	"affiliation_spell_purchases",
+	"name_change_card_purchases",
+	// NFC and Wallet passes.
+	"nfc_tags",
+	"apple_passes",
+	"apple_pass_registrations",
+	// Artworks, rewind and nearby.
+	"presence_artworks",
+	"rewind_points",
+	"nearby_devices",
+	"nearby_presence_tokens",
 	// Domain trust (app.solian.id.domaintrust).
 	"domain_blocks",
 	"domain_validation_metrics",
@@ -269,6 +296,12 @@ func targetHasData(ctx context.Context, db querier) (bool, string, error) {
 			"realm_post_moderation_logs",
 			"account_achievements", "account_quest_progresses", "progress_reward_grants",
 			"progress_event_receipts", "domain_blocks", "domain_validation_metrics",
+			"experience_records", "social_credit_records", "badges", "account_board_items",
+			"notable_days", "account_check_in_results", "user_calendar_events", "calendar_event_subscriptions",
+			"tickets", "ticket_messages", "ticket_on_call_admins",
+			"affiliation_spells", "affiliation_results", "affiliation_spell_purchases",
+			"name_change_card_purchases", "nfc_tags", "apple_passes", "apple_pass_registrations",
+			"presence_artworks", "rewind_points", "nearby_devices", "nearby_presence_tokens",
 		})
 	if err != nil {
 		return false, "", err

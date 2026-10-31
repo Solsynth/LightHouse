@@ -262,10 +262,11 @@ Verified against a live PostgreSQL and a running Stargate:
   (`is_community`, `verification`, `account_id`, numeric `boost_points`,
   `boost_level`), not just id/slug/name/description;
 - `stargate-migrate` now copies `realms`, the `realm_*` tables, the six
-  progression tables and both domain-trust tables. A run against a
-  legacy-shaped source copied realm, domain-trust and progression rows
+  progression tables, both domain-trust tables and the new Passport
+  account/event/ticket/purchase/NFC/pass/artwork/rewind/nearby tables. A run
+  against a legacy-shaped source copied realm, domain-trust and progression rows
   (including `progress_reward_grants.reward_token`); a second
-  `--incremental` run copied 0 rows and skipped all 41 completed tables;
+  `--incremental` run copied 0 rows and skipped the completed tables;
 - the module tables store UUID columns as `uuid`, not the `text` GORM chooses
   by default. Fresh databases get the right type from the entity tags and an
   existing database is converted by a schema hook (primary keys included), so
