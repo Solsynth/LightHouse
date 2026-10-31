@@ -29,6 +29,10 @@ const (
 	afdianAPIURL         = "https://ifdian.net/api/open/query-order"
 	afdianCheckoutURL    = "https://ifdian.net/order/create"
 	afdianRequestTimeout = 20 * time.Second
+	// Cloudflare fronts ifdian.net and answers 403 to Go's default
+	// "Go-http-client/2.0" user agent. The C# handler sent no user agent at
+	// all, which the WAF allows; identify as the application instead.
+	afdianUserAgent = "DysonNetwork/1.0 (Lighthouse)"
 )
 
 // AfdianProvider calls the Afdian open API and parses its webhooks.
@@ -211,6 +215,7 @@ func (p *AfdianProvider) queryOrders(ctx context.Context, params any) (*AfdianOr
 		return nil, err
 	}
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("User-Agent", afdianUserAgent)
 	response, err := p.client.Do(request)
 	if err != nil {
 		return nil, err
