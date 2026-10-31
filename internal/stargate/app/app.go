@@ -21,7 +21,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	platformdiscovery "src.solsynth.dev/sosys/lighthouse/shared/platform/discovery"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
@@ -404,11 +403,11 @@ func enabledIDs(resolution *module.Resolution[core.Services]) []string {
 // registry. The static [services] targets stay as fallbacks for services that
 // have not registered yet, so turning discovery on never turns an integration
 // off by accident.
-func newDiscoveryResolver(cfg *config.Config, log *slog.Logger) (*platformdiscovery.Resolver, func()) {
+func newDiscoveryResolver(cfg *config.Config, log *slog.Logger) (*discovery.Resolver, func()) {
 	if cfg == nil || !cfg.Discovery.Enabled || strings.TrimSpace(cfg.Discovery.Target) == "" {
 		return nil, nil
 	}
-	provider, err := platformdiscovery.NewRemoteProvider(cfg.Discovery.Target)
+	provider, err := discovery.NewRemoteProvider(cfg.Discovery.Target)
 	if err != nil {
 		log.Warn("blade discovery resolver unavailable; using static [services] targets", "error", err)
 		return nil, nil
@@ -417,7 +416,7 @@ func newDiscoveryResolver(cfg *config.Config, log *slog.Logger) (*platformdiscov
 	if strings.TrimSpace(bladeTarget) == "" {
 		bladeTarget = cfg.Discovery.Target
 	}
-	resolver := platformdiscovery.NewResolver(provider, map[string]string{
+	resolver := discovery.NewResolver(provider, map[string]string{
 		"wallet":  cfg.Services.Wallet.GRPC,
 		"develop": cfg.Services.Develop.GRPC,
 		"drive":   cfg.Services.Drive.GRPC,
@@ -425,7 +424,7 @@ func newDiscoveryResolver(cfg *config.Config, log *slog.Logger) (*platformdiscov
 		"blade":   bladeTarget,
 		"ring":    cfg.Services.Ring.GRPC,
 	})
-	platformdiscovery.RegisterResolver(resolver)
+	discovery.RegisterResolver(resolver)
 	log.Info("blade discovery resolver enabled", "target", cfg.Discovery.Target)
 	return resolver, func() { _ = provider.Close() }
 }

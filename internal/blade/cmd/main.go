@@ -24,7 +24,6 @@ import (
 	dyauth "src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/cache"
 	eb "src.solsynth.dev/sosys/lighthouse/shared/pkg/eventbus"
-	platformdiscovery "src.solsynth.dev/sosys/lighthouse/shared/platform/discovery"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 	"srv.solsynth.dev/sosys/blade/capabilities"
 	"srv.solsynth.dev/sosys/blade/config"
@@ -100,7 +99,7 @@ func main() {
 		for name, endpoint := range cfg.Services {
 			fallback[name] = endpoint.Grpc
 		}
-		platformdiscovery.RegisterResolver(platformdiscovery.NewResolver(
+		discovery.RegisterResolver(discovery.NewResolver(
 			discovery.NewRegistryProvider(registry),
 			fallback,
 		))
@@ -163,7 +162,7 @@ func main() {
 			// Follow the registry so the auth service can move without a Blade
 			// config change. The static [services] entry remains the resolver
 			// fallback until the instance registers and passes its health check.
-			authGrpcTarget = platformdiscovery.Target(authService)
+			authGrpcTarget = discovery.Target(authService)
 		}
 		if authGrpcTarget == "" {
 			logging.Log.Fatal().
@@ -202,7 +201,7 @@ func main() {
 		profileService := cfg.WebSocket.ProfileService
 		profileGrpcTarget := config.GetServiceGrpc(profileService)
 		if registry != nil {
-			profileGrpcTarget = platformdiscovery.Target(profileService)
+			profileGrpcTarget = discovery.Target(profileService)
 		}
 		if profileGrpcTarget == "" {
 			logging.Log.Fatal().

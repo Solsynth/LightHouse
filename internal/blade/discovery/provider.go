@@ -2,11 +2,9 @@ package discovery
 
 import (
 	"context"
-
-	platformdiscovery "src.solsynth.dev/sosys/lighthouse/shared/platform/discovery"
 )
 
-// RegistryProvider adapts the in-process registry to the shared discovery
+// RegistryProvider adapts the in-process registry to the local discovery
 // resolver. Blade uses it to follow its own registry for outbound gRPC
 // connections (the websocket gateway's auth and profile services) instead of
 // requiring those targets in [services].
@@ -18,16 +16,16 @@ func NewRegistryProvider(registry *Registry) *RegistryProvider {
 	return &RegistryProvider{registry: registry}
 }
 
-// Resolve implements platformdiscovery.AddressProvider.
-func (p *RegistryProvider) Resolve(ctx context.Context, service string) (platformdiscovery.Resolution, error) {
+// Resolve implements AddressProvider.
+func (p *RegistryProvider) Resolve(ctx context.Context, service string) (Resolution, error) {
 	if p == nil || p.registry == nil {
-		return platformdiscovery.Resolution{}, nil
+		return Resolution{}, nil
 	}
 	instances, err := p.registry.List(ctx, service)
 	if err != nil {
-		return platformdiscovery.Resolution{}, err
+		return Resolution{}, err
 	}
-	resolution := platformdiscovery.Resolution{Registered: len(instances) > 0}
+	resolution := Resolution{Registered: len(instances) > 0}
 	for _, instance := range instances {
 		if !instance.GetHealthy() {
 			continue
