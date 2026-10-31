@@ -304,14 +304,17 @@ public clients should use PKCE and omit `clientSecret`.
 go run ./cmd/stargate-migrate \
   --padlock-dsn  "postgres://…/dyson_padlock" \
   --passport-dsn "postgres://…/dyson_pass" \
+  --wallet-dsn   "postgres://…/dyson_wallet" \
   --target-dsn   "postgres://…/dyson_stargate"
 ```
 
 Order matters: boot Stargate once (creates the schema + records migrations),
 then copy data, then restart (the seed then enrolls accounts in the
-permission groups). UUIDs, bcrypt password hashes and E2EE blobs are copied
-verbatim; schema drift (e.g. an `epoch` column the live DB lacks) is
-zero-filled per type.
+permission groups). UUIDs, bcrypt password hashes, E2EE blobs and wallet
+balances are copied verbatim; schema drift (e.g. an `epoch` column the live
+DB lacks) is zero-filled per type. The passport and wallet sources are
+optional: without their DSN the tool neither copies nor truncates those
+tables.
 
 `--incremental` resumes: it skips tables already copied and inserts only the
 rows missing from the target. A table missing from the source, or from the
@@ -330,9 +333,9 @@ copied again.
 3. The Go services keep a single `[services].stargate` target: profiles,
    realms and domain blocks are read from it, and the former `passport` key is
    ignored. Remove it from deployment configs.
-4. Run the migration tool (it now copies the realm, progression,
-   domain-trust, account-record/event, ticket, purchase, NFC, PassKit,
-   artwork and rewind tables too), restart, and verify with the
+4. Run the migration tool (it copies the wallet tables and the realm,
+   progression, domain-trust, account-record/event, ticket, purchase, NFC,
+   PassKit, artwork and rewind tables too), restart, and verify with the
    compat sweep in the plan (`local://stargate-user-domain-plan.md`).
 5. Keep Passport serving Examination, Meet and the location-pin routes; every
    other Passport domain is served by Stargate.

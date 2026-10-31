@@ -1,14 +1,15 @@
 // stargate-migrate copies the existing Dyson Network data into the Stargate
-// database. It reads from the legacy dyson_padlock and dyson_passport
-// databases (schema-parity targets) and preserves every UUID, bcrypt hash
-// and bytea blob, so sessions, tokens and credentials keep working after
-// cutover.
+// database. It reads from the legacy dyson_padlock, dyson_passport and
+// dyson_wallet databases (schema-parity targets) and preserves every UUID,
+// bcrypt hash and bytea blob, so sessions, tokens, credentials and wallet
+// balances keep working after cutover.
 //
 // Usage:
 //
 //	stargate-migrate \
 //	  --padlock-dsn "postgres://.../dyson_padlock" \
 //	  --passport-dsn "postgres://.../dyson_passport" \
+//	  --wallet-dsn "postgres://.../dyson_wallet" \
 //	  --target-dsn "postgres://.../dyson_stargate"
 //
 // Target DSN defaults to the STARGATE config [database] section.
@@ -117,21 +118,53 @@ var passportTables = []string{
 	"domain_validation_metrics",
 }
 
+// walletTables is the copy order for the Wallet database (FK-safe). The
+// wallet module keeps the C# table names, so the target schema already
+// matches; a target table missing because the module is disabled is
+// reported as skipped by copyTable.
+var walletTables = []string{
+	"wallets",
+	"wallet_pockets",       // wallet_id -> wallets
+	"payment_transactions", // payer/payee_wallet_id -> wallets
+	"inbound_orders",
+	"payment_orders",           // wallets, transaction_id, inbound_order_id
+	"wallet_order_items",       // order_id -> payment_orders
+	"wallet_transfer_requests", // wallets, transaction_id
+	"wallet_funds",
+	"wallet_fund_recipients", // fund_id -> wallet_funds
+	"wallet_coupons",         // wallet_subscriptions.coupon_id
+	"wallet_subscription_definitions",
+	"wallet_subscriptions", // coupon_id, inbound_order_id
+	"wallet_gifts",         // coupon_id, subscription_id
+	"merchants",
+	"merchant_settlements", // merchant_id, order_id, payment_transaction_id
+}
+
+// tableSource pairs a connected legacy database with the tables it owns, in
+// the order they must be copied.
+type tableSource struct {
+	label  string
+	pool   *pgxpool.Pool
+	tables []string
+}
+
 // copiedTables lists every table the migration reads from the sources and
 // writes into the target, in FK-safe copy order. The truncate set and the
 // "target already has data" probe are both derived from it so they cannot
 // drift from the copy lists.
 func copiedTables() []string {
-	tables := make([]string, 0, len(padlockTables)+len(passportTables))
+	tables := make([]string, 0, len(padlockTables)+len(passportTables)+len(walletTables))
 	tables = append(tables, padlockTables...)
-	return append(tables, passportTables...)
+	tables = append(tables, passportTables...)
+	return append(tables, walletTables...)
 }
 
 func main() {
-	var padlockDSN, passportDSN, targetDSN string
+	var padlockDSN, passportDSN, walletDSN, targetDSN string
 	var force, incremental bool
 	flag.StringVar(&padlockDSN, "padlock-dsn", os.Getenv("PADLOCK_DSN"), "source dyson_padlock postgres DSN")
 	flag.StringVar(&passportDSN, "passport-dsn", os.Getenv("PASSPORT_DSN"), "source dyson_passport postgres DSN")
+	flag.StringVar(&walletDSN, "wallet-dsn", os.Getenv("WALLET_DSN"), "source dyson_wallet postgres DSN")
 	flag.StringVar(&targetDSN, "target-dsn", os.Getenv("TARGET_DSN"), "target dyson_stargate DSN (defaults to config)")
 	flag.BoolVar(&force, "force", false, "proceed even though the target database already contains data")
 	flag.BoolVar(&incremental, "incremental", false, "resume: skip fully-copied tables and only insert rows missing from the target (no truncate)")
@@ -179,14 +212,23 @@ func main() {
 		}
 	}
 
-	// Passport DSN is optional; the profile tables are skipped when absent.
-	var passport *pgxpool.Pool
+	// Passport and Wallet DSNs are optional; their tables are skipped when
+	// absent, and a full run leaves their target tables untouched so data
+	// this run cannot restore is never truncated.
+	var passport, wallet *pgxpool.Pool
 	if passportDSN != "" {
 		passport, err = pgxpool.New(ctx, passportDSN)
 		if err != nil {
 			log.Fatalf("connect passport: %v", err)
 		}
 		defer passport.Close()
+	}
+	if walletDSN != "" {
+		wallet, err = pgxpool.New(ctx, walletDSN)
+		if err != nil {
+			log.Fatalf("connect wallet: %v", err)
+		}
+		defer wallet.Close()
 	}
 
 	padlock, err := pgxpool.New(ctx, padlockDSN)
@@ -195,18 +237,37 @@ func main() {
 	}
 	defer padlock.Close()
 
-	// Truncate target tables first (CASCADE), preserving the migration table.
-	// Module-owned tables may be absent when the module is disabled; only
-	// truncate what actually exists.
+	sources := []tableSource{{label: "padlock", pool: padlock, tables: padlockTables}}
+	if passport != nil {
+		sources = append(sources, tableSource{label: "passport", pool: passport, tables: passportTables})
+	}
+	if wallet != nil {
+		sources = append(sources, tableSource{label: "wallet", pool: wallet, tables: walletTables})
+	}
+
+	// Truncate the target tables this run will actually re-copy. A table is
+	// cleared only when its source database is connected and holds it;
+	// otherwise copyTable would skip it and the truncate would destroy rows
+	// no source can restore. Module-owned tables may be absent when the
+	// module is disabled; only truncate what actually exists.
 	if !incremental {
-		existing := make([]string, 0, len(padlockTables)+len(passportTables))
-		for _, table := range copiedTables() {
-			ok, err := targetTableExists(ctx, target, table)
-			if err != nil {
-				log.Fatalf("check target table %s: %v", table, err)
-			}
-			if ok {
-				existing = append(existing, table)
+		existing := make([]string, 0, len(padlockTables)+len(passportTables)+len(walletTables))
+		for _, source := range sources {
+			for _, table := range source.tables {
+				srcHas, err := tableExists(ctx, source.pool, table)
+				if err != nil {
+					log.Fatalf("check source table %s: %v", table, err)
+				}
+				if !srcHas {
+					continue
+				}
+				dstHas, err := targetTableExists(ctx, target, table)
+				if err != nil {
+					log.Fatalf("check target table %s: %v", table, err)
+				}
+				if dstHas {
+					existing = append(existing, table)
+				}
 			}
 		}
 		if len(existing) > 0 {
@@ -223,16 +284,9 @@ func main() {
 	}
 
 	total, skipped := int64(0), 0
-	for _, table := range padlockTables {
-		copied, wasSkipped := copyOne(ctx, padlock, target, "padlock", table, incremental, incremental && !force)
-		total += copied
-		if wasSkipped {
-			skipped++
-		}
-	}
-	if passport != nil {
-		for _, table := range passportTables {
-			copied, wasSkipped := copyOne(ctx, passport, target, "passport", table, incremental, incremental && !force)
+	for _, source := range sources {
+		for _, table := range source.tables {
+			copied, wasSkipped := copyOne(ctx, source.pool, target, source.label, table, incremental, incremental && !force)
 			total += copied
 			if wasSkipped {
 				skipped++
@@ -346,23 +400,25 @@ type querier interface {
 // seed, so rows in them on a freshly booted target are expected and must not
 // trip the "target already has data" guard.
 //
-// The permission_* tables are seeded by the permission registry, and the
-// progression catalog plus the CN notable days by their modules. The catalogs
-// are upserted by name/key, so copying the legacy rows over them is safe.
+// The permission_* tables are seeded by the permission registry, the
+// progression catalog and CN notable days by their modules, and the wallet
+// subscription catalog by the wallet module. The catalogs are upserted by
+// name/key, so copying the legacy rows over them is safe.
 var seedOwnedTables = map[string]struct{}{
-	"permission_groups":        {},
-	"permission_nodes":         {},
-	"permission_group_members": {},
-	"achievement_definitions":  {},
-	"quest_definitions":        {},
-	"notable_days":             {},
+	"permission_groups":               {},
+	"permission_nodes":                {},
+	"permission_group_members":        {},
+	"achievement_definitions":         {},
+	"quest_definitions":               {},
+	"notable_days":                    {},
+	"wallet_subscription_definitions": {},
 }
 
 // targetHasData reports whether any table the migration copies into already
 // holds rows. The list is derived from the copy lists so a newly added table
 // cannot be left out; seed-owned tables are excluded.
 func targetHasData(ctx context.Context, db querier) (bool, string, error) {
-	candidates := make([]string, 0, len(padlockTables)+len(passportTables))
+	candidates := make([]string, 0, len(padlockTables)+len(passportTables)+len(walletTables))
 	for _, table := range copiedTables() {
 		if _, seeded := seedOwnedTables[table]; seeded {
 			continue
@@ -458,6 +514,13 @@ func outgoingFKs(ctx context.Context, db querier, table string) ([]fkRef, error)
 		fks = append(fks, fk)
 	}
 	return fks, rows.Err()
+}
+
+// tableExists reports whether a table exists in the database's public schema.
+func tableExists(ctx context.Context, db querier, table string) (bool, error) {
+	var exists bool
+	err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = $1)`, table).Scan(&exists)
+	return exists, err
 }
 
 // targetTableExists reports whether a table exists in the target schema.

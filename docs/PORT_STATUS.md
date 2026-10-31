@@ -264,8 +264,10 @@ Verified against a live PostgreSQL and a running Stargate:
 - `stargate-migrate` copies `realms`, the `realm_*` tables, the six progression
   tables, both domain-trust tables, the new Passport
   account/event/ticket/purchase/NFC/pass/artwork/rewind tables, the
-  account-status and presence-activity tables and `magic_spells`. A run against
-  a legacy-shaped source copied realm, domain-trust, progression, check-in,
+  account-status and presence-activity tables, `magic_spells`, and the
+  wallet's `wallets`, `payment_*`, `wallet_*`, `merchants` and
+  `merchant_settlements` tables from `--wallet-dsn`. A run against a
+  legacy-shaped source copied realm, domain-trust, progression, check-in,
   status, presence and magic-spell rows; a second `--incremental` run copied 0
   rows and skipped the completed tables. A table missing on either side is
   skipped and **not** recorded as migrated, so a later run still copies it;

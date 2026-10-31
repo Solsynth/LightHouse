@@ -238,13 +238,17 @@ Properties of the importer:
 - **Soft-deleted rows are copied with their `deleted_at`**, so history survives.
 
 `stargate-migrate` copies every table the Stargate modules serve that exists in
-both the legacy Padlock/Passport schema and the target — auth/account tables from
-Padlock, and from Passport the profile, social, account-record, realm,
+both the legacy Padlock/Passport/Wallet schema and the target — auth/account
+tables from Padlock, from Passport the profile, social, account-record, realm,
 progression, account-event, ticket, purchase, NFC/PassKit, artwork, rewind,
-account-status and presence-activity tables (plus `magic_spells`). The run is
-resumable: without `--incremental` it truncates the tables it owns and re-copies
-(dropping their completion records at the same time), and with `--incremental` it
-skips completed tables and inserts only missing rows.
+account-status and presence-activity tables (plus `magic_spells`), and from
+Wallet the `wallets`, `payment_*`, `wallet_*`, `merchants` and
+`merchant_settlements` tables. The wallet source is passed as `--wallet-dsn`;
+the boot-time subscription seed still adds the configured Stellar/Creator plans
+on restart. The run is resumable: without `--incremental` it truncates the
+tables it owns and re-copies (dropping their completion records at the same
+time), and with `--incremental` it skips completed tables and inserts only
+missing rows.
 
 A table missing from the source or from the target (module disabled) is skipped
 and is **not** recorded as complete, so enabling the module or letting the legacy
@@ -255,11 +259,10 @@ build cannot strand a table.
 What is deliberately **not** copied:
 
 - Legacy tables no ported service owns (`fediverse_actors`, `polls`,
-  `publisher_follow_requests`, …) are absent from the target; the importer
-  reports them as skipped.
-- Wallet tables are not part of `stargate-migrate`; the wallet module has its
-  own schema and seeds the subscription catalog from configuration (the
-  Stellar and Creator plans ship as defaults).
+  `publisher_follow_requests`, the wallet's removed `lotteries` and
+  `lottery_records`, …) are absent from the target; the importer reports
+  them as skipped. Without `--wallet-dsn`, wallet tables are neither copied
+  nor truncated.
 
 ---
 

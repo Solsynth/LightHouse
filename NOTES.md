@@ -57,7 +57,7 @@ internal/messager/        messager service (same module, same shape)
   config.example.toml       example TOML
 internal/stargate/        module src.solsynth.dev/sosys/stargate
   cmd/stargate              the service (HTTP :8080, gRPC :9090)
-  cmd/stargate-migrate      legacy Padlock/Passport import
+  cmd/stargate-migrate      legacy Padlock/Passport/Wallet import
   cmd/stargate-module-import  per-module legacy import
   cmd/stargate-hash-password  bcrypt hash for [auth.singleUser]
   module/ modules/ ...      module registry, controllers, wallet, store

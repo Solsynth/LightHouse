@@ -7,7 +7,8 @@ import (
 )
 
 // SchemaModels is the AutoMigrate input for the module factory. The tables
-// keep the C# wallet names, so a legacy wallet database needs no data copy.
+// keep the C# wallet names, so stargate-migrate can copy a legacy wallet
+// database without renaming columns.
 func SchemaModels() []any { return entities() }
 
 // SchemaHooks are the raw-SQL schema hooks the factory applies after

@@ -3,8 +3,9 @@
 // merchants and the payment-provider inbound orders, and serves them over the
 // same HTTP and gRPC surfaces the C# service served.
 //
-// Entities keep the legacy table and column names, so a C# wallet database can
-// be pointed at this module without a data migration.
+// Entities keep the legacy table and column names, so a C# wallet database
+// maps row-for-row: stargate-migrate copies it with --wallet-dsn, and the
+// module can also be pointed straight at it.
 package wallet
 
 import (
