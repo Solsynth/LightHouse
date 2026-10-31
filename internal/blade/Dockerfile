@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 
 # Alpine keeps busybox wget for the gateway compose healthcheck.
 FROM alpine:3.24
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates git
 WORKDIR /app
 COPY --from=build /out/blade /app/blade
 COPY --from=build /out/relay /app/relay

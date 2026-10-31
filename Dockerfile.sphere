@@ -6,7 +6,7 @@ FROM golang:1.27-alpine AS build
 WORKDIR /src
 ENV CGO_ENABLED=0 GOWORK=off
 
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates git
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
