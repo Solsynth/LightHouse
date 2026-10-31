@@ -185,5 +185,5 @@ gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c/go.mod h1:K4uyk7z7BCEPqu6E+C
 gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
 nullprogram.com/x/optparse v1.0.0/go.mod h1:KdyPE+Igbe0jQUrVfMqDMeJQIJZEuyV7pjYmp6pbG50=
-src.solsynth.dev/sosys/lighthouse/shared v0.1.0 h1:WR6N0Inj2WVE8MuGvolc6tG5qyWvCHYT9rEHtAbnQO4=
-src.solsynth.dev/sosys/lighthouse/shared v0.1.0/go.mod h1:afO4zrDp8VJDr8ZUSHR9h6Js0lpHRxrFC6cqFJrmhwI=
+src.solsynth.dev/sosys/lighthouse/shared v0.2.0 h1:CYiYtIe7vwzZ1923bJGOQ566/NGEzzGOwh68Z3Nh2EM=
+src.solsynth.dev/sosys/lighthouse/shared v0.2.0/go.mod h1:afO4zrDp8VJDr8ZUSHR9h6Js0lpHRxrFC6cqFJrmhwI=
