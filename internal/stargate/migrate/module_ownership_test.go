@@ -261,4 +261,49 @@ func TestModuleSchemaOwnership(t *testing.T) {
 			}
 		}
 	})
+	// AutoMigrate must not rewrite the column types the core DDL declared.
+	// The module entities map tables the core migrations (or the legacy EF
+	// schema) own; a tag without an explicit type made GORM widen uuid to
+	// text and integer to bigint, which broke every COPY from the legacy
+	// database into those tables.
+	t.Run("module schema keeps the core column types", func(t *testing.T) {
+		database := newDatabase(t)
+		if err := Run(ctx, database); err != nil {
+			t.Fatal(err)
+		}
+		resolution, err := module.Resolve(standard.Modules(), nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		coreTypes := columnTypes(t, database)
+		if err := module.MigrateSchema(ctx, database, resolution.Factories); err != nil {
+			t.Fatal(err)
+		}
+		for column, want := range columnTypes(t, database) {
+			got, existed := coreTypes[column]
+			if !existed || got == want {
+				continue
+			}
+			t.Errorf("%s: module schema changed the type from %s to %s", column, got, want)
+		}
+	})
+}
+
+// columnTypes maps "<table>.<column>" to its SQL data type.
+func columnTypes(t *testing.T, database *gorm.DB) map[string]string {
+	t.Helper()
+	var rows []struct {
+		Table  string
+		Column string
+		Type   string
+	}
+	if err := database.Raw(`SELECT table_name AS "table", column_name AS "column", data_type AS "type"
+		FROM information_schema.columns WHERE table_schema = 'public'`).Scan(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	out := make(map[string]string, len(rows))
+	for _, row := range rows {
+		out[row.Table+"."+row.Column] = row.Type
+	}
+	return out
 }
