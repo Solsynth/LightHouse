@@ -100,11 +100,9 @@ var passportTables = []string{
 	"nfc_tags",
 	"apple_passes",
 	"apple_pass_registrations",
-	// Artworks, rewind and nearby.
+	// Artworks and rewind.
 	"presence_artworks",
 	"rewind_points",
-	"nearby_devices",
-	"nearby_presence_tokens",
 	// Domain trust (app.solian.id.domaintrust).
 	"domain_blocks",
 	"domain_validation_metrics",
@@ -301,7 +299,7 @@ func targetHasData(ctx context.Context, db querier) (bool, string, error) {
 			"tickets", "ticket_messages", "ticket_on_call_admins",
 			"affiliation_spells", "affiliation_results", "affiliation_spell_purchases",
 			"name_change_card_purchases", "nfc_tags", "apple_passes", "apple_pass_registrations",
-			"presence_artworks", "rewind_points", "nearby_devices", "nearby_presence_tokens",
+			"presence_artworks", "rewind_points",
 		})
 	if err != nil {
 		return false, "", err

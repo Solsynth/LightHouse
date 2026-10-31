@@ -3,10 +3,10 @@
 The Go replacement for **DysonNetwork.Padlock** (auth, accounts, OIDC, admin,
 E2EE/MLS) and the **Passport identity domains** (profiles, relationships,
 realms, progression, domain trust, account records/events, tickets, NFC,
-passes, purchases, rewind, nearby and presence providers). Serves the same
+passes, purchases, rewind and presence providers). Serves the same
 `/api/**` routes the C# services served (the Blade gateway adds the `/padlock`
 and `/passport` prefixes) with identical JSON shapes. Only Passport's
-Examination, Meet and location-pin surfaces are deliberately left out.
+Examination, Meet, location-pin and BLE-nearby surfaces are deliberately left out.
 
 ## Layout
 
@@ -34,7 +34,7 @@ Examination, Meet and location-pin surfaces are deliberately left out.
 - `grpcclient` — outbound clients (wallet, develop, drive, pass,
   blade, ring)
 - `nats` — thin wrapper over the shared event bus
-  (`src.solsynth.dev/sosys/go/pkg/eventbus`): JetStream events
+  (`src.solsynth.dev/sosys/lighthouse/shared/pkg/eventbus`): JetStream events
   (`auth.session.revoked`, `websocket_push`, `account_events`)
 - `broadcast` — friends-only websocket fan-out of account status and
   presence-activity changes (`account.status.updated`,
@@ -116,10 +116,10 @@ Modules own their schema:
   surface and the local `nfcTokens` port; `app.solian.id.passkit` owns Apple
   Wallet registrations and signed `.pkpass` generation.
 - `app.solian.id.presenceartworks`, `app.solian.id.ipcheck`,
-  `app.solian.id.rewind`, `app.solian.id.nearby`,
-  `app.solian.id.presenceproviders` and `app.solian.id.wellbeing` cover
-  S3-backed artwork, geo diagnostics, rewind points, BLE presence tokens,
-  Steam/Last.fm presence scans and account activity/night-owl reminders.
+  `app.solian.id.rewind`, `app.solian.id.presenceproviders` and
+  `app.solian.id.wellbeing` cover S3-backed artwork, geo diagnostics, rewind
+  points, Steam/Last.fm presence scans and account activity/night-owl
+  reminders.
 - `app.solian.wallet` owns the ported DysonNetwork.Wallet service: wallets,
   pockets, the transaction ledger, orders, inbound provider orders,
   subscriptions, gifts, coupons, merchants and settlements, under the legacy
@@ -325,7 +325,7 @@ zero-filled per type.
    ignored. Remove it from deployment configs.
 4. Run the migration tool (it now copies the realm, progression,
    domain-trust, account-record/event, ticket, purchase, NFC, PassKit,
-   artwork, rewind and nearby tables too), restart, and verify with the
+   artwork and rewind tables too), restart, and verify with the
    compat sweep in the plan (`local://stargate-user-domain-plan.md`).
 5. Keep Passport serving Examination, Meet and the location-pin routes; every
    other Passport domain is served by Stargate.

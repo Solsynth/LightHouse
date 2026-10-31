@@ -64,13 +64,6 @@ disabled = []
 # forcePathStyle = true
 # enableSsl = false
 
-# Nearby BLE presence tokens (app.solian.id.nearby). The secret is required;
-# without it both endpoints answer 503 instead of falling back to a default.
-# [modules.settings."app.solian.id.nearby"]
-# presenceTokenSecret = "replace-with-a-long-random-secret"
-# serviceUuid = "FFF0"
-# slotDurationSec = 30
-
 # Affiliation invites and name-change cards (app.solian.id.purchases). Both
 # sell through the wallet `payments` port; the defaults below are Passport's.
 # [modules.settings."app.solian.id.purchases"]

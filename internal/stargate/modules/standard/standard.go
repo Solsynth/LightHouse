@@ -14,7 +14,6 @@ import (
 	"src.solsynth.dev/sosys/stargate/modules/e2ee"
 	"src.solsynth.dev/sosys/stargate/modules/integrations"
 	ipcheckmod "src.solsynth.dev/sosys/stargate/modules/ipcheck"
-	nearbymod "src.solsynth.dev/sosys/stargate/modules/nearby"
 	nfcmod "src.solsynth.dev/sosys/stargate/modules/nfc"
 	"src.solsynth.dev/sosys/stargate/modules/oauthapps"
 	"src.solsynth.dev/sosys/stargate/modules/oidc"
@@ -55,7 +54,6 @@ func Modules() []module.Factory {
 		oauthapps.Factory(),
 		realmmod.Factory(),
 		domaintrustmod.Factory(),
-		nearbymod.Factory(),
 		nfcmod.Factory(),
 		passkitmod.Factory(),
 		presenceartworksmod.Factory(),

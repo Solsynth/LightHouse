@@ -263,7 +263,7 @@ Verified against a live PostgreSQL and a running Stargate:
   `boost_level`), not just id/slug/name/description;
 - `stargate-migrate` now copies `realms`, the `realm_*` tables, the six
   progression tables, both domain-trust tables and the new Passport
-  account/event/ticket/purchase/NFC/pass/artwork/rewind/nearby tables. A run
+  account/event/ticket/purchase/NFC/pass/artwork/rewind tables. A run
   against a legacy-shaped source copied realm, domain-trust and progression rows
   (including `progress_reward_grants.reward_token`); a second
   `--incremental` run copied 0 rows and skipped the completed tables;
@@ -296,13 +296,13 @@ The remaining Passport domains live in:
 - `accountevents/` + `httpserver/accounteventsctl/` +
   `modules/accountevents/` (`app.solian.id.accountevents`);
 - `tickets/`, `purchases/`, `nfc/`, `passkit/`, `presenceartworks/`,
-  `ipcheck/`, `rewind/`, `nearby/`, `wellbeing/` and `presenceproviders/`
+  `ipcheck/`, `rewind/`, `wellbeing/` and `presenceproviders/`
   with their controller/module counterparts.
 
 Verified against a fresh PostgreSQL and a running Stargate (single-user auth,
 one seeded account, permissions inserted directly):
 
-- the module set boots on a fresh PostgreSQL; all 22 new tables and the
+- the module set boots on a fresh PostgreSQL; all 20 new tables and the
   partial live-unique indexes are created, and the notable-day seed writes 15
   CN rows idempotently;
 - `/api/accounts/me` hydrates experience/social-credit/leveling fields;
@@ -320,8 +320,8 @@ one seeded account, permissions inserted directly):
   affiliation create/consume and name-change-card order work; the name-change
   card correctly refuses to use an unpaid card;
 - NFC tag listing/admin, PassKit root and registration routes, IP diagnostics,
-  rewind creation/public toggles, nearby token issuance, BLE resolve
-  validation and the S3-not-configured 503 path answer as documented;
+  rewind creation/public toggles and the S3-not-configured 503 path answer
+  as documented;
 - `GET /api/admin/stats` and `/api/admin/accounts/metrics/activity` report the
   seeded account; the night-owl test endpoint returns 503 when no push port is
   configured; presence-provider admin scans return an empty `items` list when

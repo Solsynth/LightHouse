@@ -248,7 +248,7 @@ fails startup.
 | `orderEvents` | realm (boosts), purchases (fulfilment) | `app.solian.wallet` (feature) |
 | `email` | auth, spells, admin, tickets | `app.solian.ring` |
 | `push` | auth, admin, relationships, tickets, wellbeing | `app.solian.ring` |
-| `presence` | security, admin, nearby | `app.solian.blade` |
+| `presence` | security, admin | `app.solian.blade` |
 | `oauthClients` | oidc, security, token auth | `app.solian.id.oauthapps`, `app.solian.develop` |
 | `nfcTokens` | auth | `app.solian.id.nfc` (feature), `app.solian.pass` |
 | `verificationSpells` | auth | `app.solian.id.spells` |
@@ -290,7 +290,6 @@ startup.
 | `app.solian.id.presenceartworks` | feature | `/api/presence/artworks/**` | accounts | `presence_artworks` |
 | `app.solian.id.ipcheck` | feature | `/api/ip-check`, `/api/ip-check/geo` | — | none |
 | `app.solian.id.rewind` | feature | `/api/rewind/**` | accounts, accountevents | `rewind_points` |
-| `app.solian.id.nearby` | feature | `/api/nearby/**` | accounts (relationships optional) | `nearby_devices`, `nearby_presence_tokens` |
 | `app.solian.id.wellbeing` | feature | `/api/admin/stats`, `/api/admin/accounts/metrics/activity`, night-owl test/job | accounts, profiles | none |
 | `app.solian.id.presenceproviders` | feature | `/api/admin/accounts/presences/steam/**`, Steam/Last.fm scan jobs | accounts, presences, files/presence optional | none |
 | `app.solian.e2ee` | feature | `/api/e2ee/**`, MLS gRPC | accounts | `e2ee_*`, `mls_*` (later phase) |
@@ -557,9 +556,9 @@ whose schema diverged.
 - [x] `app.solian.id.passkit`: Apple Wallet pass registration/web service and
       signed `.pkpass` generation (PKCS#7) when configured.
 - [x] `app.solian.id.presenceartworks`, `app.solian.id.ipcheck`,
-      `app.solian.id.rewind`, `app.solian.id.nearby` and
-      `app.solian.id.wellbeing`: S3 artwork store, geo diagnostics, rewind
-      aggregation, BLE presence tokens and account activity/night-owl jobs.
+      `app.solian.id.rewind` and `app.solian.id.wellbeing`: S3 artwork store,
+      geo diagnostics, rewind aggregation and account activity/night-owl
+      jobs.
 - [x] `app.solian.id.presenceproviders`: Steam/Last.fm scans and the three
       presence stages.
 - [ ] Fortune reports use Passport's deterministic fallback; there is no
