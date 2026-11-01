@@ -235,6 +235,7 @@ docker run -p 443:443 -v ./configs/relay.toml:/app/configs/relay.toml:ro lightho
 | `GET /health`           | Gateway health document (`application/health+json`, never gated)   |
 | `GET /health/{service}` | Per-service health document (`200` pass, `503` fail, `404` unknown) |
 | `GET /relays`           | Public client-facing catalog of registered L4 relay nodes |
+| `GET /.well-known/routes` | Configured aliases and special routes, with the resolved target service |
 | `/<service>/**`         | Proxied to backend service (e.g., `/ring/**` → `ring:5000/api/**`) |
 | `/ws`                   | Native WebSocket gateway (configurable via `websocket.path`)       |
 | `/.well-known/*`        | .well-known endpoints (configurable via `routes`)                  |
@@ -265,6 +266,7 @@ appears under `checks` as a one-element array.
         "componentType": "component",
         "status": "pass",
         "time": "2026-10-04T11:42:16Z",
+        "source": "registry",
         "links": { "self": "https://api.solian.app/health/ring" }
       }
     ],
@@ -273,7 +275,8 @@ appears under `checks` as a one-element array.
         "componentId": "sphere",
         "componentType": "component",
         "status": "fail",
-        "time": "2026-10-04T11:42:16Z"
+        "time": "2026-10-04T11:42:16Z",
+        "source": "config"
       }
     ]
   },
@@ -284,12 +287,10 @@ appears under `checks` as a one-element array.
 ```
 
 `Cache-Control: max-age` mirrors `health.checkIntervalSeconds`, the period at
-which the aggregator refreshes the snapshot.
-
-`GET /health/{service}` serves the same document scoped to one service — it is
-the target a status page polls, and each `checks` entry publishes it as its
-`links.self`, so the roster can be discovered from the aggregate document
-alone. An unknown service is a failing document answered with `404`.
+which the aggregator refreshes the snapshot. Every check carries `source`:
+`registry` when the endpoint and health come from a live registered instance,
+`config` when Blade is still using the static `[services]` address because the
+service has no registration.
 
 ```json
 {
@@ -308,6 +309,28 @@ alone. An unknown service is a failing document answered with `404`.
     ]
   },
   "links": { "self": "https://api.solian.app/health/sphere" }
+}
+```
+
+### Route Introspection
+
+`GET /.well-known/routes` is public and mounted ahead of the readiness gate.
+It reports the configured aliases, the special `routes` table, and the service
+each route resolves to after alias canonicalisation:
+
+```json
+{
+  "aliases": { "dist": "express", "passport": "stargate" },
+  "routes": [
+    {
+      "path": "/.well-known/badges",
+      "target": "/.well-known/badges",
+      "prefix": true,
+      "service": "passport",
+      "resolved_service": "stargate"
+    }
+  ],
+  "counts": { "aliases": 2, "routes": 1 }
 }
 ```
 

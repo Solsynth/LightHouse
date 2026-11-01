@@ -10,8 +10,8 @@ import (
 func TestBuildResponsePassesWhenEverythingIsHealthy(t *testing.T) {
 	store := NewReadinessStore([]string{"ring"})
 	checkedAt := time.Date(2026, 10, 4, 11, 0, 0, 0, time.UTC)
-	store.UpdateService(ServiceState{ServiceName: "ring", IsHealthy: true, LastChecked: checkedAt})
-	store.UpdateService(ServiceState{ServiceName: "sphere", IsHealthy: true, LastChecked: checkedAt})
+	store.UpdateService(ServiceState{ServiceName: "ring", IsHealthy: true, LastChecked: checkedAt, Source: SourceConfig})
+	store.UpdateService(ServiceState{ServiceName: "sphere", IsHealthy: true, LastChecked: checkedAt, Source: SourceRegistry})
 
 	response := BuildResponse(store, "https://solian.app")
 
@@ -36,6 +36,17 @@ func TestBuildResponsePassesWhenEverythingIsHealthy(t *testing.T) {
 	}
 	if ring[0].Status != StatusPass || ring[0].Time != "2026-10-04T11:00:00Z" {
 		t.Fatalf("check = %+v, want pass at the recorded time", ring[0])
+	}
+	if ring[0].Source != SourceConfig || response.Checks["sphere"][0].Source != SourceRegistry {
+		t.Fatalf("check sources = %q/%q, want config/registry", ring[0].Source, response.Checks["sphere"][0].Source)
+	}
+	payload, err := json.Marshal(ring[0])
+	if err != nil {
+		t.Fatalf("marshal check: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(payload, &decoded); err != nil || decoded["source"] != SourceConfig {
+		t.Fatalf("check JSON = %s, want source=%q", payload, SourceConfig)
 	}
 	if response.Links["self"] != "https://solian.app/health" {
 		t.Fatalf("links = %+v, want the self link", response.Links)

@@ -71,6 +71,15 @@ func (r *Registry) Canonical(service string) string {
 	return r.canonicalService(service)
 }
 
+// Aliases returns a copy of the configured alias table.
+func (r *Registry) Aliases() map[string]string {
+	aliases := make(map[string]string, len(r.aliases))
+	for alias, target := range r.aliases {
+		aliases[alias] = target
+	}
+	return aliases
+}
+
 func (r *Registry) canonicalService(service string) string {
 	service = normalizeService(service)
 	seen := make(map[string]struct{}, 2)

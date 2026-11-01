@@ -122,6 +122,11 @@ their local HTTP health-check fallback only while no instance is registered.
 registered service does not automatically make it a core dependency; add it to
 that configuration list when Blade readiness must depend on it.
 
+Every `checks` entry in the health document carries a `source` field:
+`registry` when the endpoint and health came from live registered instances,
+`config` when Blade used the static `[services]` address because the service
+had no registration.
+
 ## Capabilities
 
 The capabilities document is built from the discovery registry. Blade queries

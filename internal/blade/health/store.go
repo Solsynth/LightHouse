@@ -5,10 +5,17 @@ import (
 	"time"
 )
 
+// Where a tracked service's endpoint and health came from.
+const (
+	SourceConfig   = "config"
+	SourceRegistry = "registry"
+)
+
 type ServiceState struct {
 	ServiceName string
 	IsHealthy   bool
 	LastChecked time.Time
+	Source      string
 }
 
 type ReadinessStore struct {

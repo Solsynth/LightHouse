@@ -147,7 +147,7 @@ func (a *Aggregator) checkRegisteredServices(ctx context.Context, services map[s
 			if fallbackURL != "" {
 				a.checkService(ctx, name, fallbackURL)
 			} else {
-				a.store.UpdateService(ServiceState{ServiceName: name, IsHealthy: false, LastChecked: time.Now()})
+				a.store.UpdateService(ServiceState{ServiceName: name, IsHealthy: false, LastChecked: time.Now(), Source: SourceRegistry})
 			}
 			continue
 		}
@@ -173,7 +173,7 @@ func (a *Aggregator) syncRegisteredReadiness(ctx context.Context, services map[s
 			if fallbackURL != "" {
 				a.checkService(ctx, name, fallbackURL)
 			} else {
-				a.store.UpdateService(ServiceState{ServiceName: name, IsHealthy: false, LastChecked: time.Now()})
+				a.store.UpdateService(ServiceState{ServiceName: name, IsHealthy: false, LastChecked: time.Now(), Source: SourceRegistry})
 			}
 			continue
 		}
@@ -184,13 +184,13 @@ func (a *Aggregator) syncRegisteredReadiness(ctx context.Context, services map[s
 				break
 			}
 		}
-		a.store.UpdateService(ServiceState{ServiceName: name, IsHealthy: healthy, LastChecked: time.Now()})
+		a.store.UpdateService(ServiceState{ServiceName: name, IsHealthy: healthy, LastChecked: time.Now(), Source: SourceRegistry})
 	}
 }
 
 func (a *Aggregator) checkService(ctx context.Context, name, baseURL string) {
 	healthy := a.probe(ctx, name, baseURL)
-	a.store.UpdateService(ServiceState{ServiceName: name, IsHealthy: healthy, LastChecked: time.Now()})
+	a.store.UpdateService(ServiceState{ServiceName: name, IsHealthy: healthy, LastChecked: time.Now(), Source: SourceConfig})
 }
 
 // isSelfReported reports whether a service owns its health instead of being

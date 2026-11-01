@@ -31,6 +31,7 @@ import (
 	"srv.solsynth.dev/sosys/blade/health"
 	"srv.solsynth.dev/sosys/blade/logging"
 	"srv.solsynth.dev/sosys/blade/proxy"
+	"srv.solsynth.dev/sosys/blade/routeinfo"
 	"srv.solsynth.dev/sosys/blade/wsgateway"
 )
 
@@ -160,6 +161,10 @@ func main() {
 	}
 
 	registerHealthRoutes(r, store, cfg)
+	// Public route introspection: aliases and special routes, with the
+	// service each path resolves to. Mounted ahead of the readiness gate so
+	// it stays available while backends are degraded.
+	r.GET("/.well-known/routes", routeinfo.Handler(cfg, registry))
 
 	r.Use(health.ReadinessMiddleware(store))
 

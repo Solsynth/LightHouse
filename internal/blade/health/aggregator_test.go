@@ -55,8 +55,8 @@ func TestAggregatorMirrorsSelfReportedRelaysWithoutProbing(t *testing.T) {
 	}
 
 	state, ok := store.GetServiceState("relay")
-	if !ok || !state.IsHealthy {
-		t.Fatalf("relay state = %+v, %v; want the reported health mirrored", state, ok)
+	if !ok || !state.IsHealthy || state.Source != SourceRegistry {
+		t.Fatalf("relay state = %+v, %v; want the reported health mirrored from the registry", state, ok)
 	}
 }
 
@@ -81,14 +81,31 @@ func TestAggregatorChecksServicesDiscoveredOnlyThroughRegistry(t *testing.T) {
 	aggregator.tick(t.Context())
 
 	state, ok := store.GetServiceState("dynamic")
-	if !ok || !state.IsHealthy {
-		t.Fatalf("registered-only service state = %+v, %v; want healthy state", state, ok)
+	if !ok || !state.IsHealthy || state.Source != SourceRegistry {
+		t.Fatalf("registered-only service state = %+v, %v; want a healthy registry state", state, ok)
 	}
+
 	instances, err := registry.List(t.Context(), "dynamic")
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
 	if !instances[0].GetHealthy() {
 		t.Fatal("expected health probe to update the registered instance")
+	}
+}
+
+func TestAggregatorMarksStaticChecksAsConfigSource(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	store := NewReadinessStore(nil)
+	aggregator := NewAggregator(store, &config.Config{Health: config.HealthConfig{CheckTimeout: time.Second}})
+	aggregator.checkService(t.Context(), "legacy", server.URL)
+
+	state, ok := store.GetServiceState("legacy")
+	if !ok || !state.IsHealthy || state.Source != SourceConfig {
+		t.Fatalf("static service state = %+v, %v; want a healthy config state", state, ok)
 	}
 }

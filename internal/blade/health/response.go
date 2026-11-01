@@ -35,6 +35,7 @@ type Check struct {
 	ComponentType string            `json:"componentType,omitempty"`
 	Status        string            `json:"status"`
 	Time          string            `json:"time,omitempty"`
+	Source        string            `json:"source,omitempty"`
 	Links         map[string]string `json:"links,omitempty"`
 }
 
@@ -136,6 +137,7 @@ func buildCheck(name string, state ServiceState, baseURL string) Check {
 		ComponentType: "component",
 		Status:        StatusPass,
 		Time:          state.LastChecked.UTC().Format(time.RFC3339),
+		Source:        state.Source,
 	}
 	if !state.IsHealthy {
 		check.Status = StatusFail
