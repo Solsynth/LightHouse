@@ -32,11 +32,13 @@ console design system.
    - Field / input: 10 px
    - Card / panel / well: 12 px
    - Sheet / modal / dialog: 16 px
-6. **A field is an outlined shape with a notched caption.** Every control is
-   enclosed by a 1 px border with an 8–10 px radius (`--radius-input`), cutting
-   a notch along the top edge when the caption rises. Focus thickens that outline
-   to 2 px in the signal colour, and an error tints it in the error tone. Suffix
-   icons or trailing actions can sit on the trailing edge.
+6. **A field is one rounded outline with an inset caption.** Every control is
+   a filled, fully rounded shape drawn by a 1 px border on all four sides with
+   an 8–10 px radius (`--radius-input`). The caption rises into a compact label
+   inside the top of the box on focus or value, keeping the outer border clean
+   and unbroken. Focus thickens that outline to 2 px in the signal colour, and
+   an error tints it in the error tone. Suffix icons or actions can sit on the
+   trailing edge.
 
 ## 2. Color
 
@@ -98,8 +100,9 @@ daisyUI themes are declared in `web/src/assets/main.css`:
 
 All text input fields share the `TextField` component (`src/components/TextField.vue`):
 
-- **Notched Outlined Border**: 1 px border with 10 px corner radius (`--radius-input`).
-- **Floating Label**: At rest, the label sits vertically centered on the value line. When focused or holding a value, it rises into a cut notch along the top border line.
+- **Clean Full Outline**: 1 px border with 10 px corner radius (`--radius-input`) on all four sides.
+- **Inset Floating Label**: At rest, the label sits vertically centered on the value line. When focused or holding a value, it rises inside the top of the box.
+- **Generous Height**: Comfortable heights (48 px default `sm`, 52 px `md`, 36 px `xs`) ensuring value text is never cramped beneath the risen label.
 - **Signal Focus**: Focus thickens the outline to 2 px in the signal color via an inset ring so layout never jumps.
 - **Suffix Icons & Actions**: Optional trailing icon component (`suffixIcon` prop) or trailing slots (`#suffix`, `#action`) for passkeys, password reveal, copy buttons, or clear actions. Fields without a suffix icon maintain balanced padding.
 - **Validation**: `invalid` turns the outline and caption to the error tone with helper text in `hint`.
@@ -110,8 +113,8 @@ All text input fields share the `TextField` component (`src/components/TextField
 | --- | --- |
 | `label` | Visible caption; omit for bare controls |
 | `as` | `'input'` (default), `'textarea'`, `'select'` |
-| `size` | `'md'` (44 px), `'sm'` (40 px, default), `'xs'` (32 px) |
-| `bare` | Drops caption and reserved notch; name with `aria-label` |
+| `size` | `'md'` (52 px), `'sm'` (48 px, default), `'xs'` (36 px) |
+| `bare` | Drops caption and reserved caption line; name with `aria-label` |
 | `invalid` | Error outline and caption tint |
 | `hint` | Optional helper text below the field |
 | `hintTone` | `'warning'` tints helper text without setting invalid |

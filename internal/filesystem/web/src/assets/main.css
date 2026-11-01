@@ -316,7 +316,7 @@
   }
 
   /* =========================================================================
-     Forms: TextField (Notched Outline)
+     Forms: TextField
      ========================================================================= */
   .field {
     display: block;
@@ -325,77 +325,38 @@
 
   .field-box {
     position: relative;
-    border-radius: var(--radius-input);
-  }
-
-  .field-outline {
-    position: absolute;
-    inset: 0;
-    margin: 0;
-    padding: 0 calc(var(--field-inset) - 4px);
     border: 1px solid var(--field-line);
     border-radius: var(--radius-input);
     background-color: var(--field-fill);
-    pointer-events: none;
-    box-sizing: border-box;
-    min-inline-size: 0;
-    text-align: left;
     transition:
       background-color 150ms ease,
       border-color 150ms ease,
       box-shadow 150ms ease;
   }
 
-  .field-box:hover:not(.is-disabled) .field-outline {
+  .field-box:hover:not(.is-disabled) {
     background-color: var(--field-fill-hover);
     border-color: color-mix(in oklab, var(--field-line) 65%, var(--color-base-content));
   }
 
-  .field:focus-within:not(.is-disabled) .field-outline {
+  .field-box:focus-within:not(.is-disabled) {
     border-color: var(--color-primary);
     box-shadow: inset 0 0 0 1px var(--color-primary);
     background-color: var(--field-fill-focus);
   }
 
-  .field.is-invalid .field-outline {
+  .field.is-invalid .field-box {
     border-color: var(--color-error);
   }
 
-  .field.is-invalid:focus-within .field-outline {
+  .field.is-invalid .field-box:focus-within {
     box-shadow: inset 0 0 0 1px var(--color-error);
   }
 
-  .field.is-disabled .field-outline {
+  .field.is-disabled .field-box {
     cursor: not-allowed;
     border-color: color-mix(in oklab, var(--field-line) 50%, transparent);
     background-color: color-mix(in oklab, var(--field-fill) 60%, var(--color-base-100));
-  }
-
-  .field-legend {
-    float: unset;
-    display: block;
-    width: auto;
-    padding: 0;
-    height: 11px;
-    font-size: var(--field-label-float);
-    line-height: 11px;
-    visibility: hidden;
-    max-width: 0.01px;
-    white-space: nowrap;
-    overflow: hidden;
-    transition: max-width 150ms cubic-bezier(0, 0, 0.2, 1);
-  }
-
-  .field-legend > span {
-    padding: 0 4px;
-    display: inline-block;
-    opacity: 0;
-    visibility: visible;
-  }
-
-  .field.is-floated .field-legend,
-  .field:focus-within .field-legend {
-    max-width: 1000px;
   }
 
   .field-control {
@@ -414,9 +375,13 @@
     color: var(--color-base-content);
     font-family: var(--font-mono);
     font-size: 13px;
-    line-height: var(--field-height);
+    line-height: 1.4;
     caret-color: var(--color-primary);
     transition: color 150ms ease;
+  }
+
+  .field:not(.field-bare) .field-control {
+    padding: var(--field-text-top) var(--field-inset) var(--field-text-bottom);
   }
 
   .field.has-suffix .field-control,
@@ -439,30 +404,39 @@
   }
 
   .field-md {
-    --field-height: 44px;
-    --field-inset: 14px;
-    --field-label-rest: 13.5px;
+    --field-height: 52px;
+    --field-inset: 16px;
+    --field-label-rest: 14px;
     --field-label-float: 10.5px;
+    --field-label-top: 7px;
+    --field-text-top: 21px;
+    --field-text-bottom: 7px;
   }
 
   .field-sm {
-    --field-height: 40px;
-    --field-inset: 13px;
-    --field-label-rest: 13px;
+    --field-height: 48px;
+    --field-inset: 14px;
+    --field-label-rest: 13.5px;
     --field-label-float: 10px;
+    --field-label-top: 6px;
+    --field-text-top: 19px;
+    --field-text-bottom: 5px;
   }
 
   .field-xs {
-    --field-height: 32px;
-    --field-inset: 10px;
+    --field-height: 36px;
+    --field-inset: 11px;
     --field-label-rest: 12px;
     --field-label-float: 9px;
+    --field-label-top: 4px;
+    --field-text-top: 14px;
+    --field-text-bottom: 3px;
   }
 
   .field textarea.field-control {
     block-size: auto;
     min-block-size: calc(var(--field-height) * 2);
-    padding-block: 10px;
+    padding-block: var(--field-text-top) 10px;
     line-height: 1.5;
     resize: vertical;
   }
@@ -490,16 +464,15 @@
   .field-label-float {
     position: absolute;
     z-index: 2;
-    inset-inline-start: calc(var(--field-inset) - 4px);
+    inset-inline-start: var(--field-inset);
     inset-block-start: 50%;
     translate: 0 -50%;
     color: var(--color-faint);
     font-size: var(--field-label-rest);
     font-weight: 500;
-    line-height: 1;
+    line-height: 1.2;
     pointer-events: none;
     transform-origin: left center;
-    padding: 0 4px;
     transition:
       inset-block-start 160ms cubic-bezier(0.2, 0.7, 0.2, 1),
       translate 160ms cubic-bezier(0.2, 0.7, 0.2, 1),
@@ -510,8 +483,8 @@
 
   .field.is-floated .field-label-float,
   .field:focus-within .field-label-float {
-    inset-block-start: 0;
-    translate: 0 -50%;
+    inset-block-start: var(--field-label-top);
+    translate: 0 0;
     font-size: var(--field-label-float);
     font-weight: 600;
     letter-spacing: 0.03em;
@@ -566,14 +539,14 @@
   .field-action {
     position: absolute;
     z-index: 2;
-    inset-inline-end: 6px;
+    inset-inline-end: 8px;
     inset-block-start: 50%;
     translate: 0 -50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    block-size: 28px;
-    inline-size: 28px;
+    block-size: 32px;
+    inline-size: 32px;
     border-radius: var(--radius-chip);
     color: var(--color-faint);
     transition:

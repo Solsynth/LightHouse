@@ -32,11 +32,13 @@ choices already encoded in `web/src/assets/main.css`,
    the palette from Solian's own seed-derived ramp, so a console surface and a
    Solian screen of the same role belong to the same family without pretending
    to be the same size. Roundness is a family, not a per-page choice.
-7. **A field is an outlined shape with a notched caption.** Every control is
-   enclosed by a 1 px border with an 8–10 px radius, cutting a notch along the
-   top edge when the caption rises. Focus thickens that outline to 2 px in the
-   signal colour, and an error tints it in the error tone. Suffix icons or
-   actions can sit on the trailing edge.
+7. **A field is one rounded outline with an inset caption.** Every control is
+   a filled, fully rounded shape drawn by a 1 px border on all four sides with
+   an 8–10 px radius (`--radius-input`). The caption rises into a compact label
+   inside the top of the box on focus or value, keeping the outer border clean
+   and unbroken. Focus thickens that outline to 2 px in the signal colour, and
+   an error tints it in the error tone. Suffix icons or actions can sit on the
+   trailing edge.
 
 ## 2. Color
 
@@ -359,13 +361,14 @@ printing `0 total` or `Page 1 of 1`.
 
 ### Forms
 
-Every field is `TextField`. It renders an outlined control with a notched
-floating label, drawn by a 1 px border with a 10 px radius and an optional
-trailing suffix icon or action. At rest the caption sits centered on the value
-line; on focus or with a value it rises into a notch cut along the top border
-edge and stays there. Focus thickens the outline to 2 px in the signal colour
-using an inset ring, so the box never shifts by a pixel. An invalid field keeps
-that outline in the error tone, with or without focus.
+Every field is `TextField`. It renders an outlined, filled control with an inset
+floating label and an optional trailing suffix icon or action. At rest the
+caption sits centered on the value line; on focus or with a value it rises into
+a compact label inside the top of the box and stays there. The control height
+is generous (48 px default `sm`, 52 px `md`, 36 px `xs`) so the value text is
+never cramped beneath the label. Focus thickens the outline to 2 px in the
+signal colour using an inset ring, so the box never shifts by a pixel. An
+invalid field keeps that outline in the error tone, with or without focus.
 
 Suffix icons (such as passkeys/fingerprints, view-password toggles, or verify
 triggers) are supported via `suffixIcon` prop or the `#suffix` / `#action` slot.
@@ -383,8 +386,8 @@ class="field-label">`, not a field label.
 | --- | --- |
 | `label` | the visible caption; omit for a label-less row |
 | `as` | `input` (default), `textarea`, `select` |
-| `size` | `md` (44 px), `sm` (40 px, default), `xs` (32 px) — matches the button beside it |
-| `bare` | no caption and no notch, for chrome-level controls; name it with `aria-label` |
+| `size` | `md` (52 px), `sm` (48 px, default), `xs` (36 px) — matches the button beside it |
+| `bare` | no caption and no reserved caption line, for chrome-level controls; name it with `aria-label` |
 | `invalid` / `hint` | error tone on the outline and caption, helper text below |
 | `hintTone` | `warning` tints a hint without marking the field invalid |
 | `suffixIcon` | optional trailing icon component or glyph |

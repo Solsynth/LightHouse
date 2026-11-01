@@ -129,13 +129,13 @@ describe('TextField', () => {
     expect(wrapper.get('input').attributes('aria-label')).toBe('Search')
   })
 
-  it('renders legend notch when field has label and omits it when bare', () => {
+  it('renders floating label inside the field when labelled and omits it when bare', () => {
     const labelled = mount(TextField, { props: { label: 'Password', modelValue: '' } })
-    expect(labelled.find('.field-legend').exists()).toBe(true)
-    expect(labelled.find('.field-legend').text()).toBe('Password')
+    expect(labelled.find('label.field-label-float').exists()).toBe(true)
+    expect(labelled.find('label.field-label-float').text()).toBe('Password')
 
     const bare = mount(TextField, { props: { modelValue: '', bare: true } })
-    expect(bare.find('.field-legend').exists()).toBe(false)
+    expect(bare.find('label.field-label-float').exists()).toBe(false)
   })
 
   it('supports suffix icon and suffix/action slots', () => {

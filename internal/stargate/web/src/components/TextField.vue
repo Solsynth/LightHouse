@@ -7,17 +7,18 @@ import { computed, ref, useAttrs, useId, useSlots, type Component } from 'vue'
 defineOptions({ inheritAttrs: false })
 
 /**
- * The console's single field: a Material-style outlined control with a notched
- * floating label and an optional suffix icon/action.
+ * The console's single field: a fully rounded control whose label animates
+ * inside the input above the value.
  *
  * At rest the label sits centered on the value line. On focus, or once there is a
- * value, it floats up into a notch on the top border and stays there. Focus
- * thickens the outline to 2 px in the signal colour, and an invalid field
- * keeps the error tone.
+ * value, it floats up into a compact caption inside the top of the box. Focus
+ * highlights the border in the signal colour, and an invalid field keeps the
+ * error tone.
  *
  * A field whose name lives in the surrounding chrome — a search box in a
- * toolbar, a filter in a table header — sets `bare`: no caption, no notch, and
- * its name comes from `aria-label` through attribute fallthrough.
+ * toolbar, a filter in a table header — sets `bare`: no caption, no reserved
+ * caption line, and its name comes from `aria-label` through attribute
+ * fallthrough.
  *
  * Suffix icons/actions can be supplied via `suffixIcon` prop or the `#suffix` /
  * `#action` slots. When no suffix is present, the field retains balanced padding.
@@ -128,13 +129,6 @@ defineExpose({
     ]"
   >
     <div class="field-box">
-      <!-- Outlined border notch container -->
-      <fieldset aria-hidden="true" class="field-outline">
-        <legend v-if="hasLabel" class="field-legend">
-          <span>{{ props.label }}</span>
-        </legend>
-      </fieldset>
-
       <label v-if="hasLabel" :for="controlId" class="field-label-float">
         {{ props.label }}
       </label>
