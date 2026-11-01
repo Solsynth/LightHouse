@@ -109,7 +109,7 @@ func (i *instance) handleAddSubscriber(c *gin.Context) {
 		body := localization.Localize(lang, "subscriberAddedBody", map[string]string{
 			"publisher": publisher.Nick,
 		})
-		_ = i.notify.SendPush(c.Request.Context(), accountID.String(), title, body, map[string]string{
+		_ = i.notify.SendPush(c.Request.Context(), accountID.String(), title, body, map[string]any{
 			"notification_type": "subscriber_added",
 			"publisher_id":      publisher.ID.String(),
 		})
@@ -369,7 +369,7 @@ func (i *instance) notifyFollowDecision(c *gin.Context, publisher *store.Publish
 	if reason != nil && *reason != "" {
 		body += ": " + *reason
 	}
-	_ = i.notify.SendPush(c.Request.Context(), request.AccountID.String(), title, body, map[string]string{
+	_ = i.notify.SendPush(c.Request.Context(), request.AccountID.String(), title, body, map[string]any{
 		"notification_type": "follow_decision",
 		"publisher_id":      publisher.ID.String(),
 	})

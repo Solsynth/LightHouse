@@ -500,7 +500,7 @@ func (s *service) notifySubscribers(survey *store.SurveyEntity, answererID uuid.
 	if survey.Title != nil && strings.TrimSpace(*survey.Title) != "" {
 		title = *survey.Title
 	}
-	_ = notify.SendPushToAccounts(ctx, ids, title, "Someone just answered your survey.", map[string]string{
+	_ = notify.SendPushToAccounts(ctx, ids, title, "Someone just answered your survey.", map[string]any{
 		"topic":        "surveys.answer",
 		"action_uri":   "/surveys/" + survey.ID.String(),
 		"survey_id":    survey.ID.String(),

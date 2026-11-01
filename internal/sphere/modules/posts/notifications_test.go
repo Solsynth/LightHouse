@@ -21,14 +21,14 @@ type recordedPush struct {
 	AccountIDs []string
 	Title      string
 	Body       string
-	Meta       map[string]string
+	Meta       map[string]any
 }
 
 type fakeNotifyPort struct {
 	pushes []recordedPush
 }
 
-func (f *fakeNotifyPort) SendPush(_ context.Context, accountID, title, body string, meta map[string]string) error {
+func (f *fakeNotifyPort) SendPush(_ context.Context, accountID, title, body string, meta map[string]any) error {
 	f.pushes = append(f.pushes, recordedPush{
 		AccountIDs: []string{accountID},
 		Title:      title,
@@ -38,7 +38,7 @@ func (f *fakeNotifyPort) SendPush(_ context.Context, accountID, title, body stri
 	return nil
 }
 
-func (f *fakeNotifyPort) SendPushToAccounts(_ context.Context, accountIDs []string, title, body string, meta map[string]string) error {
+func (f *fakeNotifyPort) SendPushToAccounts(_ context.Context, accountIDs []string, title, body string, meta map[string]any) error {
 	f.pushes = append(f.pushes, recordedPush{
 		AccountIDs: accountIDs,
 		Title:      title,
@@ -90,11 +90,13 @@ func testNotificationDB(t *testing.T) *gorm.DB {
 		&store.PostCategorySubscriptionEntity{},
 		&store.PostWatchPreferenceEntity{},
 		&store.PostCollectionItemEntity{},
+		&store.PostTagEntity{},
+		&store.PostCategoryEntity{},
+		&store.PostTagLink{},
+		&store.PostCategoryLink{},
 	); err != nil {
 		t.Fatalf("automigrate: %v", err)
 	}
-	_ = db.Exec("CREATE TABLE IF NOT EXISTS post_category_links (posts_id text, categories_id text)").Error
-	_ = db.Exec("CREATE TABLE IF NOT EXISTS post_tag_links (posts_id text, tags_id text)").Error
 	return db
 }
 
@@ -409,6 +411,156 @@ func TestNotifyReactionToAuthorZh(t *testing.T) {
 	}
 	if push.Body != "鲍勃 用 👍 对 \"有趣的文章\" 做出了反应" {
 		t.Errorf("push.Body = %q, want '鲍勃 用 👍 对 \"有趣的文章\" 做出了反应'", push.Body)
+	}
+}
+
+func TestPostNotificationMetaCarriesPostContext(t *testing.T) {
+	db := testNotificationDB(t)
+	fakeNotify := &fakeNotifyPort{}
+	reg := module.NewPortRegistry()
+	module.Provide[ports.Notify](reg, ports.PortNotify, "test", module.KindIntegration, fakeNotify)
+
+	subscriberID := uuid.New()
+	module.Provide[ports.Accounts](reg, ports.PortAccounts, "test", module.KindIntegration, &fakeAccountsPort{
+		accounts: map[string]*gen.DyAccount{
+			subscriberID.String(): {Id: subscriberID.String(), Language: "en"},
+		},
+	})
+
+	publisherID := uuid.New()
+	ownerID := uuid.New()
+	db.Create(&store.PublisherEntity{
+		ID:        publisherID,
+		AccountID: &ownerID,
+		Name:      "newsroom",
+		Nick:      "Lighthouse News",
+		Picture:   store.ToJSON(map[string]any{"id": "pfp-publisher"}),
+	})
+	db.Create(&store.PublisherSubscriptionEntity{
+		ID:          uuid.New(),
+		PublisherID: publisherID,
+		AccountID:   &subscriberID,
+		State:       int(model.SubscriptionAccepted),
+		Notify:      true,
+	})
+
+	tagID := uuid.New()
+	categoryID := uuid.New()
+	db.Create(&store.PostTagEntity{ID: tagID, Slug: "lighthouse"})
+	db.Create(&store.PostCategoryEntity{ID: categoryID, Slug: "engineering"})
+
+	postTitle := "Ship notes"
+	content := "We shipped the notification meta."
+	post := &store.PostEntity{
+		ID:          uuid.New(),
+		PublisherID: publisherID,
+		Title:       &postTitle,
+		Content:     &content,
+		Visibility:  int(model.VisibilityPublic),
+		Attachments: store.ToJSON([]model.CloudFileReferenceObject{
+			{Id: "doc-1", MimeType: "application/pdf"},
+			{Id: "img-1", MimeType: "image/webp", Url: "https://cdn.example/img-1.webp"},
+			{Id: "img-2", MimeType: "image/png"},
+		}),
+	}
+	db.Create(post)
+	db.Create(&store.PostTagLink{PostID: post.ID, TagID: tagID})
+	db.Create(&store.PostCategoryLink{PostID: post.ID, CategoryID: categoryID})
+
+	h := &handler{db: db, ports: reg, log: slog.Default()}
+	h.notifyPostAudience(context.Background(), post, nil, "created", ownerID)
+
+	if len(fakeNotify.pushes) != 1 {
+		t.Fatalf("expected 1 push, got %d", len(fakeNotify.pushes))
+	}
+	meta := fakeNotify.pushes[0].Meta
+	for key, want := range map[string]any{
+		"post_id":        post.ID.String(),
+		"post_title":     postTitle,
+		"post_content":   content,
+		"publisher_id":   publisherID.String(),
+		"publisher_name": "newsroom",
+		"publisher_nick": "Lighthouse News",
+		"pfp":            "pfp-publisher",
+		"avatar":         "pfp-publisher",
+		"image":          "https://cdn.example/img-1.webp",
+		"topic":          "posts.new",
+		"action_uri":     "/posts/" + post.ID.String(),
+	} {
+		if got := meta[key]; got != want {
+			t.Errorf("meta[%q] = %v, want %v", key, got, want)
+		}
+	}
+	images, ok := meta["images"].([]string)
+	if !ok || len(images) != 2 {
+		t.Fatalf("meta[images] = %#v, want two image references", meta["images"])
+	}
+	if images[0] != "https://cdn.example/img-1.webp" || images[1] != "img-2" {
+		t.Errorf("meta[images] = %v", images)
+	}
+	if tags, ok := meta["tags"].([]string); !ok || len(tags) != 1 || tags[0] != "lighthouse" {
+		t.Errorf("meta[tags] = %#v", meta["tags"])
+	}
+	if categories, ok := meta["categories"].([]string); !ok || len(categories) != 1 || categories[0] != "engineering" {
+		t.Errorf("meta[categories] = %#v", meta["categories"])
+	}
+}
+
+// TestReactionNotificationAvatarDoesNotFallBackToAuthor pins the avatar rule:
+// the pfp of a reaction push is the reacting account's avatar only. When it has
+// none the push ships no pfp instead of borrowing the post author's.
+func TestReactionNotificationAvatarDoesNotFallBackToAuthor(t *testing.T) {
+	db := testNotificationDB(t)
+	fakeNotify := &fakeNotifyPort{}
+	reg := module.NewPortRegistry()
+	module.Provide[ports.Notify](reg, ports.PortNotify, "test", module.KindIntegration, fakeNotify)
+
+	authorAccountID := uuid.New()
+	authorPubID := uuid.New()
+	db.Create(&store.PublisherEntity{
+		ID:        authorPubID,
+		AccountID: &authorAccountID,
+		Name:      "author",
+		Picture:   store.ToJSON(map[string]any{"id": "pfp-author"}),
+	})
+	title := "Reaction target"
+	post := &store.PostEntity{ID: uuid.New(), PublisherID: authorPubID, Title: &title}
+	db.Create(post)
+
+	module.Provide[ports.Accounts](reg, ports.PortAccounts, "test", module.KindIntegration, &fakeAccountsPort{
+		accounts: map[string]*gen.DyAccount{
+			authorAccountID.String(): {Id: authorAccountID.String(), Language: "en"},
+		},
+	})
+	h := &handler{db: db, ports: reg, log: slog.Default()}
+
+	avatarless := &gen.DyAccount{Id: uuid.New().String(), Nick: "NoAvatar"}
+	h.notifyReaction(context.Background(), post, avatarless, "👍", 0)
+	if len(fakeNotify.pushes) != 1 {
+		t.Fatalf("expected 1 push, got %d", len(fakeNotify.pushes))
+	}
+	meta := fakeNotify.pushes[0].Meta
+	if pfp, ok := meta["pfp"]; ok {
+		t.Fatalf("avatarless actor shipped pfp %v (author fallback)", pfp)
+	}
+	if _, ok := meta["avatar"]; ok {
+		t.Fatalf("avatarless actor shipped avatar meta: %v", meta)
+	}
+	if meta["post_id"] != post.ID.String() || meta["topic"] != "posts.reactions" {
+		t.Errorf("reaction meta missing post context: %v", meta)
+	}
+
+	withAvatar := &gen.DyAccount{
+		Id:      uuid.New().String(),
+		Nick:    "HasAvatar",
+		Profile: &gen.DyAccountProfile{Picture: &gen.DyCloudFile{Id: "pfp-actor"}},
+	}
+	h.notifyReaction(context.Background(), post, withAvatar, "❤️", 1)
+	if len(fakeNotify.pushes) != 2 {
+		t.Fatalf("expected 2 pushes, got %d", len(fakeNotify.pushes))
+	}
+	if got := fakeNotify.pushes[1].Meta["pfp"]; got != "pfp-actor" {
+		t.Errorf("reaction pfp = %v, want pfp-actor", got)
 	}
 }
 

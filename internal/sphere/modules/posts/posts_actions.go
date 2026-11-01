@@ -229,16 +229,18 @@ func (h *handler) notifyReaction(ctx context.Context, ent *store.PostEntity, act
 			"reaction": symbol,
 		})
 	}
-	meta := map[string]string{
+	// The subject of a reaction push is the reacting account, so its avatar is
+	// the only pfp candidate (the C# BuildPostNotificationMeta fallback to the
+	// post publisher's avatar is intentionally dropped).
+	meta := h.postNotificationMeta(ctx, ent, nil, publisher, lang, accountAvatarID(actor), map[string]any{
 		"notification_type": "reaction",
 		"reaction":          symbol,
 		"reaction_attitude": strconv.Itoa(attitude),
 		"actor_id":          actorID.String(),
 		"actor_name":        actorName,
-		"post_id":           ent.ID.String(),
 		"topic":             "posts.reactions",
 		"action_uri":        "/posts/" + ent.ID.String(),
-	}
+	})
 	if err := notify.SendPush(ctx, targetAccountID.String(), title, body, meta); err != nil {
 		h.log.Warn("posts: notify reaction failed", "post", ent.ID, "target", targetAccountID, "error", err)
 	}

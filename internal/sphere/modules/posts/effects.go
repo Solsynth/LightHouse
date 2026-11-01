@@ -11,7 +11,9 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/filejson"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
+
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/localization"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/ports"
@@ -160,23 +162,12 @@ func (h *handler) notifyPostAudience(ctx context.Context, ent *store.PostEntity,
 		return
 	}
 
-	publisherName := ""
-	if post != nil && post.Publisher != nil {
-		if post.Publisher.Nick != "" {
-			publisherName = post.Publisher.Nick
-		} else if post.Publisher.Name != "" {
-			publisherName = post.Publisher.Name
-		}
-	}
-	if publisherName == "" {
-		if pub, err := h.publisherByID(ctx, ent.PublisherID); err == nil && pub != nil {
-			if pub.Nick != "" {
-				publisherName = pub.Nick
-			} else if pub.Name != "" {
-				publisherName = pub.Name
-			}
-		}
-	}
+	publisher, _ := h.publisherByID(ctx, ent.PublisherID)
+	publisherName := publisherDisplayName(publisher, post)
+	// Every audience push here is about the post itself, so the subject avatar
+	// is the publisher's.
+	avatarID := publisherAvatarID(publisher)
+	postedFrom := "/posts/" + ent.ID.String()
 
 	notified := make(map[uuid.UUID]struct{})
 
@@ -193,15 +184,12 @@ func (h *handler) notifyPostAudience(ctx context.Context, ent *store.PostEntity,
 					"user": actorName,
 				})
 				_, body := chopPostForNotification(ent, lang)
-				meta := map[string]string{
+				meta := h.postNotificationMeta(ctx, ent, post, publisher, lang, avatarID, map[string]any{
 					"notification_type": "post_watch",
 					"watch_event_type":  "reply",
 					"topic":             "posts.watch.replies",
-					"post_id":           ent.ID.String(),
-					"replied_post_id":   ent.RepliedPostID.String(),
-					"publisher_id":      ent.PublisherID.String(),
-					"action_uri":        "/posts/" + ent.ID.String(),
-				}
+					"action_uri":        postedFrom,
+				})
 				if err := notify.SendPush(ctx, author.String(), title, body, meta); err == nil {
 					notified[author] = struct{}{}
 				}
@@ -241,13 +229,11 @@ func (h *handler) notifyPostAudience(ctx context.Context, ent *store.PostEntity,
 									"publisher": publisherName,
 								})
 							}
-							meta := map[string]string{
+							meta := h.postNotificationMeta(ctx, ent, post, publisher, lang, avatarID, map[string]any{
 								"notification_type": "close_friends",
 								"topic":             "posts.close_friends",
-								"post_id":           ent.ID.String(),
-								"publisher_id":      ent.PublisherID.String(),
-								"action_uri":        "/posts/" + ent.ID.String(),
-							}
+								"action_uri":        postedFrom,
+							})
 							_ = notify.SendPushToAccounts(ctx, userIDs, title, body, meta)
 						}
 					}
@@ -328,13 +314,11 @@ func (h *handler) notifyPostAudience(ctx context.Context, ent *store.PostEntity,
 							"publisher": publisherName,
 						})
 					}
-					meta := map[string]string{
+					meta := h.postNotificationMeta(ctx, ent, post, publisher, lang, avatarID, map[string]any{
 						"notification_type": "subscription",
 						"topic":             "posts.new",
-						"post_id":           ent.ID.String(),
-						"publisher_id":      ent.PublisherID.String(),
-						"action_uri":        "/posts/" + ent.ID.String(),
-					}
+						"action_uri":        postedFrom,
+					})
 					_ = notify.SendPushToAccounts(ctx, userIDs, title, body, meta)
 				}
 			}
@@ -370,12 +354,11 @@ func (h *handler) notifyPostAudience(ctx context.Context, ent *store.PostEntity,
 				"user":    actorName,
 				"content": content,
 			})
-			meta := map[string]string{
+			meta := h.postNotificationMeta(ctx, ent, post, publisher, lang, avatarID, map[string]any{
 				"notification_type": "mention",
 				"topic":             "posts.mention",
-				"post_id":           ent.ID.String(),
-				"action_uri":        "/posts/" + ent.ID.String(),
-			}
+				"action_uri":        postedFrom,
+			})
 			_ = notify.SendPushToAccounts(ctx, userIDs, title, body, meta)
 		}
 	}
@@ -424,6 +407,176 @@ func chopPostForNotification(ent *store.PostEntity, locale string) (title, body 
 		body = title
 	}
 	return title, body
+}
+
+// publisherDisplayName is the publisher's nick with the name as fallback. The
+// hydrated post carries the same identity; it only bridges a failed row load.
+func publisherDisplayName(publisher *store.PublisherEntity, post *model.Post) string {
+	if publisher != nil {
+		if nick := strings.TrimSpace(publisher.Nick); nick != "" {
+			return nick
+		}
+		if name := strings.TrimSpace(publisher.Name); name != "" {
+			return name
+		}
+	}
+	if post != nil && post.Publisher != nil {
+		if nick := strings.TrimSpace(post.Publisher.Nick); nick != "" {
+			return nick
+		}
+		if name := strings.TrimSpace(post.Publisher.Name); name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
+// publisherAvatarID is the publisher's avatar file id, empty when unset.
+func publisherAvatarID(publisher *store.PublisherEntity) string {
+	if publisher == nil {
+		return ""
+	}
+	if file := filejson.Reference(publisher.Picture); file != nil {
+		return file.Id
+	}
+	return ""
+}
+
+// accountAvatarID resolves an account avatar file id. Profile RPC accounts
+// carry it on the nested profile, gateway-shaped accounts on the top-level
+// picture.
+func accountAvatarID(account *gen.DyAccount) string {
+	if account == nil {
+		return ""
+	}
+	if file := account.GetProfile().GetPicture(); file != nil && file.GetId() != "" {
+		return file.GetId()
+	}
+	return account.GetPicture().GetId()
+}
+
+// postNotificationMeta mirrors the C# BuildPostNotificationMeta payload: the
+// chopped post header, publisher identity, subject avatar, image attachments,
+// tags, categories and replied/forwarded ids, plus the caller's extra keys.
+//
+// avatarID is the avatar of the notification's subject (the acting account or
+// the post's publisher). It is deliberately never backfilled from the post
+// author: a subject without an avatar ships no pfp, so clients keep their own
+// placeholder instead of showing another account's picture.
+func (h *handler) postNotificationMeta(ctx context.Context, ent *store.PostEntity, post *model.Post, publisher *store.PublisherEntity, locale, avatarID string, extra map[string]any) map[string]any {
+	title, content := chopPostForNotification(ent, locale)
+	data := map[string]any{
+		"post_id":      ent.ID.String(),
+		"post_title":   title,
+		"post_content": content,
+	}
+	if ent.PublisherID != uuid.Nil {
+		data["publisher_id"] = ent.PublisherID.String()
+	}
+	if ent.RepliedPostID != nil {
+		data["replied_post_id"] = ent.RepliedPostID.String()
+	}
+	if ent.ForwardedPostID != nil {
+		data["forwarded_post_id"] = ent.ForwardedPostID.String()
+	}
+	if publisher != nil {
+		if publisher.Name != "" {
+			data["publisher_name"] = publisher.Name
+		}
+		if publisher.Nick != "" {
+			data["publisher_nick"] = publisher.Nick
+		}
+	} else if post != nil && post.Publisher != nil {
+		if post.Publisher.Name != "" {
+			data["publisher_name"] = post.Publisher.Name
+		}
+		if post.Publisher.Nick != "" {
+			data["publisher_nick"] = post.Publisher.Nick
+		}
+	}
+	if avatarID != "" {
+		data["pfp"] = avatarID
+		data["avatar"] = avatarID
+	}
+	attachments := h.postNotificationAttachments(ent, post)
+	images := make([]string, 0, len(attachments))
+	for _, attachment := range attachments {
+		if !strings.HasPrefix(attachment.MimeType, "image/") {
+			continue
+		}
+		if reference := attachment.Url; reference != "" {
+			images = append(images, reference)
+		} else if attachment.Id != "" {
+			images = append(images, attachment.Id)
+		}
+	}
+	if len(images) > 0 {
+		data["images"] = images
+		data["image"] = images[0]
+	}
+	if tags := h.postTagSlugs(ctx, ent.ID); len(tags) > 0 {
+		data["tags"] = tags
+	}
+	if categories := h.postCategorySlugs(ctx, ent.ID); len(categories) > 0 {
+		data["categories"] = categories
+	}
+	for key, value := range extra {
+		data[key] = value
+	}
+	return data
+}
+
+// postNotificationAttachments prefers the hydrated post's attachments and
+// falls back to the row's jsonb column.
+func (h *handler) postNotificationAttachments(ent *store.PostEntity, post *model.Post) []model.CloudFileReferenceObject {
+	if post != nil && len(post.Attachments) > 0 {
+		return post.Attachments
+	}
+	return filejson.References(ent.Attachments)
+}
+
+func (h *handler) postTagSlugs(ctx context.Context, postID uuid.UUID) []string {
+	var links []store.PostTagLink
+	if err := h.db.WithContext(ctx).Where("posts_id = ?", postID).Find(&links).Error; err != nil || len(links) == 0 {
+		return nil
+	}
+	tagIDs := make([]uuid.UUID, 0, len(links))
+	for _, link := range links {
+		tagIDs = append(tagIDs, link.TagID)
+	}
+	var tags []store.PostTagEntity
+	if err := h.db.WithContext(ctx).Where("id IN ?", tagIDs).Find(&tags).Error; err != nil {
+		return nil
+	}
+	slugs := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		if tag.Slug != "" {
+			slugs = append(slugs, tag.Slug)
+		}
+	}
+	return slugs
+}
+
+func (h *handler) postCategorySlugs(ctx context.Context, postID uuid.UUID) []string {
+	var links []store.PostCategoryLink
+	if err := h.db.WithContext(ctx).Where("posts_id = ?", postID).Find(&links).Error; err != nil || len(links) == 0 {
+		return nil
+	}
+	categoryIDs := make([]uuid.UUID, 0, len(links))
+	for _, link := range links {
+		categoryIDs = append(categoryIDs, link.CategoryID)
+	}
+	var categories []store.PostCategoryEntity
+	if err := h.db.WithContext(ctx).Where("id IN ?", categoryIDs).Find(&categories).Error; err != nil {
+		return nil
+	}
+	slugs := make([]string, 0, len(categories))
+	for _, category := range categories {
+		if category.Slug != "" {
+			slugs = append(slugs, category.Slug)
+		}
+	}
+	return slugs
 }
 
 // publisherAccountID resolves the owning account of a publisher.

@@ -511,7 +511,7 @@ func (i *instance) notifyManagers(ctx context.Context, publisher *store.Publishe
 			"user":      name,
 			"publisher": publisher.Nick,
 		})
-		if err := i.notify.SendPush(ctx, row.AccountID.String(), title, body, map[string]string{
+		if err := i.notify.SendPush(ctx, row.AccountID.String(), title, body, map[string]any{
 			"notification_type": "follow_request",
 			"publisher_id":      publisher.ID.String(),
 		}); err != nil {

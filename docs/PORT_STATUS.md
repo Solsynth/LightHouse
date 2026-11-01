@@ -50,9 +50,11 @@ reproduce yet.
   embedding client is configured.
 - **Friend-only visibility** is resolved per row via `HasRelationship` (the
   accounts port exposes no friend list), so an `X-Total` can exceed the page.
-- **Notification fan-out** covers mentions and reply authors (watch
-  preferences honoured); subscriber and chain/forward notifications are not
-  sent.
+- **Notification fan-out** covers mentions, reply authors, subscribers
+  (publisher and topic), close friends and reactions. Post pushes carry the C#
+  `BuildPostNotificationMeta` payload (post header, publisher identity, the
+  acting subject's avatar, image attachments, tags and categories); chain and
+  forward notifications are still not sent.
 - **ActivityPub rendering** emits Markdown/text rather than HTML (no Markdown
   renderer is a dependency), the remote-outbox merge for actor posts is not
   implemented, follower/following counts are not fetched, and federation fan-out

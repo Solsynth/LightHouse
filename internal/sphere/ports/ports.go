@@ -43,10 +43,12 @@ type Files interface {
 	GetFiles(ctx context.Context, ids []string) (map[string]model.CloudFileReferenceObject, error)
 }
 
-// Notify sends push notifications through Ring.
+// Notify sends push notifications through Ring. The meta dictionary carries
+// arbitrary JSON values (the C# notifications put arrays there: `images`,
+// `tags`, `categories`).
 type Notify interface {
-	SendPush(ctx context.Context, accountID, title, body string, meta map[string]string) error
-	SendPushToAccounts(ctx context.Context, accountIDs []string, title, body string, meta map[string]string) error
+	SendPush(ctx context.Context, accountID, title, body string, meta map[string]any) error
+	SendPushToAccounts(ctx context.Context, accountIDs []string, title, body string, meta map[string]any) error
 }
 
 // Realtime pushes websocket packets through Blade.

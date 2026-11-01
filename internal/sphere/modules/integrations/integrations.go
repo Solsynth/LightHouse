@@ -157,11 +157,11 @@ func (p *filesPort) GetFiles(ctx context.Context, ids []string) (map[string]mode
 
 type notifyPort struct{ clients *grpcclient.Clients }
 
-func (p *notifyPort) SendPush(ctx context.Context, accountID, title, body string, meta map[string]string) error {
+func (p *notifyPort) SendPush(ctx context.Context, accountID, title, body string, meta map[string]any) error {
 	return p.SendPushToAccounts(ctx, []string{accountID}, title, body, meta)
 }
 
-func (p *notifyPort) SendPushToAccounts(ctx context.Context, accountIDs []string, title, body string, meta map[string]string) error {
+func (p *notifyPort) SendPushToAccounts(ctx context.Context, accountIDs []string, title, body string, meta map[string]any) error {
 	if len(accountIDs) == 0 {
 		return nil
 	}
@@ -170,10 +170,10 @@ func (p *notifyPort) SendPushToAccounts(ctx context.Context, accountIDs []string
 		Body:      body,
 		IsSavable: true,
 	}
-	if topic, ok := meta["topic"]; ok && topic != "" {
+	if topic, ok := meta["topic"].(string); ok && topic != "" {
 		notification.Topic = topic
 	}
-	if actionURI, ok := meta["action_uri"]; ok && actionURI != "" {
+	if actionURI, ok := meta["action_uri"].(string); ok && actionURI != "" {
 		notification.ActionUri = &actionURI
 	}
 	if len(meta) > 0 {
