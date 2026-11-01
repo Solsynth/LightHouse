@@ -16,6 +16,7 @@ import (
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/accountjson"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/authn"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/httpx"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
@@ -176,7 +177,9 @@ func (h *handler) reactPost(c *gin.Context) {
 		h.enqueueInterest(accountID, ent.ID, float64(reactionWeight(request.Attitude)), "reaction")
 		go h.notifyReaction(context.WithoutCancel(ctx), &ent, account, request.Symbol, request.Attitude)
 	}
-	httpx.OK(c, postReactionToModel(&reaction))
+	created := postReactionToModel(&reaction)
+	created.Account = accountjson.FromProto(account)
+	httpx.OK(c, created)
 }
 
 func (h *handler) notifyReaction(ctx context.Context, ent *store.PostEntity, actor *gen.DyAccount, symbol string, attitude int) {

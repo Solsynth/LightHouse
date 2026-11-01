@@ -10,8 +10,11 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/accountjson"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/filejson"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
+	"src.solsynth.dev/sosys/lighthouse/internal/sphere/ports"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
 )
 
@@ -557,6 +560,63 @@ func postReactionToModel(e *store.PostReactionEntity) model.PostReaction {
 		CreatedAt:    model.NewTime(e.CreatedAt),
 		UpdatedAt:    model.NewTime(e.UpdatedAt),
 		DeletedAt:    store.DeletedPtr(e.DeletedAt),
+	}
+}
+
+// hydrateReactionActors embeds the account or fediverse publisher snapshot on
+// reactions. Clients render the actor from reaction.account/react.publisher, so
+// a bare account_id shows up as "unknown".
+func (h *handler) hydrateReactionActors(ctx context.Context, reactions []model.PostReaction) {
+	if len(reactions) == 0 {
+		return
+	}
+	accountIDs := make([]string, 0, len(reactions))
+	publisherIDs := make([]uuid.UUID, 0, len(reactions))
+	for i := range reactions {
+		if value := reactions[i].AccountID; value != nil && *value != "" {
+			accountIDs = append(accountIDs, *value)
+		}
+		if value := reactions[i].PublisherID; value != nil && *value != "" {
+			if id, err := uuid.Parse(*value); err == nil {
+				publisherIDs = append(publisherIDs, id)
+			}
+		}
+	}
+	accountsByID := map[string]any{}
+	if len(accountIDs) > 0 && h.ports != nil {
+		if accounts, ok := module.Get[ports.Accounts](h.ports, ports.PortAccounts); ok {
+			if list, err := accounts.GetAccounts(ctx, accountIDs); err == nil {
+				for _, account := range list {
+					if account == nil {
+						continue
+					}
+					accountsByID[account.GetId()] = accountjson.FromProto(account)
+				}
+			}
+		}
+	}
+	publishersByID := map[uuid.UUID]*model.Publisher{}
+	if len(publisherIDs) > 0 {
+		if rows, err := h.loadPublishers(ctx, dedupeUUID(publisherIDs)); err == nil {
+			for id, row := range rows {
+				mapped := store.PublisherToModel(row)
+				publishersByID[id] = &mapped
+			}
+		}
+	}
+	for i := range reactions {
+		if value := reactions[i].AccountID; value != nil {
+			if account, ok := accountsByID[*value]; ok {
+				reactions[i].Account = account
+			}
+		}
+		if value := reactions[i].PublisherID; value != nil {
+			if id, err := uuid.Parse(*value); err == nil {
+				if publisher, ok := publishersByID[id]; ok {
+					reactions[i].Publisher = publisher
+				}
+			}
+		}
 	}
 }
 

@@ -848,6 +848,7 @@ func (h *handler) getReactions(c *gin.Context) {
 	for i := range rows {
 		reactions = append(reactions, postReactionToModel(&rows[i]))
 	}
+	h.hydrateReactionActors(ctx, reactions)
 	httpx.List(c, reactions, total)
 }
 
@@ -904,14 +905,19 @@ func (h *handler) listUserReactions(c *gin.Context) {
 	for _, post := range posts {
 		byID[post.ID] = post
 	}
-	items := make([]model.UserReactionListingItem, 0, len(reactions))
+	reactionModels := make([]model.PostReaction, 0, len(reactions))
 	for i := range reactions {
-		post, ok := byID[reactions[i].PostID.String()]
+		reactionModels = append(reactionModels, postReactionToModel(&reactions[i]))
+	}
+	h.hydrateReactionActors(ctx, reactionModels)
+	items := make([]model.UserReactionListingItem, 0, len(reactionModels))
+	for i := range reactionModels {
+		post, ok := byID[reactionModels[i].PostID]
 		if !ok {
 			continue
 		}
 		items = append(items, model.UserReactionListingItem{
-			Reaction: postReactionToModel(&reactions[i]),
+			Reaction: reactionModels[i],
 			Post:     post,
 		})
 	}

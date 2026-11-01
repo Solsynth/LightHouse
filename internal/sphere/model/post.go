@@ -83,17 +83,19 @@ type Post struct {
 
 // PostReaction is one reaction on a post.
 type PostReaction struct {
-	ID           string  `json:"id"`
-	Symbol       string  `json:"symbol"`
-	Attitude     int     `json:"attitude"`
-	PostID       string  `json:"post_id"`
-	AccountID    *string `json:"account_id"`
-	FediverseURI *string `json:"fediverse_uri"`
-	PublisherID  *string `json:"publisher_id"`
-	IsLocal      bool    `json:"is_local"`
-	CreatedAt    *Time   `json:"created_at"`
-	UpdatedAt    *Time   `json:"updated_at"`
-	DeletedAt    *Time   `json:"deleted_at"`
+	ID           string     `json:"id"`
+	Symbol       string     `json:"symbol"`
+	Attitude     int        `json:"attitude"`
+	PostID       string     `json:"post_id"`
+	AccountID    *string    `json:"account_id"`
+	Account      any        `json:"account"`
+	FediverseURI *string    `json:"fediverse_uri"`
+	PublisherID  *string    `json:"publisher_id"`
+	Publisher    *Publisher `json:"publisher"`
+	IsLocal      bool       `json:"is_local"`
+	CreatedAt    *Time      `json:"created_at"`
+	UpdatedAt    *Time      `json:"updated_at"`
+	DeletedAt    *Time      `json:"deleted_at"`
 }
 
 // PostBookmark is one bookmark.
