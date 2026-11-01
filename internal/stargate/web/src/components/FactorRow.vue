@@ -29,7 +29,7 @@ function submit() {
 </script>
 
 <template>
-  <div class="border-t border-line-soft py-4 first:border-0 first:pt-0">
+  <div class="rounded-card bg-base-200/40 p-4">
     <div class="flex items-baseline justify-between gap-3">
       <div>
         <label :for="`f-${props.factor.id}`" class="text-xs text-base-content">

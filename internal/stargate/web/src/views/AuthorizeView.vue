@@ -109,12 +109,8 @@ onMounted(load)
       >{{ t('authorize.introSuffix') }}
     </p>
 
-    <div
-      v-if="loading"
-      class="mt-6 overflow-hidden rounded-card border border-line"
-      aria-hidden="true"
-    >
-      <div class="space-y-3 border-t border-line px-4 py-3">
+    <div v-if="loading" class="mt-6 overflow-hidden rounded-card bg-base-200/50" aria-hidden="true">
+      <div class="space-y-3 bg-base-200/40 px-4 py-3">
         <span class="skeleton h-3 w-2/3" />
         <span class="skeleton h-3 w-1/2" />
       </div>
@@ -124,9 +120,9 @@ onMounted(load)
       <!-- The app introduces itself in the rail; the scopes it wants and the
            decision sit opposite it, so the request reads as a request. -->
       <div
-        class="mt-6 overflow-hidden rounded-card border border-line sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]"
+        class="mt-6 overflow-hidden rounded-card bg-base-200/40 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]"
       >
-        <section class="border-b border-line bg-base-200/40 p-4 sm:border-b-0 sm:border-r">
+        <section class="bg-base-200/60 p-4">
           <div class="flex items-start gap-3">
             <AppMark :picture="info.picture" :name="name" :size="40" />
             <div class="min-w-0">

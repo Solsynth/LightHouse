@@ -158,13 +158,13 @@ onMounted(load)
     </div>
 
     <p v-if="loading" class="flex items-center gap-2 text-2xs text-faint">
-      <span class="dot animate-pulse bg-info" aria-hidden="true" />
+      <span class="dot animate-pulse bg-primary" aria-hidden="true" />
       {{ t('spell.loading') }}
     </p>
 
     <!-- Only an expired link has an action left. Every other dead end is fully
          described by the header, so a panel there would just repeat it. -->
-    <div v-else-if="canRequestNew" class="rounded-card border border-warning/40 bg-base-200/40 p-5">
+    <div v-else-if="canRequestNew" class="rounded-card bg-base-200/50 p-5">
       <RouterLink to="/recover" class="btn btn-primary btn-sm">
         {{ t('spell.requestNew') }}
       </RouterLink>

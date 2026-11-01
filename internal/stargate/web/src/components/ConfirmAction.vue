@@ -17,9 +17,7 @@ const emit = defineEmits<{ confirm: []; cancel: [] }>()
 
 <template>
   <dialog class="modal modal-open" aria-modal="true" :aria-label="title">
-    <div
-      class="modal-box max-w-sm overflow-hidden rounded-sheet border border-line bg-base-100 p-0 shadow-[0_30px_80px_-40px_rgb(0_0_0/0.7)]"
-    >
+    <div class="modal-box max-w-sm overflow-hidden p-0">
       <div class="px-6 py-5">
         <h2 class="flex items-center gap-1.5 text-sm text-base-content">
           <WarningAlt16 v-if="tone === 'error'" class="shrink-0 text-error" aria-hidden="true" />
@@ -27,7 +25,7 @@ const emit = defineEmits<{ confirm: []; cancel: [] }>()
         </h2>
         <p class="voice mt-2">{{ body }}</p>
       </div>
-      <footer class="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
+      <footer class="flex items-center justify-end gap-2 bg-base-200/50 px-5 py-3">
         <button type="button" class="btn btn-ghost btn-xs" :disabled="busy" @click="emit('cancel')">
           {{ t('common.cancel') }}
         </button>

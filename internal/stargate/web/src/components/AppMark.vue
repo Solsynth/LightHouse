@@ -56,14 +56,14 @@ const box = computed(() => ({ width: `${props.size}px`, height: `${props.size}px
     :src="url"
     alt=""
     :style="box"
-    class="shrink-0 border border-line object-cover"
+    class="shrink-0 object-cover"
     :class="flat ? 'rounded-mark' : 'rounded-chip'"
     @error="failed = true"
   />
   <span
     v-else
     :style="box"
-    class="flex shrink-0 items-center justify-center border border-line bg-base-300/40 select-none"
+    class="flex shrink-0 items-center justify-center bg-base-300/60 select-none"
     :class="[flat ? 'rounded-mark' : 'rounded-chip', monogram ? 'text-base-content' : 'text-faint']"
     aria-hidden="true"
   >

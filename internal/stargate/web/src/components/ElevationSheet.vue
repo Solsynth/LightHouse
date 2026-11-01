@@ -34,10 +34,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     aria-labelledby="elevation-title"
     aria-modal="true"
   >
-    <div
-      class="modal-box max-w-md overflow-hidden rounded-sheet border border-line bg-base-100 p-0 shadow-[0_30px_80px_-40px_rgb(0_0_0/0.7)]"
-    >
-      <header class="border-b border-line px-6 py-5">
+    <div class="modal-box max-w-md overflow-hidden p-0">
+      <header class="bg-base-200/40 px-6 py-5">
         <p class="eyebrow">{{ t('elevation.required') }}</p>
         <h2 id="elevation-title" class="mt-1 text-sm text-base-content">
           {{ t('elevation.title') }}
@@ -51,7 +49,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <SudoFlow @done="done" />
       </div>
 
-      <footer class="flex items-center justify-between border-t border-line px-5 py-3">
+      <footer class="flex items-center justify-between bg-base-200/50 px-5 py-3">
         <span class="text-2xs text-faint">{{ t('elevation.footer') }}</span>
         <button type="button" class="btn btn-ghost btn-xs" @click="dismiss">
           {{ t('common.cancel') }}

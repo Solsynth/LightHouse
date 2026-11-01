@@ -115,17 +115,14 @@ onMounted(load)
 
     <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
-    <div
-      v-if="stats"
-      class="grid overflow-hidden rounded-card gap-px border border-line bg-line sm:grid-cols-2 lg:grid-cols-4"
-    >
-      <div class="bg-base-100 px-4 py-4">
+    <div v-if="stats" class="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="rounded-card bg-base-200/50 px-4 py-4">
         <p class="text-2xs uppercase tracking-[0.14em] text-faint">
           {{ t('admin.cache.statHitRatio') }}
         </p>
         <p class="mt-2 text-xl font-normal numeric text-base-content">{{ ratio }}%</p>
       </div>
-      <div class="bg-base-100 px-4 py-4">
+      <div class="rounded-card bg-base-200/50 px-4 py-4">
         <p class="text-2xs uppercase tracking-[0.14em] text-faint">
           {{ t('admin.cache.statMemory') }}
         </p>
@@ -133,7 +130,7 @@ onMounted(load)
           {{ bytes(stats.used_memory_bytes) }}
         </p>
       </div>
-      <div class="bg-base-100 px-4 py-4">
+      <div class="rounded-card bg-base-200/50 px-4 py-4">
         <p class="text-2xs uppercase tracking-[0.14em] text-faint">
           {{ t('admin.cache.statClients') }}
         </p>
@@ -141,7 +138,7 @@ onMounted(load)
           {{ stats.connected_clients }}
         </p>
       </div>
-      <div class="bg-base-100 px-4 py-4">
+      <div class="rounded-card bg-base-200/50 px-4 py-4">
         <p class="text-2xs uppercase tracking-[0.14em] text-faint">
           {{ t('admin.cache.statCommands') }}
         </p>

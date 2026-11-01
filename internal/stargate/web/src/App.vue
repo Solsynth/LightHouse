@@ -3,7 +3,6 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import {
   Activity16,
-  Api16,
   Friendship16,
   Moon16,
   SettingsAdjust16,
@@ -69,14 +68,6 @@ const nav: NavItem[] = [
     modules: [MODULES.accounts],
   },
   {
-    to: '/developers',
-    labelKey: 'app.nav.developers',
-    icon: Api16,
-    scope: 'security',
-    match: '/developers',
-    modules: [MODULES.accounts],
-  },
-  {
     to: '/activity',
     labelKey: 'app.nav.activity',
     icon: Activity16,
@@ -109,7 +100,6 @@ const activeSection = computed(() => {
   const path = route.path
   if (path.startsWith('/account/relationships')) return '/account/relationships'
   if (path.startsWith('/admin')) return '/admin'
-  if (path.startsWith('/developers')) return '/developers'
   if (path.startsWith('/activity')) return '/activity'
   if (path.startsWith('/security')) return '/security'
   return '/account'
@@ -301,15 +291,18 @@ function changeLocale(event: Event) {
           :class="
             fullBleed
               ? 'flex flex-1 flex-col bg-base-100/40'
-              : 'overflow-hidden rounded-sheet border border-line bg-base-200 shadow-[0_24px_60px_-40px_rgb(0_0_0/0.55)]'
+              : 'overflow-hidden rounded-sheet bg-base-200/50 shadow-[0_24px_60px_-40px_rgb(0_0_0/0.55)]'
           "
         >
           <div
-            class="flex items-center justify-between gap-4 border-b border-line py-3.5"
+            class="flex items-center justify-between gap-4 py-3.5"
             :class="fullBleed ? 'px-page sm:px-page-wide' : 'px-page'"
           >
-            <RouterLink to="/" class="flex items-center gap-2.5" :aria-label="t('app.home')">
-              <span class="brand-mark h-[22px] w-[22px] shrink-0" aria-hidden="true" />
+            <RouterLink to="/" class="group flex items-center gap-2.5" :aria-label="t('app.home')">
+              <span
+                class="brand-mark brand-mark-live h-[22px] w-[22px] shrink-0"
+                aria-hidden="true"
+              />
               <span class="text-[13px] font-semibold tracking-[0.14em] text-base-content">
                 SOLARPASS
               </span>
@@ -321,10 +314,10 @@ function changeLocale(event: Event) {
             <div v-if="session.signedIn" class="flex items-center gap-3">
               <span
                 v-if="session.elevated"
-                class="hidden items-center gap-1.5 text-2xs text-accent sm:flex"
+                class="hidden items-center gap-1.5 text-2xs text-primary sm:flex"
                 :title="t('app.elevatedHint')"
               >
-                <span class="dot bg-accent" />
+                <span class="dot bg-primary" />
                 {{ t('app.elevated') }}
               </span>
               <div ref="menuRoot" class="dropdown dropdown-end" @keydown.esc="menuOpen = false">
@@ -353,15 +346,20 @@ function changeLocale(event: Event) {
                 </button>
                 <ul
                   v-if="menuOpen"
-                  class="menu dropdown-content z-50 mt-2 w-44 rounded-card border border-line bg-base-200 p-1.5 shadow-[0_16px_40px_-24px_rgb(0_0_0/0.6)]"
+                  class="menu-plate dropdown-content z-50 mt-2 w-48 p-1.5 text-xs"
                 >
                   <li>
-                    <RouterLink :to="publicPath" @click="menuOpen = false">
+                    <RouterLink :to="publicPath" class="post-menu-row" @click="menuOpen = false">
                       {{ t('app.publicProfile') }}
                     </RouterLink>
                   </li>
+                  <li class="menu-sep" />
                   <li>
-                    <button type="button" @click="signOutFromMenu">
+                    <button
+                      type="button"
+                      class="post-menu-row hover:!bg-error/10 hover:!text-error"
+                      @click="signOutFromMenu"
+                    >
                       {{ t('app.signOut') }}
                     </button>
                   </li>
@@ -372,18 +370,15 @@ function changeLocale(event: Event) {
 
           <nav
             v-if="showNav"
-            class="flex items-center gap-5 overflow-x-auto border-b border-line py-2.5"
-            :class="fullBleed ? 'px-page sm:px-page-wide' : 'px-page'"
+            class="flex items-center gap-1.5 overflow-x-auto px-page py-2 scrollbar-none sm:px-page-wide"
             :aria-label="t('app.console')"
           >
             <RouterLink
               v-for="item in visibleNav"
               :key="item.to"
               :to="item.to"
-              class="flex items-center gap-1.5 whitespace-nowrap text-2xs tracking-[0.04em] transition-colors"
-              :class="
-                activeSection === item.match ? 'text-base-content' : 'text-faint hover:text-dim'
-              "
+              class="nav-tab"
+              :class="activeSection === item.match ? 'nav-tab-active' : ''"
             >
               <component :is="item.icon" class="shrink-0" aria-hidden="true" />
               {{ t(item.labelKey) }}
@@ -420,7 +415,9 @@ function changeLocale(event: Event) {
     <footer
       class="relative z-10 flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 text-2xs text-faint"
       :class="
-        fullBleed ? 'mt-0 border-t border-line px-page py-3.5 sm:px-page-wide' : ['mt-8', cardWidth]
+        fullBleed
+          ? 'mt-0 rounded-card bg-base-200/40 px-page py-3.5 sm:px-page-wide'
+          : ['mt-8', cardWidth]
       "
     >
       <span>{{ t('app.copyright', { year }) }}</span>

@@ -43,24 +43,32 @@
   --color-error: #ffb4ab;
   --color-error-content: #171618;
 
-  --radius-selector: 4px;
-  --radius-field: 10px;
-  --radius-box: 12px;
+  --radius-selector: 12px;
+  --radius-field: 16px;
+  --radius-box: 20px;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
-  --border: 1px;
+  --border: 0;
   --depth: 0;
   --noise: 0;
 
   /* Field tones. A field is a tonal well, not an outlined box: the fill alone
-     defines it at rest, the tone steps up under the pointer, and the bottom
-     indicator is the only line. Three explicit steps beat one color with
-     alpha, because a field sits on the page, a panel and a `.well` alike and
-     a translucent fill would read as three different shades. */
+     defines it at rest, the tone steps up under the pointer, and focus is a
+     ring rather than a line. Three explicit steps beat one color with alpha,
+     because a field sits on the page, a plate and a well alike. */
   --field-fill: #232326;
   --field-fill-hover: #28282c;
   --field-fill-focus: #2d2d32;
   --field-line: #3c3c40;
+
+  /* ── Cards ───────────────────────────────────────────────────────────
+     The card system is the neutral ramp plus the brand accent, nothing else.
+     A card is a sheet one step above the ground so it reads as an object
+     without an outline; `tint` is the brand hue mixed into that sheet, used
+     only where something is asking to be noticed. */
+  --surface-raised: #232326;
+  --surface-raised-hover: #2a2a2e;
+  --surface-tint: #262833;
 }
 
 /* Daylight console: the same ramp read at the light end. Solian derives the
@@ -99,14 +107,21 @@
   --color-error: #9f352d;
   --color-error-content: #ffffff;
 
-  --radius-selector: 4px;
-  --radius-field: 10px;
-  --radius-box: 12px;
+  --radius-selector: 12px;
+  --radius-field: 16px;
+  --radius-box: 20px;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
-  --border: 1px;
+  --border: 0;
   --depth: 0;
   --noise: 0;
+
+  /* A card is a step *down* in the light theme — tinted stock on near-white
+     paper reads as an object, whereas a lighter fill would read as a hole.
+     `raised` is the neutral card, `tint` the brand-tinted one. */
+  --surface-raised: #efebf0;
+  --surface-raised-hover: #e9e4eb;
+  --surface-tint: #e8e9f5;
 
   --field-fill: #efeaf0;
   --field-fill-hover: #eae4eb;
@@ -132,22 +147,36 @@
   --color-dim: var(--console-dim);
   --text-2xs: 0.6875rem;
 
-  /* Corner radius: a tighter reading of Solian's scale. The app's generous
-     corners suit a phone held at arm's length; the console is read on a
-     desktop at a fraction of that distance, where a 20 px corner on a 40 px
-     control reads as a bubble rather than an edge. Every step drops one rank
-     — card 12, field 8, chip 6, inline mark 4, sheet 16 — so the family is
-     preserved and only the amplitude changes.
+  /* Corner radius: Solian's full scale. The family is one shape at every
+     size — card 20, field 16, chip 12, sheet 28 — because a card is the
+     primary object of the interface and its corner is the dominant visual
+     signal. Controls keep a 16 px rectangle rather than a capsule: at 48
+     px tall a capsule removes the corner entirely and the button stops
+     reading as a surface. */
+  --radius-mark: 8px;
+  --radius-chip: 12px;
+  --radius-input: 16px;
+  --radius-control: 16px;
+  --radius-card: 20px;
+  --radius-sheet: 28px;
 
-     Controls are a 6 px rounded rectangle, not a capsule: at 40 px tall a
-     capsule removes the corner entirely and the button stops reading as a
-     surface. `--radius-control` is the one value a button uses. */
-  --radius-mark: 4px;
-  --radius-chip: 6px;
-  --radius-input: 10px;
-  --radius-control: 6px;
-  --radius-card: 12px;
-  --radius-sheet: 16px;
+  /* The card scale. Three tones of the same paper: the page ground, a raised
+     sheet, and one brand-tinted sheet for the rare thing that should be
+     noticed. Hue is the accent's, never a second palette. */
+  --color-raised: var(--surface-raised);
+  --color-raised-hover: var(--surface-raised-hover);
+  --color-tint: var(--surface-tint);
+
+  /* Motion. Solian lives on easeOutCubic; it is the curve every transition
+     borrows, at 180 ms — the default a control keeps unless it needs more.
+     A scale entrance gets easeOutBack so a thing arriving overshoots home. */
+  --ease-out: cubic-bezier(0.33, 1, 0.68, 1);
+  --ease-in: cubic-bezier(0.32, 0, 0.67, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 260ms;
 
   /* Spacing. One 4 px unit, with the named steps the layout actually uses.
      Solian's scale (`SolSpace`) stops at 40; the console adds `section` for
@@ -221,29 +250,47 @@
     @apply border-line;
   }
 
-  /* Terminal listing: no zebra, hairline rows, hover only tints the row. */
+  /* Terminal listing: no zebra and no rules. A row is a tinted bar with its own corner,
+     separated by a 2 px well of space. */
   .ledger {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0 2px;
     text-align: left;
   }
 
   .ledger th {
     padding: 0 14px 8px 0;
-    border-bottom: 1px solid var(--color-line);
     color: var(--color-faint);
     font-size: 10.5px;
     font-weight: 700;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     white-space: nowrap;
+    border: 0;
   }
 
   .ledger td {
-    padding: 11px 14px 11px 0;
-    border-bottom: 1px solid var(--color-line-soft);
+    padding: 11px 14px;
     vertical-align: middle;
+    background-color: color-mix(in oklab, var(--color-base-200) 45%, transparent);
     font-variant-numeric: tabular-nums;
+    transition: background-color var(--duration-fast) var(--ease-out);
+    border: 0;
+  }
+
+  .ledger td:first-child {
+    border-radius: var(--radius-chip) 0 0 var(--radius-chip);
+    padding-left: 12px;
+  }
+
+  .ledger td:last-child {
+    border-radius: 0 var(--radius-chip) var(--radius-chip) 0;
+    text-align: right;
+  }
+
+  .ledger td:only-child {
+    border-radius: var(--radius-chip);
   }
 
   /* Figures that are read as a column line up when they share a width; the
@@ -253,41 +300,32 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .ledger tbody tr:last-child td {
-    border-bottom: 0;
-  }
-
   .ledger tbody tr:hover td {
-    background: color-mix(in oklab, var(--color-base-200) 55%, transparent);
+    background-color: color-mix(in oklab, var(--color-base-300) 70%, transparent);
   }
 
-  /* Full-bleed ledger: cancels the panel body's horizontal padding so row
-     hairlines meet the card edge, while cell text keeps the panel rhythm.
-     The offsets mirror `ConsolePanel`'s 24 px (`px-6`) body inset — keep the
-     two in step, or the table stops short of the edge it is meant to reach. */
+  /* Full-bleed ledger: cancels the panel body's horizontal padding so the row
+     bars meet the card edge, while cell text keeps the panel rhythm. */
   .table-bleed {
     margin-inline: -1.5rem;
   }
 
-  .table-bleed .ledger th:first-child,
-  .table-bleed .ledger td:first-child {
+  .table-bleed .ledger th:first-child {
     padding-left: 1.5rem;
   }
 
-  .table-bleed .ledger th:last-child,
-  .table-bleed .ledger td:last-child {
+  .table-bleed .ledger th:last-child {
     padding-right: 1.5rem;
   }
 
-  .ledger td:first-child,
-  .ledger th:first-child {
-    padding-left: 8px;
+  .table-bleed .ledger td:first-child {
+    padding-left: 1.5rem;
+    border-radius: 0;
   }
 
-  .ledger td:last-child,
-  .ledger th:last-child {
-    padding-right: 8px;
-    text-align: right;
+  .table-bleed .ledger td:last-child {
+    padding-right: 1.5rem;
+    border-radius: 0;
   }
 
   /* ── Fields ────────────────────────────────────────────────────────────
@@ -313,44 +351,38 @@
     min-inline-size: 0;
   }
 
-  /* The box is the positioned ancestor and carries the filled surface and
-     outline on all four sides. */
+  /* The box is the positioned ancestor and carries the filled surface. */
   .field-box {
     position: relative;
-    border: 1px solid var(--field-line);
+    border: 0;
     border-radius: var(--radius-input);
     background-color: var(--field-fill);
     transition:
-      background-color 150ms ease,
-      border-color 150ms ease,
-      box-shadow 150ms ease;
+      background-color var(--duration-base) var(--ease-out),
+      box-shadow var(--duration-base) var(--ease-out);
   }
 
   .field-box:hover:not(.is-disabled) {
     background-color: var(--field-fill-hover);
-    border-color: color-mix(in oklab, var(--field-line) 65%, var(--color-base-content));
   }
 
-  /* Focus is the outline thickened to 2 px in the signal colour via an inset
-     ring so the control does not move by a pixel. */
+  /* Focus is an inset ring in the signal colour so the control does not move by a pixel. */
   .field-box:focus-within:not(.is-disabled) {
-    border-color: var(--color-primary);
-    box-shadow: inset 0 0 0 1px var(--color-primary);
+    box-shadow: inset 0 0 0 2px var(--color-primary);
     background-color: var(--field-fill-focus);
   }
 
-  /* Invalid fields keep the error edge whether or not they hold focus. */
+  /* Invalid fields keep the error ring whether or not they hold focus. */
   .field.is-invalid .field-box {
-    border-color: var(--color-error);
+    box-shadow: inset 0 0 0 1.5px var(--color-error);
   }
 
   .field.is-invalid .field-box:focus-within {
-    box-shadow: inset 0 0 0 1px var(--color-error);
+    box-shadow: inset 0 0 0 2px var(--color-error);
   }
 
   .field.is-disabled .field-box {
     cursor: not-allowed;
-    border-color: color-mix(in oklab, var(--field-line) 50%, transparent);
     background-color: color-mix(in oklab, var(--field-fill) 60%, var(--color-base-100));
   }
 
@@ -561,16 +593,25 @@
     background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
   }
 
-  /* Checkbox and radio: Material's square mark, on the same 4 px unit as the
-     rest of the geometry. */
+  /* Checks are tonal switches, not outlined boxes. */
   .checkbox,
   .radio {
-    border-color: var(--field-line);
+    border: 0;
+    background-color: var(--field-fill);
   }
 
   .checkbox:checked,
   .radio:checked {
-    border-color: var(--color-primary);
+    background-color: var(--color-primary);
+    color: var(--color-primary-content);
+  }
+
+  .toggle {
+    border: 0;
+    background-color: var(--field-fill);
+  }
+
+  .toggle:checked {
     background-color: var(--color-primary);
     color: var(--color-primary-content);
   }
@@ -590,19 +631,38 @@
     mask: url('/icon-outline.svg') center / contain no-repeat;
   }
 
+  /* ── Buttons ────────────────────────────────────────────────────────── */
+
+  /* A button is a tonal rectangle: fill defines it, the corner is the only
+     edge, and nothing is outlined at rest. Solian's own `FilledButton` sits at
+     16 px with no border, and its press is 180 ms of easeOutCubic. */
   .btn {
-    @apply border-line font-sans text-[13px] font-semibold tracking-[0.005em];
+    @apply font-sans text-[13px] font-semibold tracking-[0.005em];
+    border-width: 0;
     border-radius: var(--radius-control);
     box-shadow: none;
     transition:
-      background-color 150ms ease,
-      border-color 150ms ease,
-      color 150ms ease;
+      background-color var(--duration-base) var(--ease-out),
+      transform var(--duration-base) var(--ease-out),
+      color var(--duration-base) var(--ease-out);
+  }
+
+  /* A press sinks the control 1 px and tightens it a hair. Small enough to be
+     felt rather than seen; it is the one motion every button shares. */
+  .btn:not(:disabled):active {
+    transform: translateY(1px) scale(0.985);
+  }
+
+  /* `btn-outline` is the one control that keeps a line, because the line is
+     the whole point of the variant. */
+  .btn-outline {
+    border-width: 1px;
+    border-color: var(--color-line);
   }
 
   /* Square buttons follow the same corner rather than becoming circles: a
-     circle is a different shape language, and at 6 px the icon tiles read as
-     part of the same family as the fields. */
+     circle is a different shape language, and the icon tiles read as part of
+     the same family as the fields. */
   .btn-square,
   .btn-circle {
     border-radius: var(--radius-control);
@@ -616,12 +676,26 @@
     @apply bg-base-300 text-base-content;
   }
 
+  /* A quiet action for row headers and filters: no fill at rest, a tonal step
+     under the pointer. */
+  .btn-quiet {
+    @apply bg-transparent text-dim;
+  }
+
+  .btn-quiet:hover {
+    background-color: color-mix(in oklab, var(--color-base-300) 70%, transparent);
+    @apply text-base-content;
+  }
+
   .btn-primary {
-    @apply border-primary;
+    @apply bg-primary text-primary-content;
   }
 
   .btn-error {
-    @apply border-error/60;
+    @apply bg-error/15 text-error;
+  }
+  .btn-error:hover {
+    @apply bg-error/25;
   }
 
   .link-quiet {
@@ -631,38 +705,117 @@
     @apply text-base-content decoration-faint;
   }
 
-  /* Status note: the one shape for an inline error, confirmation, or warning.
-     A tinted block carries the tone, so a message reads as an object rather
-     than as a stray sentence with a bar beside it. */
+  /* ── Chips ──────────────────────────────────────────────────────────── */
+
+  /* The one inline token: a tag, a category, an action filter. A tonal
+     rectangle without an outline, so it sits beside a field without competing
+     with a button. Selection lights it rather than outlining it. */
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-chip bg-base-200/70 px-3 py-1.5 text-2xs text-dim;
+    transition:
+      background-color var(--duration-base) var(--ease-out),
+      color var(--duration-base) var(--ease-out);
+  }
+
+  a.chip:hover,
+  button.chip:hover {
+    @apply bg-base-300 text-base-content;
+  }
+
+  .chip-active {
+    @apply bg-primary/15 font-semibold text-primary;
+  }
+
+  .chip-count {
+    @apply font-mono text-[10.5px] text-faint;
+  }
+
+  /* ── Status notes ───────────────────────────────────────────────────── */
+
+  /* The one shape for an inline error, confirmation, or warning. A tinted
+     block carries the tone, so a message reads as an object rather than as a
+     stray sentence with a bar beside it. */
   .note {
-    @apply rounded-chip border px-3.5 py-2.5 text-xs leading-relaxed;
+    @apply rounded-chip px-3.5 py-2.5 text-xs leading-relaxed;
   }
 
   .note-error {
-    @apply border-error/40 bg-error/10 text-error;
+    @apply bg-error/12 text-error;
   }
 
   .note-success {
-    @apply border-success/40 bg-success/10 text-success;
+    @apply bg-success/12 text-success;
   }
 
   .note-warning {
-    @apply border-warning/40 bg-warning/10 text-warning;
+    @apply bg-warning/12 text-warning;
+  }
+
+  /* daisyUI's alert, collapsed onto the same block. */
+  .alert {
+    border-radius: var(--radius-chip);
+    border-width: 0;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  /* daisyUI surfaces realigned to the console ramp. `card` is a tonal plate,
+     because separation in this system comes from the surface tone and the
+     space around it, never from a border or a drop shadow. */
+  .card {
+    border-radius: var(--radius-card);
+    background-color: color-mix(in oklab, var(--color-base-200) 50%, transparent);
+    border: 0;
+    box-shadow: none;
+  }
+
+  .modal-box {
+    border-radius: var(--radius-sheet);
+    border: 0;
+    background-color: var(--color-base-100);
+    box-shadow: 0 30px 80px -40px rgb(0 0 0 / 0.7);
   }
 
   /* Grouping surface: the page card sits on `base-100`, and every region
-     inside it is a tonal plate with the same corner as the panel token. */
+     inside it is a raised sheet. A plate carries no border: separation is the fill and
+     the space around it. */
   .plate {
-    @apply rounded-card border border-line bg-base-200/30;
+    @apply rounded-card bg-raised;
   }
 
   /* A field or option block nested inside a plate, one step tighter. */
   .well {
-    @apply rounded-card border border-line bg-base-200/40;
+    @apply rounded-card bg-base-200;
+  }
+
+  /* A card is a sheet of the same paper, one step above the ground. `raised`
+     is neutral stock, `tint` is the brand accent mixed into it. */
+  .card-raised {
+    @apply rounded-card bg-raised;
+  }
+
+  .card-tint {
+    @apply rounded-card bg-tint;
+  }
+
+  .dropdown-content,
+  .menu {
+    border-radius: var(--radius-card);
+    background-color: var(--color-base-200);
+    border: 0;
   }
 
   .dot {
     @apply inline-block size-[6px] shrink-0 rounded-full;
+  }
+
+  /* daisyUI badges as the chip's smaller sibling. */
+  .badge {
+    border-radius: var(--radius-chip);
+    border-width: 0;
+    background-color: color-mix(in oklab, var(--color-base-300) 70%, transparent);
+    font-weight: 600;
+    letter-spacing: 0.01em;
   }
 
   /* Loading placeholder: a single soft sweep replaces a "reading…" line, so a
@@ -681,6 +834,185 @@
     50% {
       opacity: 1;
     }
+  }
+
+  /* ── Shell & Navigation ─────────────────────────────────────────────── */
+
+  .app-bar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    isolation: isolate;
+  }
+
+  .app-bar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-color: color-mix(in oklab, var(--color-base-100) 82%, transparent);
+    backdrop-filter: blur(14px) saturate(1.4);
+    opacity: 0;
+    box-shadow: 0 1px 0 0 rgb(0 0 0 / 0);
+    transition:
+      opacity var(--duration-base) var(--ease-out),
+      box-shadow var(--duration-base) var(--ease-out);
+  }
+
+  .app-bar.is-claimed::before {
+    opacity: 1;
+    box-shadow: 0 10px 30px -22px rgb(0 0 0 / 0.5);
+  }
+
+  .nav-tab {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: var(--radius-control);
+    padding: 0.375rem 0.625rem;
+    font-size: var(--text-2xs);
+    letter-spacing: 0.02em;
+    color: var(--color-faint);
+    transition:
+      background-color var(--duration-base) var(--ease-out),
+      color var(--duration-base) var(--ease-out);
+  }
+
+  .nav-tab:hover {
+    background-color: color-mix(in oklab, var(--color-base-200) 70%, transparent);
+    color: var(--color-dim);
+  }
+
+  .nav-tab-active {
+    background-color: color-mix(in oklab, var(--color-base-300) 80%, transparent);
+    color: var(--color-base-content);
+  }
+
+  .menu-plate {
+    border-radius: var(--radius-card);
+    background-color: var(--color-base-200);
+    box-shadow: 0 24px 50px -28px rgb(0 0 0 / 0.55);
+    transform-origin: top right;
+    animation: menu-pop var(--duration-base) var(--ease-back) both;
+  }
+
+  @keyframes menu-pop {
+    from {
+      opacity: 0;
+      transform: scale(0.94) translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  .post-menu-row {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-control);
+    padding: 0.375rem 0.625rem;
+    text-align: left;
+    color: var(--color-dim);
+    transition:
+      background-color 150ms ease,
+      color 150ms ease;
+  }
+
+  .post-menu-row:hover {
+    background-color: var(--color-base-300);
+    color: var(--color-base-content);
+  }
+
+  .menu-sep {
+    height: 0.375rem;
+  }
+
+  .page-measure {
+    margin-inline: auto;
+    width: 100%;
+    max-width: 46rem;
+  }
+
+  .brand-mark-live {
+    transition: transform 700ms var(--ease-out);
+  }
+
+  .group:hover .brand-mark-live {
+    transform: rotate(180deg);
+  }
+
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .rise {
+    animation: rise-in var(--duration-slow) var(--ease-out) both;
+  }
+
+  .stagger > * {
+    animation: rise-in var(--duration-slow) var(--ease-out) both;
+  }
+
+  .stagger > :nth-child(1) {
+    animation-delay: 0ms;
+  }
+  .stagger > :nth-child(2) {
+    animation-delay: 30ms;
+  }
+  .stagger > :nth-child(3) {
+    animation-delay: 60ms;
+  }
+  .stagger > :nth-child(4) {
+    animation-delay: 90ms;
+  }
+  .stagger > :nth-child(5) {
+    animation-delay: 120ms;
+  }
+  .stagger > :nth-child(6) {
+    animation-delay: 150ms;
+  }
+  .stagger > :nth-child(7) {
+    animation-delay: 180ms;
+  }
+  .stagger > :nth-child(n + 8) {
+    animation-delay: 210ms;
+  }
+
+  @keyframes pulse-dot {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.55;
+      transform: scale(0.82);
+    }
+  }
+
+  .dot-live {
+    animation: pulse-dot 2.4s var(--ease-in-out) infinite;
+  }
+
+  .lift {
+    transition:
+      transform var(--duration-base) var(--ease-out),
+      background-color var(--duration-base) var(--ease-out);
+  }
+
+  .lift:hover {
+    transform: translateY(-2px);
   }
 }
 

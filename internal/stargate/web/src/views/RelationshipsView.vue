@@ -506,7 +506,7 @@ onMounted(load)
                     />
                     {{ presenceLabel(row) }}
                   </span>
-                  <span v-if="isCloseFriend(row)" class="chip text-accent">
+                  <span v-if="isCloseFriend(row)" class="chip chip-active">
                     {{ t('relationships.standing.closeFriend') }}
                   </span>
                   <span v-if="panel === 'requests'" class="chip text-warning">
@@ -656,11 +656,11 @@ onMounted(load)
 
           <template v-else-if="searched">
             <p v-if="!results.length" class="voice mt-4">{{ t('relationships.noResults') }}</p>
-            <ul v-else class="mt-3">
+            <ul v-else class="mt-3 flex flex-col gap-2">
               <li
                 v-for="account in results"
                 :key="account.id"
-                class="flex items-start gap-3 border-b border-line-soft py-2.5 last:border-0"
+                class="flex items-start gap-3 rounded-card bg-base-200/40 p-3"
               >
                 <AccountAvatar :account="account" />
                 <div class="flex min-w-0 flex-1 items-start justify-between gap-3">

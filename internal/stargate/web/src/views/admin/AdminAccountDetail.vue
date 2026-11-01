@@ -214,7 +214,7 @@ onMounted(load)
             </div>
             <div class="flex justify-between pb-2 text-xs">
               <dt class="text-faint">{{ t('admin.accountDetail.superuser') }}</dt>
-              <dd :class="account?.is_superuser ? 'text-accent' : 'text-dim'">
+              <dd :class="account?.is_superuser ? 'text-primary' : 'text-dim'">
                 {{ account?.is_superuser ? t('common.yes') : t('common.no') }}
               </dd>
             </div>
@@ -360,10 +360,8 @@ onMounted(load)
       aria-modal="true"
       aria-labelledby="suspend-title"
     >
-      <div
-        class="modal-box max-w-md overflow-hidden rounded-sheet border border-line bg-base-100 p-0 shadow-[0_30px_80px_-40px_rgb(0_0_0/0.7)]"
-      >
-        <div class="border-b border-line px-6 py-5">
+      <div class="modal-box max-w-md overflow-hidden p-0">
+        <div class="bg-base-200/40 px-6 py-5">
           <h2 id="suspend-title" class="text-sm text-base-content">
             {{ t('admin.accountDetail.suspendTitle') }}
           </h2>
@@ -401,7 +399,7 @@ onMounted(load)
             :hint="t('admin.accountDetail.expiresHint')"
           />
         </div>
-        <div class="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
+        <div class="flex items-center justify-end gap-2 bg-base-200/50 px-5 py-3">
           <button type="button" class="btn btn-ghost btn-xs" @click="suspendOpen = false">
             {{ t('common.cancel') }}
           </button>

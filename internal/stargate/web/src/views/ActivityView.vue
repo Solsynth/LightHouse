@@ -101,9 +101,7 @@ onMounted(load)
         :key="action"
         type="button"
         class="chip transition-colors"
-        :class="
-          filter === action ? 'border-primary/60 text-base-content' : 'hover:text-base-content'
-        "
+        :class="filter === action ? 'chip-active' : ''"
         @click="setFilter(action)"
       >
         {{ action }}

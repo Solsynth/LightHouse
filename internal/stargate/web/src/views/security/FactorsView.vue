@@ -232,10 +232,7 @@ onMounted(load)
               {{ busy ? t('factors.adding') : t('factors.addAction') }}
             </button>
 
-            <div
-              v-if="created && createdSecret()"
-              class="mt-4 border border-warning/50 bg-warning/5 p-3"
-            >
+            <div v-if="created && createdSecret()" class="mt-4 rounded-chip bg-warning/12 p-3.5">
               <p class="text-2xs uppercase tracking-[0.12em] text-warning">
                 {{
                   created.type === 5 ? t('factors.recoveryCode') : t('factors.authenticatorSecret')

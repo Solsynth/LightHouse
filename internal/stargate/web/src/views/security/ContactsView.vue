@@ -147,9 +147,7 @@ onMounted(load)
                 <span v-if="contact.is_primary" class="chip text-primary">{{
                   t('contacts.primary')
                 }}</span>
-                <span v-if="contact.is_public" class="chip text-accent">{{
-                  t('contacts.public')
-                }}</span>
+                <span v-if="contact.is_public" class="chip">{{ t('contacts.public') }}</span>
                 <span class="chip" :class="contact.verified_at ? 'text-success' : 'text-warning'">
                   {{ contact.verified_at ? t('contacts.verified') : t('contacts.unverified') }}
                 </span>

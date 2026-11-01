@@ -51,12 +51,12 @@ const widthOf = (width: number) => `${(width / total.value) * 100}%`
 <template>
   <div :class="compact ? 'flex min-h-32 items-center' : ''">
     <div class="w-full">
-      <div v-if="variant === 'rows'">
+      <div v-if="variant === 'rows'" class="flex flex-col gap-1.5">
         <div
           v-for="row in rows"
           :key="`row-${row}`"
-          class="space-y-2 py-3 first:pt-0 last:pb-0"
-          :class="rules ? 'border-b border-line-soft last:border-0' : ''"
+          class="space-y-2 px-3 py-3"
+          :class="rules ? 'rounded-chip bg-raised' : ''"
         >
           <div class="flex items-center gap-2">
             <span class="skeleton h-3 w-32" aria-hidden="true" />
@@ -68,7 +68,7 @@ const widthOf = (width: number) => `${(width / total.value) * 100}%`
       </div>
 
       <template v-else>
-        <div v-if="header" class="flex gap-4 pb-2">
+        <div v-if="header" class="flex gap-4 pb-2 px-3">
           <span
             v-for="(width, index) in columns"
             :key="`head-${index}`"
@@ -77,20 +77,22 @@ const widthOf = (width: number) => `${(width / total.value) * 100}%`
             aria-hidden="true"
           />
         </div>
-        <div
-          v-for="row in rows"
-          :key="row"
-          class="flex items-center gap-4 py-3"
-          :class="rules ? 'border-b border-line-soft last:border-0' : ''"
-        >
-          <span
-            v-for="(width, index) in columns"
-            :key="`${row}-${index}`"
-            class="skeleton"
-            :class="height"
-            :style="{ width: widthOf(width) }"
-            aria-hidden="true"
-          />
+        <div class="flex flex-col gap-1.5">
+          <div
+            v-for="row in rows"
+            :key="row"
+            class="flex items-center gap-4 px-3 py-3"
+            :class="rules ? 'rounded-chip bg-raised' : ''"
+          >
+            <span
+              v-for="(width, index) in columns"
+              :key="`${row}-${index}`"
+              class="skeleton"
+              :class="height"
+              :style="{ width: widthOf(width) }"
+              aria-hidden="true"
+            />
+          </div>
         </div>
       </template>
     </div>

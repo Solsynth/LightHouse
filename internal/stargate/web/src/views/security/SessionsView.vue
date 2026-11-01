@@ -116,7 +116,7 @@ onMounted(load)
                   <span v-if="item.is_current" class="chip text-primary">{{
                     t('sessions.thisBrowser')
                   }}</span>
-                  <span v-if="item.trusted" class="chip text-accent">{{
+                  <span v-if="item.trusted" class="chip chip-active">{{
                     t('sessions.trusted')
                   }}</span>
                 </div>

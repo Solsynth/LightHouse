@@ -74,10 +74,8 @@ onMounted(load)
 
     <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
-    <div
-      class="grid overflow-hidden rounded-card gap-px border border-line bg-line sm:grid-cols-2 lg:grid-cols-4"
-    >
-      <div class="bg-base-100 px-4 py-5">
+    <div class="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="rounded-card bg-base-200/50 px-4 py-5">
         <p class="text-2xs uppercase tracking-[0.14em] text-faint">
           {{ t('admin.overview.statAccounts') }}
         </p>
@@ -87,7 +85,7 @@ onMounted(load)
         </p>
         <p class="mt-1 text-2xs text-faint">{{ t('admin.overview.statAccountsNote') }}</p>
       </div>
-      <div class="bg-base-100 px-4 py-5">
+      <div class="rounded-card bg-base-200/50 px-4 py-5">
         <p class="text-2xs uppercase tracking-[0.14em] text-faint">
           {{ t('admin.overview.statRestricted') }}
         </p>
@@ -97,7 +95,7 @@ onMounted(load)
         </p>
         <p class="mt-1 text-2xs text-faint">{{ t('admin.overview.statRestrictedNote') }}</p>
       </div>
-      <div class="bg-base-100 px-4 py-5">
+      <div class="rounded-card bg-base-200/50 px-4 py-5">
         <p class="text-2xs uppercase tracking-[0.14em] text-faint">
           {{ t('admin.overview.statHitRatio') }}
         </p>
@@ -116,7 +114,7 @@ onMounted(load)
           }}
         </p>
       </div>
-      <div class="bg-base-100 px-4 py-5">
+      <div class="rounded-card bg-base-200/50 px-4 py-5">
         <p class="text-2xs uppercase tracking-[0.14em] text-faint">
           {{ t('admin.overview.statMemory') }}
         </p>

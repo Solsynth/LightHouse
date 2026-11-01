@@ -178,13 +178,9 @@ onMounted(() => {
       </button>
     </form>
 
-    <div
-      v-if="loading"
-      class="mt-6 overflow-hidden rounded-card border border-line"
-      aria-hidden="true"
-    >
+    <div v-if="loading" class="mt-6 overflow-hidden rounded-card bg-base-200/50" aria-hidden="true">
       <span class="skeleton mx-4 my-2.5 h-2 w-24" />
-      <div class="space-y-3 border-t border-line px-4 py-3">
+      <div class="space-y-3 bg-base-200/40 px-4 py-3">
         <span class="skeleton h-3 w-2/3" />
         <span class="skeleton h-3 w-1/2" />
       </div>
@@ -192,9 +188,9 @@ onMounted(() => {
 
     <template v-else-if="status && phase === 'pending'">
       <div
-        class="mt-6 overflow-hidden rounded-card border border-line sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]"
+        class="mt-6 overflow-hidden rounded-card bg-base-200/40 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]"
       >
-        <section class="border-b border-line bg-base-200/40 p-4 sm:border-b-0 sm:border-r">
+        <section class="bg-base-200/60 p-4">
           <div class="flex items-start gap-3">
             <AppMark :picture="status.picture" :name="name" :size="40" />
             <div class="min-w-0">
@@ -257,7 +253,7 @@ onMounted(() => {
 
     <!-- Approved, declined, expired, or already closed: nothing is left to
          decide, and the device reports the outcome on its own. -->
-    <div v-else-if="status" class="mt-6 rounded-card border border-line p-4">
+    <div v-else-if="status" class="mt-6 rounded-card bg-base-200/50 p-4">
       <p class="eyebrow" :class="`text-${terminal.tone}`">{{ status.user_code }}</p>
       <p class="voice mt-1">
         {{ status.client_name || status.client_slug || status.client_id }}

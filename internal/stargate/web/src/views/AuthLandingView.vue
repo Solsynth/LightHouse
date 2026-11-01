@@ -44,7 +44,7 @@ onMounted(async () => {
     </div>
 
     <p v-if="!problem" class="flex items-center gap-2 text-2xs text-faint">
-      <span class="dot animate-pulse bg-info" aria-hidden="true" />
+      <span class="dot animate-pulse bg-primary" aria-hidden="true" />
       {{ t('landing.waiting') }}
     </p>
 

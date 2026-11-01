@@ -174,25 +174,6 @@ const router = createRouter({
       meta: { titleKey: 'app.titles.securityMode', modules: [MODULES.accounts] },
     },
     {
-      path: '/developers',
-      name: 'developers',
-      component: () => import('@/views/DevelopersView.vue'),
-      meta: { titleKey: 'app.titles.developers', wide: true, modules: [MODULES.accounts] },
-    },
-    {
-      // One registration: its identity, OAuth configuration, and client
-      // secrets. `appId` accepts the id or the slug on the server, but links
-      // carry the id so a rename never strands an open tab.
-      path: '/developers/apps/:appId',
-      name: 'oauth-app',
-      component: () => import('@/views/OAuthAppView.vue'),
-      meta: {
-        titleKey: 'app.titles.oauthApp',
-        wide: true,
-        modules: [MODULES.accounts, MODULES.oauthapps],
-      },
-    },
-    {
       path: '/activity',
       name: 'activity',
       component: () => import('@/views/ActivityView.vue'),

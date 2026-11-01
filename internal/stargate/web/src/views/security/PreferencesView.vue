@@ -82,8 +82,8 @@ onMounted(load)
           <label
             v-for="option in modes"
             :key="option"
-            class="flex cursor-pointer items-start gap-3 rounded-card border border-line px-4 py-3.5 transition-colors"
-            :class="mode === option ? 'border-primary/60 bg-base-300/40' : 'hover:bg-base-300/30'"
+            class="flex cursor-pointer items-start gap-3 rounded-card px-4 py-3.5 transition-colors"
+            :class="mode === option ? 'bg-tint' : 'bg-base-200/50 hover:bg-base-200'"
           >
             <input
               v-model="mode"
@@ -122,7 +122,7 @@ onMounted(load)
           </div>
           <div class="flex items-baseline justify-between">
             <dt class="text-faint">{{ t('preferences.elevated') }}</dt>
-            <dd :class="session.elevated ? 'text-accent' : 'text-dim'">
+            <dd :class="session.elevated ? 'text-primary' : 'text-dim'">
               {{ session.elevated ? t('common.yes') : t('common.no') }}
             </dd>
           </div>

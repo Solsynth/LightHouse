@@ -46,7 +46,7 @@ onMounted(load)
   <div>
     <PageHeader :title="t('admin.geography.title')" :description="t('admin.geography.description')">
       <template #actions>
-        <div class="flex gap-0.5 rounded-control border border-line p-0.5">
+        <div class="flex gap-0.5 rounded-control bg-base-200/60 p-0.5">
           <button
             type="button"
             class="rounded-control px-2.5 py-1 text-2xs"

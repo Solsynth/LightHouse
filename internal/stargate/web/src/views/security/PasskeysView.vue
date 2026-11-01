@@ -217,10 +217,8 @@ onMounted(load)
       aria-modal="true"
       aria-labelledby="rename-passkey-title"
     >
-      <div
-        class="modal-box max-w-sm overflow-hidden rounded-sheet border border-line bg-base-100 p-0 shadow-[0_30px_80px_-40px_rgb(0_0_0/0.7)]"
-      >
-        <div class="border-b border-line px-6 py-5">
+      <div class="modal-box max-w-sm overflow-hidden p-0">
+        <div class="bg-base-200/40 px-6 py-5">
           <h2 id="rename-passkey-title" class="text-sm text-base-content">
             {{ t('passkeys.renameTitle') }}
           </h2>
@@ -235,7 +233,7 @@ onMounted(load)
             @keydown.enter="saveRename"
           />
         </div>
-        <div class="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
+        <div class="flex items-center justify-end gap-2 bg-base-200/50 px-5 py-3">
           <button
             type="button"
             class="btn btn-ghost btn-xs"

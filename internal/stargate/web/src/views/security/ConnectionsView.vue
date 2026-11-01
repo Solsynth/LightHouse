@@ -132,11 +132,11 @@ onMounted(async () => {
         {{ t('connections.empty') }}
       </p>
 
-      <ul v-else>
+      <ul v-else class="flex flex-col gap-2">
         <li
           v-for="connection in connections"
           :key="connection.id"
-          class="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+          class="flex flex-wrap items-center justify-between gap-3 rounded-card bg-base-200/40 p-3.5"
         >
           <div>
             <div class="flex flex-wrap items-center gap-2">
@@ -145,10 +145,10 @@ onMounted(async () => {
                 {{ providerLabel(connection.provider) }}
               </span>
               <span class="chip">{{ connection.provided_identifier }}</span>
-              <span v-if="connection.is_public" class="chip text-accent">
+              <span v-if="connection.is_public" class="chip">
                 {{ t('connections.public') }}
               </span>
-              <span v-if="connection.registered_at" class="chip text-primary">
+              <span v-if="connection.registered_at" class="chip chip-active">
                 {{ t('connections.createdAccount') }}
               </span>
             </div>
@@ -191,7 +191,7 @@ onMounted(async () => {
           v-for="provider in connectable"
           :key="provider"
           :href="connectUrl(provider)"
-          class="btn btn-outline"
+          class="btn bg-base-200/60 hover:bg-base-300"
           :aria-label="t('connections.establish', { provider: providerLabel(provider) })"
         >
           <ProviderMark :provider="provider" />
