@@ -109,3 +109,25 @@ func TestAggregatorMarksStaticChecksAsConfigSource(t *testing.T) {
 		t.Fatalf("static service state = %+v, %v; want a healthy config state", state, ok)
 	}
 }
+
+func TestAggregatorShowsRegistrySourceForConfiguredService(t *testing.T) {
+	registry := discovery.NewRegistry(nil, "health-test", time.Minute, nil)
+	if _, _, err := registry.Register(t.Context(), &gen.DyServiceInstance{
+		Service: "express", InstanceId: "express-1", HttpEndpoint: "http://registered.example",
+	}, time.Minute); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	if err := registry.SetHealth(t.Context(), "express", "express-1", true); err != nil {
+		t.Fatalf("SetHealth() error = %v", err)
+	}
+
+	store := NewReadinessStore(nil)
+	aggregator := NewAggregator(store, &config.Config{Health: config.HealthConfig{CheckTimeout: time.Second}}, registry)
+	// The service also has a static fallback; the live registration must win.
+	aggregator.syncRegisteredReadiness(t.Context(), map[string]string{"express": "http://static.example"})
+
+	state, ok := store.GetServiceState("express")
+	if !ok || !state.IsHealthy || state.Source != SourceRegistry {
+		t.Fatalf("configured+registered state = %+v, %v; want registry source", state, ok)
+	}
+}
