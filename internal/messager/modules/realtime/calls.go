@@ -846,9 +846,9 @@ func (s *server) pushCallInvite(ctx context.Context, accountID, title, body stri
 	if s.notify == nil && s.ring == nil {
 		return
 	}
-	meta := make(map[string]string, len(payload)+1)
+	meta := make(map[string]any, len(payload)+1)
 	for key, value := range payload {
-		meta[key] = fmt.Sprint(value)
+		meta[key] = value
 	}
 	meta["push_type"] = "VoIP"
 	raw, err := json.Marshal(payload)
@@ -902,7 +902,7 @@ func (s *server) pushCallInviteWS(ctx context.Context, accountID string, payload
 // voipPushPort is the richer push contract (push type aware) a notify
 // provider may implement.
 type voipPushPort interface {
-	SendPushWithType(ctx context.Context, accountID, topic, title, body, pushType string, meta map[string]string) error
+	SendPushWithType(ctx context.Context, accountID, topic, title, body, pushType string, meta map[string]any) error
 }
 
 // leaveCall handles DELETE /api/chat/realtime/{roomId}.

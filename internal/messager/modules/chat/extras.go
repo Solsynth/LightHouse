@@ -61,7 +61,7 @@ func (i *instance) moderateDeleteMessage(c *gin.Context) {
 		}
 		i.sendPush(ctx, []string{sender.AccountID.String()}, "chat.moderation",
 			"Message deleted", "Your message was deleted by a moderator: "+reason+".",
-			map[string]string{"room_id": roomID.String(), "message_id": messageID.String()})
+			map[string]any{"room_id": roomID.String(), "message_id": messageID.String()})
 	}
 	httpx.NoContent(c)
 }
@@ -118,7 +118,7 @@ func (i *instance) moderateTimeoutMember(c *gin.Context) {
 		Updates(map[string]any{"timeout_until": until, "timeout_cause": store.ToJSON(cause)}).Error
 	body := "You were timed out for " + strconv.Itoa(request.DurationMinutes) + " minutes: " + reason + "."
 	i.sendPush(ctx, []string{accountParam.String()}, "chat.timeout", "Timed out", body,
-		map[string]string{"room_id": roomID.String()})
+		map[string]any{"room_id": roomID.String()})
 	httpx.OK(c, gin.H{
 		"success":       true,
 		"message":       "User timed out",

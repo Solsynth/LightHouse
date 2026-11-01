@@ -947,7 +947,7 @@ func (i *instance) pushToAccounts(ctx context.Context, accountIDs []string, even
 	}
 }
 
-func (i *instance) sendPush(ctx context.Context, accountIDs []string, topic, title, body string, meta map[string]string) {
+func (i *instance) sendPush(ctx context.Context, accountIDs []string, topic, title, body string, meta map[string]any) {
 	if i.notify == nil || len(accountIDs) == 0 {
 		return
 	}

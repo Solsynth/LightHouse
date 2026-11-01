@@ -38,7 +38,7 @@ func TestChatPushPayloadDirectMessage(t *testing.T) {
 	if body != "hello there" {
 		t.Fatalf("body = %q", body)
 	}
-	for key, want := range map[string]string{
+	for key, want := range map[string]any{
 		"sender_name": "Alice",
 		"pfp":         "pfp-1",
 		"image":       "img-1",
@@ -48,8 +48,12 @@ func TestChatPushPayloadDirectMessage(t *testing.T) {
 		"room_id":     room.ID.String(),
 	} {
 		if got := meta[key]; got != want {
-			t.Fatalf("meta[%q] = %q, want %q", key, got, want)
+			t.Fatalf("meta[%q] = %v, want %v", key, got, want)
 		}
+	}
+	images, ok := meta["images"].([]string)
+	if !ok || len(images) != 1 || images[0] != "img-1" {
+		t.Fatalf("meta[images] = %#v, want [img-1]", meta["images"])
 	}
 	if _, ok := meta["room_name"]; ok {
 		t.Fatalf("DM push carries room_name: %v", meta)
@@ -83,8 +87,8 @@ func TestChatPushPayloadAccountPictureShape(t *testing.T) {
 		t.Fatalf("top-level pfp = %q", meta["pfp"])
 	}
 
-	if _, _, meta := chatPushPayload(room, message, sender, nil); meta["pfp"] != "" {
-		t.Fatalf("pfp without an account = %q", meta["pfp"])
+	if _, _, meta := chatPushPayload(room, message, sender, nil); meta["pfp"] != nil {
+		t.Fatalf("pfp without an account = %v", meta["pfp"])
 	}
 }
 
@@ -136,5 +140,44 @@ func TestChatPushPayloadFallbacks(t *testing.T) {
 	}
 	if meta["sender_name"] != "Someone" {
 		t.Fatalf("sender_name = %q", meta["sender_name"])
+	}
+}
+
+func TestChatPushPayloadAttachments(t *testing.T) {
+	sender := &store.ChatMemberEntity{ID: uuid.New(), AccountID: uuid.New()}
+	room := &store.ChatRoomEntity{ID: uuid.New(), Type: int(model.ChatRoomDirectMessage)}
+	message := &store.ChatMessageEntity{
+		ID: uuid.New(), ChatRoomID: room.ID, SenderID: sender.ID,
+		Attachments: store.ToJSON([]model.CloudFileReferenceObject{
+			{Id: "doc-1", MimeType: "application/pdf"},
+			{Id: "img-1", MimeType: "image/webp", Url: "https://cdn.example/img-1.webp"},
+			{Id: "img-2", MimeType: "image/png"},
+		}),
+	}
+
+	_, body, meta := chatPushPayload(room, message, sender, nil)
+
+	if body != "3 attachments" {
+		t.Fatalf("body = %q, want the attachment count", body)
+	}
+	images, ok := meta["images"].([]string)
+	if !ok || len(images) != 2 {
+		t.Fatalf("meta[images] = %#v", meta["images"])
+	}
+	if images[0] != "https://cdn.example/img-1.webp" || images[1] != "img-2" {
+		t.Fatalf("meta[images] = %v, want url then id", images)
+	}
+	if meta["image"] != "https://cdn.example/img-1.webp" {
+		t.Fatalf("meta[image] = %v", meta["image"])
+	}
+
+	single := &store.ChatMessageEntity{
+		ID: uuid.New(), ChatRoomID: room.ID, SenderID: sender.ID,
+		Attachments: store.ToJSON([]model.CloudFileReferenceObject{
+			{Id: "img-9", MimeType: "image/jpeg"},
+		}),
+	}
+	if _, body, _ := chatPushPayload(room, single, sender, nil); body != "1 attachment" {
+		t.Fatalf("singular body = %q", body)
 	}
 }

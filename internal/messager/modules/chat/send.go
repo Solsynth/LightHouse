@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"gorm.io/datatypes"
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
@@ -449,15 +449,16 @@ func (i *instance) deliverMessage(ctx context.Context, room *store.ChatRoomEntit
 // chatPushPayload renders the title, body and meta of a `messages.new` push.
 // Clients display the chat push as a communication notification driven by
 // meta: sender_name and pfp give it the member identity instead of the bare
-// room subject, and image feeds the media attachment, mirroring the C#
+// room subject, and images/image feed the media attachments, mirroring the C#
 // BuildNotification/BuildNotificationMeta contract.
-func chatPushPayload(room *store.ChatRoomEntity, entity *store.ChatMessageEntity, sender *store.ChatMemberEntity, senderAccount *gen.DyAccount) (string, string, map[string]string) {
+func chatPushPayload(room *store.ChatRoomEntity, entity *store.ChatMessageEntity, sender *store.ChatMemberEntity, senderAccount *gen.DyAccount) (string, string, map[string]any) {
 	roomSubject := "Unknown"
 	if room.Type == int(model.ChatRoomDirectMessage) && room.Name == nil {
 		roomSubject = "DM"
 	} else if room.Name != nil {
 		roomSubject = *room.Name
 	}
+	attachments := notificationAttachments(entity)
 	body := ""
 	if entity.Content != nil {
 		body = *entity.Content
@@ -466,11 +467,19 @@ func chatPushPayload(room *store.ChatRoomEntity, entity *store.ChatMessageEntity
 		}
 	}
 	if body == "" {
-		body = "Attachment"
+		// The C# body counts every attachment; the payload only carries images.
+		switch len(attachments) {
+		case 0:
+			body = "Attachment"
+		case 1:
+			body = "1 attachment"
+		default:
+			body = fmt.Sprintf("%d attachments", len(attachments))
+		}
 	}
 	senderName := memberDisplayName(sender, senderAccount)
 	title := senderName + " (" + roomSubject + ")"
-	meta := map[string]string{
+	meta := map[string]any{
 		"user_id":     sender.AccountID.String(),
 		"sender_id":   sender.ID.String(),
 		"sender_name": senderName,
@@ -483,8 +492,9 @@ func chatPushPayload(room *store.ChatRoomEntity, entity *store.ChatMessageEntity
 	if room.Name != nil && strings.TrimSpace(*room.Name) != "" {
 		meta["room_name"] = strings.TrimSpace(*room.Name)
 	}
-	if image := firstImageAttachmentID(entity.Attachments); image != "" {
-		meta["image"] = image
+	if images := imageAttachmentRefs(attachments); len(images) > 0 {
+		meta["images"] = images
+		meta["image"] = images[0]
 	}
 	return title, body, meta
 }
@@ -543,22 +553,34 @@ func accountPictureID(account *gen.DyAccount) string {
 	return account.GetPicture().GetId()
 }
 
-// firstImageAttachmentID returns the first image attachment's file id, the
-// preview the C# notification meta promotes to `image`.
-func firstImageAttachmentID(raw datatypes.JSON) string {
-	if len(raw) == 0 {
-		return ""
+// notificationAttachments decodes the message's jsonb attachment column.
+func notificationAttachments(entity *store.ChatMessageEntity) []model.CloudFileReferenceObject {
+	if len(entity.Attachments) == 0 {
+		return nil
 	}
 	var attachments []model.CloudFileReferenceObject
-	if err := json.Unmarshal(raw, &attachments); err != nil {
-		return ""
+	if err := json.Unmarshal(entity.Attachments, &attachments); err != nil {
+		return nil
 	}
+	return attachments
+}
+
+// imageAttachmentRefs lists the image attachments the client can attach to the
+// notification, preferring the absolute URL and falling back to the file id
+// (the C# `p.Url ?? p.Id`).
+func imageAttachmentRefs(attachments []model.CloudFileReferenceObject) []string {
+	images := make([]string, 0, len(attachments))
 	for _, attachment := range attachments {
-		if attachment.Id != "" && strings.HasPrefix(attachment.MimeType, "image") {
-			return attachment.Id
+		if !strings.HasPrefix(attachment.MimeType, "image/") {
+			continue
+		}
+		if attachment.Url != "" {
+			images = append(images, attachment.Url)
+		} else if attachment.Id != "" {
+			images = append(images, attachment.Id)
 		}
 	}
-	return ""
+	return images
 }
 
 func (i *instance) sendMemberJoined(ctx context.Context, room *store.ChatRoomEntity, member *store.ChatMemberEntity) {

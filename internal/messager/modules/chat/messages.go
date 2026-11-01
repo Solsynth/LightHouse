@@ -697,7 +697,7 @@ func (i *instance) notifyReaction(ctx context.Context, room *store.ChatRoomEntit
 	}
 	title := i.displayName(ctx, reactor)
 	body := verb + " with " + symbol
-	meta := map[string]string{
+	meta := map[string]any{
 		"user_id":    reactor.AccountID.String(),
 		"reactor_id": reactor.ID.String(),
 		"message_id": message.ID.String(),

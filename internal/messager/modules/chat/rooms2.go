@@ -776,7 +776,7 @@ func (i *instance) notifyInvite(ctx context.Context, room *store.ChatRoomEntity,
 	} else if room.Name != nil {
 		body = "You were invited to " + *room.Name + "."
 	}
-	i.sendPush(ctx, []string{member.AccountID.String()}, "invites.chats", title, body, map[string]string{
+	i.sendPush(ctx, []string{member.AccountID.String()}, "invites.chats", title, body, map[string]any{
 		"room_id": member.ChatRoomID.String(),
 	})
 }

@@ -132,11 +132,11 @@ func (p *filesPort) GetFiles(ctx context.Context, ids []string) (map[string]mode
 
 type notifyPort struct{ clients *grpcclient.Clients }
 
-func (p *notifyPort) SendPush(ctx context.Context, accountID, topic, title, body string, meta map[string]string) error {
+func (p *notifyPort) SendPush(ctx context.Context, accountID, topic, title, body string, meta map[string]any) error {
 	return p.SendPushToAccounts(ctx, []string{accountID}, topic, title, body, meta)
 }
 
-func (p *notifyPort) SendPushToAccounts(ctx context.Context, accountIDs []string, topic, title, body string, meta map[string]string) error {
+func (p *notifyPort) SendPushToAccounts(ctx context.Context, accountIDs []string, topic, title, body string, meta map[string]any) error {
 	if len(accountIDs) == 0 {
 		return nil
 	}
