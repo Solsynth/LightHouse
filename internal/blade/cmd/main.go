@@ -79,11 +79,12 @@ func main() {
 	var relayCatalog *discovery.Catalog
 	var relayAPI *discovery.RelayAPI
 	var capabilityAggregator *capabilities.Aggregator
+	coreServiceNames := cfg.Endpoints.CoreServiceNames
 	if cfg.Discovery.Enabled {
 		if redisClient == nil {
 			logging.Log.Fatal().Msg("Service discovery requires cache.redisUrl")
 		}
-		registry = discovery.NewRegistry(redisClient, cfg.Discovery.Prefix, time.Duration(cfg.Discovery.LeaseSeconds)*time.Second)
+		registry = discovery.NewRegistry(redisClient, cfg.Discovery.Prefix, time.Duration(cfg.Discovery.LeaseSeconds)*time.Second, cfg.Discovery.Aliases)
 		relayCatalog = discovery.NewCatalog(registry, cfg.Discovery.RelayServiceName)
 		relayAPI = discovery.NewRelayAPI(
 			registry,
@@ -94,7 +95,14 @@ func main() {
 		if strings.TrimSpace(cfg.Discovery.RegistrationToken) == "" {
 			logging.Log.Warn().Msg("discovery.registrationToken is empty; relay registration over the public HTTP entry is disabled")
 		}
-		capabilityAggregator = capabilities.NewWithTLSConfig(registry, cfg.GRPC.ClientTLSSkipVerify, cfg.Endpoints.CoreServiceNames...)
+		// Readiness and /meta treat aliases as the services they point at.
+		coreServiceNames = make([]string, 0, len(cfg.Endpoints.CoreServiceNames))
+		for _, name := range cfg.Endpoints.CoreServiceNames {
+			if canonical := registry.Canonical(name); canonical != "" {
+				coreServiceNames = append(coreServiceNames, canonical)
+			}
+		}
+		capabilityAggregator = capabilities.NewWithTLSConfig(registry, cfg.GRPC.ClientTLSSkipVerify, coreServiceNames...)
 		fallback := make(map[string]string, len(cfg.Services))
 		for name, endpoint := range cfg.Services {
 			fallback[name] = endpoint.Grpc
@@ -106,7 +114,7 @@ func main() {
 		logging.Log.Info().Str("prefix", cfg.Discovery.Prefix).Msg("Enabled Redis-backed service discovery")
 	}
 
-	store := health.NewReadinessStore(cfg.Endpoints.CoreServiceNames)
+	store := health.NewReadinessStore(coreServiceNames)
 	aggregator := health.NewAggregator(store, cfg, registry)
 
 	go aggregator.Start(context.Background())

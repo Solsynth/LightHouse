@@ -139,3 +139,37 @@ clientTlsSkipVerify = true
 		t.Fatalf("unexpected discovery config: %+v", cfg.Discovery)
 	}
 }
+
+func TestLoadConfig_DiscoveryAliases(t *testing.T) {
+	toml := `
+[discovery]
+aliases = { Dist = "Express", passport = "pass" }
+`
+	tmpPath := filepath.Join(t.TempDir(), "aliases.toml")
+	if err := os.WriteFile(tmpPath, []byte(toml), 0644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	cfg, err := Load(tmpPath)
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	if len(cfg.Discovery.Aliases) != 2 || cfg.Discovery.Aliases["dist"] != "express" || cfg.Discovery.Aliases["passport"] != "pass" {
+		t.Fatalf("unexpected aliases: %+v", cfg.Discovery.Aliases)
+	}
+}
+
+func TestLoadConfig_RejectsAliasChains(t *testing.T) {
+	toml := `
+[discovery]
+aliases = { dist = "express", express = "drive" }
+`
+	tmpPath := filepath.Join(t.TempDir(), "aliases.toml")
+	if err := os.WriteFile(tmpPath, []byte(toml), 0644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	if _, err := Load(tmpPath); err == nil {
+		t.Fatal("expected a chained alias to be rejected")
+	}
+}

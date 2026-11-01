@@ -19,7 +19,7 @@ func TestAggregatorMirrorsSelfReportedRelaysWithoutProbing(t *testing.T) {
 	}))
 	defer server.Close()
 
-	registry := discovery.NewRegistry(nil, "health-test", time.Minute)
+	registry := discovery.NewRegistry(nil, "health-test", time.Minute, nil)
 	// A relay that reports itself healthy but publishes a health endpoint the
 	// gateway could not reach from a different network.
 	instance := &gen.DyServiceInstance{
@@ -69,7 +69,7 @@ func TestAggregatorChecksServicesDiscoveredOnlyThroughRegistry(t *testing.T) {
 	}))
 	defer server.Close()
 
-	registry := discovery.NewRegistry(nil, "health-test", time.Minute)
+	registry := discovery.NewRegistry(nil, "health-test", time.Minute, nil)
 	if _, _, err := registry.Register(t.Context(), &gen.DyServiceInstance{
 		Service: "dynamic", InstanceId: "dynamic-1", Endpoints: map[string]string{"http": server.URL},
 	}, time.Minute); err != nil {

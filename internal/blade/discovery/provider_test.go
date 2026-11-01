@@ -9,7 +9,7 @@ import (
 )
 
 func TestRegistryProviderReportsRegisteredButUnhealthyInstances(t *testing.T) {
-	registry := NewRegistry(nil, "test:discovery", time.Minute)
+	registry := NewRegistry(nil, "test:discovery", time.Minute, nil)
 	ctx := context.Background()
 	_, _, err := registry.Register(ctx, &gen.DyServiceInstance{
 		Service: "stargate", InstanceId: "stargate-1", GrpcEndpoint: "stargate:9090",

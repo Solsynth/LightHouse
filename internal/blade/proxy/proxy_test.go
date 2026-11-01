@@ -20,7 +20,7 @@ type closeNotifyRecorder struct {
 func TestProxy_RegisteredUnhealthyInstanceDoesNotFallBackToStaticTarget(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	registry := discovery.NewRegistry(nil, "test:discovery", 0)
+	registry := discovery.NewRegistry(nil, "test:discovery", 0, nil)
 	if _, _, err := registry.Register(t.Context(), &gen.DyServiceInstance{
 		Service: "sphere", InstanceId: "sphere-1", HttpEndpoint: "http://unhealthy.example",
 	}, 0); err != nil {
@@ -50,7 +50,7 @@ func TestProxy_DiscoveredServiceWithoutLocalConfiguration(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	registry := discovery.NewRegistry(nil, "test:discovery", 0)
+	registry := discovery.NewRegistry(nil, "test:discovery", 0, nil)
 	if _, _, err := registry.Register(t.Context(), &gen.DyServiceInstance{
 		Service: "personality", InstanceId: "personality-1", HttpEndpoint: upstream.URL,
 	}, 0); err != nil {
@@ -71,6 +71,40 @@ func TestProxy_DiscoveredServiceWithoutLocalConfiguration(t *testing.T) {
 	}
 	if gotPath != "/api/conversations" {
 		t.Fatalf("expected discovered upstream path /api/conversations, got %q", gotPath)
+	}
+}
+
+func TestProxy_RoutesAliasToRegisteredService(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var gotPath string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	registry := discovery.NewRegistry(nil, "test:discovery", 0, map[string]string{"dist": "express"})
+	if _, _, err := registry.Register(t.Context(), &gen.DyServiceInstance{
+		Service: "express", InstanceId: "express-1", HttpEndpoint: upstream.URL,
+	}, 0); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	if err := registry.SetHealth(t.Context(), "express", "express-1", true); err != nil {
+		t.Fatalf("SetHealth() error = %v", err)
+	}
+
+	p := &Proxy{serviceURLs: map[string]string{}, registry: registry}
+	r := gin.New()
+	r.NoRoute(p.Handler())
+	rec := &closeNotifyRecorder{ResponseRecorder: httptest.NewRecorder()}
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/dist/releases", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected aliased service response 200, got %d", rec.Code)
+	}
+	if gotPath != "/api/releases" {
+		t.Fatalf("expected aliased upstream path /api/releases, got %q", gotPath)
 	}
 }
 

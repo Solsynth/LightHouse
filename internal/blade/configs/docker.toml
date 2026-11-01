@@ -28,6 +28,12 @@ leaderLeaseSeconds = 15
 registrationToken = "change-me-before-you-expose-this"
 # Service name relays register under, and the key GET /relays lists.
 relayServiceName = "relay"
+# Optional one-hop aliases resolved inside Blade for HTTP routing, blade:///
+# gRPC targets, Resolve, and health checks. The key is the alternative name;
+# the value is the name the instance registers under.
+# [discovery.aliases]
+# dist = "express"
+
 
 # No backend services in this stack. Core services gate /meta and /relays
 # behind the readiness middleware, so an empty list keeps the gateway

@@ -10,7 +10,7 @@ import (
 )
 
 func TestCatalog_ListRelaysWithTCPEndpoint(t *testing.T) {
-	registry := NewRegistry(nil, "test:discovery", time.Minute)
+	registry := NewRegistry(nil, "test:discovery", time.Minute, nil)
 	ctx := context.Background()
 
 	register := func(instance *gen.DyServiceInstance) {
@@ -52,7 +52,7 @@ func TestCatalog_ListRelaysWithTCPEndpoint(t *testing.T) {
 func TestCatalog_EmptyRegistryReturnsEmptySlice(t *testing.T) {
 	ctx := context.Background()
 	// The default service name applies when discovery.relayServiceName is empty.
-	catalog := NewCatalog(NewRegistry(nil, "test:discovery", time.Minute), "  ")
+	catalog := NewCatalog(NewRegistry(nil, "test:discovery", time.Minute, nil), "  ")
 
 	relays, err := catalog.List(ctx)
 	if err != nil {
@@ -64,7 +64,7 @@ func TestCatalog_EmptyRegistryReturnsEmptySlice(t *testing.T) {
 }
 
 func TestCatalog_SortsRelaysByIDAndSkipsBrokenEndpoints(t *testing.T) {
-	registry := NewRegistry(nil, "test:discovery", time.Minute)
+	registry := NewRegistry(nil, "test:discovery", time.Minute, nil)
 	ctx := context.Background()
 	for _, instance := range []*gen.DyServiceInstance{
 		{Service: "relay", InstanceId: "sg-01", Endpoints: map[string]string{"tcp": "relay-sg.solian.app:443"}},

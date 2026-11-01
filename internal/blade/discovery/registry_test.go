@@ -9,7 +9,7 @@ import (
 )
 
 func TestRegistry_RegisteredInstanceRequiresHealthCheckBeforeResolution(t *testing.T) {
-	registry := NewRegistry(nil, "test:discovery", time.Minute)
+	registry := NewRegistry(nil, "test:discovery", time.Minute, nil)
 	ctx := context.Background()
 
 	_, _, err := registry.Register(ctx, &gen.DyServiceInstance{
@@ -34,7 +34,7 @@ func TestRegistry_RegisteredInstanceRequiresHealthCheckBeforeResolution(t *testi
 }
 
 func TestRegistry_RenewPreservesHealth(t *testing.T) {
-	registry := NewRegistry(nil, "test:discovery", time.Minute)
+	registry := NewRegistry(nil, "test:discovery", time.Minute, nil)
 	ctx := context.Background()
 	_, _, err := registry.Register(ctx, &gen.DyServiceInstance{
 		Service:      "ring",
@@ -56,7 +56,7 @@ func TestRegistry_RenewPreservesHealth(t *testing.T) {
 }
 
 func TestRegistry_EndpointMapOverridesLegacyEndpoints(t *testing.T) {
-	registry := NewRegistry(nil, "test:discovery", time.Minute)
+	registry := NewRegistry(nil, "test:discovery", time.Minute, nil)
 	ctx := context.Background()
 	_, _, err := registry.Register(ctx, &gen.DyServiceInstance{
 		Service: "sphere", InstanceId: "sphere-1",
@@ -82,5 +82,52 @@ func TestRegistry_EndpointMapOverridesLegacyEndpoints(t *testing.T) {
 	}
 	if Endpoint(instances[0], "nats") != "nats://broker/sphere" {
 		t.Fatalf("custom endpoint = %q", Endpoint(instances[0], "nats"))
+	}
+}
+
+func TestRegistry_AliasesCanonicaliseReadsAndWrites(t *testing.T) {
+	registry := NewRegistry(nil, "test:discovery", time.Minute, map[string]string{
+		"dist":     "express",
+		"passport": "pass",
+	})
+	ctx := context.Background()
+
+	registered, _, err := registry.Register(ctx, &gen.DyServiceInstance{
+		Service: "dist", InstanceId: "express-1", HttpEndpoint: "http://express:8000",
+	}, time.Minute)
+	if err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	if registered.GetService() != "express" {
+		t.Fatalf("registered service = %q, want express", registered.GetService())
+	}
+	if err := registry.SetHealth(ctx, "dist", "express-1", true); err != nil {
+		t.Fatalf("SetHealth() error = %v", err)
+	}
+
+	endpoint, ok := registry.ResolveHTTP(ctx, "dist")
+	if !ok || endpoint != "http://express:8000" {
+		t.Fatalf("ResolveHTTP(dist) = %q, %v; want the express instance", endpoint, ok)
+	}
+	instances, err := registry.List(ctx, "dist")
+	if err != nil || len(instances) != 1 {
+		t.Fatalf("List(dist) = %d instances, %v; want 1", len(instances), err)
+	}
+	services, err := registry.ListServices(ctx)
+	if err != nil {
+		t.Fatalf("ListServices() error = %v", err)
+	}
+	if len(services) != 1 || services[0] != "express" {
+		t.Fatalf("ListServices() = %v, want [express]", services)
+	}
+
+	if _, err := registry.Renew(ctx, "dist", "express-1", time.Minute); err != nil {
+		t.Fatalf("Renew(dist) error = %v", err)
+	}
+	if err := registry.Deregister(ctx, "dist", "express-1"); err != nil {
+		t.Fatalf("Deregister(dist) error = %v", err)
+	}
+	if instances, err := registry.List(ctx, "express"); err != nil || len(instances) != 0 {
+		t.Fatalf("List(express) after deregister = %d instances, %v; want 0", len(instances), err)
 	}
 }

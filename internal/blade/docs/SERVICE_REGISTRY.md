@@ -30,6 +30,29 @@ Registration takes precedence over configuration for the same service name.
 Service names are normalized by the registry, so registration names should be
 treated as lowercase.
 
+## Aliases
+
+`[discovery.aliases]` maps alternative names to the name a service registers
+under, for deployments that keep a legacy path or target while the service has
+been renamed:
+
+```toml
+[discovery.aliases]
+dist = "express"
+passport = "pass"
+```
+
+Blade resolves an alias inside the registry, so every consumer sees the same
+answer: proxy routing (`/dist/...`), `blade:///` gRPC targets, the `Resolve`
+RPC, health checks, capabilities, and readiness gating. The configured core
+service names are canonicalised at startup, so listing an alias in
+`endpoints.coreServiceNames` gates the real service.
+
+Aliases are one hop and lowercase; a target must be a registered service name,
+not another alias. Registration and renewal are canonicalised too, so a client
+that still registers under an alias writes to the canonical service key. An
+alias that shadows a real service name wins for lookups — avoid it.
+
 ## Endpoint map
 
 Register protocol endpoints in `endpoints`, a `map<string, string>`. Blade

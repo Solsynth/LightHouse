@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -53,12 +54,13 @@ type CacheConfig struct {
 // credential. RegistrationToken protects the public relay control plane
 // (PUT/DELETE /relays/{id}); it is not used by the gRPC API.
 type DiscoveryConfig struct {
-	Enabled            bool   `mapstructure:"enabled"`
-	Prefix             string `mapstructure:"prefix"`
-	LeaseSeconds       int    `mapstructure:"leaseSeconds"`
-	LeaderLeaseSeconds int    `mapstructure:"leaderLeaseSeconds"`
-	RegistrationToken  string `mapstructure:"registrationToken"`
-	RelayServiceName   string `mapstructure:"relayServiceName"`
+	Enabled            bool              `mapstructure:"enabled"`
+	Prefix             string            `mapstructure:"prefix"`
+	LeaseSeconds       int               `mapstructure:"leaseSeconds"`
+	LeaderLeaseSeconds int               `mapstructure:"leaderLeaseSeconds"`
+	RegistrationToken  string            `mapstructure:"registrationToken"`
+	RelayServiceName   string            `mapstructure:"relayServiceName"`
+	Aliases            map[string]string `mapstructure:"aliases"`
 }
 
 type NatsConfig struct {
@@ -186,9 +188,44 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	aliases, err := normalizeDiscoveryAliases(cfg.Discovery.Aliases)
+	if err != nil {
+		return nil, fmt.Errorf("invalid discovery aliases: %w", err)
+	}
+	cfg.Discovery.Aliases = aliases
 	cfg.Health.CheckTimeout = 5 * time.Second
 
 	return &cfg, nil
+}
+
+// normalizeDiscoveryAliases lowercases the alias table and rejects entries
+// that would make resolution ambiguous. An alias target must be a registered
+// service name, never another alias, so a single lookup is always enough.
+func normalizeDiscoveryAliases(aliases map[string]string) (map[string]string, error) {
+	if len(aliases) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]string, len(aliases))
+	for alias, target := range aliases {
+		alias = strings.ToLower(strings.TrimSpace(alias))
+		target = strings.ToLower(strings.TrimSpace(target))
+		if alias == "" || target == "" {
+			return nil, fmt.Errorf("alias and target must not be empty")
+		}
+		if alias == target {
+			return nil, fmt.Errorf("alias %q points at itself", alias)
+		}
+		if _, exists := out[alias]; exists {
+			return nil, fmt.Errorf("duplicate alias %q", alias)
+		}
+		out[alias] = target
+	}
+	for alias, target := range out {
+		if _, chained := out[target]; chained {
+			return nil, fmt.Errorf("alias %q targets %q, which is itself an alias; chains are not supported", alias, target)
+		}
+	}
+	return out, nil
 }
 
 func applyLegacyAliases() {

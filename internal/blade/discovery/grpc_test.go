@@ -9,7 +9,7 @@ import (
 )
 
 func TestGRPCServiceRegistersWithoutCredential(t *testing.T) {
-	registry := NewRegistry(nil, "test:discovery", time.Minute)
+	registry := NewRegistry(nil, "test:discovery", time.Minute, nil)
 	service := NewGRPCService(registry)
 
 	response, err := service.Register(context.Background(), &gen.DyRegisterServiceInstanceRequest{

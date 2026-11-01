@@ -110,7 +110,7 @@ func TestAccessLogUsesAuthoritativeClientIP(t *testing.T) {
 // newRelayTestCatalog stubs a catalog with one registered relay.
 func newRelayTestCatalog(t *testing.T) *discovery.Catalog {
 	t.Helper()
-	registry := discovery.NewRegistry(nil, "test:discovery", time.Minute)
+	registry := discovery.NewRegistry(nil, "test:discovery", time.Minute, nil)
 	if _, _, err := registry.RegisterSelfReported(t.Context(), &gen.DyServiceInstance{
 		Service:    "relay",
 		InstanceId: "jp-01",
@@ -149,7 +149,7 @@ func TestRelaysEndpointServesCatalogAnonymously(t *testing.T) {
 func TestRelayControlPlaneRejectsAnonymousCallers(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	registry := discovery.NewRegistry(nil, "test:discovery", time.Minute)
+	registry := discovery.NewRegistry(nil, "test:discovery", time.Minute, nil)
 	router := gin.New()
 	discovery.NewRelayAPI(registry, "relay", testInternalToken, time.Minute).RegisterRoutes(router)
 

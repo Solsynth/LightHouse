@@ -19,9 +19,10 @@ import (
 // Registry is the shared instance source of truth. Redis key expiry is the
 // authoritative lease; the sorted-set index makes resolving a service cheap.
 type Registry struct {
-	client *redis.Client
-	prefix string
-	ttl    time.Duration
+	client  *redis.Client
+	prefix  string
+	ttl     time.Duration
+	aliases map[string]string
 
 	mu        sync.RWMutex
 	instances map[string]registryInstance
@@ -41,7 +42,11 @@ type cachedInstances struct {
 	expiresAt time.Time
 }
 
-func NewRegistry(client *redis.Client, prefix string, lease time.Duration) *Registry {
+// NewRegistry builds the shared registry. aliases maps legacy or external
+// names (for example "dist") to the service name that actually registers
+// ("express"); lookups and writes canonicalise through it. Aliases must be
+// one hop: configuration rejects a target that is itself an alias key.
+func NewRegistry(client *redis.Client, prefix string, lease time.Duration, aliases map[string]string) *Registry {
 	if lease <= 0 {
 		lease = 30 * time.Second
 	}
@@ -53,10 +58,52 @@ func NewRegistry(client *redis.Client, prefix string, lease time.Duration) *Regi
 		client:    client,
 		prefix:    prefix,
 		ttl:       lease,
+		aliases:   normalizeAliases(aliases),
 		instances: make(map[string]registryInstance),
 		cache:     make(map[string]cachedInstances),
 		cacheTTL:  time.Second,
 	}
+}
+
+// Canonical returns the registered service name an alias points at, or the
+// normalized input when no alias applies.
+func (r *Registry) Canonical(service string) string {
+	return r.canonicalService(service)
+}
+
+func (r *Registry) canonicalService(service string) string {
+	service = normalizeService(service)
+	seen := make(map[string]struct{}, 2)
+	for {
+		if _, ok := seen[service]; ok {
+			return service
+		}
+		seen[service] = struct{}{}
+		target, ok := r.aliases[service]
+		if !ok {
+			return service
+		}
+		service = target
+	}
+}
+
+func normalizeAliases(aliases map[string]string) map[string]string {
+	if len(aliases) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(aliases))
+	for alias, target := range aliases {
+		alias = normalizeService(alias)
+		target = normalizeService(target)
+		if alias == "" || target == "" || alias == target {
+			continue
+		}
+		out[alias] = target
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func (r *Registry) DefaultLease() time.Duration { return r.ttl }
@@ -136,6 +183,7 @@ func (r *Registry) Register(ctx context.Context, instance *gen.DyServiceInstance
 	if err != nil {
 		return nil, time.Time{}, err
 	}
+	instance.Service = r.canonicalService(instance.Service)
 	if lease <= 0 {
 		lease = r.ttl
 	}
@@ -152,6 +200,7 @@ func (r *Registry) RegisterSelfReported(ctx context.Context, instance *gen.DySer
 	if err != nil {
 		return nil, time.Time{}, err
 	}
+	instance.Service = r.canonicalService(instance.Service)
 	if lease <= 0 {
 		lease = r.ttl
 	}
@@ -184,7 +233,7 @@ func (r *Registry) persist(ctx context.Context, instance *gen.DyServiceInstance,
 }
 
 func (r *Registry) Renew(ctx context.Context, service, instanceID string, lease time.Duration) (time.Time, error) {
-	service = strings.ToLower(strings.TrimSpace(service))
+	service = r.canonicalService(service)
 	instanceID = strings.TrimSpace(instanceID)
 	if service == "" || instanceID == "" {
 		return time.Time{}, fmt.Errorf("service and instance_id are required")
@@ -203,7 +252,7 @@ func (r *Registry) Renew(ctx context.Context, service, instanceID string, lease 
 }
 
 func (r *Registry) Deregister(ctx context.Context, service, instanceID string) error {
-	service = strings.ToLower(strings.TrimSpace(service))
+	service = r.canonicalService(service)
 	instanceID = strings.TrimSpace(instanceID)
 	if service == "" || instanceID == "" {
 		return fmt.Errorf("service and instance_id are required")
@@ -225,7 +274,7 @@ func (r *Registry) Deregister(ctx context.Context, service, instanceID string) e
 }
 
 func (r *Registry) List(ctx context.Context, service string) ([]*gen.DyServiceInstance, error) {
-	service = strings.ToLower(strings.TrimSpace(service))
+	service = r.canonicalService(service)
 	if service == "" {
 		return nil, fmt.Errorf("service is required")
 	}
@@ -384,7 +433,7 @@ func (r *Registry) remainingLease(ctx context.Context, service, instanceID strin
 	if r.client == nil {
 		return r.ttl
 	}
-	ttl, err := r.client.TTL(ctx, r.instanceKey(strings.ToLower(service), instanceID)).Result()
+	ttl, err := r.client.TTL(ctx, r.instanceKey(r.canonicalService(service), instanceID)).Result()
 	if err != nil || ttl <= 0 {
 		return r.ttl
 	}

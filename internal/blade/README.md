@@ -61,6 +61,10 @@ leaderLeaseSeconds = 15
 # Relay control plane only; in-network gRPC registration needs no token.
 registrationToken = "replace-with-a-relay-secret"
 relayServiceName = "relay"
+# Optional one-hop aliases: alternative name -> registered name. They apply to
+# HTTP routing, blade:/// gRPC targets, Resolve, health, and readiness gating.
+# [discovery.aliases]
+# dist = "express"
 
 [server]
 port = "6000"

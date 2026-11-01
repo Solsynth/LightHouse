@@ -27,7 +27,7 @@ func newRelayTestRouter(t *testing.T) (*gin.Engine, *Registry, *Catalog) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	registry := NewRegistry(nil, "test:discovery", time.Minute)
+	registry := NewRegistry(nil, "test:discovery", time.Minute, nil)
 	catalog := NewCatalog(registry, "relay")
 	api := NewRelayAPI(registry, "relay", relayTestToken, time.Minute)
 
@@ -174,7 +174,7 @@ func TestRelayAPIRejectsBadCredentials(t *testing.T) {
 
 func TestRelayAPIRefusesWithoutConfiguredToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	registry := NewRegistry(nil, "test:discovery", time.Minute)
+	registry := NewRegistry(nil, "test:discovery", time.Minute, nil)
 	router := gin.New()
 	NewRelayAPI(registry, "relay", "  ", time.Minute).RegisterRoutes(router)
 
@@ -256,7 +256,7 @@ func TestRelayAPIDeregisters(t *testing.T) {
 }
 
 func TestRegisterSelfReportedKeepsReportedHealth(t *testing.T) {
-	registry := NewRegistry(nil, "test:discovery", time.Minute)
+	registry := NewRegistry(nil, "test:discovery", time.Minute, nil)
 
 	instance := relayInstance("relay", "jp-01", "relay-jp.solian.app:7443")
 	instance.Healthy = true

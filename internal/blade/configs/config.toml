@@ -18,6 +18,12 @@ leaderLeaseSeconds = 15
 registrationToken = ""
 # Registry service name under which L4 relays register; served at GET /relays.
 relayServiceName = "relay"
+# Optional one-hop aliases resolved inside Blade for HTTP routing, blade:///
+# gRPC targets, Resolve, and health checks. The key is the alternative name;
+# the value is the name the instance registers under.
+# [discovery.aliases]
+# dist = "express"
+
 
 [nats]
 url = "nats://nats:RE0zx7Qtady3Akyrn6eZXF@localhost:57132"
