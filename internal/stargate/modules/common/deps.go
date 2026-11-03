@@ -4,14 +4,11 @@
 package common
 
 import (
-	"context"
-
 	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/grpcserver"
 	"src.solsynth.dev/sosys/stargate/httpserver/adminctl"
 	"src.solsynth.dev/sosys/stargate/httpserver/authctl"
 	"src.solsynth.dev/sosys/stargate/httpserver/e2eectl"
-	"src.solsynth.dev/sosys/stargate/httpserver/oauthappctl"
 	"src.solsynth.dev/sosys/stargate/httpserver/oidcctl"
 	"src.solsynth.dev/sosys/stargate/httpserver/profilectl"
 	"src.solsynth.dev/sosys/stargate/httpserver/securityctl"
@@ -85,26 +82,6 @@ func OIDC(c *core.Services, p *ports.Set) oidcctl.Deps {
 		Store: c.Store, Redis: c.Redis, Cfg: c.Config, JWT: c.JWT, Token: c.Token,
 		Auth: c.Auth, Clients: p.OAuthClients, Log: c.Log,
 	}
-}
-
-// OAuthApp builds the OAuth app controller dependencies. The ports set
-// resolves app art through the Drive file port.
-func OAuthApp(c *core.Services, p *ports.Set) oauthappctl.Deps {
-	deps := oauthappctl.Deps{Store: c.Store, Perm: c.Perm, Log: c.Log, Ports: p}
-	if c.Redis != nil && c.Redis.Cache != nil {
-		cache := c.Redis.Cache
-		deps.Invalidate = func(ctx context.Context, appID string, slugs ...string) {
-			if appID != "" {
-				_ = cache.Remove(ctx, oauthappctl.CacheKeyPrefixClientID+appID)
-			}
-			for _, slug := range slugs {
-				if slug != "" {
-					_ = cache.Remove(ctx, oauthappctl.CacheKeyPrefixClientSlug+slug)
-				}
-			}
-		}
-	}
-	return deps
 }
 
 func Admin(c *core.Services) adminctl.Deps {

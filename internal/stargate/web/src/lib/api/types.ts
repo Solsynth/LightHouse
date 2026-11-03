@@ -219,59 +219,6 @@ export interface AuthorizedApp {
   last_used_at?: string
 }
 
-/**
- * An OAuth app registration owned by the caller (Stargate's own registry,
- * not Develop). `status` follows the fleet's CustomAppStatus ordinal.
- */
-export interface OAuthApp {
-  id: string
-  slug: string
-  name: string
-  description: string
-  status: number
-  project_id?: string
-  account_id?: string
-  oauth_config: OAuthAppConfig
-  links: OAuthAppLinks
-  /** Resolved Drive references; absent when the app has no art. */
-  picture?: CloudFileRef
-  background?: CloudFileRef
-  created_at?: string
-  updated_at?: string
-}
-
-export interface OAuthAppConfig {
-  client_uri?: string
-  redirect_uris: string[]
-  post_logout_redirect_uris?: string[]
-  allowed_scopes: string[]
-  allowed_grant_types: string[]
-  require_pkce: boolean
-  allow_offline_access: boolean
-  is_public_client: boolean
-}
-
-export interface OAuthAppLinks {
-  home_page?: string
-  privacy_policy?: string
-  terms_of_service?: string
-}
-
-/**
- * One client secret or API key of an app. The plaintext `secret` is present
- * only in the create and rotate replies; every other read omits it.
- */
-export interface OAuthAppSecret {
-  id: string
-  app_id: string
-  secret?: string
-  description: string
-  expired_at?: string
-  is_oidc: boolean
-  created_at?: string
-  updated_at?: string
-}
-
 export interface ApiKey {
   id: string
   label: string

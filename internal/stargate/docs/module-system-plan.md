@@ -253,7 +253,7 @@ fails startup.
 | `email` | auth, spells, admin, tickets | `app.solian.ring` |
 | `push` | auth, admin, relationships, tickets, wellbeing | `app.solian.ring` |
 | `presence` | security, admin | `app.solian.blade` |
-| `oauthClients` | oidc, security, token auth | `app.solian.id.oauthapps`, `app.solian.develop` |
+| `oauthClients` | oidc, security, token auth | `app.solian.develop` |
 | `nfcTokens` | auth | `app.solian.id.nfc` (feature), `app.solian.pass` |
 | `verificationSpells` | auth | `app.solian.id.spells` |
 
@@ -281,7 +281,6 @@ startup.
 | `app.solian.id.spells` | feature | `/api/spells/**` | accounts | `magic_spells` |
 | `app.solian.id.social` | feature | `/api/auth/login/{provider}`, callbacks | auth, accounts | none |
 | `app.solian.id.oidc` | feature | `/api/oidc/**`, `/.well-known/openid-configuration` | auth, accounts | none |
-| `app.solian.id.oauthapps` | feature | `/api/oauth-apps/**`, provides `oauthClients` | auth | `oauth_apps`, `oauth_app_secrets` |
 | `app.solian.id.realm` | feature | `/api/realms/**`, `/api/realms/public`, `/api/admin/realms/**`, the ten `DyRealmService` RPCs | auth, accounts | `realms`, `realm_members`, `realm_labels`, `realm_boost_contributions`, `realm_experience_records`, `realm_role_permissions`, `realm_user_permissions`, `realm_post_moderation_logs` |
 | `app.solian.id.progression` | feature | `/api/accounts/me/progression/**`, `/api/admin/progression/**`, `/.well-known/badges`, action-log consumer | auth, accounts | `achievement_definitions`, `quest_definitions`, `account_achievements`, `account_quest_progresses`, `progress_reward_grants`, `progress_event_receipts` |
 | `app.solian.id.domaintrust` | feature | `/api/domain-blocks/**` (rule CRUD, public `validate`/`check`, metrics), `DyDomainBlockService` | auth | `domain_blocks`, `domain_validation_metrics` |
@@ -427,17 +426,12 @@ whose schema diverged.
 - [ ] Refactor profile/auth/admin/security/OIDC/presence call sites to ports.
 - [ ] Port selection and capability gating at every call site.
 
-### Phase 4b — OAuth app extraction from Develop
+### Phase 4b — OAuth app consolidation in Express Develop Portal
 
-- [x] Move the OAuth/OIDC client registry out of Develop into
-      `app.solian.id.oauthapps` (`oauth_apps`, `oauth_app_secrets`).
-- [x] Individual (`account_id`) or project-linked (`project_id`) ownership, so
-      the provider runs without the Develop service.
-- [x] `/api/oauth-apps` CRUD plus secret create/rotate/delete.
-- [x] Module provides `oauthClients`; Develop remains an integration provider.
+- [x] Consolidate OAuth app management and configuration into Express dev portal (`app.solian.develop`).
+- [x] Strip Stargate-owned `oauthapps` local tables and endpoints.
+- [x] `app.solian.develop` integration provides `oauthClients` via gRPC `DyCustomAppService`.
 - [x] `oidcctl`, `securityctl` and token binding resolve through the port.
-- [x] Cache invalidation on app and secret mutations.
-- [ ] Retire `grpcclient.DevelopAppProvider` once the Develop integration
       stops being the only consumer of `GetCustomAppSlug`.
 - [x] Legacy importer from Develop's `custom_apps` and `custom_app_secrets`,
       with `scripts/import-oauth-apps.sh`.

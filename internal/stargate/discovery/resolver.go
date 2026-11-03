@@ -115,11 +115,29 @@ func (r *Resolver) Resolve(ctx context.Context, service string) (Resolution, err
 	defer cancel()
 	resolution, err := r.provider.Resolve(callCtx, service)
 
+	// In the fleet, the developer portal is hosted by Express. If service is
+	// "develop" or "express" and has no instances under that name, attempt to
+	// resolve under its sibling alias.
+	if (service == "develop" || service == "express") && len(resolution.Endpoints) == 0 && (!resolution.Registered || err != nil) {
+		altService := "express"
+		if service == "express" {
+			altService = "develop"
+		}
+		if altRes, altErr := r.provider.Resolve(callCtx, altService); altErr == nil && altRes.Registered && len(altRes.Endpoints) > 0 {
+			resolution = altRes
+			err = nil
+		}
+	}
+
 	// A registered service owns its routing state. Only an unregistered
 	// service (or an unreachable registry) may use the static fallback.
 	if len(resolution.Endpoints) == 0 && (!resolution.Registered || err != nil) {
 		if fallback := r.fallback[service]; fallback != "" {
 			resolution.Endpoints = []string{fallback}
+		} else if service == "develop" && r.fallback["express"] != "" {
+			resolution.Endpoints = []string{r.fallback["express"]}
+		} else if service == "express" && r.fallback["develop"] != "" {
+			resolution.Endpoints = []string{r.fallback["develop"]}
 		}
 	}
 	resolution.Endpoints = dedupeEndpoints(resolution.Endpoints)

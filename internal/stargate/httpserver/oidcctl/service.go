@@ -350,7 +350,7 @@ func (s *service) clientsAvailable() bool {
 func (s *service) fetchClient(ctx context.Context, id, slug string) (oidcClient, error) {
 	if s.clients == nil || !s.clients.Available() {
 		if s.log != nil {
-			s.log.Warn("OIDC client lookup skipped: no oauthClients provider is enabled (app.solian.id.oauthapps or app.solian.develop)", "id", id, "slug", slug)
+			s.log.Warn("OIDC client lookup skipped: no oauthClients provider is enabled (app.solian.develop)", "id", id, "slug", slug)
 		}
 		return oidcClient{}, nil
 	}

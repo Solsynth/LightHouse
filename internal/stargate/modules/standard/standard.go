@@ -16,7 +16,6 @@ import (
 	"src.solsynth.dev/sosys/stargate/modules/integrations"
 	ipcheckmod "src.solsynth.dev/sosys/stargate/modules/ipcheck"
 	nfcmod "src.solsynth.dev/sosys/stargate/modules/nfc"
-	"src.solsynth.dev/sosys/stargate/modules/oauthapps"
 	"src.solsynth.dev/sosys/stargate/modules/oidc"
 	passkitmod "src.solsynth.dev/sosys/stargate/modules/passkit"
 	presenceartworksmod "src.solsynth.dev/sosys/stargate/modules/presenceartworks"
@@ -52,7 +51,6 @@ func Modules() []module.Factory[core.Services] {
 		spells.Factory(),
 		social.Factory(),
 		oidc.Factory(),
-		oauthapps.Factory(),
 		realmmod.Factory(),
 		domaintrustmod.Factory(),
 		nfcmod.Factory(),

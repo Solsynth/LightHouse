@@ -294,7 +294,7 @@ func (p *DevelopAppProvider) GetCustomAppSlug(ctx context.Context, appID string)
 		}
 		return "", err
 	}
-	if resp == nil || resp.App == nil {
+	if resp == nil || resp.App == nil || resp.App.GetOauthConfig() == nil {
 		return "", nil
 	}
 	return resp.App.Slug, nil

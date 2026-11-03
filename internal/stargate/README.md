@@ -75,9 +75,6 @@ Modules own their schema:
   express.
 - Core SQL migrations only contain the required auth/permission schema.
 - A module never adds columns to a core table; it owns a side table.
-- `app.solian.id.oauthapps` owns the OAuth/OIDC client registry
-  (`oauth_apps`, `oauth_app_secrets`), so the provider does not need Develop.
-  See [`docs/oauth-apps.md`](docs/oauth-apps.md).
 - `app.solian.id.realm` owns the ported Passport realm domain: the eight
   `realm*` tables, `/api/realms` and `/api/admin/realms`, and the ten
   `DyRealmService` RPCs Sphere and Messager dial. Boosts are paid through the
@@ -177,18 +174,14 @@ go run ./cmd/stargate-module-import \
 Importers are idempotent, never truncate the target, and record progress in
 `module_import_state`.
 
-Three modules ship an importer, each with a wrapper script that reads the
-password from `PGPASSWORD` and defaults the databases:
+Modules that migrate legacy data ship an importer script:
 
 | Module | Script | Moves |
 |---|---|---|
 | `app.solian.id.relationships` | `scripts/import-relationships.sh` | Passport `account_relationships` |
-| `app.solian.id.oauthapps` | `scripts/import-oauth-apps.sh` | Develop `custom_apps` + `custom_app_secrets` |
 | `app.solian.id.realm` | `scripts/import-realm.sh` | Passport `realms`, `realm_members`, `realm_labels`, `realm_boost_contributions`, `realm_experience_records`, `realm_role_permissions`, `realm_user_permissions`, `realm_post_moderation_logs` |
 
-Both accept `PGDRY=1` for a dry run. The OAuth importer reports per-table
-counts and skips rows it refuses to guess at: a slug the target already
-holds, an app with no `project_id`, and a secret whose app was skipped.
+Both accept `PGDRY=1` for a dry run.
 
 ## Web frontend
 

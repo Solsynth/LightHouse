@@ -87,8 +87,7 @@ type PerkProvider interface {
 }
 
 // CustomAppProvider resolves the OIDC client an OAuth session is bound to.
-// It consults deployment configuration, the oauthapps module table and
-// Develop, in that order.
+// It consults deployment configuration and Develop.
 type CustomAppProvider interface {
 	GetCustomAppSlug(ctx context.Context, appID string) (string, error)
 }
@@ -109,10 +108,7 @@ func (t *TokenAuthService) SetSingleUser(singleUser *SingleUser) {
 	t.singleUser = singleUser
 }
 
-// SetCustomAppProvider replaces the OIDC client resolver. The oauthapps
-// module installs its port-backed resolver at Configure time, so a token
-// bound to a Stargate-owned app resolves without the Develop service; the
-// token service itself is constructed before any module exists.
+// SetCustomAppProvider replaces the OIDC client resolver.
 func (t *TokenAuthService) SetCustomAppProvider(provider CustomAppProvider) {
 	if provider != nil {
 		t.apps = provider

@@ -8,6 +8,5 @@ export const MODULES = {
   profiles: 'app.solian.id.profiles',
   social: 'app.solian.id.social',
   relationships: 'app.solian.id.relationships',
-  oauthapps: 'app.solian.id.oauthapps',
   admin: 'app.solian.admin',
 } as const

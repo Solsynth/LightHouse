@@ -32,7 +32,7 @@ type Deps struct {
 	Token *auth.TokenAuthService
 	Auth  *auth.AuthService
 	// Clients is the oauthClients port, not a raw gRPC client: it covers
-	// deployment configuration, the oauthapps module table and Develop.
+	// deployment configuration and Develop.
 	Clients ports.OAuthClients
 	Log     *slog.Logger
 }

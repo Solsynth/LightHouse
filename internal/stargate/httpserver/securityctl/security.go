@@ -53,8 +53,8 @@ type Deps struct {
 	Token *auth.TokenAuthService
 	Perm  *permission.Service
 	Logs  *actionlog.Service
-	// Ports resolves the oauthClients provider (oauthapps module, config or
-	// Develop) for authorized-app hydration.
+	// Ports resolves the oauthClients provider (config or Develop)
+	// for authorized-app hydration.
 	Ports    *ports.Set
 	Spells   *spell.Service
 	Presence *auth.DevicePresence
@@ -1992,7 +1992,7 @@ func (c *controller) deauthorizeApp(ctx *gin.Context) {
 // ---------------------------------------------------------------------------
 
 // getCustomApp resolves an app through the oauthClients port, which covers
-// the oauthapps module table, deployment configuration and Develop.
+// deployment configuration and Develop.
 func (c *controller) getCustomApp(ctx context.Context, appID string) (*ports.OAuthApp, error) {
 	if c.d.Ports == nil || c.d.Ports.OAuthClients == nil || !c.d.Ports.OAuthClients.Available() {
 		return nil, errors.New("no oauth client provider is enabled")

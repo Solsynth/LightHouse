@@ -107,9 +107,13 @@ func (i *instance) ProvidePorts(_ context.Context, host *module.Host[core.Servic
 			module.Provide[ports.Presence](host.Ports, ports.PortPresence, i.id, module.KindIntegration, &presenceAdapter{presence: c.Presence})
 		}
 	case "app.solian.develop":
-		if c.Clients != nil && c.Clients.Develop != nil {
+		var devClient gen.DyCustomAppServiceClient
+		if c.Clients != nil {
+			devClient = c.Clients.Develop
+		}
+		if devClient != nil || c.Config != nil {
 			module.Provide[ports.OAuthClients](host.Ports, ports.PortOAuthClients, i.id, module.KindIntegration, &oauthAdapter{
-				client: c.Clients.Develop, cfg: c.Config, log: c.Log,
+				client: devClient, cfg: c.Config, log: c.Log,
 			})
 		}
 	}
@@ -374,10 +378,8 @@ func (a *presenceAdapter) OnlineDevices(ctx context.Context, accountIDs []string
 
 // ── oauth clients ──────────────────────────────────────────────────────────
 
-// oauthAdapter resolves custom apps from the Develop service. The
-// Stargate-owned OAuth app module is the feature provider for this port and
-// chains configuration, its own table and then this adapter; selecting
-// [ports] oauthClients = "app.solian.develop" bypasses the module.
+// oauthAdapter resolves custom apps from the Develop service or local
+// configuration.
 type oauthAdapter struct {
 	client gen.DyCustomAppServiceClient
 	cfg    *config.Config
@@ -488,7 +490,11 @@ func LocalOAuthApp(client *config.OAuthClient) *ports.OAuthApp {
 }
 
 // OAuthAppFromProto maps a Develop custom app onto the port shape.
+// Returns nil if the app is nil or does not have OAuth configured.
 func OAuthAppFromProto(app *gen.DyCustomApp) *ports.OAuthApp {
+	if app == nil || app.GetOauthConfig() == nil {
+		return nil
+	}
 	out := &ports.OAuthApp{
 		ID: app.GetId(), Slug: app.GetSlug(), Name: app.GetName(), Status: int(app.GetStatus()),
 	}
