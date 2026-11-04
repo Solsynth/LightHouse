@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { Plug16 } from '@carbon/icons-vue'
 
 import type { CloudFileRef } from '@/lib/api/types'
+import { resolveFileUrl } from '@/lib/media'
 
 /**
  * The asking app's mark on a consent screen. An app registration may carry a
@@ -35,7 +36,7 @@ watch(
   },
 )
 
-const url = computed(() => (failed.value ? '' : (props.picture?.url ?? '')))
+const url = computed(() => (failed.value ? '' : resolveFileUrl(props.picture)))
 
 const monogram = computed(() => {
   const words = (props.name ?? '')

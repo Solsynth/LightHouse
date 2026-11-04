@@ -500,10 +500,16 @@ func OAuthAppFromProto(app *gen.DyCustomApp) *ports.OAuthApp {
 	}
 	if f := app.GetPicture(); f != nil {
 		ref := models.FromProtoValue(f)
+		if ref.Url == "" && ref.Id != "" {
+			ref.Url = "/drive/files/" + ref.Id
+		}
 		out.Picture = &ref
 	}
 	if f := app.GetBackground(); f != nil {
 		ref := models.FromProtoValue(f)
+		if ref.Url == "" && ref.Id != "" {
+			ref.Url = "/drive/files/" + ref.Id
+		}
 		out.Background = &ref
 	}
 	if l := app.GetLinks(); l != nil {

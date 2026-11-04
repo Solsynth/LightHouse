@@ -39,6 +39,19 @@ export function driveFileUrl(id?: string | null, variant?: string): string {
 }
 
 /**
+ * Resolves a CloudFileRef to a loadable URL. Prefers the reference's own `url`
+ * if present, and otherwise derives `/drive/files/{id}` using `driveFileUrl`.
+ */
+export function resolveFileUrl(
+  file?: { id?: string | null; url?: string | null } | null,
+  variant?: string,
+): string {
+  if (!file) return ''
+  if (file.url) return file.url
+  return driveFileUrl(file.id, variant)
+}
+
+/**
  * Where the picker page lives. The picker and the file reads are the same
  * service but not always the same host: the fleet serves the page at
  * `fs.solian.app` and the API at `api.solian.app`.

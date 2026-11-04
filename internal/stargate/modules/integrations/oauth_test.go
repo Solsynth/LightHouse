@@ -37,6 +37,15 @@ func TestOAuthAppFromProtoRequiresOAuthConfig(t *testing.T) {
 			AllowOfflineAccess:     true,
 			IsPublicClient:         false,
 		},
+		Picture: &gen.DyCloudFile{
+			Id:   "file-pic-1",
+			Name: "pic.png",
+		},
+		Background: &gen.DyCloudFile{
+			Id:   "file-bg-1",
+			Name: "bg.png",
+			Url:  "https://custom.example/bg.png",
+		},
 	}
 	got := OAuthAppFromProto(appWithOAuth)
 	if got == nil {
@@ -50,5 +59,11 @@ func TestOAuthAppFromProtoRequiresOAuthConfig(t *testing.T) {
 	}
 	if !got.RequirePkce || !got.AllowOfflineAccess || got.IsPublicClient {
 		t.Fatalf("unexpected flags in oauth app: %+v", got)
+	}
+	if got.Picture == nil || got.Picture.Url != "/drive/files/file-pic-1" {
+		t.Fatalf("unexpected picture: %+v", got.Picture)
+	}
+	if got.Background == nil || got.Background.Url != "https://custom.example/bg.png" {
+		t.Fatalf("unexpected background: %+v", got.Background)
 	}
 }

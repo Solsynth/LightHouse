@@ -9,6 +9,7 @@ import { useUiStore } from '@/stores/ui'
 import { authApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
 import type { AuthorizeClientInfo, CloudFileRef } from '@/lib/api/types'
+import { resolveFileUrl } from '@/lib/media'
 import AppMark from '@/components/AppMark.vue'
 
 const { t } = useI18n()
@@ -43,7 +44,7 @@ const name = computed(
 const backdrop = computed<CloudFileRef | null>(() => info.value?.background ?? null)
 
 function publishBackdrop() {
-  ui.setAppBackdrop(backdrop.value?.url ?? '')
+  ui.setAppBackdrop(resolveFileUrl(backdrop.value))
 }
 
 watch(backdrop, publishBackdrop)

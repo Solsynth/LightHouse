@@ -9,6 +9,7 @@ import { useUiStore } from '@/stores/ui'
 import { authApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
 import type { CloudFileRef, DeviceCodeStatus } from '@/lib/api/types'
+import { resolveFileUrl } from '@/lib/media'
 import { remaining } from '@/lib/format'
 import AppMark from '@/components/AppMark.vue'
 import TextField from '@/components/TextField.vue'
@@ -46,7 +47,12 @@ const name = computed(
 
 const backdrop = computed<CloudFileRef | null>(() => status.value?.background ?? null)
 
-watch(backdrop, (value) => ui.setAppBackdrop(value?.url ?? ''))
+function publishBackdrop() {
+  ui.setAppBackdrop(resolveFileUrl(backdrop.value))
+}
+
+watch(backdrop, publishBackdrop)
+onMounted(publishBackdrop)
 onBeforeUnmount(() => ui.setAppBackdrop(''))
 
 // One word decides what the page is: an input, a decision, or a closed
