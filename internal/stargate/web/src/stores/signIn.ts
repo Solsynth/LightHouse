@@ -43,6 +43,16 @@ export const useSignInStore = defineStore('signIn', () => {
     await loadFactors()
   }
 
+  /**
+   * Continues a challenge another flow already opened — a provider sign-in the
+   * server judged risky hands over the remaining steps this way.
+   */
+  async function resume(challengeId: string) {
+    usedFactorIds.value = []
+    challenge.value = await request<AuthChallenge>(`/auth/challenge/${challengeId}`)
+    await loadFactors()
+  }
+
   /** Loads the factors this challenge accepts, skipping the ones already used. */
   async function loadFactors() {
     if (!challenge.value) return
@@ -120,6 +130,7 @@ export const useSignInStore = defineStore('signIn', () => {
     complete,
     remainingSteps,
     start,
+    resume,
     loadFactors,
     requestCode,
     submitFactor,

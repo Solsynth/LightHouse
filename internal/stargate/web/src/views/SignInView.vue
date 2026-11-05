@@ -371,6 +371,24 @@ function restart() {
 onMounted(async () => {
   startPolling()
   void loadProviders()
+  // A provider sign-in the server found risky comes back here with the
+  // challenge holding the steps still owed.
+  const resumeId = route.query.challenge
+  if (typeof resumeId === 'string' && resumeId && !session.signedIn) {
+    busy.value = true
+    try {
+      await signIn.resume(resumeId)
+      started.value = true
+      passkeyFactor.value = signIn.factors.find((factor) => factor.type === 7) ?? null
+      if (signIn.complete) await finish()
+      else await autoSelect()
+    } catch (caught) {
+      error.value = messageOf(caught)
+    } finally {
+      busy.value = false
+    }
+    return
+  }
   // A shared sign-in can be opened by someone who is already signed in (an app
   // links to it, or a previous round trip left the cookie). There is nothing to
   // ask them; resolve the target and hand them back.

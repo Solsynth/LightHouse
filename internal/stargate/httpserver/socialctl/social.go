@@ -24,6 +24,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/actionlog"
 	"src.solsynth.dev/sosys/stargate/auth"
 	"src.solsynth.dev/sosys/stargate/config"
+	"src.solsynth.dev/sosys/stargate/httpserver/authctl"
 	"src.solsynth.dev/sosys/stargate/middleware"
 	"src.solsynth.dev/sosys/stargate/model"
 	"src.solsynth.dev/sosys/stargate/redis"
@@ -219,6 +220,22 @@ func (d Deps) appleMobileLogin(c *gin.Context) {
 		return
 	}
 
+	challenge, err := d.requireSocialMFA(c, account, req.DeviceId, req.DeviceName, model.ClientPlatformIos)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
+		return
+	}
+	if challenge != nil {
+		// No session yet: the client finishes the challenge's remaining steps
+		// and redeems it through POST /auth/token.
+		c.JSON(http.StatusAccepted, gin.H{
+			"mfa_required": true,
+			"challenge_id": challenge.Id,
+			"step_remain":  challenge.StepRemain,
+			"step_total":   challenge.StepTotal,
+		})
+		return
+	}
 	session, err := d.createSessionForUser(c, svc, userInfo, account, req.DeviceId, req.DeviceName, model.ClientPlatformIos, middleware.CurrentSession(ctx))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
@@ -372,7 +389,17 @@ func (d Deps) handleLoginOrRegistration(c *gin.Context, svc provider, data *call
 
 	conn, account, err := d.Store.GetConnectionWithAccount(ctx, providerName, userInfo.UserId)
 	if err == nil && conn != nil {
-		// Login an existing user.
+		// Login an existing user, unless the environment is risky enough that
+		// the account's other factors are owed first.
+		challenge, err := d.requireSocialMFA(c, account, deviceIDOrEmpty(deviceID), nil, model.ClientPlatformWeb)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
+			return
+		}
+		if challenge != nil {
+			c.Redirect(http.StatusFound, d.mfaRedirectURL(challenge.Id, returnURL))
+			return
+		}
 		session, err := d.createSessionForUser(c, svc, userInfo, account, deviceIDOrEmpty(deviceID), nil, model.ClientPlatformWeb, middleware.CurrentSession(ctx))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
@@ -418,6 +445,18 @@ func (d Deps) handleLoginOrRegistration(c *gin.Context, svc provider, data *call
 	if errors.Is(err, errSocialEmailNotVerified) {
 		c.JSON(http.StatusBadRequest, errs.New("OIDC_EMAIL_NOT_VERIFIED", err.Error(), http.StatusBadRequest))
 		return
+	}
+	if account != nil {
+		// Linking to an existing account is a sign-in to it as well.
+		challenge, err := d.requireSocialMFA(c, account, deviceIDOrEmpty(deviceID), nil, model.ClientPlatformWeb)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
+			return
+		}
+		if challenge != nil {
+			c.Redirect(http.StatusFound, d.mfaRedirectURL(challenge.Id, returnURL))
+			return
+		}
 	}
 	if account == nil {
 		account, err = d.createAccountFromSocial(ctx, userInfo)
@@ -571,6 +610,31 @@ func (d Deps) findOrCreateAccount(ctx context.Context, userInfo *userInfo, provi
 	}
 	d.actionLogConnectionLink(ctx, account.Id, provider, nil, nil)
 	return account, nil
+}
+
+// mfaRedirectURL is where a provider sign-in that still owes extra steps sends
+// the browser: the console's sign-in page, resuming the stored challenge.
+func (d Deps) mfaRedirectURL(challengeID, returnURL string) string {
+	site := strings.TrimRight(d.Cfg.SiteUrl, "/")
+	q := url.Values{}
+	q.Set("challenge", challengeID)
+	if returnURL != "" && returnURL != site+"/auth/success" {
+		q.Set("redirectUri", returnURL)
+	}
+	return site + "/sign-in?" + q.Encode()
+}
+
+// requireSocialMFA runs the shared risk check for a provider sign-in. When the
+// environment is risky it returns the challenge to complete instead of a
+// session; (nil, nil) means the provider identity alone is enough.
+func (d Deps) requireSocialMFA(c *gin.Context, account *model.Account, deviceID string, deviceName *string, platform model.ClientPlatform) (*model.AuthChallenge, error) {
+	return authctl.BeginSocialMFA(c.Request.Context(), authctl.SocialMFADeps{Store: d.Store, Cfg: d.Cfg}, account, authctl.SocialMFAContext{
+		IPAddress:  middleware.ClientIP(c.Request),
+		UserAgent:  c.Request.UserAgent(),
+		DeviceID:   deviceID,
+		DeviceName: deviceName,
+		Platform:   platform,
+	})
 }
 
 // createSessionForUser ports OidcService.CreateSessionForUserAsync: ensures
