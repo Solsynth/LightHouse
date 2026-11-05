@@ -854,17 +854,27 @@ func boolOf(v any) bool {
 
 // ─────────────────────────── Steam ───────────────────────────
 
-type steamProvider struct{ base *baseProvider }
+type steamProvider struct {
+	base *baseProvider
+	// verifyEndpoint overrides the Steam OpenID endpoint (tests only).
+	verifyEndpoint string
+}
 
-func (p *steamProvider) name() string { return p.base.name }
-
-func (p *steamProvider) authorizationURL(ctx context.Context, state, nonce string) (string, error) {
+// returnTo is the openid.return_to value authorizationURL issues for state.
+func (p *steamProvider) returnTo(state string) string {
 	returnURL := p.base.cfg.RedirectUri
 	sep := "?"
 	if strings.Contains(returnURL, "?") {
 		sep = "&"
 	}
-	returnTo := returnURL + sep + "state=" + url.QueryEscape(state)
+	return returnURL + sep + "state=" + url.QueryEscape(state)
+}
+
+func (p *steamProvider) name() string { return p.base.name }
+
+func (p *steamProvider) authorizationURL(ctx context.Context, state, nonce string) (string, error) {
+	returnURL := p.base.cfg.RedirectUri
+	returnTo := p.returnTo(state)
 
 	realm := returnURL
 	if u, err := url.Parse(returnURL); err == nil {
@@ -881,14 +891,66 @@ func (p *steamProvider) authorizationURL(ctx context.Context, state, nonce strin
 	return "https://steamcommunity.com/openid/login?" + q.Encode(), nil
 }
 
+const (
+	steamOpenIDEndpoint = "https://steamcommunity.com/openid/login"
+	steamIDPrefix       = "https://steamcommunity.com/openid/id/"
+)
+
+func (p *steamProvider) endpoint() string {
+	if p.verifyEndpoint != "" {
+		return p.verifyEndpoint
+	}
+	return steamOpenIDEndpoint
+}
+
+// verifyAssertion performs OpenID 2.0 direct verification
+// (openid.mode=check_authentication) of the positive assertion with Steam.
+// Without it the callback parameters are attacker-controlled and anyone could
+// claim any Steam ID, and so sign in as whichever account it is linked to.
+func (p *steamProvider) verifyAssertion(ctx context.Context, params map[string]string) error {
+	form := url.Values{}
+	for k, v := range params {
+		if strings.HasPrefix(k, "openid.") {
+			form.Set(k, v)
+		}
+	}
+	form.Set("openid.mode", "check_authentication")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint(), strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := p.base.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("steam verification returned %s", resp.Status)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return err
+	}
+	for _, line := range strings.Split(string(body), "\n") {
+		if strings.TrimSpace(line) == "is_valid:true" {
+			return nil
+		}
+	}
+	return errors.New("Steam did not validate the OpenID assertion")
+}
+
 func (p *steamProvider) processCallback(ctx context.Context, data *callbackData) (*userInfo, error) {
-	if data.QueryParameters["openid.mode"] != "id_res" {
+	params := data.QueryParameters
+	if params["openid.mode"] != "id_res" {
 		return nil, errors.New("Invalid OpenID response mode")
 	}
 
 	// Steam OpenID 2.0 does not echo the state parameter at the top level;
 	// it travels inside openid.return_to (the provider echoes it back).
-	if returnTo := data.QueryParameters["openid.return_to"]; returnTo != "" {
+	returnTo := params["openid.return_to"]
+	if returnTo != "" {
 		if u, err := url.Parse(returnTo); err == nil {
 			if state := u.Query().Get("state"); state != "" {
 				data.State = state
@@ -896,14 +958,29 @@ func (p *steamProvider) processCallback(ctx context.Context, data *callbackData)
 		}
 	}
 
-	claimedID := data.QueryParameters["openid.claimed_id"]
+	// The assertion must have been issued for this deployment's callback and
+	// this login attempt, not replayed from another relying party.
+	if data.State == "" || returnTo != p.returnTo(data.State) {
+		return nil, errors.New("OpenID return_to mismatch")
+	}
+
+	claimedID := params["openid.claimed_id"]
 	if claimedID == "" {
 		return nil, errors.New("No claimed_id in OpenID response")
 	}
-	parts := strings.Split(claimedID, "/")
-	steamID := parts[len(parts)-1]
+	if !strings.HasPrefix(claimedID, steamIDPrefix) {
+		return nil, errors.New("Invalid Steam ID format")
+	}
+	steamID := strings.TrimPrefix(claimedID, steamIDPrefix)
 	if _, err := strconv.ParseUint(steamID, 10, 64); err != nil {
 		return nil, errors.New("Invalid Steam ID format")
+	}
+	if identity := params["openid.identity"]; identity != "" && identity != claimedID {
+		return nil, errors.New("OpenID identity mismatch")
+	}
+
+	if err := p.verifyAssertion(ctx, params); err != nil {
+		return nil, err
 	}
 
 	return &userInfo{UserId: steamID, Provider: p.base.name}, nil

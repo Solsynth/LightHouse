@@ -253,12 +253,31 @@ func TestSteamAuthorizationURL(t *testing.T) {
 		t.Fatalf("realm wrong: %s", u)
 	}
 
-	// Callback verification: id_res mode + claimed_id → steam id.
-	data := &callbackData{QueryParameters: map[string]string{
-		"openid.mode":       "id_res",
-		"openid.claimed_id": "https://steamcommunity.com/openid/id/76561198000000000",
-		"openid.return_to":  "https://example.com/auth/callback/steam?state=state123",
-	}}
+	// Callback verification: id_res mode + claimed_id → steam id, but only
+	// after Steam confirms the assertion via check_authentication.
+	valid := true
+	var gotMode string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		gotMode = r.PostForm.Get("openid.mode")
+		if valid {
+			_, _ = w.Write([]byte("ns:http://specs.openid.net/auth/2.0\nis_valid:true\n"))
+			return
+		}
+		_, _ = w.Write([]byte("ns:http://specs.openid.net/auth/2.0\nis_valid:false\n"))
+	}))
+	defer srv.Close()
+	p.verifyEndpoint = srv.URL
+
+	newData := func() *callbackData {
+		return &callbackData{QueryParameters: map[string]string{
+			"openid.mode":       "id_res",
+			"openid.claimed_id": "https://steamcommunity.com/openid/id/76561198000000000",
+			"openid.identity":   "https://steamcommunity.com/openid/id/76561198000000000",
+			"openid.return_to":  "https://example.com/auth/callback/steam?state=state123",
+		}}
+	}
+	data := newData()
 	ui, err := p.processCallback(context.Background(), data)
 	if err != nil {
 		t.Fatal(err)
@@ -269,14 +288,37 @@ func TestSteamAuthorizationURL(t *testing.T) {
 	if data.State != "state123" {
 		t.Fatalf("state not extracted from return_to: %q", data.State)
 	}
+	if gotMode != "check_authentication" {
+		t.Fatalf("assertion not verified with Steam, mode = %q", gotMode)
+	}
+
+	// A forged assertion Steam rejects must not authenticate anyone.
+	valid = false
+	if _, err := p.processCallback(context.Background(), newData()); err == nil {
+		t.Fatal("assertion rejected by Steam was accepted")
+	}
+	valid = true
+
+	// return_to from another relying party / mismatched state is rejected.
+	bad := newData()
+	bad.QueryParameters["openid.return_to"] = "https://evil.example/cb?state=state123"
+	if _, err := p.processCallback(context.Background(), bad); err == nil {
+		t.Fatal("foreign return_to accepted")
+	}
+	// claimed_id outside Steam's namespace is rejected.
+	bad = newData()
+	bad.QueryParameters["openid.claimed_id"] = "https://evil.example/openid/id/76561198000000000"
+	if _, err := p.processCallback(context.Background(), bad); err == nil {
+		t.Fatal("foreign claimed_id accepted")
+	}
 
 	if _, err := p.processCallback(context.Background(), &callbackData{QueryParameters: map[string]string{"openid.mode": "cancel"}}); err == nil {
 		t.Fatal("cancel accepted")
 	}
-	if _, err := p.processCallback(context.Background(), &callbackData{QueryParameters: map[string]string{
-		"openid.mode": "id_res", "openid.claimed_id": "https://steamcommunity.com/openid/id/notanumber",
-	}}); err == nil || err.Error() != "Invalid Steam ID format" {
-
+	bad = newData()
+	bad.QueryParameters["openid.claimed_id"] = "https://steamcommunity.com/openid/id/notanumber"
+	bad.QueryParameters["openid.identity"] = bad.QueryParameters["openid.claimed_id"]
+	if _, err := p.processCallback(context.Background(), bad); err == nil || err.Error() != "Invalid Steam ID format" {
 		t.Fatalf("bad steam id error = %v", err)
 	}
 }

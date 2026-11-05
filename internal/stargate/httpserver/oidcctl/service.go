@@ -449,8 +449,11 @@ func (s *service) validateRequestedScopes(client *oidcClient, requested []string
 	return true, normalized, ""
 }
 
-// validateRedirectURI mirrors ValidateRedirectUriAsync: non-Production
-// clients accept any redirect URI.
+// validateRedirectURI checks redirectURI against the client's registered
+// URIs. Registered URIs are enforced for every client regardless of status: an
+// unrestricted redirect lets any app hand the authorization code of a user who
+// approves it to an attacker-chosen host. Only a non-Production client with no
+// registered URIs (a development app) may use a loopback redirect.
 func (s *service) validateRedirectURI(ctx context.Context, clientID, redirectURI string) (bool, error) {
 	if redirectURI == "" {
 		return false, nil
@@ -459,11 +462,11 @@ func (s *service) validateRedirectURI(ctx context.Context, clientID, redirectURI
 	if err != nil {
 		return false, err
 	}
-	if client == nil || client.Status != customAppStatusProduction {
-		return true, nil
+	if client == nil {
+		return false, nil
 	}
 	if len(client.RedirectUris) == 0 {
-		return false, nil
+		return client.Status != customAppStatusProduction && isLoopbackRedirect(redirectURI), nil
 	}
 	for _, allowedURI := range client.RedirectUris {
 		if isWildcardRedirectUriMatch(allowedURI, redirectURI) {
@@ -471,6 +474,18 @@ func (s *service) validateRedirectURI(ctx context.Context, clientID, redirectURI
 		}
 	}
 	return false, nil
+}
+
+func isLoopbackRedirect(redirectURI string) bool {
+	u, err := url.Parse(redirectURI)
+	if err != nil || u.Scheme != "http" {
+		return false
+	}
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	return false
 }
 
 func isWildcardRedirectUriMatch(allowedURI, redirectURI string) bool {
