@@ -321,6 +321,26 @@ func (s *Store) LookupAccount(ctx context.Context, probe string) (*model.Account
 	return s.GetAccountByID(ctx, contact.AccountID)
 }
 
+// LookupAccountByVerifiedContact resolves an account by an email/phone contact
+// the account has proven ownership of. Social sign-in links a provider identity
+// to a local account by email; matching an unverified contact would let anyone
+// pre-seed a victim's address on their own account and capture the victim's
+// next provider login. Contacts are matched case-insensitively like
+// LookupAccount.
+func (s *Store) LookupAccountByVerifiedContact(ctx context.Context, probe string) (*model.Account, error) {
+	var contact ContactEntity
+	err := s.DB.WithContext(ctx).
+		Where("type IN ?", []int{int(model.ContactTypeEmail), int(model.ContactTypePhoneNumber)}).
+		Where("content ILIKE ?", probe).
+		Where("verified_at IS NOT NULL").
+		Order("is_primary DESC, verified_at ASC").
+		First(&contact).Error
+	if err != nil {
+		return nil, mapNotFound(err)
+	}
+	return s.GetAccountByID(ctx, contact.AccountID)
+}
+
 // CheckAccountNameTaken reports whether the name is already used
 // (case-insensitive), mirroring CheckAccountNameHasTaken. Soft-deleted
 // accounts hold their name (the previous query had no deleted_at filter).

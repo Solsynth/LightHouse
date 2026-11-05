@@ -12,6 +12,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -671,6 +672,10 @@ func (h *handler) getChallenge(c *gin.Context) {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
 		return
 	}
+	if challenge.Purpose == model.AuthChallengePurposeSudo && !h.elevationCallerAllowed(c, challenge) {
+		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
 	c.JSON(http.StatusOK, challenge)
 }
 
@@ -830,6 +835,10 @@ func (h *handler) doChallenge(c *gin.Context) {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
 		return
 	}
+	if challenge.DeclinedAt != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_DECLINED", "Auth challenge was declined."))
+		return
+	}
 	// Elevation challenges are acted on by the session they are bound to. The
 	// synthetic emailed fallback (factor id == challenge id) verifies against
 	// its Redis code and drops the demand by 2; anything else falls through to
@@ -939,6 +948,10 @@ func (h *handler) doChallenge(c *gin.Context) {
 // demand by 2 and, when the challenge completes, grants the elevation.
 func (h *handler) doChallengeSudoFallback(c *gin.Context, challenge *model.AuthChallenge, code string) {
 	ctx := c.Request.Context()
+	if challenge.DeclinedAt != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_DECLINED", "Auth challenge was declined."))
+		return
+	}
 	if challenge.StepRemain == 0 {
 		c.JSON(http.StatusOK, challenge)
 		return
@@ -1251,7 +1264,7 @@ func (h *handler) generatePasskeyAssertionChallenge(ctx context.Context, challen
 	return challenge, nil
 }
 
-func (h *handler) verifyPasskeyAssertion(ctx context.Context, cred *model.PasskeyCredential, challengeID, credentialID, clientDataJson, authenticatorData, signature string) bool {
+func (h *handler) verifyPasskeyAssertion(ctx context.Context, cred *model.PasskeyCredential, challengeID, credentialID, clientDataJson, authenticatorData, signature, rpID string, allowedOrigins []string) bool {
 	if h.d.Redis == nil || !h.d.Redis.Available() {
 		return false
 	}
@@ -1260,7 +1273,7 @@ func (h *handler) verifyPasskeyAssertion(ctx context.Context, cred *model.Passke
 	if err != nil || !found || storedChallenge == "" {
 		return false
 	}
-	if !verifyPasskeyAssertionSignature(cred, credentialID, clientDataJson, authenticatorData, signature, storedChallenge) {
+	if !verifyPasskeyAssertionSignature(cred, credentialID, clientDataJson, authenticatorData, signature, storedChallenge, rpID, allowedOrigins) {
 		return false
 	}
 	_ = h.d.Redis.Cache.Remove(ctx, "passkey:assertion:"+challengeID)
@@ -1272,17 +1285,23 @@ func (h *handler) verifyPasskeyAssertion(ctx context.Context, cred *model.Passke
 //
 //   - the credential id must match the registered credential;
 //   - the authenticatorData must carry the UserPresent flag (UP bit);
-//   - the signature must verify over authenticatorData[:37] ||
-//     SHA-256(clientDataJSON) — the digest, not the raw bytes — with the
-//     registered ES256 public key (DER, with a raw 64-byte r||s fallback);
+//   - the authenticatorData rpIdHash must equal SHA-256(rpID), so a credential
+//     registered for another relying party cannot be replayed here;
 //   - clientDataJSON must be a webauthn.get ceremony echoing the stored
-//     challenge.
-func verifyPasskeyAssertionSignature(cred *model.PasskeyCredential, credentialID, clientDataJson, authenticatorData, signature, storedChallenge string) bool {
-	if cred.CredentialId != credentialID {
+//     challenge from an origin the deployment accepts;
+//   - the signature must verify over authenticatorData || SHA-256(clientDataJSON)
+//     with the registered ES256 public key (DER, with a raw 64-byte r||s
+//     fallback).
+func verifyPasskeyAssertionSignature(cred *model.PasskeyCredential, credentialID, clientDataJson, authenticatorData, signature, storedChallenge, rpID string, allowedOrigins []string) bool {
+	if cred.CredentialId != credentialID || strings.TrimSpace(rpID) == "" {
 		return false
 	}
 	authData, err := decodeBase64OrBase64Url(authenticatorData)
 	if err != nil || len(authData) < 37 {
+		return false
+	}
+	rpIDHash := sha256.Sum256([]byte(rpID))
+	if subtle.ConstantTimeCompare(authData[:32], rpIDHash[:]) != 1 {
 		return false
 	}
 	if authData[32]&0x01 == 0 {
@@ -1334,6 +1353,7 @@ func verifyPasskeyAssertionSignature(cred *model.PasskeyCredential, credentialID
 	var clientData struct {
 		Type      string `json:"type"`
 		Challenge string `json:"challenge"`
+		Origin    string `json:"origin"`
 	}
 	if err := json.Unmarshal(clientDataBytes, &clientData); err != nil {
 		return false
@@ -1344,7 +1364,29 @@ func verifyPasskeyAssertionSignature(cred *model.PasskeyCredential, credentialID
 	if clientData.Challenge != storedChallenge {
 		return false
 	}
+	if strings.TrimSpace(clientData.Origin) == "" {
+		return false
+	}
+	if len(allowedOrigins) > 0 && !passkeyOriginAllowed(clientData.Origin, allowedOrigins) {
+		return false
+	}
 	return true
+}
+
+// passkeyOriginAllowed reports whether origin is one of the configured
+// WebAuthn origins. Trailing slashes and case are ignored; scheme, host and
+// port are significant.
+func passkeyOriginAllowed(origin string, allowed []string) bool {
+	origin = strings.TrimRight(strings.TrimSpace(origin), "/")
+	if origin == "" {
+		return false
+	}
+	for _, candidate := range allowed {
+		if strings.EqualFold(origin, strings.TrimRight(strings.TrimSpace(candidate), "/")) {
+			return true
+		}
+	}
+	return false
 }
 
 func decodeClientDataJsonBytes(value string) ([]byte, error) {
@@ -1369,6 +1411,10 @@ func (h *handler) startPasskeyChallenge(c *gin.Context) {
 	challenge, err := h.d.Store.GetAuthChallenge(ctx, id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	if challenge.DeclinedAt != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_DECLINED", "Auth challenge was declined."))
 		return
 	}
 	if challenge.Purpose == model.AuthChallengePurposeSudo && !h.elevationCallerAllowed(c, challenge) {
@@ -1449,6 +1495,10 @@ func (h *handler) completePasskeyChallenge(c *gin.Context) {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
 		return
 	}
+	if challenge.DeclinedAt != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_DECLINED", "Auth challenge was declined."))
+		return
+	}
 	if challenge.Purpose == model.AuthChallengePurposeSudo && !h.elevationCallerAllowed(c, challenge) {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
 		return
@@ -1512,7 +1562,7 @@ func (h *handler) completePasskeyChallenge(c *gin.Context) {
 	isFirstFactor := len(challenge.BlacklistFactors) == 0
 
 	if !h.verifyPasskeyAssertion(ctx, credential, challenge.Id, credentialID,
-		req.ClientDataJson, req.AuthenticatorData, req.Signature) {
+		req.ClientDataJson, req.AuthenticatorData, req.Signature, h.passkeyRpId(c), h.passkeyAllowedOrigins()) {
 		challenge.FailedAttempts++
 		challenge.UpdatedAt = model.NewTime(now)
 		_ = h.d.Store.UpdateAuthChallenge(ctx, challenge)
@@ -1703,7 +1753,7 @@ func (h *handler) completePasskeyLogin(c *gin.Context) {
 		return
 	}
 	if !h.verifyPasskeyAssertion(ctx, credential, challenge.Id, credentialID,
-		req.ClientDataJson, req.AuthenticatorData, req.Signature) {
+		req.ClientDataJson, req.AuthenticatorData, req.Signature, h.passkeyRpId(c), h.passkeyAllowedOrigins()) {
 		challenge.FailedAttempts++
 		challenge.UpdatedAt = model.NewTime(now)
 		_ = h.d.Store.UpdateAuthChallenge(ctx, challenge)
@@ -1972,6 +2022,10 @@ func (h *handler) exchangeToken(c *gin.Context) {
 		challenge, err := h.d.Store.GetAuthChallenge(ctx, challengeID)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Authorization code not found or expired.", http.StatusBadRequest))
+			return
+		}
+		if challenge.DeclinedAt != nil {
+			c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_DECLINED", "Auth challenge was declined."))
 			return
 		}
 		// An elevation challenge grants sudo to the session it is bound to; it
@@ -2380,6 +2434,23 @@ func (h *handler) passkeyRpId(c *gin.Context) string {
 		return h.d.Cfg.WebAuthn.RpId
 	}
 	return c.Request.Host
+}
+
+// passkeyAllowedOrigins returns the origins the deployment accepts for
+// WebAuthn assertions: the same list registration advertises. When neither
+// [webauthn] relatedOrigins nor baseUrl is configured, origin matching is
+// skipped (the rpIdHash check still binds the credential to the RP ID).
+func (h *handler) passkeyAllowedOrigins() []string {
+	if h.d.Cfg == nil {
+		return nil
+	}
+	if len(h.d.Cfg.WebAuthn.RelatedOrigins) > 0 {
+		return h.d.Cfg.WebAuthn.RelatedOrigins
+	}
+	if strings.TrimSpace(h.d.Cfg.BaseUrl) != "" {
+		return []string{h.d.Cfg.BaseUrl}
+	}
+	return nil
 }
 
 // publishChallengePending mirrors the ws + ring side effects of the first

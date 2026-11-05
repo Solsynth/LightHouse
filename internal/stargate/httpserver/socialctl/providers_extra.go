@@ -112,13 +112,19 @@ func (p *githubProvider) getUserInfo(ctx context.Context, accessToken string) (*
 		return ""
 	}
 
-	email := str("email")
+	// The /user profile email is not proof of ownership by itself: GitHub
+	// exposes emails the account added but has not verified. Ask the emails
+	// endpoint for the primary address and its verified flag, and only claim
+	// verification when GitHub says so. Social login uses this flag to decide
+	// whether the address may be linked to an existing account.
+	email, emailVerified := p.getPrimaryEmail(ctx, accessToken)
 	if email == "" {
-		email = p.getPrimaryEmail(ctx, accessToken)
+		email = str("email")
 	}
 	return &userInfo{
 		UserId:            strconv.FormatInt(int64(jsonNumber(body["id"])), 10),
 		Email:             email,
+		EmailVerified:     emailVerified,
 		DisplayName:       str("name"),
 		PreferredUsername: str("login"),
 		ProfilePictureUrl: str("avatar_url"),
@@ -126,34 +132,38 @@ func (p *githubProvider) getUserInfo(ctx context.Context, accessToken string) (*
 	}, nil
 }
 
-func (p *githubProvider) getPrimaryEmail(ctx context.Context, accessToken string) string {
+// getPrimaryEmail returns GitHub's primary address and whether GitHub reports
+// it verified. An unverified address must never be used to match a local
+// account.
+func (p *githubProvider) getPrimaryEmail(ctx context.Context, accessToken string) (string, bool) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/user/emails", nil)
 	if err != nil {
-		return ""
+		return "", false
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("User-Agent", "DysonNetwork.Pass")
 
 	resp, err := p.base.http.Do(req)
 	if err != nil {
-		return ""
+		return "", false
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return ""
+		return "", false
 	}
 	var emails []map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&emails); err != nil {
-		return ""
+		return "", false
 	}
 	for _, e := range emails {
 		if primary, _ := e["primary"].(bool); primary {
 			if email, ok := e["email"].(string); ok {
-				return email
+				verified, _ := e["verified"].(bool)
+				return email, verified
 			}
 		}
 	}
-	return ""
+	return "", false
 }
 
 // --- Afdian (ifdian.net) ---

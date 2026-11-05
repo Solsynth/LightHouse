@@ -12,6 +12,20 @@ import (
 	"src.solsynth.dev/sosys/stargate/model"
 )
 
+const passkeyTestRpID = "localhost"
+
+var passkeyTestOrigins = []string{"https://app.solian.app"}
+
+// passkeyAuthData builds authenticator data with the rpIdHash the verifier
+// must accept and the given flags byte (bit 0 = UserPresent).
+func passkeyAuthData(rpID string, flags byte) []byte {
+	authData := make([]byte, 37)
+	hash := sha256.Sum256([]byte(rpID))
+	copy(authData[:32], hash[:])
+	authData[32] = flags
+	return authData
+}
+
 // navigator.credentials.get: the 32-byte digest
 //
 //	SHA-256(authenticatorData || SHA-256(clientDataJSON))
@@ -71,8 +85,7 @@ func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 	}
 
 	storedChallenge := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
-	authData := make([]byte, 37)
-	authData[32] = 0x01 // UserPresent
+	authData := passkeyAuthData(passkeyTestRpID, 0x01) // UserPresent
 
 	clientDataJSON, err := json.Marshal(map[string]any{
 		"type":      "webauthn.get",
@@ -85,14 +98,14 @@ func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 
 	t.Run("accepts a valid DER assertion", func(t *testing.T) {
 		cJSON, aData, sig := signAssertion(t, priv, authData, string(clientDataJSON), false)
-		if !verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge) {
+		if !verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature rejected a valid assertion")
 		}
 	})
 
 	t.Run("accepts a raw r||s signature", func(t *testing.T) {
 		cJSON, aData, sig := signAssertion(t, priv, authData, string(clientDataJSON), true)
-		if !verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge) {
+		if !verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature rejected a raw r||s signature")
 		}
 	})
@@ -106,7 +119,7 @@ func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 		}
 		sigBytes[0] ^= 0x01
 		tampered := base64.RawURLEncoding.EncodeToString(sigBytes)
-		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, tampered, storedChallenge) {
+		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, tampered, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature accepted a tampered signature")
 		}
 	})
@@ -114,7 +127,7 @@ func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 	t.Run("rejects a mismatched credential id", func(t *testing.T) {
 		cJSON, aData, sig := signAssertion(t, priv, authData, string(clientDataJSON), false)
 		other := base64.StdEncoding.EncodeToString([]byte("some-other-credential"))
-		if verifyPasskeyAssertionSignature(cred, other, cJSON, aData, sig, storedChallenge) {
+		if verifyPasskeyAssertionSignature(cred, other, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature accepted a mismatched credential id")
 		}
 	})
@@ -125,20 +138,21 @@ func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 		badClientDataJSON, err := json.Marshal(map[string]any{
 			"type":      "webauthn.get",
 			"challenge": base64.RawURLEncoding.EncodeToString(otherChallenge),
+			"origin":    "https://app.solian.app",
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 		cJSON, aData, sig := signAssertion(t, priv, authData, string(badClientDataJSON), false)
-		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge) {
+		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature accepted a challenge mismatch")
 		}
 	})
 
 	t.Run("rejects a missing UserPresent flag", func(t *testing.T) {
-		noUP := make([]byte, 37)
+		noUP := passkeyAuthData(passkeyTestRpID, 0)
 		cJSON, aData, sig := signAssertion(t, priv, noUP, string(clientDataJSON), false)
-		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge) {
+		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature accepted an assertion without UserPresent")
 		}
 	})
@@ -147,12 +161,13 @@ func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 		badType, err := json.Marshal(map[string]any{
 			"type":      "webauthn.create",
 			"challenge": storedChallenge,
+			"origin":    "https://app.solian.app",
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 		cJSON, aData, sig := signAssertion(t, priv, authData, string(badType), false)
-		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge) {
+		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature accepted a non-assertion ceremony")
 		}
 	})
@@ -162,12 +177,47 @@ func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 		// authenticator's uv/prf handling) return authData longer than 37
 		// bytes; the signature covers the FULL data, so truncation to [:37]
 		// must not happen.
-		extAuthData := make([]byte, 37+8)
-		extAuthData[32] = 0x01 | 0x80 // UP | ED
-		copy(extAuthData[37:], []byte{1, 2, 3, 4, 5, 6, 7, 8})
+		extAuthData := passkeyAuthData(passkeyTestRpID, 0x01|0x80) // UP | ED
+		extAuthData = append(extAuthData, 1, 2, 3, 4, 5, 6, 7, 8)
 		cJSON, aData, sig := signAssertion(t, priv, extAuthData, string(clientDataJSON), false)
-		if !verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge) {
+		if !verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature rejected a valid assertion with extension data")
+		}
+	})
+	t.Run("rejects a credential registered for another relying party", func(t *testing.T) {
+		otherRpData := passkeyAuthData("evil.example", 0x01)
+		cJSON, aData, sig := signAssertion(t, priv, otherRpData, string(clientDataJSON), false)
+		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
+			t.Fatal("verifyPasskeyAssertionSignature accepted a mismatched rpIdHash")
+		}
+	})
+
+	t.Run("rejects an assertion from an unlisted origin", func(t *testing.T) {
+		badOrigin, err := json.Marshal(map[string]any{
+			"type":      "webauthn.get",
+			"challenge": storedChallenge,
+			"origin":    "https://evil.example",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cJSON, aData, sig := signAssertion(t, priv, authData, string(badOrigin), false)
+		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
+			t.Fatal("verifyPasskeyAssertionSignature accepted an unlisted origin")
+		}
+	})
+
+	t.Run("rejects an assertion without an origin", func(t *testing.T) {
+		noOrigin, err := json.Marshal(map[string]any{
+			"type":      "webauthn.get",
+			"challenge": storedChallenge,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cJSON, aData, sig := signAssertion(t, priv, authData, string(noOrigin), false)
+		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
+			t.Fatal("verifyPasskeyAssertionSignature accepted an assertion without an origin")
 		}
 	})
 }
@@ -200,14 +250,14 @@ func TestVerifyPasskeyAssertionSignatureKeySize(t *testing.T) {
 		PublicKeyY:   yBytes,
 	}
 	storedChallenge := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
-	authData := make([]byte, 37)
-	authData[32] = 0x01
+	authData := passkeyAuthData(passkeyTestRpID, 0x01)
 	clientDataJSON, _ := json.Marshal(map[string]any{
 		"type":      "webauthn.get",
 		"challenge": storedChallenge,
+		"origin":    "https://app.solian.app",
 	})
 	cJSON, aData, sig := signAssertion(t, priv, authData, string(clientDataJSON), false)
-	if !verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge) {
+	if !verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 		t.Fatal("verifyPasskeyAssertionSignature rejected a valid assertion with short coordinates")
 	}
 }

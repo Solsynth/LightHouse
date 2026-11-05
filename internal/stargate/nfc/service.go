@@ -209,7 +209,11 @@ func (s *Service) ValidateSun(ctx context.Context, piccDataHex, encDataHex, cmac
 			}
 		}
 
-		// Counter replay check: strictly reject counter less than or equal to last seen counter.
+		// Counter replay check: strictly reject counter less than or equal to
+		// last seen counter. The read-then-write check is not enough on its
+		// own: two concurrent copies of the same scan can both pass it before
+		// either writes. Claim the counter with a conditional UPDATE so only
+		// the request that moves it forward wins; the loser is a replay.
 		if tag.Counter != nil && piccData.ReadCtr <= *tag.Counter {
 			return nil, fmt.Errorf("%w: counter %d is not greater than last seen counter %d.",
 				ErrReplay, piccData.ReadCtr, *tag.Counter)
@@ -217,10 +221,15 @@ func (s *Service) ValidateSun(ctx context.Context, piccDataHex, encDataHex, cmac
 
 		now := s.now()
 		counter := piccData.ReadCtr
-		if err := s.store.DB.WithContext(ctx).Model(&TagEntity{}).
+		res := s.store.DB.WithContext(ctx).Model(&TagEntity{}).
 			Where("id = ?", tag.ID).
-			Updates(map[string]any{"counter": counter, "last_seen_at": now}).Error; err != nil {
-			return nil, err
+			Where("counter IS NULL OR counter < ?", counter).
+			Updates(map[string]any{"counter": counter, "last_seen_at": now})
+		if res.Error != nil {
+			return nil, res.Error
+		}
+		if res.RowsAffected == 0 {
+			return nil, fmt.Errorf("%w: counter %d was already consumed.", ErrReplay, counter)
 		}
 		tag.Counter = &counter
 		tag.LastSeenAt = &now

@@ -4,8 +4,10 @@ import (
 	"context"
 	"slices"
 	"testing"
+	"time"
 
 	"src.solsynth.dev/sosys/stargate/config"
+	"src.solsynth.dev/sosys/stargate/model"
 )
 
 // TestScopesOrEmpty pins the login scope contract: a login session carries only
@@ -112,5 +114,23 @@ func TestValidateCaptchaFailsClosed(t *testing.T) {
 				t.Fatalf("valid = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestCreateSessionAndIssueTokensRejectsDeclinedChallenge pins the state
+// machine boundary: a challenge the owner declined must never mint tokens,
+// even if a racing factor submission left it looking complete.
+func TestCreateSessionAndIssueTokensRejectsDeclinedChallenge(t *testing.T) {
+	now := model.NewTime(time.Now().UTC())
+	svc := &AuthService{}
+	_, err := svc.CreateSessionAndIssueTokens(context.Background(), &model.AuthChallenge{
+		Id:         "declined-challenge",
+		AccountId:  "11111111-1111-1111-1111-111111111111",
+		StepTotal:  1,
+		StepRemain: 0,
+		DeclinedAt: now,
+	})
+	if err == nil {
+		t.Fatal("CreateSessionAndIssueTokens accepted a declined challenge")
 	}
 }

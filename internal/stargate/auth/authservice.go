@@ -314,6 +314,9 @@ func (s *AuthService) CreateSessionAndIssueTokens(ctx context.Context, challenge
 		// never be exchanged into a login session.
 		return nil, &ErrInvalid{Message: "Elevation challenges do not mint sessions."}
 	}
+	if challenge.DeclinedAt != nil {
+		return nil, &ErrInvalid{Message: "Challenge was declined."}
+	}
 	if challenge.StepTotal <= 0 {
 		return nil, &ErrInvalid{Message: "Challenge has no authentication factors configured."}
 	}

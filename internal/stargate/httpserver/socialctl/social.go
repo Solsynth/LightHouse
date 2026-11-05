@@ -210,6 +210,10 @@ func (d Deps) appleMobileLogin(c *gin.Context) {
 	}
 
 	account, err := d.findOrCreateAccount(ctx, userInfo, "apple")
+	if errors.Is(err, errSocialEmailNotVerified) {
+		c.JSON(http.StatusBadRequest, errs.New("OIDC_EMAIL_NOT_VERIFIED", err.Error(), http.StatusBadRequest))
+		return
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
 		return
@@ -401,11 +405,18 @@ func (d Deps) handleLoginOrRegistration(c *gin.Context, svc provider, data *call
 		return
 	}
 
-	// Register a new user (or link the provider to an account found by email).
+	// Register a new user, or link the provider to an existing account found by
+	// email. Linking is only allowed when both sides proved the address: an
+	// unverified provider email (or an unverified local contact row) must not
+	// attach an attacker's identity to someone else's account.
 	var registeredAt *time.Time
-	account, err = d.Store.LookupAccount(ctx, userInfo.Email)
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
+	account, err = d.lookupLinkableSocialAccount(ctx, userInfo, providerName)
+	if err != nil && !errors.Is(err, errSocialEmailNotVerified) {
 		c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
+		return
+	}
+	if errors.Is(err, errSocialEmailNotVerified) {
+		c.JSON(http.StatusBadRequest, errs.New("OIDC_EMAIL_NOT_VERIFIED", err.Error(), http.StatusBadRequest))
 		return
 	}
 	if account == nil {
@@ -493,6 +504,41 @@ func (d Deps) connectAppleMobile(c *gin.Context) {
 
 // ─────────────────────────── shared helpers ───────────────────────────
 
+// errSocialEmailNotVerified marks a provider email that cannot be used to link
+// an identity to an existing local account. Callers surface it as a 400, not a
+// server error.
+var errSocialEmailNotVerified = errors.New("social-email-not-verified")
+
+// lookupLinkableSocialAccount resolves the existing local account a provider
+// identity may attach to. Linking by email requires proof from both sides: the
+// provider must report the address as verified, and the local account must own
+// a verified contact with that address. Otherwise a provider account with an
+// unverified address (or an attacker-created unverified contact row) could
+// capture another person's provider login. A nil account with a nil error means
+// "no existing account, registration is allowed".
+func (d Deps) lookupLinkableSocialAccount(ctx context.Context, userInfo *userInfo, provider string) (*model.Account, error) {
+	if userInfo.EmailVerified {
+		account, err := d.Store.LookupAccountByVerifiedContact(ctx, userInfo.Email)
+		if err == nil {
+			return account, nil
+		}
+		if !errors.Is(err, store.ErrNotFound) {
+			return nil, err
+		}
+	}
+	existing, err := d.Store.LookupAccount(ctx, userInfo.Email)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if existing != nil {
+		return nil, fmt.Errorf("%w: %s did not prove you own %s; verify the address with the provider or link the account from settings", errSocialEmailNotVerified, provider, userInfo.Email)
+	}
+	return nil, nil
+}
+
 // findOrCreateAccount ports OidcController.FindOrCreateAccount.
 func (d Deps) findOrCreateAccount(ctx context.Context, userInfo *userInfo, provider string) (*model.Account, error) {
 	if userInfo.Email == "" {
@@ -500,8 +546,11 @@ func (d Deps) findOrCreateAccount(ctx context.Context, userInfo *userInfo, provi
 	}
 	now := time.Now().UTC()
 
-	existing, err := d.Store.LookupAccount(ctx, userInfo.Email)
-	if err == nil && existing != nil {
+	existing, err := d.lookupLinkableSocialAccount(ctx, userInfo, provider)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
 		created, err := d.Store.UpsertConnection(ctx, existing.Id, provider, userInfo.UserId, userInfo.AccessToken, userInfo.RefreshToken, userInfo.toMetadata(), nil, now)
 		if err != nil {
 			return nil, err
@@ -510,9 +559,6 @@ func (d Deps) findOrCreateAccount(ctx context.Context, userInfo *userInfo, provi
 			d.actionLogConnectionLink(ctx, existing.Id, provider, nil, nil)
 		}
 		return existing, nil
-	}
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		return nil, err
 	}
 
 	account, err := d.createAccountFromSocial(ctx, userInfo)
