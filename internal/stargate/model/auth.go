@@ -165,15 +165,16 @@ const (
 
 // Challenge trail event types.
 const (
-	ChallengeEventCreated       = "created"
-	ChallengeEventFactorOK      = "factor_ok"
-	ChallengeEventFactorFailed  = "factor_failed"
-	ChallengeEventCodeRequested = "code_requested"
-	ChallengeEventEscalated     = "escalated"
-	ChallengeEventApproved      = "approved"
-	ChallengeEventDeclined      = "declined"
-	ChallengeEventBlocked       = "blocked"
-	ChallengeEventExchanged     = "exchanged"
+	ChallengeEventCreated        = "created"
+	ChallengeEventFactorOK       = "factor_ok"
+	ChallengeEventFactorFailed   = "factor_failed"
+	ChallengeEventCodeRequested  = "code_requested"
+	ChallengeEventEscalated      = "escalated"
+	ChallengeEventApproved       = "approved"
+	ChallengeEventDeclined       = "declined"
+	ChallengeEventBlocked        = "blocked"
+	ChallengeEventExchanged      = "exchanged"
+	ChallengeEventSessionRevoked = "session_revoked"
 )
 
 // ChallengeEvent is one entry of a challenge's trail. IpAddress/UserAgent are

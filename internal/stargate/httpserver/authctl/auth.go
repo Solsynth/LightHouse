@@ -2418,6 +2418,16 @@ func (h *handler) logout(c *gin.Context) {
 	ctx := c.Request.Context()
 	session := middleware.CurrentSession(ctx)
 	if session != nil {
+		if session.ChallengeId != nil && *session.ChallengeId != "" {
+			_ = h.d.Store.AppendChallengeEvent(ctx, *session.ChallengeId, model.ChallengeEvent{
+				At:        time.Now().UTC(),
+				Type:      model.ChallengeEventSessionRevoked,
+				SessionId: session.Id,
+				IpAddress: middleware.ClientIP(c.Request),
+				UserAgent: c.Request.UserAgent(),
+				Detail:    "logout",
+			})
+		}
 		_, _ = h.d.Auth.RevokeSession(ctx, uuid.MustParse(session.Id))
 		_ = h.d.Token.RevokeJti(ctx, session.Id)
 	}
