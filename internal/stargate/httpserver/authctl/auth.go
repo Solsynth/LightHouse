@@ -6,6 +6,7 @@
 package authctl
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -1051,7 +1052,7 @@ func (h *handler) verifyFactorCode(ctx context.Context, factor *model.AuthFactor
 	case model.AuthFactorTypePassword, model.AuthFactorTypePinCode, model.AuthFactorTypeTimedCode:
 		return auth.VerifyFactorPassword(factor, code)
 	case model.AuthFactorTypeNfcToken:
-		return h.verifyNfcToken(ctx, factor.AccountId, code), nil
+		return h.verifyNfcFactor(ctx, factor, code), nil
 	default:
 		// Passkey flows use their own endpoints. In-app code factors are
 		// rejected before reaching here — their approval prompt is published
@@ -1067,6 +1068,14 @@ func (h *handler) verifyFactorCode(ctx context.Context, factor *model.AuthFactor
 // another account must not satisfy this challenge, so the owner is matched
 // against the factor's account.
 func (h *handler) verifyNfcToken(ctx context.Context, accountID, code string) bool {
+	return h.verifyNfcFactor(ctx, &model.AuthFactor{AccountId: accountID}, code)
+}
+
+func (h *handler) verifyNfcFactor(ctx context.Context, factor *model.AuthFactor, code string) bool {
+	if factor == nil {
+		return false
+	}
+	accountID := factor.AccountId
 	if len(code) < 32 {
 		return false
 	}
@@ -1076,34 +1085,51 @@ func (h *handler) verifyNfcToken(ctx context.Context, accountID, code string) bo
 	}
 	tagUID, uidHex := code[:separator], code[separator+1:]
 
+	var owner, tagID string
 	if h.d.Ports != nil && h.d.Ports.NfcTokens != nil && h.d.Ports.NfcTokens.Available() {
 		tokenCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 		defer cancel()
-		owner, _, err := h.d.Ports.NfcTokens.Validate(tokenCtx, tagUID, uidHex)
+		var err error
+		owner, tagID, err = h.d.Ports.NfcTokens.Validate(tokenCtx, tagUID, uidHex)
 		if err != nil {
 			h.logError("validate nfc token", err)
 			return false
 		}
-		return strings.EqualFold(owner, accountID)
+	} else if h.d.Clients != nil && h.d.Clients.Nfc != nil {
+		rpcCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		defer cancel()
+		response, err := h.d.Clients.Nfc.ValidateNfcToken(rpcCtx, &gen.DyValidateNfcTokenRequest{
+			TagUid: tagUID,
+			UidHex: uidHex,
+		})
+		if err != nil {
+			h.logError("validate nfc token", err)
+			return false
+		}
+		if response == nil || !response.GetIsValid() {
+			return false
+		}
+		owner = response.GetAccountId()
+		tagID = response.GetTagId()
+	} else {
+		return false
 	}
 
-	if h.d.Clients == nil || h.d.Clients.Nfc == nil {
+	if !strings.EqualFold(owner, accountID) {
 		return false
 	}
-	rpcCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
-	defer cancel()
-	response, err := h.d.Clients.Nfc.ValidateNfcToken(rpcCtx, &gen.DyValidateNfcTokenRequest{
-		TagUid: tagUID,
-		UidHex: uidHex,
-	})
-	if err != nil {
-		h.logError("validate nfc token", err)
-		return false
+
+	// If the factor is bound to a specific tag_id, ensure the authenticated tag matches.
+	if len(factor.Config) > 0 {
+		if expectedTag, ok := factor.Config["tag_id"].(string); ok && strings.TrimSpace(expectedTag) != "" {
+			expected := strings.TrimSpace(expectedTag)
+			if !strings.EqualFold(tagID, expected) && !strings.EqualFold(tagUID, expected) {
+				return false
+			}
+		}
 	}
-	if response == nil || !response.GetIsValid() {
-		return false
-	}
-	return strings.EqualFold(response.GetAccountId(), accountID)
+
+	return true
 }
 
 func (h *handler) sendFactorCode(ctx context.Context, account *model.Account, factor *model.AuthFactor, challenge *model.AuthChallenge) error {
@@ -1453,6 +1479,20 @@ func (h *handler) completePasskeyChallenge(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_ALREADY_USED", "Auth factor already used."))
 		return
 	}
+
+	if cfg := h.d.Cfg; cfg != nil {
+		if !risk.IPAllowed(ctx, h.d.Redis, cfg, derefStr(challenge.IpAddress)) {
+			c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+				"Too many failed sign-in attempts. Try again later.", http.StatusTooManyRequests))
+			return
+		}
+		if maxAttempts := cfg.Security.MaxChallengeAttempts; maxAttempts > 0 && challenge.FailedAttempts >= maxAttempts {
+			c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+				"Too many failed attempts for this sign-in attempt. Start a new one.", http.StatusTooManyRequests))
+			return
+		}
+	}
+
 	credentialID, ok := normalizePasskeyCredentialId(req.CredentialId)
 	if !ok {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_PASSKEY_CREDENTIAL_INVALID", "Passkey credential ID is invalid."))
@@ -1476,6 +1516,8 @@ func (h *handler) completePasskeyChallenge(c *gin.Context) {
 		challenge.FailedAttempts++
 		challenge.UpdatedAt = model.NewTime(now)
 		_ = h.d.Store.UpdateAuthChallenge(ctx, challenge)
+		risk.RecordFailure(ctx, h.d.Redis, h.d.Cfg, derefStr(challenge.IpAddress))
+		_ = h.maybeEscalateFailure(ctx, challenge)
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_PASSKEY_ASSERTION", "Invalid passkey assertion."))
 		return
 	}
@@ -1609,6 +1651,20 @@ func (h *handler) completePasskeyLogin(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_EXPIRED", "Auth challenge has expired."))
 		return
 	}
+
+	if cfg := h.d.Cfg; cfg != nil {
+		if !risk.IPAllowed(ctx, h.d.Redis, cfg, derefStr(challenge.IpAddress)) {
+			c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+				"Too many failed sign-in attempts. Try again later.", http.StatusTooManyRequests))
+			return
+		}
+		if maxAttempts := cfg.Security.MaxChallengeAttempts; maxAttempts > 0 && challenge.FailedAttempts >= maxAttempts {
+			c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+				"Too many failed attempts for this sign-in attempt. Start a new one.", http.StatusTooManyRequests))
+			return
+		}
+	}
+
 	credentialID, ok := normalizePasskeyCredentialId(req.CredentialId)
 	if !ok {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_PASSKEY_CREDENTIAL_INVALID", "Passkey credential ID is invalid."))
@@ -1624,6 +1680,23 @@ func (h *handler) completePasskeyLogin(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_PASSKEY_FACTOR_NOT_ENABLED", "Passkey factor is not enabled for this account."))
 		return
 	}
+
+	// Validate user_handle if provided by the authenticator.
+	if req.UserHandle != nil && strings.TrimSpace(*req.UserHandle) != "" {
+		handleRaw := strings.TrimSpace(*req.UserHandle)
+		handleBytes, err := decodeBase64OrBase64Url(handleRaw)
+		if err != nil {
+			handleBytes = []byte(handleRaw)
+		}
+		accountUUID, err := uuid.Parse(passkey.AccountId)
+		if err == nil {
+			if !bytes.Equal(handleBytes, accountUUID[:]) && !strings.EqualFold(string(handleBytes), passkey.AccountId) {
+				c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_PASSKEY_INVALID", "Passkey user handle does not match account."))
+				return
+			}
+		}
+	}
+
 	credential := parsePasskeyCredential(passkey.Credential)
 	if credential == nil {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_PASSKEY_INVALID", "Passkey is invalid."))
@@ -1631,15 +1704,56 @@ func (h *handler) completePasskeyLogin(c *gin.Context) {
 	}
 	if !h.verifyPasskeyAssertion(ctx, credential, challenge.Id, credentialID,
 		req.ClientDataJson, req.AuthenticatorData, req.Signature) {
+		challenge.FailedAttempts++
+		challenge.UpdatedAt = model.NewTime(now)
+		_ = h.d.Store.UpdateAuthChallenge(ctx, challenge)
+		risk.RecordFailure(ctx, h.d.Redis, h.d.Cfg, derefStr(challenge.IpAddress))
+		_ = h.maybeEscalateFailure(ctx, challenge)
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_PASSKEY_ASSERTION", "Invalid passkey assertion."))
 		return
 	}
 
+	// Verify account is not locked due to punishment.
+	punishment, err := h.d.Store.GetActivePunishmentOverview(ctx, passkey.AccountId)
+	if err != nil {
+		h.logError("load punishment overview", err)
+	}
+	if punishment != nil && (punishment.Type == model.PunishmentDisableAccount || punishment.Type == model.PunishmentBlockLogin) {
+		c.JSON(http.StatusLocked, &errs.ApiError{
+			Code:    "ACCOUNT_LOCKED",
+			Message: "Account is locked due to a punishment.",
+			Detail:  &punishment.Reason,
+			Status:  http.StatusLocked,
+		})
+		return
+	}
+
+	mode, err := h.d.Store.GetSecurityMode(ctx, passkey.AccountId)
+	if err != nil {
+		mode = model.SecurityModeDefault
+	}
+
+	steps, err := h.detectChallengeRisk(ctx, passkey.AccountId, derefStr(challenge.IpAddress), derefStr(challenge.UserAgent), mode)
+	if err != nil || steps < 1 {
+		steps = 1
+	}
+
 	challenge.AccountId = passkey.AccountId
-	challenge.StepRemain = 0
+	challenge.StepTotal = steps
+	challenge.StepRemain = steps - 1
+	if challenge.StepRemain < 0 {
+		challenge.StepRemain = 0
+	}
+	challenge.BlacklistFactors = append(challenge.BlacklistFactors, factor.Id)
 	challenge.UpdatedAt = model.NewTime(now)
 	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
 		h.logError("update challenge", err)
+	}
+
+	if challenge.StepRemain > 0 {
+		h.publishChallengePending(ctx, challenge)
+	} else {
+		h.pushLoginNotification(ctx, challenge, true)
 	}
 	c.JSON(http.StatusOK, challenge)
 }

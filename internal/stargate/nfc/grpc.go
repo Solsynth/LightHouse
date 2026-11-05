@@ -3,6 +3,7 @@ package nfc
 import (
 	"context"
 	"errors"
+	"strings"
 
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
@@ -52,6 +53,9 @@ func (s *GRPCService) ValidateNfcToken(ctx context.Context, req *gen.DyValidateN
 	}
 	if result.Account == nil || result.Tag == nil || result.Tag.AccountID == nil {
 		return &gen.DyValidateNfcTokenResponse{ErrorCode: "TAG_UNCLAIMED"}, nil
+	}
+	if req.GetTagUid() != "" && !strings.EqualFold(req.GetTagUid(), result.Tag.UID) {
+		return &gen.DyValidateNfcTokenResponse{ErrorCode: "TAG_NOT_FOUND"}, nil
 	}
 	return &gen.DyValidateNfcTokenResponse{
 		IsValid:   true,
@@ -143,6 +147,9 @@ func (p *TokenProvider) Validate(ctx context.Context, tagUID, uidHex string) (st
 	}
 	if result.Account == nil || result.Tag == nil || result.Tag.AccountID == nil {
 		return "", "", errors.New("nfc token rejected: TAG_UNCLAIMED")
+	}
+	if tagUID != "" && !strings.EqualFold(tagUID, result.Tag.UID) {
+		return "", "", errors.New("nfc token rejected: UID_MISMATCH")
 	}
 	return result.Tag.AccountID.String(), result.Tag.ID.String(), nil
 }

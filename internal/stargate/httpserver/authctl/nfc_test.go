@@ -10,6 +10,7 @@ import (
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/stargate/grpcclient"
+	"src.solsynth.dev/sosys/stargate/model"
 )
 
 // fakeNfc records ValidateNfcToken calls so the NFC factor contract can be
@@ -113,6 +114,39 @@ func TestVerifyNfcToken(t *testing.T) {
 	t.Run("unconfigured passport client is not usable", func(t *testing.T) {
 		if handlerWith(nil).verifyNfcToken(context.Background(), accountID, code) {
 			t.Fatal("verifyNfcToken = true without a configured Nfc client")
+		}
+	})
+
+	t.Run("factor bound to specific tag_id accepts matching tag", func(t *testing.T) {
+		client := &fakeNfc{response: valid(accountID)}
+		factor := &model.AuthFactor{
+			AccountId: accountID,
+			Config:    map[string]any{"tag_id": "tag-1"},
+		}
+		if !handlerWith(client).verifyNfcFactor(context.Background(), factor, code) {
+			t.Fatal("verifyNfcFactor = false for matching configured tag_id")
+		}
+	})
+
+	t.Run("factor bound to specific tag_id accepts matching tag_uid", func(t *testing.T) {
+		client := &fakeNfc{response: valid(accountID)}
+		factor := &model.AuthFactor{
+			AccountId: accountID,
+			Config:    map[string]any{"tag_id": uid},
+		}
+		if !handlerWith(client).verifyNfcFactor(context.Background(), factor, code) {
+			t.Fatal("verifyNfcFactor = false for matching configured tag_uid")
+		}
+	})
+
+	t.Run("factor bound to specific tag_id rejects mismatched tag", func(t *testing.T) {
+		client := &fakeNfc{response: valid(accountID)}
+		factor := &model.AuthFactor{
+			AccountId: accountID,
+			Config:    map[string]any{"tag_id": "other-tag-999"},
+		}
+		if handlerWith(client).verifyNfcFactor(context.Background(), factor, code) {
+			t.Fatal("verifyNfcFactor = true for mismatched configured tag_id")
 		}
 	})
 }

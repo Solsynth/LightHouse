@@ -209,9 +209,8 @@ func (s *Service) ValidateSun(ctx context.Context, piccDataHex, encDataHex, cmac
 			}
 		}
 
-		// Counter replay check: Passport allows an equal counter and only
-		// rejects a strictly smaller value.
-		if tag.Counter != nil && piccData.ReadCtr < *tag.Counter {
+		// Counter replay check: strictly reject counter less than or equal to last seen counter.
+		if tag.Counter != nil && piccData.ReadCtr <= *tag.Counter {
 			return nil, fmt.Errorf("%w: counter %d is not greater than last seen counter %d.",
 				ErrReplay, piccData.ReadCtr, *tag.Counter)
 		}
