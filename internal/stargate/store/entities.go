@@ -208,6 +208,11 @@ type ChallengeEntity struct {
 	SessionID       *uuid.UUID `gorm:"column:session_id"`
 	SudoUntil       *time.Time `gorm:"column:sudo_until"`
 	ExtraFactorType *int       `gorm:"column:extra_factor_type"`
+	// Forensic trail (see migrate/0015_auth_challenge_trail.sql).
+	Origin      *string         `gorm:"column:origin"`
+	RiskScore   *float64        `gorm:"column:risk_score"`
+	RiskSignals *datatypes.JSON `gorm:"column:risk_signals;type:jsonb"`
+	Trail       datatypes.JSON  `gorm:"column:trail;type:jsonb"`
 }
 
 func (ChallengeEntity) TableName() string { return "auth_challenges" }

@@ -277,6 +277,31 @@ func (h *handler) allRequiredStepCount(ctx context.Context, accountID string) (i
 // seconds after a successful login. Lockdown and lockoff bypass the score
 // entirely (all factors / password only).
 func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress, userAgent string, mode model.SecurityMode) (int, error) {
+	a, err := h.assessChallengeRisk(ctx, accountID, ipAddress, userAgent, mode)
+	return a.Steps, err
+}
+
+// riskAssessment is detectChallengeRisk's verdict plus the evidence behind it,
+// so a challenge can record why it demanded the steps it did.
+type riskAssessment struct {
+	Steps int
+	// Score is the clamped 0-20 score; nil when scoring was bypassed (password
+	// only, lockdown/lockoff, in-app only).
+	Score *float64
+	// Signals lists every term that moved the score ("ip_unseen:+8"), or the
+	// reason scoring was bypassed ("mode:lockdown").
+	Signals []string
+}
+
+// assessChallengeRisk is detectChallengeRisk with its working shown.
+func (h *handler) assessChallengeRisk(ctx context.Context, accountID, ipAddress, userAgent string, mode model.SecurityMode) (riskAssessment, error) {
+	var out riskAssessment
+	steps, err := h.assessChallengeRiskInner(ctx, accountID, ipAddress, userAgent, mode, &out)
+	out.Steps = steps
+	return out, err
+}
+
+func (h *handler) assessChallengeRiskInner(ctx context.Context, accountID, ipAddress, userAgent string, mode model.SecurityMode, out *riskAssessment) (int, error) {
 	factors, err := h.d.Store.GetAuthFactors(ctx, uuid.MustParse(accountID))
 	if err != nil {
 		return 0, err
@@ -288,6 +313,7 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 		// approval is the sole way to satisfy their challenge.
 		for _, f := range factors {
 			if f.EnabledAt != nil && model.AuthFactorType(f.Type) == model.AuthFactorTypeInAppCode {
+				out.Signals = append(out.Signals, "factors:in_app_only")
 				return 1, nil
 			}
 		}
@@ -302,18 +328,29 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 		}
 	}
 	if allPassword {
+		out.Signals = append(out.Signals, "factors:password_only")
 		return 1, nil
 	}
 
 	// Per-account security mode overrides.
 	switch mode {
 	case model.SecurityModeLockdown:
+		out.Signals = append(out.Signals, "mode:lockdown")
 		return maxSteps, nil
 	case model.SecurityModeLockoff:
+		out.Signals = append(out.Signals, "mode:lockoff")
 		return 1, nil
 	}
 
 	riskScore := 0.0
+	add := func(delta float64, name string) {
+		riskScore += delta
+		sign := "+"
+		if delta < 0 {
+			sign = ""
+		}
+		out.Signals = append(out.Signals, fmt.Sprintf("%s:%s%g", name, sign, delta))
+	}
 	recentSessions, err := h.d.Store.ListRecentSessions(ctx, accountID, 10)
 	if err != nil {
 		return 0, err
@@ -334,7 +371,7 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 	}
 
 	if strings.TrimSpace(ipAddress) == "" {
-		riskScore += 10
+		add(10, "ip_missing")
 	} else {
 		ipPreviouslyUsed := false
 		for _, ch := range recentChallenges {
@@ -344,7 +381,7 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 			}
 		}
 		if !ipPreviouslyUsed {
-			riskScore += 8
+			add(8, "ip_unseen")
 		}
 		var lastKnownIP *string
 		for _, ch := range recentChallenges {
@@ -354,12 +391,12 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 			}
 		}
 		if lastKnownIP != nil && *lastKnownIP != ipAddress {
-			riskScore += 6
+			add(6, "ip_changed_from_last")
 		}
 	}
 
 	if strings.TrimSpace(userAgent) == "" {
-		riskScore += 5
+		add(5, "ua_missing")
 	} else {
 		uaPreviouslyUsed := false
 		for _, ch := range recentChallenges {
@@ -369,7 +406,7 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 			}
 		}
 		if !uaPreviouslyUsed {
-			riskScore += 4
+			add(4, "ua_unseen")
 		}
 	}
 
@@ -378,11 +415,11 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 		sinceLastLogin := now.Sub(recentSessions[0].LastGrantedAt.Time())
 		switch hoursSinceLastLogin := sinceLastLogin.Hours(); {
 		case hoursSinceLastLogin > 720:
-			riskScore += 9
+			add(9, "last_login_over_30d")
 		case hoursSinceLastLogin > 168:
-			riskScore += 6
+			add(6, "last_login_over_7d")
 		case hoursSinceLastLogin > 24:
-			riskScore += 3
+			add(3, "last_login_over_1d")
 		}
 		// A login completed moments ago from the same client is the strongest
 		// trust signal available: the account just proved every factor it was
@@ -393,12 +430,12 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 		if sinceLastLogin <= h.d.Cfg.Security.RecentLoginGraceDuration() {
 			if challengeID := recentSessions[0].ChallengeID; challengeID != nil {
 				if probe, ok := probesByChallenge[*challengeID]; ok && sameUserAgent(probe.UserAgent, userAgent) {
-					riskScore -= recentLoginRiskCredit
+					add(-recentLoginRiskCredit, "recent_login_same_ua")
 				}
 			}
 		}
 	} else {
-		riskScore += 7
+		add(7, "no_prior_session")
 	}
 
 	recentFailed, err := h.d.Store.SumRecentFailedChallengeAttempts(ctx, accountID, now.Add(-time.Hour))
@@ -406,7 +443,7 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 		return 0, err
 	}
 	if recentFailed > 0 {
-		riskScore += math.Min(float64(recentFailed)*2, 10)
+		add(math.Min(float64(recentFailed)*2, 10), "recent_failed_attempts")
 	}
 
 	totalAuthFactors := len(enabledFactors)
@@ -421,15 +458,15 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 		}
 	}
 	if totalAuthFactors >= 2 {
-		riskScore -= 3
+		add(-3, "multiple_factors")
 	} else if totalAuthFactors == 1 {
-		riskScore -= 1
+		add(-1, "single_factor")
 	}
 	if timedCodeEnabled {
-		riskScore -= 2
+		add(-2, "timed_code_enabled")
 	}
 	if pinCodeEnabled {
-		riskScore -= 1
+		add(-1, "pin_code_enabled")
 	}
 
 	trustedDevice := false
@@ -440,10 +477,12 @@ func (h *handler) detectChallengeRisk(ctx context.Context, accountID, ipAddress,
 		}
 	}
 	if trustedDevice {
-		riskScore -= 1
+		add(-1, "trusted_device")
 	}
 
 	riskScore = math.Max(0, math.Min(riskScore, 20))
+	clamped := riskScore
+	out.Score = &clamped
 	riskWeight := riskScore / 20.0
 	totalRequiredSteps := roundHalfToEven(float64(maxSteps) * riskWeight)
 	if totalRequiredSteps > maxSteps {
@@ -624,28 +663,40 @@ func (h *handler) createChallenge(c *gin.Context) {
 		mode = model.SecurityModeDefault // degrade: never fail login on a preference-read error
 	}
 
-	steps, err := h.detectChallengeRisk(ctx, account.Id, ipAddress, userAgent, mode)
+	assessment, err := h.assessChallengeRisk(ctx, account.Id, ipAddress, userAgent, mode)
 	if err != nil {
 		c.JSON(http.StatusForbidden, errs.New("NO_AUTH_FACTORS", "Account has no authentication factors configured.", http.StatusForbidden))
 		return
 	}
+	steps := assessment.Steps
 
 	challenge := &model.AuthChallenge{
-		Id:         challengeID,
-		ExpiredAt:  model.NewTime(now.Add(time.Hour)),
-		StepTotal:  steps,
-		StepRemain: steps,
-		Audiences:  req.Audiences,
-		Scopes:     req.Scopes,
-		IpAddress:  &ipAddress,
-		UserAgent:  &userAgent,
-		Location:   h.d.Geo.GetPointFromIp(ipAddress),
-		DeviceId:   req.DeviceId,
-		DeviceName: &deviceName,
-		Platform:   req.Platform,
-		AccountId:  account.Id,
-		CreatedAt:  model.NewTime(now),
-		UpdatedAt:  model.NewTime(now),
+		Id:          challengeID,
+		ExpiredAt:   model.NewTime(now.Add(time.Hour)),
+		StepTotal:   steps,
+		StepRemain:  steps,
+		Audiences:   req.Audiences,
+		Scopes:      req.Scopes,
+		IpAddress:   &ipAddress,
+		UserAgent:   &userAgent,
+		Location:    h.d.Geo.GetPointFromIp(ipAddress),
+		DeviceId:    req.DeviceId,
+		DeviceName:  &deviceName,
+		Platform:    req.Platform,
+		AccountId:   account.Id,
+		CreatedAt:   model.NewTime(now),
+		UpdatedAt:   model.NewTime(now),
+		Origin:      model.ChallengeOriginPassword,
+		RiskScore:   assessment.Score,
+		RiskSignals: assessment.Signals,
+		Trail: []model.ChallengeEvent{{
+			At:        now,
+			Type:      model.ChallengeEventCreated,
+			IpAddress: ipAddress,
+			UserAgent: userAgent,
+			DeviceId:  req.DeviceId,
+			Detail:    fmt.Sprintf("origin=%s steps=%d account=%s", model.ChallengeOriginPassword, steps, account.Id),
+		}},
 	}
 	if err := h.d.Store.CreateAuthChallenge(ctx, challenge); err != nil {
 		h.logError("create challenge", err)
@@ -814,6 +865,15 @@ func (h *handler) requestFactorCode(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_SEND_FAILED", err.Error()))
 		return
 	}
+	_ = h.d.Store.AppendChallengeEvent(ctx, challenge.Id, model.ChallengeEvent{
+		At:         time.Now().UTC(),
+		Type:       model.ChallengeEventCodeRequested,
+		FactorId:   factor.Id,
+		FactorType: intPtr(int(factor.Type)),
+		IpAddress:  middleware.ClientIP(c.Request),
+		UserAgent:  c.Request.UserAgent(),
+		Detail:     fmt.Sprintf("factor_type=%d", factor.Type),
+	})
 	c.Status(http.StatusOK)
 }
 
@@ -905,16 +965,36 @@ func (h *handler) doChallenge(c *gin.Context) {
 		}
 	}
 
+	callerIP := middleware.ClientIP(c.Request)
+	callerUA := c.Request.UserAgent()
 	okVerify, _ := h.verifyFactorCode(ctx, factor, req.Password)
 	if !okVerify {
 		challenge.FailedAttempts++
 		challenge.UpdatedAt = model.NewTime(now)
 		_ = h.d.Store.UpdateAuthChallenge(ctx, challenge)
 		risk.RecordFailure(ctx, h.d.Redis, h.d.Cfg, derefStr(challenge.IpAddress))
+		_ = h.d.Store.AppendChallengeEvent(ctx, challenge.Id, model.ChallengeEvent{
+			At:         now,
+			Type:       model.ChallengeEventFactorFailed,
+			FactorId:   factor.Id,
+			FactorType: intPtr(int(factor.Type)),
+			IpAddress:  callerIP,
+			UserAgent:  callerUA,
+			Detail:     fmt.Sprintf("factor_type=%d attempt=%d", factor.Type, challenge.FailedAttempts),
+		})
 		_ = h.maybeEscalateFailure(ctx, challenge)
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_PASSWORD", "Invalid password."))
 		return
 	}
+	_ = h.d.Store.AppendChallengeEvent(ctx, challenge.Id, model.ChallengeEvent{
+		At:         now,
+		Type:       model.ChallengeEventFactorOK,
+		FactorId:   factor.Id,
+		FactorType: intPtr(int(factor.Type)),
+		IpAddress:  callerIP,
+		UserAgent:  callerUA,
+		Detail:     fmt.Sprintf("factor_type=%d remain=%d", factor.Type, challenge.StepRemain-1),
+	})
 
 	// One verified factor settles one step regardless of its strength score:
 	// the elevation demanded one step per factor, so anything more would let a
@@ -1634,21 +1714,31 @@ func (h *handler) startPasskeyLogin(c *gin.Context) {
 		return
 	}
 	challenge := &model.AuthChallenge{
-		Id:         challengeID,
-		StepTotal:  1,
-		StepRemain: 1,
-		DeviceId:   req.DeviceId,
-		DeviceName: &deviceName,
-		Platform:   req.Platform,
-		IpAddress:  &ipAddress,
-		UserAgent:  &userAgent,
-		Location:   h.d.Geo.GetPointFromIp(ipAddress),
-		Audiences:  req.Audiences,
-		Scopes:     req.Scopes,
-		AccountId:  uuid.Nil.String(),
-		ExpiredAt:  model.NewTime(now.Add(5 * time.Minute)),
-		CreatedAt:  model.NewTime(now),
-		UpdatedAt:  model.NewTime(now),
+		Id:          challengeID,
+		StepTotal:   1,
+		StepRemain:  1,
+		DeviceId:    req.DeviceId,
+		DeviceName:  &deviceName,
+		Platform:    req.Platform,
+		IpAddress:   &ipAddress,
+		UserAgent:   &userAgent,
+		Location:    h.d.Geo.GetPointFromIp(ipAddress),
+		Audiences:   req.Audiences,
+		Scopes:      req.Scopes,
+		AccountId:   uuid.Nil.String(),
+		ExpiredAt:   model.NewTime(now.Add(5 * time.Minute)),
+		CreatedAt:   model.NewTime(now),
+		UpdatedAt:   model.NewTime(now),
+		Origin:      model.ChallengeOriginPasskey,
+		RiskSignals: []string{"origin:discoverable_passkey"},
+		Trail: []model.ChallengeEvent{{
+			At:        now,
+			Type:      model.ChallengeEventCreated,
+			IpAddress: ipAddress,
+			UserAgent: userAgent,
+			DeviceId:  req.DeviceId,
+			Detail:    fmt.Sprintf("origin=%s", model.ChallengeOriginPasskey),
+		}},
 	}
 	if err := h.d.Store.CreateAuthChallenge(ctx, challenge); err != nil {
 		h.logError("create passkey challenge", err)
@@ -1783,7 +1873,8 @@ func (h *handler) completePasskeyLogin(c *gin.Context) {
 		mode = model.SecurityModeDefault
 	}
 
-	steps, err := h.detectChallengeRisk(ctx, passkey.AccountId, derefStr(challenge.IpAddress), derefStr(challenge.UserAgent), mode)
+	assessment, err := h.assessChallengeRisk(ctx, passkey.AccountId, derefStr(challenge.IpAddress), derefStr(challenge.UserAgent), mode)
+	steps := assessment.Steps
 	if err != nil || steps < 1 {
 		steps = 1
 	}
@@ -1794,11 +1885,22 @@ func (h *handler) completePasskeyLogin(c *gin.Context) {
 	if challenge.StepRemain < 0 {
 		challenge.StepRemain = 0
 	}
+	challenge.RiskScore = assessment.Score
+	challenge.RiskSignals = assessment.Signals
 	challenge.BlacklistFactors = append(challenge.BlacklistFactors, factor.Id)
 	challenge.UpdatedAt = model.NewTime(now)
 	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
 		h.logError("update challenge", err)
 	}
+	_ = h.d.Store.AppendChallengeEvent(ctx, challenge.Id, model.ChallengeEvent{
+		At:         now,
+		Type:       model.ChallengeEventFactorOK,
+		FactorId:   factor.Id,
+		FactorType: intPtr(int(model.AuthFactorTypePasskey)),
+		IpAddress:  middleware.ClientIP(c.Request),
+		UserAgent:  c.Request.UserAgent(),
+		Detail:     fmt.Sprintf("passkey_credential_id=%s remain=%d", credentialID, challenge.StepRemain),
+	})
 
 	if challenge.StepRemain > 0 {
 		h.publishChallengePending(ctx, challenge)
@@ -1913,6 +2015,14 @@ func (h *handler) approveChallenge(c *gin.Context) {
 	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
 		h.logError("update challenge", err)
 	}
+	_ = h.d.Store.AppendChallengeEvent(ctx, challenge.Id, model.ChallengeEvent{
+		At:        now,
+		Type:      model.ChallengeEventApproved,
+		SessionId: session.Id,
+		IpAddress: middleware.ClientIP(c.Request),
+		UserAgent: c.Request.UserAgent(),
+		Detail:    fmt.Sprintf("approved_by_session=%s", session.Id),
+	})
 
 	h.publishWS(ctx, user.Id, "auth.challenge.approved", map[string]any{
 		"challenge_id":       challenge.Id,
@@ -1974,6 +2084,14 @@ func (h *handler) declineChallenge(c *gin.Context) {
 	if err := h.escalateChallenge(ctx, challenge); err != nil {
 		h.logError("escalate challenge", err)
 	}
+	_ = h.d.Store.AppendChallengeEvent(ctx, challenge.Id, model.ChallengeEvent{
+		At:        now,
+		Type:      model.ChallengeEventDeclined,
+		SessionId: session.Id,
+		IpAddress: middleware.ClientIP(c.Request),
+		UserAgent: c.Request.UserAgent(),
+		Detail:    fmt.Sprintf("declined_by_session=%s terminal=%t", session.Id, challenge.DeclinedAt != nil),
+	})
 
 	// A decline is charged to the IP that started the login, so an IP that
 	// keeps requesting challenges for an account whose owner keeps declining
@@ -2060,6 +2178,15 @@ func (h *handler) exchangeToken(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CREATE_SESSION_FAILED", err.Error()))
 			return
 		}
+		sessionID, _ := h.d.Store.FindSessionIDByChallenge(ctx, challenge.Id)
+		_ = h.d.Store.AppendChallengeEvent(ctx, challenge.Id, model.ChallengeEvent{
+			At:        time.Now().UTC(),
+			Type:      model.ChallengeEventExchanged,
+			SessionId: sessionID,
+			IpAddress: middleware.ClientIP(c.Request),
+			UserAgent: c.Request.UserAgent(),
+			Detail:    fmt.Sprintf("session_id=%s", sessionID),
+		})
 		h.setAuthCookies(c, pair)
 		c.JSON(http.StatusOK, tokenExchangeBody(pair))
 	case "refresh_token":
@@ -2754,4 +2881,8 @@ func (h *handler) createSudoChallenge(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, challenge)
+}
+
+func intPtr(i int) *int {
+	return &i
 }

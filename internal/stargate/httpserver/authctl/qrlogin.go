@@ -3,6 +3,7 @@ package authctl
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -112,20 +113,30 @@ func (h *handler) generateQrChallenge(c *gin.Context) {
 	}
 
 	authChallenge := &model.AuthChallenge{
-		Id:         authChallengeID,
-		StepTotal:  1,
-		StepRemain: 1,
-		DeviceId:   req.DeviceId,
-		DeviceName: &deviceName,
-		Platform:   req.Platform,
-		IpAddress:  &ipAddress,
-		UserAgent:  &userAgent,
-		Audiences:  req.Audiences,
-		Scopes:     req.Scopes,
-		AccountId:  uuid.Nil.String(),
-		ExpiredAt:  model.NewTime(expiresAt),
-		CreatedAt:  model.NewTime(now),
-		UpdatedAt:  model.NewTime(now),
+		Id:          authChallengeID,
+		StepTotal:   1,
+		StepRemain:  1,
+		DeviceId:    req.DeviceId,
+		DeviceName:  &deviceName,
+		Platform:    req.Platform,
+		IpAddress:   &ipAddress,
+		UserAgent:   &userAgent,
+		Audiences:   req.Audiences,
+		Scopes:      req.Scopes,
+		AccountId:   uuid.Nil.String(),
+		ExpiredAt:   model.NewTime(expiresAt),
+		CreatedAt:   model.NewTime(now),
+		UpdatedAt:   model.NewTime(now),
+		Origin:      model.ChallengeOriginQR,
+		RiskSignals: []string{"origin:qr"},
+		Trail: []model.ChallengeEvent{{
+			At:        now,
+			Type:      model.ChallengeEventCreated,
+			IpAddress: ipAddress,
+			UserAgent: userAgent,
+			DeviceId:  req.DeviceId,
+			Detail:    fmt.Sprintf("origin=%s", model.ChallengeOriginQR),
+		}},
 	}
 	if ipAddress != "" {
 		authChallenge.Location = h.d.Geo.GetPointFromIp(ipAddress)
@@ -305,6 +316,14 @@ func (h *handler) approveQrChallenge(c *gin.Context) {
 	if err := h.d.Store.UpdateAuthChallenge(ctx, authChallenge); err != nil {
 		h.logError("update auth challenge", err)
 	}
+	_ = h.d.Store.AppendChallengeEvent(ctx, authChallenge.Id, model.ChallengeEvent{
+		At:        now,
+		Type:      model.ChallengeEventApproved,
+		SessionId: session.Id,
+		IpAddress: middleware.ClientIP(c.Request),
+		UserAgent: c.Request.UserAgent(),
+		Detail:    fmt.Sprintf("qr_confirmed_by_account=%s session=%s", user.Id, session.Id),
+	})
 
 	approved := *qr
 	approved.AccountId = user.Id

@@ -220,12 +220,12 @@ func (d Deps) appleMobileLogin(c *gin.Context) {
 		return
 	}
 
-	challenge, err := d.requireSocialMFA(c, account, req.DeviceId, req.DeviceName, model.ClientPlatformIos)
+	challenge, err := d.requireSocialMFA(c, svc, userInfo, account, req.DeviceId, req.DeviceName, model.ClientPlatformIos)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
 		return
 	}
-	if challenge != nil {
+	if challenge != nil && challenge.StepRemain > 0 {
 		// No session yet: the client finishes the challenge's remaining steps
 		// and redeems it through POST /auth/token.
 		c.JSON(http.StatusAccepted, gin.H{
@@ -236,7 +236,7 @@ func (d Deps) appleMobileLogin(c *gin.Context) {
 		})
 		return
 	}
-	session, err := d.createSessionForUser(c, svc, userInfo, account, req.DeviceId, req.DeviceName, model.ClientPlatformIos, middleware.CurrentSession(ctx))
+	session, err := d.createSessionForUser(c, svc, userInfo, account, req.DeviceId, req.DeviceName, model.ClientPlatformIos, middleware.CurrentSession(ctx), challenge)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
 		return
@@ -391,16 +391,16 @@ func (d Deps) handleLoginOrRegistration(c *gin.Context, svc provider, data *call
 	if err == nil && conn != nil {
 		// Login an existing user, unless the environment is risky enough that
 		// the account's other factors are owed first.
-		challenge, err := d.requireSocialMFA(c, account, deviceIDOrEmpty(deviceID), nil, model.ClientPlatformWeb)
+		challenge, err := d.requireSocialMFA(c, svc, userInfo, account, deviceIDOrEmpty(deviceID), nil, model.ClientPlatformWeb)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
 			return
 		}
-		if challenge != nil {
+		if challenge != nil && challenge.StepRemain > 0 {
 			c.Redirect(http.StatusFound, d.mfaRedirectURL(challenge.Id, returnURL))
 			return
 		}
-		session, err := d.createSessionForUser(c, svc, userInfo, account, deviceIDOrEmpty(deviceID), nil, model.ClientPlatformWeb, middleware.CurrentSession(ctx))
+		session, err := d.createSessionForUser(c, svc, userInfo, account, deviceIDOrEmpty(deviceID), nil, model.ClientPlatformWeb, middleware.CurrentSession(ctx), challenge)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
 			return
@@ -446,17 +446,19 @@ func (d Deps) handleLoginOrRegistration(c *gin.Context, svc provider, data *call
 		c.JSON(http.StatusBadRequest, errs.New("OIDC_EMAIL_NOT_VERIFIED", err.Error(), http.StatusBadRequest))
 		return
 	}
+	var socialChallenge *model.AuthChallenge
 	if account != nil {
 		// Linking to an existing account is a sign-in to it as well.
-		challenge, err := d.requireSocialMFA(c, account, deviceIDOrEmpty(deviceID), nil, model.ClientPlatformWeb)
+		challenge, err := d.requireSocialMFA(c, svc, userInfo, account, deviceIDOrEmpty(deviceID), nil, model.ClientPlatformWeb)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
 			return
 		}
-		if challenge != nil {
+		if challenge != nil && challenge.StepRemain > 0 {
 			c.Redirect(http.StatusFound, d.mfaRedirectURL(challenge.Id, returnURL))
 			return
 		}
+		socialChallenge = challenge
 	}
 	if account == nil {
 		account, err = d.createAccountFromSocial(ctx, userInfo)
@@ -471,7 +473,16 @@ func (d Deps) handleLoginOrRegistration(c *gin.Context, svc provider, data *call
 		return
 	}
 
-	session, err := d.createSessionForUser(c, svc, userInfo, account, deviceIDOrEmpty(deviceID), nil, model.ClientPlatformWeb, middleware.CurrentSession(ctx))
+	if socialChallenge == nil {
+		// A freshly registered account owes nothing, but the sign-in is still
+		// recorded so its session can be traced back.
+		if recorded, err := d.requireSocialMFA(c, svc, userInfo, account, deviceIDOrEmpty(deviceID), nil, model.ClientPlatformWeb); err == nil {
+			socialChallenge = recorded
+		} else if d.Log != nil {
+			d.Log.Warn("record social registration challenge failed", "account", account.Id, "error", err)
+		}
+	}
+	session, err := d.createSessionForUser(c, svc, userInfo, account, deviceIDOrEmpty(deviceID), nil, model.ClientPlatformWeb, middleware.CurrentSession(ctx), socialChallenge)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
 		return
@@ -627,13 +638,16 @@ func (d Deps) mfaRedirectURL(challengeID, returnURL string) string {
 // requireSocialMFA runs the shared risk check for a provider sign-in. When the
 // environment is risky it returns the challenge to complete instead of a
 // session; (nil, nil) means the provider identity alone is enough.
-func (d Deps) requireSocialMFA(c *gin.Context, account *model.Account, deviceID string, deviceName *string, platform model.ClientPlatform) (*model.AuthChallenge, error) {
+func (d Deps) requireSocialMFA(c *gin.Context, svc provider, userInfo *userInfo, account *model.Account, deviceID string, deviceName *string, platform model.ClientPlatform) (*model.AuthChallenge, error) {
 	return authctl.BeginSocialMFA(c.Request.Context(), authctl.SocialMFADeps{Store: d.Store, Cfg: d.Cfg}, account, authctl.SocialMFAContext{
 		IPAddress:  middleware.ClientIP(c.Request),
 		UserAgent:  c.Request.UserAgent(),
 		DeviceID:   deviceID,
 		DeviceName: deviceName,
 		Platform:   platform,
+
+		Provider:       strings.ToLower(svc.name()),
+		ProviderUserID: userInfo.UserId,
 	})
 }
 
@@ -641,7 +655,7 @@ func (d Deps) requireSocialMFA(c *gin.Context, account *model.Account, deviceID 
 // the provider connection row exists, creates the device + an Oidc session
 // (30-day expiry, parent session linked when present) and records the NewLogin
 // action log.
-func (d Deps) createSessionForUser(c *gin.Context, svc provider, userInfo *userInfo, account *model.Account, deviceID string, deviceName *string, platform model.ClientPlatform, parentSession *model.AuthSession) (*model.AuthSession, error) {
+func (d Deps) createSessionForUser(c *gin.Context, svc provider, userInfo *userInfo, account *model.Account, deviceID string, deviceName *string, platform model.ClientPlatform, parentSession *model.AuthSession, challenge *model.AuthChallenge) (*model.AuthSession, error) {
 	ctx := c.Request.Context()
 	providerName := svc.name()
 	now := time.Now().UTC()
@@ -688,15 +702,26 @@ func (d Deps) createSessionForUser(c *gin.Context, svc provider, userInfo *userI
 	if err != nil {
 		return nil, err
 	}
+	// Tie the session to the challenge recorded for this sign-in so it can be
+	// traced back; losing the link must not fail the login.
+	if challenge != nil {
+		if err := d.Store.SetSessionChallenge(ctx, session.Id, challenge.Id); err != nil && d.Log != nil {
+			d.Log.Warn("link social session to challenge failed", "session", session.Id, "challenge", challenge.Id, "error", err)
+		}
+	}
 
 	if d.Logs != nil {
 		ua := c.Request.UserAgent()
 		ip := middleware.ClientIP(c.Request)
 		sid := session.Id
-		_ = d.Logs.Create(ctx, account.Id, model.ActionLogNewLogin, map[string]any{
+		meta := map[string]any{
 			"session_type": model.SessionTypeOidc.String(),
 			"provider":     providerName,
-		}, ua, ip, nil, &sid)
+		}
+		if challenge != nil {
+			meta["challenge_id"] = challenge.Id
+		}
+		_ = d.Logs.Create(ctx, account.Id, model.ActionLogNewLogin, meta, ua, ip, nil, &sid)
 	}
 	return session, nil
 }

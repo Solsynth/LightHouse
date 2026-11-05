@@ -48,7 +48,13 @@ func challengeFromEntity(entity *ChallengeEntity) *model.AuthChallenge {
 		SessionId:           uuidPtrStr(entity.SessionID),
 		SudoUntil:           timePtr(entity.SudoUntil),
 		ExtraFactorType:     entity.ExtraFactorType,
+		Origin:              derefString(entity.Origin),
+		RiskScore:           entity.RiskScore,
 	}
+	if entity.RiskSignals != nil {
+		_ = decodeJSON(entity.RiskSignals, &challenge.RiskSignals)
+	}
+	_ = decodeJSON(&entity.Trail, &challenge.Trail)
 	_ = decodeJSON(&entity.Audiences, &challenge.Audiences)
 	_ = decodeJSON(&entity.Scopes, &challenge.Scopes)
 	_ = decodeJSON(&entity.BlacklistFactors, &challenge.BlacklistFactors)
@@ -148,6 +154,14 @@ func (s *Store) CreateAuthChallenge(ctx context.Context, ch *model.AuthChallenge
 		}
 		location = encoded
 	}
+	var riskSignals *datatypes.JSON
+	if len(ch.RiskSignals) > 0 {
+		encoded, err := encodeJSONPtr(ch.RiskSignals)
+		if err != nil {
+			return err
+		}
+		riskSignals = encoded
+	}
 	createdAt, updatedAt := timeValue(ch.CreatedAt), timeValue(ch.UpdatedAt)
 	if createdAt == nil || updatedAt == nil {
 		return fmt.Errorf("challenge %s must carry created_at and updated_at", ch.Id)
@@ -183,7 +197,33 @@ func (s *Store) CreateAuthChallenge(ctx context.Context, ch *model.AuthChallenge
 		SessionID:        boundSession,
 		SudoUntil:        timeValue(ch.SudoUntil),
 		ExtraFactorType:  ch.ExtraFactorType,
+		Origin:           optionalString(ch.Origin),
+		RiskScore:        ch.RiskScore,
+		RiskSignals:      riskSignals,
+		// trail is jsonb NOT NULL: seed with whatever the caller recorded.
+		Trail: datatypes.JSON(jsonbOrEmpty(ch.Trail)),
 	}).Error
+}
+
+// AppendChallengeEvent atomically appends one event to a challenge's trail. It
+// is a single jsonb concatenation, so concurrent requests on the same
+// challenge cannot overwrite each other's entries, and UpdateAuthChallenge
+// (which never writes trail) cannot clobber it either.
+func (s *Store) AppendChallengeEvent(ctx context.Context, challengeID string, event model.ChallengeEvent) error {
+	id, err := uuid.Parse(challengeID)
+	if err != nil {
+		return fmt.Errorf("invalid challenge id %q: %w", challengeID, err)
+	}
+	if event.At.IsZero() {
+		event.At = time.Now().UTC()
+	}
+	encoded, err := json.Marshal([]model.ChallengeEvent{event})
+	if err != nil {
+		return err
+	}
+	return s.DB.WithContext(ctx).Unscoped().Model(&ChallengeEntity{}).
+		Where("id = ?", id).
+		UpdateColumn("trail", gorm.Expr("COALESCE(trail, '[]'::jsonb) || ?::jsonb", string(encoded))).Error
 }
 
 // optionalString maps "" to nil so an omitted purpose stores SQL NULL.
@@ -241,6 +281,12 @@ func (s *Store) UpdateAuthChallenge(ctx context.Context, ch *model.AuthChallenge
 			"session_id":             boundSession,
 			"sudo_until":             timeValue(ch.SudoUntil),
 			"extra_factor_type":      ch.ExtraFactorType,
+			// Set once the account behind an anonymous passkey challenge (or
+			// the risk behind a re-scored one) is known; trail is never
+			// written here, see AppendChallengeEvent.
+			"origin":       optionalString(ch.Origin),
+			"risk_score":   ch.RiskScore,
+			"risk_signals": riskSignalsJSON(ch.RiskSignals),
 		}).Error
 }
 
@@ -578,4 +624,47 @@ func (s *Store) GetPasskeyByAccountAndCredentialID(ctx context.Context, accountI
 	}
 	passkey := passkeyFromEntity(&entity)
 	return &passkey, nil
+}
+
+// SetSessionChallenge links a session to the challenge that authorized it, so
+// session -> challenge -> trail answers "how did this login happen" even for
+// sessions minted outside the challenge exchange (provider sign-ins).
+func (s *Store) SetSessionChallenge(ctx context.Context, sessionID, challengeID string) error {
+	sid, err := uuid.Parse(sessionID)
+	if err != nil {
+		return fmt.Errorf("invalid session id %q: %w", sessionID, err)
+	}
+	cid, err := uuid.Parse(challengeID)
+	if err != nil {
+		return fmt.Errorf("invalid challenge id %q: %w", challengeID, err)
+	}
+	return s.DB.WithContext(ctx).Model(&AuthSessionEntity{}).
+		Where("id = ?", sid).UpdateColumn("challenge_id", cid).Error
+}
+
+// FindSessionIDByChallenge returns the session minted from a challenge, or ""
+// when there is none.
+func (s *Store) FindSessionIDByChallenge(ctx context.Context, challengeID string) (string, error) {
+	cid, err := uuid.Parse(challengeID)
+	if err != nil {
+		return "", err
+	}
+	var id uuid.UUID
+	if err := s.DB.WithContext(ctx).Model(&AuthSessionEntity{}).
+		Select("id").Where("challenge_id = ?", cid).Order("created_at").Limit(1).Scan(&id).Error; err != nil {
+		return "", err
+	}
+	if id == uuid.Nil {
+		return "", nil
+	}
+	return id.String(), nil
+}
+
+// riskSignalsJSON encodes the signals for the nullable jsonb column; no signals
+// stores SQL NULL.
+func riskSignalsJSON(signals []string) any {
+	if len(signals) == 0 {
+		return nil
+	}
+	return datatypes.JSON(jsonbOrEmpty(signals))
 }

@@ -1,6 +1,9 @@
 package model
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Auth models mirror DysonNetwork.Shared.Models.AuthSession.cs and related
 // files. JSON keys match the Island SDK parsers (auth_session.g.dart).
@@ -139,6 +142,53 @@ type AuthChallenge struct {
 	// ExtraFactorType, when set, marks the synthetic emailed fallback step of
 	// an elevation challenge (typed as an AuthFactorType). Never on the wire.
 	ExtraFactorType *int `json:"-"`
+
+	// Origin names the sign-in path that opened the challenge (see the
+	// ChallengeOrigin* constants). RiskScore/RiskSignals snapshot the scoring
+	// that decided how many steps it demanded. Trail is the append-only event
+	// log. None of these are on the wire: they are read through the admin
+	// surface only.
+	Origin      string           `json:"-"`
+	RiskScore   *float64         `json:"-"`
+	RiskSignals []string         `json:"-"`
+	Trail       []ChallengeEvent `json:"-"`
+}
+
+// Challenge origins: how a challenge was opened.
+const (
+	ChallengeOriginPassword  = "password"
+	ChallengeOriginPasskey   = "passkey"
+	ChallengeOriginQR        = "qr"
+	ChallengeOriginSudo      = "sudo"
+	ChallengeOriginSocialMFA = "social_mfa" // suffixed ":<provider>"
+)
+
+// Challenge trail event types.
+const (
+	ChallengeEventCreated       = "created"
+	ChallengeEventFactorOK      = "factor_ok"
+	ChallengeEventFactorFailed  = "factor_failed"
+	ChallengeEventCodeRequested = "code_requested"
+	ChallengeEventEscalated     = "escalated"
+	ChallengeEventApproved      = "approved"
+	ChallengeEventDeclined      = "declined"
+	ChallengeEventBlocked       = "blocked"
+	ChallengeEventExchanged     = "exchanged"
+)
+
+// ChallengeEvent is one entry of a challenge's trail. IpAddress/UserAgent are
+// those of the request that caused the event, which may differ from the ones
+// the challenge was opened with — that difference is often the whole story.
+type ChallengeEvent struct {
+	At         time.Time `json:"at"`
+	Type       string    `json:"type"`
+	FactorId   string    `json:"factor_id,omitempty"`
+	FactorType *int      `json:"factor_type,omitempty"`
+	IpAddress  string    `json:"ip_address,omitempty"`
+	UserAgent  string    `json:"user_agent,omitempty"`
+	DeviceId   string    `json:"device_id,omitempty"`
+	SessionId  string    `json:"session_id,omitempty"` // acting / resulting session
+	Detail     string    `json:"detail,omitempty"`
 }
 
 // MarshalJSON normalizes nil list fields to [] so the Dart SDK's strict

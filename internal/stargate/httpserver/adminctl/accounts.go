@@ -193,6 +193,7 @@ func accountAdminRoutes(d Deps) []adminRoute {
 
 		{Method: http.MethodGet, Path: ":name/sessions", Keys: []string{permission.AccountsView}, Handler: listAccountSessions(d)},
 		{Method: http.MethodGet, Path: ":name/sessions/:sessionId/children", Keys: []string{permission.AccountsView}, Handler: listAccountSessionChildren(d)},
+		{Method: http.MethodGet, Path: ":name/sessions/:sessionId/challenge", Keys: []string{permission.AccountsView}, Handler: getAccountSessionChallenge(d)},
 		{Method: http.MethodDelete, Path: ":name/sessions/:sessionId", Keys: []string{permission.AdminAccountsSessionsManage}, Handler: revokeAccountSession(d)},
 
 		{Method: http.MethodGet, Path: ":name/contacts", Keys: []string{permission.AccountsView}, Handler: listAccountContacts(d)},
@@ -2238,4 +2239,87 @@ func punishmentNewer(a, b *model.Punishment) bool {
 		return true
 	}
 	return at.Time().After(bt.Time())
+}
+
+// challengeAuditResponse exposes the forensic details of how the challenge
+// was opened and verified, allowing admins/security engineers to back-track
+// suspicious logins.
+type challengeAuditResponse struct {
+	ChallengeID string                 `json:"challenge_id"`
+	Origin      string                 `json:"origin"`
+	RiskScore   *float64               `json:"risk_score,omitempty"`
+	RiskSignals []string               `json:"risk_signals,omitempty"`
+	StepTotal   int                    `json:"step_total"`
+	StepRemain  int                    `json:"step_remain"`
+	IpAddress   *string                `json:"ip_address,omitempty"`
+	UserAgent   *string                `json:"user_agent,omitempty"`
+	Location    *model.GeoPoint        `json:"location,omitempty"`
+	DeviceId    string                 `json:"device_id"`
+	DeviceName  *string                `json:"device_name,omitempty"`
+	Platform    model.ClientPlatform   `json:"platform"`
+	CreatedAt   *model.Time            `json:"created_at,omitempty"`
+	ApprovedAt  *model.Time            `json:"approved_at,omitempty"`
+	DeclinedAt  *model.Time            `json:"declined_at,omitempty"`
+	Trail       []model.ChallengeEvent `json:"trail"`
+}
+
+func getAccountSessionChallenge(d Deps) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		account := lookupAccount(c, d, c.Param("name"))
+		if account == nil {
+			return
+		}
+		accountID, _ := uuid.Parse(account.Id)
+		sessionID, err := uuid.Parse(c.Param("sessionId"))
+		if err != nil {
+			accountNotFound(c)
+			return
+		}
+		session, err := d.Store.AdminGetSession(c.Request.Context(), accountID, sessionID)
+		if err != nil {
+			if err == store.ErrNotFound {
+				accountNotFound(c)
+				return
+			}
+			serverError(c, err, d)
+			return
+		}
+		if session.ChallengeId == nil || *session.ChallengeId == "" {
+			c.JSON(http.StatusNotFound, errs.New("CHALLENGE_NOT_FOUND", "No challenge associated with this session.", http.StatusNotFound))
+			return
+		}
+		challengeID, err := uuid.Parse(*session.ChallengeId)
+		if err != nil {
+			serverError(c, err, d)
+			return
+		}
+		challenge, err := d.Store.GetAuthChallenge(c.Request.Context(), challengeID)
+		if err != nil {
+			if err == store.ErrNotFound {
+				c.JSON(http.StatusNotFound, errs.New("CHALLENGE_NOT_FOUND", "Associated challenge record not found.", http.StatusNotFound))
+				return
+			}
+			serverError(c, err, d)
+			return
+		}
+
+		c.JSON(http.StatusOK, challengeAuditResponse{
+			ChallengeID: challenge.Id,
+			Origin:      challenge.Origin,
+			RiskScore:   challenge.RiskScore,
+			RiskSignals: challenge.RiskSignals,
+			StepTotal:   challenge.StepTotal,
+			StepRemain:  challenge.StepRemain,
+			IpAddress:   challenge.IpAddress,
+			UserAgent:   challenge.UserAgent,
+			Location:    challenge.Location,
+			DeviceId:    challenge.DeviceId,
+			DeviceName:  challenge.DeviceName,
+			Platform:    challenge.Platform,
+			CreatedAt:   challenge.CreatedAt,
+			ApprovedAt:  challenge.ApprovedAt,
+			DeclinedAt:  challenge.DeclinedAt,
+			Trail:       challenge.Trail,
+		})
+	}
 }
