@@ -24,6 +24,7 @@ import type { Locale } from '@/lib/prefs'
 import ElevationSheet from '@/components/ElevationSheet.vue'
 import PendingLoginPrompt from '@/components/PendingLoginPrompt.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
+import { SkeletonBox } from 'skullet/vue'
 import TextField from '@/components/TextField.vue'
 
 const session = useSessionStore()
@@ -407,15 +408,15 @@ function changeLocale(event: Event) {
           <div ref="region" class="page-region">
             <div v-if="booting" class="px-shell py-7 sm:px-shell-wide sm:py-9">
               <div class="mb-8 space-y-3" aria-hidden="true">
-                <span class="skeleton h-6 w-40" />
-                <span class="skeleton h-2.5 w-64 max-w-full" />
+                <SkeletonBox height="1.5rem" width="10rem" />
+                <SkeletonBox height="0.625rem" width="16rem" class="max-w-full" />
               </div>
               <section
                 class="overflow-hidden rounded-card bg-base-200/50"
                 aria-hidden="true"
               >
                 <div class="px-6 pb-1.5 pt-5">
-                  <span class="skeleton h-2 w-24" />
+                  <SkeletonBox height="0.5rem" width="6rem" />
                 </div>
                 <div class="px-6 py-5">
                   <LoadingSkeleton :rows="4" :columns="[3, 2]" header />

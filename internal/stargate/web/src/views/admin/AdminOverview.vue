@@ -12,6 +12,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import IconButton from '@/components/IconButton.vue'
+import { SkeletonBox } from 'skullet/vue'
 
 const { t } = useI18n()
 
@@ -80,7 +81,7 @@ onMounted(load)
           {{ t('admin.overview.statAccounts') }}
         </p>
         <p class="mt-2 text-2xl font-normal numeric text-base-content">
-          <span v-if="loading" class="skeleton h-6 w-16" aria-hidden="true" />
+          <SkeletonBox v-if="loading" height="1.5rem" width="4rem" aria-hidden="true" />
           <template v-else>{{ compactNumber(accounts) }}</template>
         </p>
         <p class="mt-1 text-2xs text-faint">{{ t('admin.overview.statAccountsNote') }}</p>
@@ -90,7 +91,7 @@ onMounted(load)
           {{ t('admin.overview.statRestricted') }}
         </p>
         <p class="mt-2 text-2xl font-normal numeric text-base-content">
-          <span v-if="loading" class="skeleton h-6 w-16" aria-hidden="true" />
+          <SkeletonBox v-if="loading" height="1.5rem" width="4rem" aria-hidden="true" />
           <template v-else>{{ compactNumber(suspended) }}</template>
         </p>
         <p class="mt-1 text-2xs text-faint">{{ t('admin.overview.statRestrictedNote') }}</p>

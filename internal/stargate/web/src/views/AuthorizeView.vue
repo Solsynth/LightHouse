@@ -11,6 +11,7 @@ import { StargateError } from '@/lib/api/client'
 import type { AuthorizeClientInfo, CloudFileRef } from '@/lib/api/types'
 import { resolveFileUrl } from '@/lib/media'
 import AppMark from '@/components/AppMark.vue'
+import { SkeletonBox } from 'skullet/vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -112,8 +113,8 @@ onMounted(load)
 
     <div v-if="loading" class="mt-6 overflow-hidden rounded-card bg-base-200/50" aria-hidden="true">
       <div class="space-y-3 bg-base-200/40 px-4 py-3">
-        <span class="skeleton h-3 w-2/3" />
-        <span class="skeleton h-3 w-1/2" />
+        <SkeletonBox height="0.75rem" width="66.667%" />
+        <SkeletonBox height="0.75rem" width="50%" />
       </div>
     </div>
 

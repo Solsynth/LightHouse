@@ -13,6 +13,7 @@ import { resolveFileUrl } from '@/lib/media'
 import { remaining } from '@/lib/format'
 import AppMark from '@/components/AppMark.vue'
 import TextField from '@/components/TextField.vue'
+import { SkeletonBox } from 'skullet/vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -185,10 +186,10 @@ onMounted(() => {
     </form>
 
     <div v-if="loading" class="mt-6 overflow-hidden rounded-card bg-base-200/50" aria-hidden="true">
-      <span class="skeleton mx-4 my-2.5 h-2 w-24" />
+      <SkeletonBox class="mx-4 my-2.5" height="0.5rem" width="6rem" />
       <div class="space-y-3 bg-base-200/40 px-4 py-3">
-        <span class="skeleton h-3 w-2/3" />
-        <span class="skeleton h-3 w-1/2" />
+        <SkeletonBox height="0.75rem" width="66.667%" />
+        <SkeletonBox height="0.75rem" width="50%" />
       </div>
     </div>
 

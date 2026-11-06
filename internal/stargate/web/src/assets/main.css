@@ -239,6 +239,16 @@
   html {
     color-scheme: dark;
     background: var(--color-base-100);
+
+    /* Skullet draws every loading placeholder. Its fill and highlight resolve
+       through the active daisyUI theme, its radius is the chip corner, and the
+       pulse keeps the old breathing rhythm. The library's stylesheet also
+       holds still under reduced motion. */
+    --skullet-base: color-mix(in oklab, var(--color-base-300) 70%, transparent);
+    --skullet-highlight: color-mix(in oklab, var(--color-base-100) 60%, transparent);
+    --skullet-radius: var(--radius-chip);
+    --skullet-animation: pulse;
+    --skullet-speed: fast;
   }
 
   html[data-theme='stargate-light'] {
@@ -863,24 +873,6 @@
     background-color: color-mix(in oklab, var(--color-base-300) 70%, transparent);
     font-weight: 600;
     letter-spacing: 0.01em;
-  }
-
-  /* Loading placeholder: a single soft sweep replaces a "reading…" line, so a
-     surface that has not resolved yet still shows its layout. It carries no
-     information and must never be announced as content. */
-  .skeleton {
-    @apply block rounded-chip bg-base-300/70;
-    animation: skeleton-sweep 1.4s ease-in-out infinite;
-  }
-
-  @keyframes skeleton-sweep {
-    0%,
-    100% {
-      opacity: 0.55;
-    }
-    50% {
-      opacity: 1;
-    }
   }
 
   /* ── Shell & Navigation ─────────────────────────────────────────────── */

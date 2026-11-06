@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { SkeletonBox } from 'skullet/vue'
 
 import { authApi } from '@/lib/api'
 
@@ -162,7 +163,7 @@ onUnmounted(cleanup)
 
 <template>
   <div class="flex min-h-[68px] w-full flex-col items-center justify-center gap-2">
-    <span v-if="loading" class="skeleton h-3 w-32" aria-hidden="true" />
+    <SkeletonBox v-if="loading" height="0.75rem" width="8rem" aria-hidden="true" />
     <p v-else-if="error" class="text-center text-2xs text-error">{{ error }}</p>
     <div ref="container" class="flex w-full justify-center" />
   </div>

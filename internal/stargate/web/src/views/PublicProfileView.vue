@@ -13,6 +13,7 @@ import { contactTypeLabel } from '@/lib/enums'
 import { utcStamp } from '@/lib/format'
 import { MODULES } from '@/lib/modules'
 import { useModulesStore } from '@/stores/modules'
+import { SkeletonBox } from 'skullet/vue'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -116,16 +117,16 @@ watch([locale, () => account.value?.name], updateTitle)
       <div class="h-36 bg-base-300/50" />
       <div class="px-5 pb-6">
         <div class="relative z-10 flex flex-wrap items-end gap-4">
-          <span class="skeleton -mt-8 h-[72px] w-[72px] rounded-full" />
+          <SkeletonBox class="-mt-8" height="72px" width="72px" radius="50%" />
           <div class="min-w-0 space-y-2 pb-1">
-            <span class="skeleton h-4 w-40" />
-            <span class="skeleton h-2 w-24" />
+            <SkeletonBox height="1rem" width="10rem" />
+            <SkeletonBox height="0.5rem" width="6rem" />
           </div>
         </div>
         <div class="mt-6 space-y-3">
-          <span class="skeleton h-2 w-16" />
-          <span class="skeleton h-3 w-full max-w-2xl" />
-          <span class="skeleton h-3 w-4/5 max-w-xl" />
+          <SkeletonBox height="0.5rem" width="4rem" />
+          <SkeletonBox height="0.75rem" width="100%" class="max-w-2xl" />
+          <SkeletonBox height="0.75rem" width="80%" class="max-w-xl" />
         </div>
       </div>
     </div>
