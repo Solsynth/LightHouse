@@ -98,5 +98,5 @@ func E2EE(c *core.Services) e2eectl.Deps {
 }
 
 func Spell(c *core.Services) spellctl.Deps {
-	return spellctl.Deps{Store: c.Store, Spell: c.Spells, Log: c.Log}
+	return spellctl.Deps{Store: c.Store, Spell: c.Spells, Logs: c.Logs, Log: c.Log}
 }

@@ -118,6 +118,18 @@ func (c *controller) createApiKey(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to issue API key token.", http.StatusInternalServerError))
 		return
 	}
+	meta := map[string]any{
+		"api_key_id": key.Id,
+		"label":      key.Label,
+	}
+	if key.AppId != nil {
+		meta["app_id"] = *key.AppId
+	}
+	if key.ExpiredAt != nil {
+		meta["expires_at"] = key.ExpiredAt
+	}
+	c.actionLog(reqCtx, user.Id, model.ActionLogApiKeyCreate, meta,
+		ctx.Request, currentSessionID(reqCtx))
 	ctx.JSON(http.StatusOK, apiKeyCreated{
 		Id:        key.Id,
 		Label:     key.Label,
@@ -158,6 +170,10 @@ func (c *controller) revokeApiKey(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to revoke API key.", http.StatusInternalServerError))
 		return
 	}
+	c.actionLog(reqCtx, user.Id, model.ActionLogApiKeyRevoke, map[string]any{
+		"api_key_id": key.Id,
+		"label":      key.Label,
+	}, ctx.Request, currentSessionID(reqCtx))
 	ctx.Status(http.StatusOK)
 }
 
@@ -197,5 +213,9 @@ func (c *controller) rotateApiKey(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to issue API key token.", http.StatusInternalServerError))
 		return
 	}
+	c.actionLog(reqCtx, user.Id, model.ActionLogApiKeyRotate, map[string]any{
+		"api_key_id": rotated.Id,
+		"label":      rotated.Label,
+	}, ctx.Request, currentSessionID(reqCtx))
 	ctx.JSON(http.StatusOK, gin.H{"token": token})
 }

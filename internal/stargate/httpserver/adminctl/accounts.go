@@ -22,6 +22,7 @@ import (
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
+	"src.solsynth.dev/sosys/stargate/actionlog"
 	"src.solsynth.dev/sosys/stargate/auth"
 	"src.solsynth.dev/sosys/stargate/middleware"
 	"src.solsynth.dev/sosys/stargate/model"
@@ -765,6 +766,15 @@ func listAccountContacts(d Deps) gin.HandlerFunc {
 	}
 }
 
+// adminContactMeta is the admin-side twin of securityctl.contactMeta: the
+// target row id plus a masked hint, never the full address.
+func adminContactMeta(contact *model.Contact) map[string]any {
+	return map[string]any{
+		"contact_id":   contact.Id,
+		"contact_type": actionlog.ContactTypeName(contact.Type),
+		"contact_hint": actionlog.MaskContactContent(contact.Type, contact.Content),
+	}
+}
 func createAccountContact(d Deps) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var request adminContactRequest
@@ -786,6 +796,7 @@ func createAccountContact(d Deps) gin.HandlerFunc {
 			serverError(c, err, d)
 			return
 		}
+		logAction(d, c, accountID, model.ActionLogAccountContactCreate, adminContactMeta(contact))
 		c.JSON(http.StatusOK, contact)
 	}
 }
@@ -816,6 +827,7 @@ func updateAccountContact(d Deps) gin.HandlerFunc {
 			serverError(c, err, d)
 			return
 		}
+		logAction(d, c, accountID, model.ActionLogAccountContactUpdate, adminContactMeta(contact))
 		c.JSON(http.StatusOK, contact)
 	}
 }
@@ -865,6 +877,7 @@ func requestAccountContactVerification(d Deps) gin.HandlerFunc {
 			serverError(c, err, d)
 			return
 		}
+		logAction(d, c, accountID, model.ActionLogAccountContactVerificationReq, adminContactMeta(contact))
 		c.JSON(http.StatusOK, contact)
 	}
 }
@@ -1056,6 +1069,7 @@ func verifyAccountContact(d Deps) gin.HandlerFunc {
 			serverError(c, err, d)
 			return
 		}
+		logAction(d, c, accountID, model.ActionLogAdminContactVerify, adminContactMeta(contact))
 		c.JSON(http.StatusOK, contact)
 	}
 }
@@ -1081,6 +1095,7 @@ func unverifyAccountContact(d Deps) gin.HandlerFunc {
 			serverError(c, err, d)
 			return
 		}
+		logAction(d, c, accountID, model.ActionLogAccountContactUnverify, adminContactMeta(contact))
 		c.JSON(http.StatusOK, contact)
 	}
 }
@@ -1106,6 +1121,7 @@ func setPrimaryAccountContact(d Deps) gin.HandlerFunc {
 			serverError(c, err, d)
 			return
 		}
+		logAction(d, c, accountID, model.ActionLogAccountContactPrimary, adminContactMeta(contact))
 		c.JSON(http.StatusOK, contact)
 	}
 }
@@ -1136,6 +1152,9 @@ func setAccountContactVisibility(d Deps) gin.HandlerFunc {
 			serverError(c, err, d)
 			return
 		}
+		meta := adminContactMeta(contact)
+		meta["is_public"] = request.IsPublic
+		logAction(d, c, accountID, model.ActionLogAccountContactVisibility, meta)
 		c.JSON(http.StatusOK, contact)
 	}
 }
@@ -1152,6 +1171,15 @@ func deleteAccountContact(d Deps) gin.HandlerFunc {
 			accountNotFound(c)
 			return
 		}
+		contact, err := d.Store.AdminGetContact(c.Request.Context(), accountID, contactID)
+		if err != nil {
+			if err == store.ErrNotFound {
+				accountNotFound(c)
+				return
+			}
+			serverError(c, err, d)
+			return
+		}
 		if err := d.Store.AdminDeleteContact(c.Request.Context(), accountID, contactID); err != nil {
 			if err == store.ErrNotFound {
 				accountNotFound(c)
@@ -1160,6 +1188,7 @@ func deleteAccountContact(d Deps) gin.HandlerFunc {
 			serverError(c, err, d)
 			return
 		}
+		logAction(d, c, accountID, model.ActionLogAccountContactDelete, adminContactMeta(contact))
 		c.Status(http.StatusNoContent)
 	}
 }
@@ -1356,12 +1385,14 @@ func resetAccountPasswordFactor(d Deps) gin.HandlerFunc {
 			if len(sessions) > 0 {
 				logAction(d, c, accountID, model.ActionLogSessionRevoke, map[string]any{
 					"count":  len(sessions),
-					"reason": "account_punishment",
+					"reason": "password_reset",
 				})
 			}
 		}
 		logAction(d, c, accountID, model.ActionLogAuthFactorResetPassword, map[string]any{
-			"factor_type": "Password",
+			"factor_type":     "Password",
+			"source":          "admin_password_reset",
+			"revoke_sessions": request.RevokeSessions,
 		})
 		c.JSON(http.StatusOK, toAuthFactorSummary(factor))
 	}
@@ -2165,6 +2196,9 @@ func activateAccount(d Deps) gin.HandlerFunc {
 		if withProfile != nil {
 			account = withProfile
 		}
+		logAction(d, c, accountID, model.ActionLogAccountActivate, map[string]any{
+			"activated_at": now,
+		})
 		c.JSON(http.StatusOK, account)
 	}
 }
@@ -2195,6 +2229,9 @@ func adminDeleteAccount(d Deps) gin.HandlerFunc {
 			serverError(c, err, d)
 			return
 		}
+		logAction(d, c, accountID, model.ActionLogAccountDelete, map[string]any{
+			"deleted_at": now,
+		})
 		if d.Log != nil {
 			d.Log.Warn("admin deleted account", "account", accountID, slog.String("actor", currentUserName(c)))
 		}

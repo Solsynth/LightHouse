@@ -13,7 +13,7 @@ import ConsolePanel from '@/components/ConsolePanel.vue'
 import IconButton from '@/components/IconButton.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const notice = useNoticeStore()
 
 const logs = ref<ActionLog[]>([])
@@ -62,14 +62,28 @@ function go(next: number) {
   void load()
 }
 
+// Action ids are the stable contract (and what the API filter takes); the
+// localized label is only presentation. Unknown ids fall back to the raw id,
+// so a new backend action is never hidden from the log.
+function actionLabel(action: string): string {
+  const key = `activity.actions.${action.replace(/[^a-zA-Z0-9]+/g, '_')}`
+  return te(key) ? t(key) : action
+}
+
 function metaSummary(meta?: Record<string, unknown>): string {
   if (!meta) return ''
-  const entries = Object.entries(meta)
+  return Object.entries(meta)
     .filter(([, value]) => value !== null && value !== undefined && value !== '')
-    .slice(0, 2)
-  return entries
-    .map(([key, value]) => `${key}=${Array.isArray(value) ? value.join(',') : String(value)}`)
-    .join(' ')
+    .slice(0, 6)
+    .map(([key, value]) => {
+      const rendered = Array.isArray(value)
+        ? value.join(', ')
+        : typeof value === 'object'
+          ? JSON.stringify(value)
+          : String(value)
+      return `${key}=${rendered}`
+    })
+    .join(' · ')
 }
 
 function copyRow(log: ActionLog) {
@@ -102,9 +116,10 @@ onMounted(load)
         type="button"
         class="chip transition-colors"
         :class="filter === action ? 'chip-active' : ''"
+        :title="action"
         @click="setFilter(action)"
       >
-        {{ action }}
+        {{ actionLabel(action) }}
       </button>
       <button
         v-if="filter"
@@ -142,7 +157,9 @@ onMounted(load)
               <td class="whitespace-nowrap text-xs tabular-nums text-dim">
                 {{ utcStamp(log.created_at).slice(0, 19).replace('T', ' ') }}
               </td>
-              <td class="whitespace-nowrap text-xs text-base-content">{{ log.action }}</td>
+              <td class="whitespace-nowrap text-xs text-base-content" :title="log.action">
+                {{ actionLabel(log.action) }}
+              </td>
               <td class="max-w-[280px] truncate text-2xs text-faint" :title="metaSummary(log.meta)">
                 {{ metaSummary(log.meta) || '—' }}
               </td>

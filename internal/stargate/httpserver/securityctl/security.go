@@ -215,6 +215,17 @@ func (c *controller) actionLog(ctx context.Context, accountID string, action mod
 	}
 }
 
+// currentSessionID returns the acting session id for audit metadata, or nil
+// when the request carries no session (the elevation and recovery flows can
+// reach these helpers without one).
+func currentSessionID(ctx context.Context) *string {
+	session := middleware.CurrentSession(ctx)
+	if session == nil || session.Id == "" {
+		return nil
+	}
+	return &session.Id
+}
+
 func factorTypeString(t model.AuthFactorType) string {
 	switch t {
 	case model.AuthFactorTypePassword:
@@ -1006,6 +1017,11 @@ func (c *controller) completePasskeyRegistration(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to store passkey.", http.StatusInternalServerError))
 		return
 	}
+	c.actionLog(reqCtx, user.Id, model.ActionLogPasskeyCreate, map[string]any{
+		"passkey_id": passkey.Id,
+		"label":      passkey.Label,
+		"device_id":  request.DeviceId,
+	}, ctx.Request, currentSessionID(reqCtx))
 	_ = c.d.Redis.Cache.Remove(reqCtx, key)
 	ctx.JSON(http.StatusOK, passkey)
 }
@@ -1061,6 +1077,10 @@ func (c *controller) updatePasskey(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to update passkey.", http.StatusInternalServerError))
 		return
 	}
+	c.actionLog(ctx.Request.Context(), user.Id, model.ActionLogPasskeyRename, map[string]any{
+		"passkey_id": passkey.Id,
+		"label":      passkey.Label,
+	}, ctx.Request, currentSessionID(ctx.Request.Context()))
 	ctx.JSON(http.StatusOK, passkey)
 }
 
@@ -1077,7 +1097,8 @@ func (c *controller) deletePasskey(ctx *gin.Context) {
 		ctx.JSON(http.StatusNotFound, notFoundResource(ctx.Param("id")))
 		return
 	}
-	if _, err := c.d.Store.GetPasskeyByID(reqCtx, user.Id, id); err != nil {
+	passkey, err := c.d.Store.GetPasskeyByID(reqCtx, user.Id, id)
+	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			ctx.JSON(http.StatusNotFound, notFoundResource(id.String()))
 			return
@@ -1089,6 +1110,10 @@ func (c *controller) deletePasskey(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to delete passkey.", http.StatusInternalServerError))
 		return
 	}
+	c.actionLog(reqCtx, user.Id, model.ActionLogPasskeyDelete, map[string]any{
+		"passkey_id": passkey.Id,
+		"label":      passkey.Label,
+	}, ctx.Request, currentSessionID(reqCtx))
 	ctx.Status(http.StatusNoContent)
 }
 
@@ -1133,11 +1158,29 @@ func (c *controller) updateSecurityPreferences(ctx *gin.Context) {
 			"Invalid security mode. Valid values: default, lockdown, lockoff.", http.StatusBadRequest))
 		return
 	}
+	previousMode, previousErr := c.d.Store.GetSecurityMode(ctx.Request.Context(), user.Id)
 	if err := c.d.Store.SetSecurityMode(ctx.Request.Context(), user.Id, mode); err != nil {
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to update security preferences.", http.StatusInternalServerError))
 		return
 	}
+	meta := map[string]any{"mode": mode.String()}
+	if previousErr == nil {
+		meta["previous_mode"] = previousMode.String()
+	}
+	c.actionLog(ctx.Request.Context(), user.Id, model.ActionLogAccountSecurityMode, meta,
+		ctx.Request, currentSessionID(ctx.Request.Context()))
 	ctx.JSON(http.StatusOK, gin.H{"mode": mode.String()})
+}
+
+// contactMeta names a contact without copying its full value into the audit
+// log. The id lets an investigator correlate with the row (including deleted
+// rows); the hint lets the owner recognize it at a glance.
+func contactMeta(contact *model.Contact) map[string]any {
+	return map[string]any{
+		"contact_id":   contact.Id,
+		"contact_type": actionlog.ContactTypeName(contact.Type),
+		"contact_hint": actionlog.MaskContactContent(contact.Type, contact.Content),
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1613,6 +1656,8 @@ func (c *controller) createContact(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to create contact.", http.StatusInternalServerError))
 		return
 	}
+	c.actionLog(reqCtx, user.Id, model.ActionLogAccountContactCreate, contactMeta(contact),
+		ctx.Request, currentSessionID(reqCtx))
 	ctx.JSON(http.StatusOK, contact)
 }
 
@@ -1655,6 +1700,8 @@ func (c *controller) verifyContact(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, errs.New("PADLOCK_CONTACT_VERIFICATION_FAILED", err.Error(), http.StatusBadRequest))
 		return
 	}
+	c.actionLog(reqCtx, user.Id, model.ActionLogAccountContactVerificationReq, contactMeta(contact),
+		ctx.Request, currentSessionID(reqCtx))
 	ctx.JSON(http.StatusOK, contact)
 }
 
@@ -1699,6 +1746,8 @@ func (c *controller) setPrimaryContact(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to update contact.", http.StatusInternalServerError))
 		return
 	}
+	c.actionLog(reqCtx, user.Id, model.ActionLogAccountContactPrimary, contactMeta(contact),
+		ctx.Request, currentSessionID(reqCtx))
 	contact.IsPrimary = true
 	ctx.JSON(http.StatusOK, contact)
 }
@@ -1729,6 +1778,10 @@ func (c *controller) setContactPublic(ctx *gin.Context, isPublic bool) {
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to update contact.", http.StatusInternalServerError))
 		return
 	}
+	meta := contactMeta(contact)
+	meta["is_public"] = isPublic
+	c.actionLog(reqCtx, user.Id, model.ActionLogAccountContactVisibility, meta,
+		ctx.Request, currentSessionID(reqCtx))
 	ctx.JSON(http.StatusOK, contact)
 }
 
@@ -1748,6 +1801,8 @@ func (c *controller) deleteContact(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to delete contact.", http.StatusInternalServerError))
 		return
 	}
+	c.actionLog(reqCtx, user.Id, model.ActionLogAccountContactDelete, contactMeta(contact),
+		ctx.Request, currentSessionID(reqCtx))
 	ctx.Status(http.StatusNoContent)
 }
 
@@ -1935,6 +1990,15 @@ func (c *controller) authorizeAppScopes(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to authorize app.", http.StatusInternalServerError))
 		return
 	}
+	meta := map[string]any{
+		"authorized_app_id": authorized.Id,
+		"app_id":            authorized.AppId,
+		"app_type":          int(authorized.Type),
+		"scopes":            authorized.Scopes,
+		"scopes_added":      newScopes,
+	}
+	c.actionLog(reqCtx, user.Id, model.ActionLogAuthorizedAppScopes, meta,
+		ctx.Request, currentSessionID(reqCtx))
 	ctx.JSON(http.StatusOK, authorizedAppResponse{
 		Id:               authorized.Id,
 		AppId:            authorized.AppId,
@@ -1984,6 +2048,12 @@ func (c *controller) deauthorizeApp(ctx *gin.Context) {
 		ctx.JSON(http.StatusNotFound, errs.New("PADLOCK_AUTHORIZED_APP_NOT_FOUND", "Authorized app was not found.", http.StatusNotFound))
 		return
 	}
+	meta := map[string]any{"authorized_app_id": id.String()}
+	if typ != nil {
+		meta["app_type"] = int(*typ)
+	}
+	c.actionLog(reqCtx, user.Id, model.ActionLogAuthorizedAppDeauthorize, meta,
+		ctx.Request, currentSessionID(reqCtx))
 	ctx.Status(http.StatusNoContent)
 }
 

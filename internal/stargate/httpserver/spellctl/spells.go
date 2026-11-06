@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
+	"src.solsynth.dev/sosys/stargate/actionlog"
 	"src.solsynth.dev/sosys/stargate/middleware"
 	"src.solsynth.dev/sosys/stargate/model"
 	// Aliased because every handler binds its result to a local named `spell`,
@@ -23,6 +24,7 @@ import (
 type Deps struct {
 	Store *store.Store
 	Spell *spellpkg.Service
+	Logs  *actionlog.Service
 	Log   *slog.Logger
 }
 
@@ -118,6 +120,8 @@ func applyMagicSpell(d Deps) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, errs.New("PASSPORT_SPELL_APPLY_FAILED", applyErr.Error(), http.StatusBadRequest))
 			return
 		}
+
+		d.logSpellApplied(c, spell)
 		c.Status(http.StatusOK)
 	}
 }
@@ -125,6 +129,58 @@ func applyMagicSpell(d Deps) gin.HandlerFunc {
 // magicSpellApplyRequest mirrors MagicSpellApplyRequest.
 type magicSpellApplyRequest struct {
 	NewPassword *string `json:"new_password"`
+}
+
+// spellAppliedAudit maps a consumed spell to the activity-log event it
+// produced. It is pure so the audit contract (which action, which metadata,
+// never the raw contact address) is testable without a database.
+func spellAppliedAudit(spell *model.MagicSpell) (model.ActionLogType, map[string]any, bool) {
+	if spell == nil {
+		return "", nil, false
+	}
+	meta := map[string]any{"spell_id": spell.Id, "source": "spell"}
+	var action model.ActionLogType
+	switch spell.Type {
+	case model.MagicSpellTypeAuthPasswordReset:
+		action = model.ActionLogAuthFactorResetPassword
+		meta["factor_type"] = "Password"
+		meta["source"] = "recovery_spell"
+	case model.MagicSpellTypeContactVerification:
+		action = model.ActionLogAccountContactVerify
+		meta["contact_type"] = "Email"
+		if id, ok := spell.Meta["contact_id"].(string); ok && id != "" {
+			meta["contact_id"] = id
+		}
+		if method, ok := spell.Meta["contact_method"].(string); ok && method != "" {
+			meta["contact_hint"] = actionlog.MaskContactContent(int(model.ContactTypeEmail), method)
+		}
+	default:
+		return "", nil, false
+	}
+	return action, meta, true
+}
+
+// logSpellApplied records the audit event a successful spell apply produced.
+// The spell word is itself the bearer credential, so even an unauthenticated
+// apply carries an account id: that is exactly the security-relevant fact the
+// activity log exists to preserve.
+func (d Deps) logSpellApplied(c *gin.Context, spell *model.MagicSpell) {
+	if d.Logs == nil || spell == nil || spell.AccountId == "" {
+		return
+	}
+	action, meta, ok := spellAppliedAudit(spell)
+	if !ok {
+		return
+	}
+	var sessionID *string
+	if session := middleware.CurrentSession(c.Request.Context()); session != nil && session.Id != "" {
+		sessionID = &session.Id
+	}
+	err := d.Logs.Create(c.Request.Context(), spell.AccountId, action, meta,
+		c.Request.UserAgent(), middleware.ClientIP(c.Request), nil, sessionID)
+	if err != nil && d.Log != nil {
+		d.Log.WarnContext(c.Request.Context(), "action log", "action", action, "error", err)
+	}
 }
 
 // resendMagicSpell mirrors MagicSpellController.ResendMagicSpell (public,

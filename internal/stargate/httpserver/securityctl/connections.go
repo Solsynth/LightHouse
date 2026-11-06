@@ -14,6 +14,7 @@ import (
 
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/middleware"
+	"src.solsynth.dev/sosys/stargate/model"
 	"src.solsynth.dev/sosys/stargate/store"
 )
 
@@ -70,6 +71,10 @@ func (c *controller) removeConnection(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to delete connection.", http.StatusInternalServerError))
 		return
 	}
+	c.actionLog(reqCtx, user.Id, model.ActionLogAccountConnectionRemove, map[string]any{
+		"connection_id": connection.Id,
+		"provider":      connection.Provider,
+	}, ctx.Request, currentSessionID(reqCtx))
 	ctx.Status(http.StatusOK)
 }
 
@@ -111,5 +116,10 @@ func (c *controller) setConnectionVisibility(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to update connection.", http.StatusInternalServerError))
 		return
 	}
+	c.actionLog(reqCtx, user.Id, model.ActionLogAccountConnectionVisibility, map[string]any{
+		"connection_id": connection.Id,
+		"provider":      connection.Provider,
+		"is_public":     request.IsPublic,
+	}, ctx.Request, currentSessionID(reqCtx))
 	ctx.JSON(http.StatusOK, connection)
 }

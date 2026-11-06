@@ -219,6 +219,20 @@ func updatePunishment(d Deps) gin.HandlerFunc {
 			return
 		}
 		clearActorPermissionCache(d, c, accountID.String())
+		updateMeta := map[string]any{"punishment_id": punishment.Id}
+		if reason != nil {
+			updateMeta["reason"] = *reason
+		}
+		if expiredAt != nil {
+			updateMeta["expires_at"] = expiredAt
+		}
+		if ptype != nil {
+			updateMeta["type"] = punishmentTypeName(*ptype)
+		}
+		if hasBlocked {
+			updateMeta["blocked_permissions"] = blocked
+		}
+		logAction(d, c, accountID, model.ActionLogPunishmentUpdate, updateMeta)
 		view := punishmentView{Punishment: *punishment}
 		hydratePunishments(c, d, indexViews([]punishmentView{view}))
 		c.JSON(http.StatusOK, view)
@@ -251,6 +265,10 @@ func deletePunishment(d Deps) gin.HandlerFunc {
 			return
 		}
 		clearActorPermissionCache(d, c, accountID.String())
+		logAction(d, c, accountID, model.ActionLogPunishmentDelete, map[string]any{
+			"punishment_id": punishment.Id,
+			"type":          punishmentTypeName(int(punishment.Type)),
+		})
 		// Best-effort "punishment lifted" push (the C# localizes per account
 		// language; Stargate ships en/zh-hans strings).
 		title := localization.Localize(account.Language, "punishmentLiftedTitle", nil)
@@ -313,6 +331,18 @@ func createPunishmentInternal(c *gin.Context, d Deps, accountID, creatorID uuid.
 		return nil, err
 	}
 	clearActorPermissionCache(d, c, accountID.String())
+	createMeta := map[string]any{
+		"punishment_id":       punishment.Id,
+		"type":                punishmentTypeName(ptype),
+		"reason":              reason,
+		"blocked_permissions": blocked,
+		"revoke_sessions":     revokeSessions,
+		"creator_id":          creatorID.String(),
+	}
+	if expiredAt != nil {
+		createMeta["expires_at"] = expiredAt
+	}
+	logAction(d, c, accountID, model.ActionLogPunishmentCreate, createMeta)
 
 	if revokeSessions && (ptype == int(model.PunishmentBlockLogin) || ptype == int(model.PunishmentDisableAccount)) {
 		now := time.Now().UTC()

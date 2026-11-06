@@ -118,6 +118,32 @@ const (
 	ActionLogAdminContactVerify            ActionLogType = "admin.contacts.verify"
 	ActionLogAdminPasskeyDelete            ActionLogType = "admin.passkeys.delete"
 	ActionLogAdminBatchDeviceRevoke        ActionLogType = "admin.devices.batch_revoke"
+	// Security mutations that the C# fleet does not name explicitly. The
+	// activity log is the account's own audit trail, so every endpoint that
+	// changes who can get into the account or how it can be reached records
+	// one of these with the affected identifiers in Meta.
+	ActionLogAccountActivate               ActionLogType = "accounts.activate"
+	ActionLogAccountContactCreate          ActionLogType = "accounts.contacts.create"
+	ActionLogAccountContactUpdate          ActionLogType = "accounts.contacts.update"
+	ActionLogAccountContactVerificationReq ActionLogType = "accounts.contacts.verify_request"
+	ActionLogAccountContactVerify          ActionLogType = "accounts.contacts.verify"
+	ActionLogAccountContactUnverify        ActionLogType = "accounts.contacts.unverify"
+	ActionLogAccountContactPrimary         ActionLogType = "accounts.contacts.primary"
+	ActionLogAccountContactVisibility      ActionLogType = "accounts.contacts.visibility"
+	ActionLogAccountContactDelete          ActionLogType = "accounts.contacts.delete"
+	ActionLogAccountSecurityMode           ActionLogType = "accounts.security.mode"
+	ActionLogAccountConnectionRemove       ActionLogType = "accounts.connection.remove"
+	ActionLogAccountConnectionVisibility   ActionLogType = "accounts.connection.visibility"
+	ActionLogPasskeyCreate                 ActionLogType = "accounts.passkeys.create"
+	ActionLogPasskeyRename                 ActionLogType = "accounts.passkeys.rename"
+	ActionLogPasskeyDelete                 ActionLogType = "accounts.passkeys.delete"
+	ActionLogApiKeyCreate                  ActionLogType = "developer.api_keys.create"
+	ActionLogApiKeyRevoke                  ActionLogType = "developer.api_keys.revoke"
+	ActionLogApiKeyRotate                  ActionLogType = "developer.api_keys.rotate"
+	ActionLogAuthorizedAppScopes           ActionLogType = "developer.apps.scopes"
+	ActionLogPunishmentCreate              ActionLogType = "accounts.punishments.create"
+	ActionLogPunishmentUpdate              ActionLogType = "accounts.punishments.update"
+	ActionLogPunishmentDelete              ActionLogType = "accounts.punishments.delete"
 	// Wallet emits. The first four are inline string literals in the C#
 	// controllers; only StellarSupportMonth is a canonical ActionLogType there
 	// (and the sole one the progression registry tracks).

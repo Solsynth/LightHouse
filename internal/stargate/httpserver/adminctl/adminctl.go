@@ -224,6 +224,22 @@ func logAction(d Deps, ctx *gin.Context, accountID uuid.UUID, action model.Actio
 	if meta == nil {
 		meta = map[string]any{}
 	}
+	// Every admin action log is attributed to the target account, so the
+	// operator and their session have to travel in Meta; without them the
+	// trail cannot answer "who did this to the account".
+	if _, ok := meta["source"]; !ok {
+		meta["source"] = "admin"
+	}
+	if actor := middleware.CurrentUser(ctx.Request.Context()); actor != nil && actor.Id != "" {
+		if _, ok := meta["actor_id"]; !ok {
+			meta["actor_id"] = actor.Id
+		}
+	}
+	if session := middleware.CurrentSession(ctx.Request.Context()); session != nil && session.Id != "" {
+		if _, ok := meta["actor_session_id"]; !ok {
+			meta["actor_session_id"] = session.Id
+		}
+	}
 	ip := middleware.ClientIP(ctx.Request)
 	_ = d.Logs.Create(ctx.Request.Context(), accountID.String(), action, meta, ctx.Request.UserAgent(), ip, nil, nil)
 }
