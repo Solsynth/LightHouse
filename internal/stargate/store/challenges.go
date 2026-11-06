@@ -318,12 +318,13 @@ func (s *Store) FindLiveChallenge(ctx context.Context, accountID, ipAddress, use
 	return challengeFromEntity(&entity), nil
 }
 
-// ListPendingChallenges lists the account's reviewable challenges newest
-// first: live challenges from flows that prompt at creation (passwordless,
-// passkey, social), and password-first challenges from the moment their
-// password verified — while they still owe steps and again after the exchange
-// expires them, through the one-hour review window. Approving or declining
-// removes a row from this list.
+// ListPendingChallenges lists the account's incomplete login challenges newest
+// first — the ones another device can still act on. A challenge that has
+// satisfied every step is done: its session may already exist, so it must not
+// keep surfacing an approval prompt. password-first challenges stay hidden
+// until their password verifies (review_until marks that moment); every other
+// origin prompts at creation. Approving or declining removes a row, and an
+// expired challenge can no longer be completed.
 func (s *Store) ListPendingChallenges(ctx context.Context, accountID string) ([]model.AuthChallenge, error) {
 	var entities []ChallengeEntity
 	if err := s.DB.WithContext(ctx).
@@ -333,12 +334,13 @@ func (s *Store) ListPendingChallenges(ctx context.Context, accountID string) ([]
 		// never reviewed from another device; only login challenges belong in
 		// this list.
 		Where("purpose IS NULL").
+		// Still owes at least one step, and is not past its lifetime.
+		Where("step_remain > 0").
+		Where("expired_at IS NULL OR expired_at > now()").
 		// A password-first challenge must not surface before its password is
-		// entered: that is exactly what review_until marks (see doChallenge),
-		// and the same window keeps the satisfied challenge reviewable after
-		// the exchange expires it. Every other origin prompts at creation and
-		// stays listed while it can still be satisfied.
-		Where("((origin IS NULL OR origin <> ?) AND step_remain > 0 AND (expired_at IS NULL OR expired_at > now())) OR (review_until IS NOT NULL AND review_until > now())", model.ChallengeOriginPassword).
+		// entered; review_until is set at that point. Passwordless and other
+		// flows prompt at creation.
+		Where("origin IS NULL OR origin <> ? OR review_until IS NOT NULL", model.ChallengeOriginPassword).
 		Order("created_at DESC").Find(&entities).Error; err != nil {
 		return nil, err
 	}

@@ -30,11 +30,14 @@ const busy = ref(false)
 let timer: number | undefined
 let loading = false
 
-/** The oldest unreviewed challenge that did not start in this browser. */
+/** The oldest incomplete challenge that did not start in this browser. A
+ *  challenge that has satisfied every step is done; its prompt must not stay
+ *  on screen after the login completes elsewhere. */
 const current = computed(
   () =>
     challenges.value.find(
       (challenge) =>
+        challenge.step_remain > 0 &&
         !dismissed.value.has(challenge.id) &&
         challenge.device_id !== ownDeviceId &&
         !challenge.approved_at &&
@@ -42,9 +45,6 @@ const current = computed(
     ) ?? null,
 )
 
-/** A satisfied challenge is a completed sign-in under review; otherwise the
- *  device is still being asked for another factor. */
-const finished = computed(() => (current.value?.step_remain ?? 1) === 0)
 const device = computed(() => current.value?.device_name || t('common.unknown'))
 const place = computed(() => current.value?.ip_address || t('common.unknown'))
 const platform = computed(() => (current.value ? platformLabel(current.value.platform) : ''))
@@ -109,20 +109,15 @@ watch(
     v-if="current"
     class="modal modal-open"
     aria-modal="true"
-    :aria-label="t(finished ? 'loginPrompt.confirmTitle' : 'loginPrompt.title')"
+    :aria-label="t('loginPrompt.title')"
   >
     <div class="modal-box max-w-sm overflow-hidden p-0">
       <div class="px-6 py-5">
         <h2 class="text-sm text-base-content">
-          {{ t(finished ? 'loginPrompt.confirmTitle' : 'loginPrompt.title') }}
+          {{ t('loginPrompt.title') }}
         </h2>
         <p class="voice mt-2">
-          {{
-            t(finished ? 'loginPrompt.confirmBody' : 'loginPrompt.body', {
-              device,
-              ip: place,
-            })
-          }}
+          {{ t('loginPrompt.body', { device, ip: place }) }}
         </p>
         <p class="mt-2 text-2xs text-faint">{{ platform }}</p>
       </div>

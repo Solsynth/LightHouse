@@ -36,9 +36,6 @@ export default {
   loginPrompt: {
     title: '确认这次登录',
     body: '有人刚刚输入了密码，正从 {device}（IP 地址 {ip}）登录。批准以完成登录，或拒绝以阻止本次登录。',
-    confirmTitle: '确认这次登录',
-    confirmBody:
-      '有人刚刚使用你的密码从 {device}（IP 地址 {ip}）完成了登录。如果是你本人，请批准；否则请拒绝并退出该会话。',
     approve: '批准',
     deny: '拒绝',
     approved: '登录已批准。',

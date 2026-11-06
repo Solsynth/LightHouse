@@ -103,14 +103,10 @@ func TestRevokeSessionMintedByChallengeSignsOutSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list pending challenges: %v", err)
 	}
-	listed := false
 	for _, item := range pending {
 		if item.Id == ch.Id {
-			listed = true
+			t.Fatalf("satisfied challenge %s still listed as pending: %+v", ch.Id, pending)
 		}
-	}
-	if !listed {
-		t.Fatalf("satisfied challenge %s is missing from the review list: %+v", ch.Id, pending)
 	}
 	h.revokeSessionMintedByChallenge(ctx, ch, "reviewer-session", "203.0.113.5", "reviewer-agent")
 

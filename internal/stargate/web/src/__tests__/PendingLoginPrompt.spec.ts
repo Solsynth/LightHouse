@@ -23,7 +23,7 @@ vi.mock('@/lib/api', () => ({
 function challenge(overrides: Partial<AuthChallenge> = {}): AuthChallenge {
   return {
     id: 'challenge-1',
-    step_remain: 0,
+    step_remain: 1,
     step_total: 1,
     failed_attempts: 0,
     blacklist_factors: [],
@@ -60,7 +60,7 @@ describe('PendingLoginPrompt', () => {
     vi.useRealTimers()
   })
 
-  it('shows a completed sign-in from another device and approves it', async () => {
+  it('shows a sign-in that still owes a step and approves it', async () => {
     vi.mocked(authApi.pendingChallenges).mockResolvedValue([challenge()])
     const wrapper = await mountPrompt()
 
@@ -82,6 +82,15 @@ describe('PendingLoginPrompt', () => {
     await flushPromises()
 
     expect(authApi.declineChallenge).toHaveBeenCalledWith('challenge-1')
+  })
+
+  it('ignores a challenge that already satisfied every step', async () => {
+    vi.mocked(authApi.pendingChallenges).mockResolvedValue([
+      challenge({ step_remain: 0 }),
+    ])
+    const wrapper = await mountPrompt()
+
+    expect(wrapper.find('dialog').exists()).toBe(false)
   })
 
   it('leaves the challenge that started in this browser alone', async () => {
