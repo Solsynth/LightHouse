@@ -2,11 +2,13 @@ package auth
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -133,7 +135,7 @@ func (s *AuthService) ValidateCaptcha(ctx context.Context, token string) (bool, 
 	default:
 		return false, errors.New("the server misconfigured for the captcha")
 	}
-	form := "secret=" + secret + "&response=" + token
+	form := captchaVerifyForm(secret, token)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, verifyURL, strings.NewReader(form))
 	if err != nil {
 		return false, err
@@ -151,6 +153,13 @@ func (s *AuthService) ValidateCaptcha(ctx context.Context, token string) (bool, 
 		return false, err
 	}
 	return result.Success, nil
+}
+
+// captchaVerifyForm builds the provider's application/x-www-form-urlencoded
+// body. Both fields are encoded: concatenating them raw let a token such as
+// `x&secret=ATTACKER` append a second secret parameter.
+func captchaVerifyForm(secret, token string) string {
+	return url.Values{"secret": {secret}, "response": {token}}.Encode()
 }
 
 // --- Sessions ---
@@ -720,7 +729,12 @@ func (s *AuthService) RecoverAccountWithRecoveryCode(ctx context.Context, accoun
 		}
 		return nil, err
 	}
-	if factor.Secret != recoveryCode {
+	// Constant-time compare: a byte-wise `!=` returns early on the first
+	// mismatch, leaking how much of the code was guessed to a caller that can
+	// time the response. The length check is not secret (codes are fixed
+	// 32-hex), but is folded in so a short/long input never panics.
+	if len(factor.Secret) != len(recoveryCode) ||
+		subtle.ConstantTimeCompare([]byte(factor.Secret), []byte(recoveryCode)) != 1 {
 		return nil, &ErrInvalid{Message: "Invalid recovery code."}
 	}
 
@@ -866,6 +880,14 @@ func (s *AuthService) CreateSessionFromParent(ctx context.Context, parentSession
 	}
 	if parent.ExpiredAt != nil && !parent.ExpiredAt.Time().After(now) {
 		return nil, errors.New("Parent session is expired.")
+	}
+	// /auth/login/session is the first-party device flow. An OAuth/OIDC app
+	// token must not mint a new session from itself: its session is
+	// app-scoped, and copying it into another (sibling) session widens the
+	// number of credentials carrying that grant. API keys never reach here
+	// (RequireInteractive), but the check is explicit.
+	if parent.Type != model.SessionTypeLogin {
+		return nil, errors.New("Only a login session can create another session.")
 	}
 	device, err := s.GetOrCreateDevice(ctx, parentSession.AccountId, deviceID, deviceName, platform)
 	if err != nil {

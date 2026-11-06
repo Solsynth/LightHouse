@@ -62,7 +62,7 @@ func (s *Service) now() time.Time { return time.Now().UTC() }
 func (s *Service) Resolve(ctx context.Context, uid string, observer *uuid.UUID) (*ResolveResult, error) {
 	var tag TagEntity
 	err := s.store.DB.WithContext(ctx).
-		Where("uid = ? AND is_active = ?", strings.ToUpper(uid), true).
+		Where("uid = ? AND is_active = ? AND is_encrypted = ?", strings.ToUpper(uid), true, false).
 		First(&tag).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
@@ -85,7 +85,7 @@ func (s *Service) Resolve(ctx context.Context, uid string, observer *uuid.UUID) 
 func (s *Service) LookupByUID(ctx context.Context, uid string, observer *uuid.UUID) (*ResolveResult, error) {
 	var tag TagEntity
 	err := s.store.DB.WithContext(ctx).
-		Where("uid = ? AND is_active = ?", strings.ToUpper(uid), true).
+		Where("uid = ? AND is_active = ? AND is_encrypted = ?", strings.ToUpper(uid), true, false).
 		First(&tag).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
@@ -100,7 +100,7 @@ func (s *Service) LookupByUID(ctx context.Context, uid string, observer *uuid.UU
 func (s *Service) LookupByID(ctx context.Context, tagID uuid.UUID, observer *uuid.UUID) (*ResolveResult, error) {
 	var tag TagEntity
 	err := s.store.DB.WithContext(ctx).
-		Where("id = ? AND is_active = ?", tagID, true).
+		Where("id = ? AND is_active = ? AND is_encrypted = ?", tagID, true, false).
 		First(&tag).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
@@ -115,6 +115,17 @@ func (s *Service) LookupByID(ctx context.Context, tagID uuid.UUID, observer *uui
 // with the tag's SUN key, matches the decrypted UID, verifies the CMAC when
 // present, enforces the replay counter and applies Passport's claim rules.
 func (s *Service) ValidateSun(ctx context.Context, piccDataHex, encDataHex, cmacHex string, observer *uuid.UUID) (*ValidationResult, error) {
+	// Bound the attacker-controlled hex before decoding it. Without this an
+	// anonymous caller can make the server allocate and hex-decode megabytes
+	// per request before any tag work begins.
+	const (
+		maxPiccDataHex = 32  // one AES block
+		maxCMACHex     = 16  // 8-byte CMAC
+		maxEncDataHex  = 512 // 256 bytes of SDM payload
+	)
+	if len(piccDataHex) != maxPiccDataHex || len(cmacHex) > maxCMACHex || len(encDataHex) > maxEncDataHex {
+		return nil, nil
+	}
 	encryptedPICCData, err := hex.DecodeString(piccDataHex)
 	if err != nil {
 		s.log.Warn("SUN scan: invalid picc_data hex format")
@@ -289,10 +300,10 @@ func (s *Service) validationResultFor(ctx context.Context, tag *TagEntity, obser
 			return nil, err
 		}
 		if blocked {
-			// Blocked: keep the tag/account for the login path but expose no
-			// profile actions.
-			result.Actions = []string{}
-			return result, nil
+			// Never hand the owner's account/profile to a blocked observer.
+			// The plain-tag path already answers "not found" here; the SUN
+			// path must match it, not leak through the account payload.
+			return nil, nil
 		}
 		isFriend, err := s.areFriends(ctx, *observer, *tag.AccountID)
 		if err != nil {
@@ -496,10 +507,17 @@ func (s *Service) claimTag(ctx context.Context, tag *TagEntity, userID uuid.UUID
 	}
 
 	now := s.now()
-	if err := s.store.DB.WithContext(ctx).Model(&TagEntity{}).
-		Where("id = ?", tag.ID).
-		Updates(map[string]any{"account_id": userID, "last_seen_at": now}).Error; err != nil {
-		return nil, err
+	// Claim with a conditional update: two concurrent claims both read an
+	// unclaimed row, and only the one whose UPDATE still matches
+	// account_id IS NULL may win.
+	res := s.store.DB.WithContext(ctx).Model(&TagEntity{}).
+		Where("id = ? AND account_id IS NULL", tag.ID).
+		Updates(map[string]any{"account_id": userID, "last_seen_at": now})
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, ErrTagClaimedByAnother
 	}
 	tag.AccountID = &userID
 	tag.LastSeenAt = &now

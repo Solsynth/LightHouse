@@ -60,6 +60,21 @@ const hasDetails = computed(() =>
   ),
 )
 
+/**
+ * A stored profile link is rendered as an anchor only when it is an absolute
+ * http(s) URL. The server rejects anything else on write; this keeps older
+ * rows and other writers from turning the public page into a
+ * `javascript:` navigation.
+ */
+function safeLinkHref(raw: string): string | undefined {
+  try {
+    const url = new URL(raw)
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : undefined
+  } catch {
+    return undefined
+  }
+}
+
 const hasMutual = computed(() => {
   const mutual = summary.value?.mutual_friends
   return mutual !== undefined && mutual > 0
@@ -215,7 +230,7 @@ watch([locale, () => account.value?.name], updateTitle)
                   >
                     <span class="text-faint">{{ link.name }}</span>
                     <a
-                      :href="link.url"
+                      :href="safeLinkHref(link.url)"
                       class="link-quiet max-w-full truncate"
                       target="_blank"
                       rel="noopener noreferrer nofollow"

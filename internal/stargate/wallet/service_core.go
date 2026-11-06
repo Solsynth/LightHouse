@@ -377,9 +377,25 @@ func generatePublicID() string {
 // GetOrCreatePocket returns the wallet's pocket for a currency, creating it
 // (unsaved when created=false) with the given initial amount.
 func (s *Service) GetOrCreatePocket(ctx context.Context, tx *gorm.DB, walletID uuid.UUID, currency string, initial *decimal.Decimal) (*WalletPocketEntity, bool, error) {
-	db := s.DB
-	if tx != nil {
-		db = tx
+	if tx == nil {
+		// Take the wallet lock in a transaction of our own so the find/create
+		// pair below is serialized even for callers outside a transaction.
+		var pocket *WalletPocketEntity
+		var created bool
+		err := s.DB.WithContext(ctx).Transaction(func(db *gorm.DB) error {
+			var err error
+			pocket, created, err = s.GetOrCreatePocket(ctx, db, walletID, currency, initial)
+			return err
+		})
+		return pocket, created, err
+	}
+	db := tx
+	// Two concurrent first credits to one wallet would otherwise both miss
+	// the pocket and create one row each, hiding one balance from every later
+	// `First`. The wallet row lock makes the second caller wait and then see
+	// the pocket the first one created.
+	if err := db.WithContext(ctx).Exec(`SELECT id FROM wallets WHERE id = ? FOR UPDATE`, walletID).Error; err != nil {
+		return nil, false, err
 	}
 	var pocket WalletPocketEntity
 	err := db.WithContext(ctx).Where("wallet_id = ? AND currency = ?", walletID, currency).First(&pocket).Error

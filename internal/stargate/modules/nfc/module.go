@@ -71,6 +71,8 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 	deps := nfcctl.Deps{
 		Service: service,
 		Perm:    host.Core.Perm,
+		Redis:   host.Core.Redis,
+		Cfg:     host.Core.Config,
 		Log:     log,
 	}
 	nfcctl.Register(host.API, deps)

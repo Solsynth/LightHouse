@@ -353,18 +353,35 @@ func (s *Service) ReceiveFund(ctx context.Context, recipientAccountID, fundID uu
 			return errors.New("recipient wallet not found")
 		}
 		remarks := fmt.Sprintf("Received fund portion from %s", fund.CreatorAccountID)
-		transaction, err = s.CreateTransaction(ctx, TransactionInput{
-			PayeeWalletID: &recipientWallet.ID,
+		// Credit on the open transaction, not through CreateTransaction
+		// (which commits separately): if the recipient/status writes below
+		// roll back, a separately committed credit would survive and the
+		// claim could be replayed to mint the amount again.
+		pocket, created, err := s.GetOrCreatePocket(ctx, db, recipientWallet.ID, fund.Currency, &recipient.Amount)
+		if err != nil {
+			return err
+		}
+		if !created {
+			if err := addToPocket(db, pocket.ID, recipient.Amount, decimal.Zero); err != nil {
+				return err
+			}
+		}
+		now := time.Now().UTC()
+		entry := WalletTransactionEntity{
+			ID:            newID(),
 			Currency:      fund.Currency,
 			Amount:        recipient.Amount,
 			Remarks:       &remarks,
 			Type:          TransactionSystem,
-			Silent:        true,
-		})
-		if err != nil {
+			Status:        TransactionConfirmed,
+			ConfirmedAt:   &now,
+			PayeeWalletID: &recipientWallet.ID,
+		}
+		if err := db.Create(&entry).Error; err != nil {
 			return err
 		}
-		now := time.Now().UTC()
+		transaction = &entry
+
 		recipient.IsReceived = true
 		recipient.ReceivedAt = &now
 		if err := db.Model(&WalletFundRecipientEntity{}).Where("id = ?", recipient.ID).
@@ -397,6 +414,9 @@ func (s *Service) ReceiveFund(ctx context.Context, recipientAccountID, fundID uu
 	})
 	if err != nil {
 		return nil, err
+	}
+	if transaction != nil && transaction.PayeeWalletID != nil {
+		s.notifyPocket(ctx, *transaction.PayeeWalletID, transaction.Currency)
 	}
 	return transaction, nil
 }
@@ -529,6 +549,18 @@ func (s *Service) ProcessExpiredFunds(ctx context.Context) error {
 	}
 	for i := range funds {
 		fund := funds[i]
+		// Claim the fund before refunding: two sweepers (or a retry after a
+		// crash) must not each mint the unclaimed amount. A refund, unlike a
+		// debit, has no payer to stop at a negative balance.
+		claim := s.DB.WithContext(ctx).Model(&WalletFundEntity{}).
+			Where("id = ? AND status IN ?", fund.ID, []int{FundCreated, FundPartiallyReceived}).
+			Update("status", FundExpired)
+		if claim.Error != nil {
+			return claim.Error
+		}
+		if claim.RowsAffected == 0 {
+			continue
+		}
 		var recipients []WalletFundRecipientEntity
 		if err := s.DB.WithContext(ctx).Where("fund_id = ?", fund.ID).Find(&recipients).Error; err != nil {
 			return err
@@ -550,14 +582,11 @@ func (s *Service) ProcessExpiredFunds(ctx context.Context) error {
 					Type:          TransactionSystem,
 					Silent:        true,
 				}); err != nil {
+					// The claim stands: a retry must not pay the same refund
+					// twice. This needs manual reconciliation.
 					s.Log.Error("fund refund failed", "fund", fund.ID, "error", err)
-					continue
 				}
 			}
-		}
-		if err := s.DB.WithContext(ctx).Model(&WalletFundEntity{}).Where("id = ?", fund.ID).
-			Update("status", FundExpired).Error; err != nil {
-			return err
 		}
 	}
 	return nil

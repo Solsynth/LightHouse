@@ -180,6 +180,9 @@ type passLogRequest struct {
 }
 
 func (d Deps) logEntries(c *gin.Context) {
+	// This sink is anonymous by Apple's protocol. Cap the body and the entry
+	// count so a caller cannot exhaust memory or the log volume.
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 8<<10)
 	var request passLogRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, errs.Validation(map[string][]string{
@@ -187,7 +190,13 @@ func (d Deps) logEntries(c *gin.Context) {
 		}))
 		return
 	}
+	if len(request.Logs) > 20 {
+		request.Logs = request.Logs[:20]
+	}
 	for _, line := range request.Logs {
+		if len(line) > 1024 {
+			line = line[:1024]
+		}
 		d.log().Info("Apple Wallet log: " + line)
 	}
 	c.Status(http.StatusOK)

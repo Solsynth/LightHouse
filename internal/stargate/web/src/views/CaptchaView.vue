@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
 import CaptchaWidget from '@/components/CaptchaWidget.vue'
+import { isAllowedRedirect, signInConfig } from '@/lib/signInTarget'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -12,7 +13,7 @@ const verified = ref(false)
 
 const redirectUri = typeof route.query.redirect_uri === 'string' ? route.query.redirect_uri : ''
 
-function accept(token: string) {
+async function accept(token: string) {
   const value = token.trim()
   if (!value) return
 
@@ -23,6 +24,14 @@ function accept(token: string) {
   }
 
   if (redirectUri) {
+    // The redirect target comes from the address bar. Only the deployment's
+    // own sites and registered hand-off hosts may receive the token:
+    // `new URL()` alone would accept `javascript:` and any attacker host.
+    const config = await signInConfig()
+    if (!isAllowedRedirect(redirectUri, config)) {
+      error.value = t('captcha.errorInvalidRedirect')
+      return
+    }
     try {
       const url = new URL(redirectUri)
       url.searchParams.set('captcha_tk', value)

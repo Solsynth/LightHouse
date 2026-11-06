@@ -336,6 +336,15 @@ challengeWindow = "1h"
 # stays under the fail2ban threshold) from grinding a single challenge. "0"
 # disables the cap.
 maxChallengeAttempts = 5
+# Maximum failed recovery-code redemptions one account accepts within
+# fail2banWindow before further attempts are refused with 429. Recovery
+# disables the account's other factors on success, so it must not be an
+# unthrottled oracle. "0" disables the cap.
+recoveryMaxAttempts = 5
+# Maximum anonymous SUN (NTAG 424) scans one IP may run per minute. Each scan
+# decrypts with every encrypted tag's key, so it must not be free. "0" disables
+# the cap.
+nfcScanPerMinute = 30
 # How many reverse proxies in front of Stargate append to X-Forwarded-For.
 # The client IP is taken that many entries from the RIGHT, so a
 # client-supplied leftmost entry can never choose the address fail2ban and

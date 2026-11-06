@@ -265,6 +265,15 @@ type SecurityConfig struct {
 	// 429 (the IP-failure fail2ban block normally trips first). "0" disables
 	// the cap.
 	MaxChallengeAttempts int `toml:"maxChallengeAttempts"`
+	// RecoveryMaxAttempts caps how many failed recovery-code redemptions a
+	// single account accepts within Fail2banWindow before further attempts
+	// are refused with 429. Recovery disables the account's other factors on
+	// success, so it must not be an unthrottled oracle. "0" disables the cap.
+	RecoveryMaxAttempts int `toml:"recoveryMaxAttempts"`
+	// NfcScanPerMinute caps anonymous SUN scans per IP per minute. Each scan
+	// decrypts with every encrypted tag's key, so it must not be free. "0"
+	// disables the cap.
+	NfcScanPerMinute int `toml:"nfcScanPerMinute"`
 	// TrustedProxyHops is how many reverse proxies in front of Stargate
 	// append to X-Forwarded-For. The client IP is read that many entries from
 	// the right, so a client-supplied leftmost entry can never choose the
@@ -498,6 +507,8 @@ func Default() *Config {
 	cfg.Security.MaxChallengesPerIp = 3
 	cfg.Security.ChallengeWindow = "1h"
 	cfg.Security.MaxChallengeAttempts = 5
+	cfg.Security.RecoveryMaxAttempts = 5
+	cfg.Security.NfcScanPerMinute = 30
 	cfg.Security.TrustedProxyHops = 1
 	cfg.Security.RecentLoginGrace = "30m"
 	cfg.Security.TrustedSessionMaxGap = "720h"
@@ -584,6 +595,8 @@ func applyEnvOverrides(cfg *Config) {
 	setInt("STARGATE_SECURITY_CHALLENGEFAILESCALATEAFTER", &cfg.Security.ChallengeFailEscalateAfter)
 	setInt("STARGATE_SECURITY_MAXCHALLENGESPERIP", &cfg.Security.MaxChallengesPerIp)
 	setInt("STARGATE_SECURITY_MAXCHALLENGEATTEMPTS", &cfg.Security.MaxChallengeAttempts)
+	setInt("STARGATE_SECURITY_RECOVERYMAXATTEMPTS", &cfg.Security.RecoveryMaxAttempts)
+	setInt("STARGATE_SECURITY_NFCSCANPERMINUTE", &cfg.Security.NfcScanPerMinute)
 	setInt("STARGATE_SECURITY_TRUSTEDPROXYHOPS", &cfg.Security.TrustedProxyHops)
 	setStr("STARGATE_SECURITY_CHALLENGEWINDOW", &cfg.Security.ChallengeWindow)
 	setStr("STARGATE_SECURITY_TRUSTEDSESSIONMAXGAP", &cfg.Security.TrustedSessionMaxGap)

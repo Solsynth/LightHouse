@@ -234,3 +234,27 @@ func TestChallengeAllowedDegraded(t *testing.T) {
 		t.Fatal("empty challenge id should be allowed")
 	}
 }
+
+func TestRecoveryAttemptCap(t *testing.T) {
+	rc := redisClient(t)
+	ctx := context.Background()
+	cfg := config.Default()
+	cfg.Security.RecoveryMaxAttempts = 3
+	accountID := uuid.NewString()
+	key := recoveryAttemptPrefix + accountID
+	t.Cleanup(func() { _ = rc.Raw.Del(ctx, key).Err() })
+
+	if !RecoveryAllowed(ctx, rc, cfg, accountID) {
+		t.Fatal("fresh account should be allowed")
+	}
+	for i := 0; i < 3; i++ {
+		RecordRecoveryFailure(ctx, rc, cfg, accountID)
+	}
+	if RecoveryAllowed(ctx, rc, cfg, accountID) {
+		t.Fatal("account at the cap should be refused")
+	}
+	ClearRecoveryFailures(ctx, rc, accountID)
+	if !RecoveryAllowed(ctx, rc, cfg, accountID) {
+		t.Fatal("cleared account should be allowed again")
+	}
+}

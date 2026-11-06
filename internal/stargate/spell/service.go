@@ -385,21 +385,17 @@ func (s *Service) ConsumeRegistrationInvite(ctx context.Context, spellWord, acco
 	if spell.ExpiresAt != nil && !spell.ExpiresAt.Time().After(time.Now().UTC()) {
 		return false, false, nil
 	}
-	usages, err := s.store.CountAffiliationResults(ctx, spell.Id)
+	maxUsages := getIntMeta(spell, "max_usages")
+	consumed, err = s.store.ConsumeAffiliationResult(ctx, spell.Id, "account:"+accountID, maxUsages)
 	if err != nil {
 		return false, false, err
 	}
-	maxUsages := getIntMeta(spell, "max_usages")
-	if maxUsages != nil && usages >= *maxUsages {
+	if !consumed {
 		return false, false, nil
 	}
 	if maxUsages != nil && *maxUsages == 1 {
-		if err := s.store.SetAffiliationSpellAffected(ctx, spell.Id, time.Now().UTC()); err != nil {
-			return false, false, err
-		}
-	}
-	if err := s.store.CreateAffiliationResult(ctx, spell.Id, "account:"+accountID); err != nil {
-		return false, false, err
+		// Informational only: the invite is already consumed.
+		_ = s.store.SetAffiliationSpellAffected(ctx, spell.Id, time.Now().UTC())
 	}
 	return true, getBoolMeta(spell, "skip_tests"), nil
 }

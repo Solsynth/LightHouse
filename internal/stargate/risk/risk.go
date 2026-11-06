@@ -5,6 +5,7 @@ package risk
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +21,8 @@ const (
 	fail2banDeclineCounterPrefix = "auth:fail2ban:decline:"
 	fail2banDeclineBlockPrefix   = "auth:fail2ban:decline-block:"
 	challengeQuotaPrefix         = "auth:challenge:ip:"
+	recoveryAttemptPrefix        = "auth:recovery:account:"
+	nfcSunScanPrefix             = "auth:nfc:scan:ip:"
 )
 
 // IPAllowed reports whether the given IP is currently permitted to attempt
@@ -151,4 +154,71 @@ func ReleaseChallenge(ctx context.Context, rc *redis.Client, ip, challengeID str
 		return
 	}
 	_ = rc.Raw.ZRem(ctx, challengeQuotaPrefix+ip, challengeID).Err()
+}
+
+// RecoveryAllowed reports whether the account may still attempt recovery-code
+// redemption within the current window. Recovery codes disable every other
+// factor on success, so an unthrottled oracle is worth far more than a login
+// guess. A limit <= 0 disables the per-account cap.
+func RecoveryAllowed(ctx context.Context, rc *redis.Client, cfg *config.Config, accountID string) bool {
+	if rc == nil || !rc.Available() || strings.TrimSpace(accountID) == "" {
+		return true
+	}
+	limit := cfg.Security.RecoveryMaxAttempts
+	if limit <= 0 {
+		return true
+	}
+	n, err := rc.Raw.Get(ctx, recoveryAttemptPrefix+accountID).Int()
+	if err != nil && !errors.Is(err, goredis.Nil) {
+		return true // degrade: allow on Redis error
+	}
+	return n < limit
+}
+
+// RecordRecoveryFailure charges one failed recovery-code redemption to the
+// account and keeps the counter for the fail2ban window.
+func RecordRecoveryFailure(ctx context.Context, rc *redis.Client, cfg *config.Config, accountID string) {
+	if rc == nil || !rc.Available() || strings.TrimSpace(accountID) == "" {
+		return
+	}
+	key := recoveryAttemptPrefix + accountID
+	n, err := rc.Raw.Incr(ctx, key).Result()
+	if err != nil {
+		return
+	}
+	if n == 1 {
+		_ = rc.Raw.Expire(ctx, key, cfg.Security.Fail2banWindowDuration()).Err()
+	}
+}
+
+// ClearRecoveryFailures drops the account's recovery counter (successful
+// redemption or a fresh recovery-code rotation).
+func ClearRecoveryFailures(ctx context.Context, rc *redis.Client, accountID string) {
+	if rc == nil || !rc.Available() || strings.TrimSpace(accountID) == "" {
+		return
+	}
+	_ = rc.Raw.Del(ctx, recoveryAttemptPrefix+accountID).Err()
+}
+
+// SunScanAllowed admits at most cfg.Security.NfcScanPerMinute SUN validations
+// per IP per minute. Each validation tries every encrypted tag's key, so the
+// anonymous scan route is an expensive oracle: without a bound a handful of
+// concurrent callers can saturate CPU. Degraded-safe (allow on Redis errors).
+func SunScanAllowed(ctx context.Context, rc *redis.Client, cfg *config.Config, ip string) bool {
+	if rc == nil || !rc.Available() || strings.TrimSpace(ip) == "" {
+		return true
+	}
+	limit := cfg.Security.NfcScanPerMinute
+	if limit <= 0 {
+		return true
+	}
+	key := nfcSunScanPrefix + ip
+	n, err := rc.Raw.Incr(ctx, key).Result()
+	if err != nil {
+		return true
+	}
+	if n == 1 {
+		_ = rc.Raw.Expire(ctx, key, time.Minute).Err()
+	}
+	return n <= int64(limit)
 }

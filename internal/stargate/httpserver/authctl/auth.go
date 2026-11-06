@@ -117,8 +117,12 @@ func Register(api *gin.RouterGroup, d Deps) {
 		qr.POST("/generate", h.generateQrChallenge)
 		qr.GET("/:id", h.getQrStatus)
 		qr.POST("/:id/scan", middleware.RequireAuth(), middleware.RequireInteractive(), h.scanQrChallenge)
-		qr.POST("/:id/approve", middleware.RequireAuth(), middleware.RequireInteractive(), h.approveQrChallenge)
-		qr.POST("/:id/decline", middleware.RequireAuth(), middleware.RequireInteractive(), h.declineQrChallenge)
+		// Approving a QR login mints a full session on the scanning device, so
+		// it carries the same elevation requirement as approving a challenge:
+		// a stolen short-lived access token on a trusted device must not be
+		// enough to sign another device in.
+		qr.POST("/:id/approve", middleware.RequireAuth(), middleware.RequireInteractive(), middleware.RequireSudo(), h.approveQrChallenge)
+		qr.POST("/:id/decline", middleware.RequireAuth(), middleware.RequireInteractive(), middleware.RequireSudo(), h.declineQrChallenge)
 	}
 
 	captcha := api.Group("/auth/captcha")
@@ -767,16 +771,24 @@ func (h *handler) createChallenge(c *gin.Context) {
 		return
 	}
 
-	existing, err := h.d.Store.FindLiveChallenge(ctx, account.Id, ipAddress, userAgent, req.DeviceId)
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		h.logError("find live challenge", err)
-	}
-	if existing != nil {
-		// Reuse mints no new challenge, so return the quota slot this request
-		// just claimed.
-		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
-		c.JSON(http.StatusOK, existing)
-		return
+	// Reuse resumes a challenge the same device already opened. Without a
+	// device id the tuple (account, NAT IP, UA) is shared by every client
+	// behind that NAT using the same browser, and the challenge id is itself
+	// the bearer credential for POST /auth/token: a co-located caller could
+	// be handed a live challenge it does not own. Empty-device callers get a
+	// fresh challenge instead.
+	if strings.TrimSpace(req.DeviceId) != "" {
+		existing, err := h.d.Store.FindLiveChallenge(ctx, account.Id, ipAddress, userAgent, req.DeviceId)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			h.logError("find live challenge", err)
+		}
+		if existing != nil {
+			// Reuse mints no new challenge, so return the quota slot this
+			// request just claimed.
+			risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
+			c.JSON(http.StatusOK, existing)
+			return
+		}
 	}
 
 	mode, err := h.d.Store.GetSecurityMode(ctx, account.Id)
@@ -2644,6 +2656,15 @@ type recoveryRequest struct {
 
 func (h *handler) recoverAccount(c *gin.Context) {
 	ctx := c.Request.Context()
+	// Recovery is a credential oracle that disables every other factor on
+	// success. Gate it on the same fail2ban signal as sign-in before doing
+	// any work, and cap per-account attempts below.
+	ipAddress := middleware.ClientIP(c.Request)
+	if cfg := h.d.Cfg; cfg != nil && !risk.IPAllowed(ctx, h.d.Redis, cfg, ipAddress) {
+		c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+			"Too many failed sign-in attempts. Try again later.", http.StatusTooManyRequests))
+		return
+	}
 	var req recoveryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
@@ -2669,15 +2690,28 @@ func (h *handler) recoverAccount(c *gin.Context) {
 		})
 		return
 	}
+	if cfg := h.d.Cfg; cfg != nil && !risk.RecoveryAllowed(ctx, h.d.Redis, cfg, account.Id) {
+		c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+			"Too many failed recovery attempts for this account. Try again later.", http.StatusTooManyRequests))
+		return
+	}
 	pair, err := h.d.Auth.RecoverAccountWithRecoveryCode(ctx, account.Id, req.RecoveryCode,
 		req.DeviceId, req.Platform, req.DeviceName, middleware.ClientIP(c.Request), c.Request.UserAgent())
 	if err != nil {
+		if cfg := h.d.Cfg; cfg != nil {
+			risk.RecordFailure(ctx, h.d.Redis, cfg, ipAddress)
+			risk.RecordRecoveryFailure(ctx, h.d.Redis, cfg, account.Id)
+		}
 		c.JSON(http.StatusBadRequest, &errs.ApiError{
 			Code:    "RECOVERY_FAILED",
 			Message: err.Error(),
 			Status:  http.StatusBadRequest,
 		})
 		return
+	}
+	if cfg := h.d.Cfg; cfg != nil {
+		risk.ClearFailures(ctx, h.d.Redis, ipAddress)
+		risk.ClearRecoveryFailures(ctx, h.d.Redis, account.Id)
 	}
 	h.setAuthCookies(c, pair)
 	c.JSON(http.StatusOK, tokenExchangeBody(pair))

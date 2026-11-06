@@ -88,15 +88,31 @@ func (s *Service) CreateTransaction(ctx context.Context, in TransactionInput) (*
 			if err != nil {
 				return err
 			}
-			if !in.Force && (created || pocket.Amount.LessThan(amount)) {
-				return ErrInsufficientFunds
-			}
 			held := decimal.Zero
 			if status == TransactionPending || status == TransactionFrozen {
 				held = amount
 			}
-			if err := addToPocket(db, pocket.ID, amount.Neg(), held); err != nil {
-				return err
+			if in.Force {
+				if err := addToPocket(db, pocket.ID, amount.Neg(), held); err != nil {
+					return err
+				}
+			} else {
+				// The affordability test is part of the write: a separate
+				// read lets two concurrent transactions both observe the
+				// pre-debit balance and overdraw the pocket.
+				updates := map[string]any{"amount": gorm.Expr("amount - ?", amount)}
+				if !held.IsZero() {
+					updates["held_amount"] = gorm.Expr("held_amount + ?", held)
+				}
+				debit := db.Model(&WalletPocketEntity{}).
+					Where("id = ? AND amount >= ?", pocket.ID, amount).
+					Updates(updates)
+				if debit.Error != nil {
+					return debit.Error
+				}
+				if created || debit.RowsAffected != 1 {
+					return ErrInsufficientFunds
+				}
 			}
 		}
 
@@ -516,6 +532,11 @@ func (s *Service) PayOrder(ctx context.Context, orderID uuid.UUID, payerWallet *
 		return nil, errors.New("order is reserved for a different wallet")
 	}
 	if order.Status == OrderPaid {
+		// A claimed order whose transaction has not landed yet is a payment in
+		// flight: running the hooks here would grant twice.
+		if order.TransactionID == nil {
+			return nil, errors.New("order is already being paid")
+		}
 		if err := s.runOrderHooks(ctx, &order); err != nil {
 			return nil, err
 		}
@@ -555,6 +576,18 @@ func (s *Service) PayOrder(ctx context.Context, orderID uuid.UUID, payerWallet *
 		text := fmt.Sprintf("Payment for Order #%s", order.ID)
 		remarks = &text
 	}
+	// Elect a single payer before the debit. The status flip is the claim:
+	// two concurrent checkouts would otherwise both pass the Unpaid check
+	// and charge the wallet twice for one order.
+	claim := s.DB.WithContext(ctx).Model(&WalletOrderEntity{}).
+		Where("id = ? AND status = ?", order.ID, OrderUnpaid).
+		Updates(map[string]any{"status": OrderPaid, "payer_wallet_id": payerWallet.ID})
+	if claim.Error != nil {
+		return nil, claim.Error
+	}
+	if claim.RowsAffected == 0 {
+		return nil, errors.New("order is already being paid")
+	}
 	transaction, err := s.CreateTransaction(ctx, TransactionInput{
 		PayerWalletID: &payerWallet.ID,
 		PayeeWalletID: payeeWalletID,
@@ -566,13 +599,17 @@ func (s *Service) PayOrder(ctx context.Context, orderID uuid.UUID, payerWallet *
 		HoldInEscrow:  escrow,
 	})
 	if err != nil {
+		// Release the claim: the debit never happened.
+		_ = s.DB.WithContext(ctx).Model(&WalletOrderEntity{}).
+			Where("id = ? AND transaction_id IS NULL", order.ID).
+			Update("status", OrderUnpaid).Error
 		return nil, err
 	}
 
 	order.TransactionID = &transaction.ID
 	order.Status = OrderPaid
 	if err := s.DB.WithContext(ctx).Model(&WalletOrderEntity{}).Where("id = ?", order.ID).
-		Updates(map[string]any{"transaction_id": transaction.ID, "status": OrderPaid, "payer_wallet_id": payerWallet.ID}).Error; err != nil {
+		Update("transaction_id", transaction.ID).Error; err != nil {
 		return nil, err
 	}
 	if escrow && merchant != nil {

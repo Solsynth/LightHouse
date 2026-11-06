@@ -13,16 +13,21 @@ import (
 	"github.com/google/uuid"
 
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
+	"src.solsynth.dev/sosys/stargate/config"
 	"src.solsynth.dev/sosys/stargate/middleware"
 	"src.solsynth.dev/sosys/stargate/model"
 	"src.solsynth.dev/sosys/stargate/nfc"
 	"src.solsynth.dev/sosys/stargate/permission"
+	"src.solsynth.dev/sosys/stargate/redis"
+	"src.solsynth.dev/sosys/stargate/risk"
 )
 
 // Deps is the dependency set the NFC controllers need.
 type Deps struct {
 	Service *nfc.Service
 	Perm    *permission.Service
+	Redis   *redis.Client
+	Cfg     *config.Config
 	Log     *slog.Logger
 }
 
@@ -89,6 +94,18 @@ func validationError(field, message string) *errs.ApiError {
 	return errs.Validation(map[string][]string{field: {message}})
 }
 
+// allowSunScan throttles anonymous SUN (NTAG 424) validation per IP: each scan
+// tries every encrypted tag's key, so it is an expensive oracle and must not be
+// free to poll.
+func (d Deps) allowSunScan(c *gin.Context) bool {
+	if d.Cfg == nil || risk.SunScanAllowed(c.Request.Context(), d.Redis, d.Cfg, middleware.ClientIP(c.Request)) {
+		return true
+	}
+	c.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+		"Too many NFC scans from this network. Try again later.", http.StatusTooManyRequests))
+	return false
+}
+
 // resolve handles GET /api/nfc: resolve a tag to an account. Anonymous
 // callers are allowed; an authenticated caller gets relationship metadata.
 func (d Deps) resolve(c *gin.Context) {
@@ -96,6 +113,9 @@ func (d Deps) resolve(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	if piccData := c.Query("picc_data"); strings.TrimSpace(piccData) != "" {
+		if !d.allowSunScan(c) {
+			return
+		}
 		result, err := d.Service.ValidateSun(ctx, piccData, c.Query("e"), c.Query("cmac"), observer)
 		d.respondValidation(c, result, err)
 		return
@@ -103,6 +123,9 @@ func (d Deps) resolve(c *gin.Context) {
 
 	uid := c.Query("uid")
 	if strings.HasPrefix(strings.ToLower(uid), "solian://") {
+		if !d.allowSunScan(c) {
+			return
+		}
 		piccData, encData, cmac, ok := nfc.ParseSolianURL(uid)
 		if !ok {
 			c.JSON(http.StatusBadRequest, validationError("uid",

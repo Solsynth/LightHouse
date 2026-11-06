@@ -18,9 +18,11 @@ import { MODULES } from '@/lib/modules'
 import { useModulesStore } from '@/stores/modules'
 import {
   handoffTargetUrl,
+  isAllowedRedirect,
   landingQuery,
   requestedLanding,
   resolveLanding,
+  signInConfig,
   type Landing,
 } from '@/lib/signInTarget'
 import ProviderMark from '@/components/ProviderMark.vue'
@@ -312,6 +314,39 @@ async function leave() {
   }
 }
 
+/**
+ * The origin of the page that opened this popup, when the landing policy
+ * allows handing it a session, or '' when it cannot be proven.
+ *
+ * Browsers do not expose `window.opener.location` cross-origin, but the
+ * popup's referrer names the opener. Without a referrer (or with an origin
+ * the server's policy refuses) nothing may be posted: a page that merely
+ * opened this window must not receive a session token.
+ */
+async function allowedOpenerOrigin(): Promise<string> {
+  if (!document.referrer) return ''
+  let origin = ''
+  try {
+    origin = new URL(document.referrer).origin
+  } catch {
+    return ''
+  }
+  if (origin === 'null' || !origin) return ''
+  const config = await signInConfig()
+  return isAllowedRedirect(`${origin}/`, config) ? origin : ''
+}
+
+/** Posts the session token to the verified opener origin only. */
+function notifyOpener(token: string | undefined, origin: string) {
+  if (!origin || !window.opener) return
+  try {
+    window.opener.postMessage(
+      { channel: 'snfs-picker', type: 'picker:auth-success', token },
+      origin,
+    )
+  } catch {}
+}
+
 async function finish() {
   busy.value = true
   try {
@@ -320,18 +355,12 @@ async function finish() {
     signIn.reset()
     notice.ok(t('signIn.noticeSignedIn'))
     if (window.opener && window.location.search.includes('popup=1')) {
-      try {
-        window.opener.postMessage(
-          {
-            channel: 'snfs-picker',
-            type: 'picker:auth-success',
-            token: pair?.token,
-          },
-          '*',
-        )
-      } catch {}
-      window.close()
-      return
+      const origin = await allowedOpenerOrigin()
+      if (origin) {
+        notifyOpener(pair?.token, origin)
+        window.close()
+        return
+      }
     }
     await leave()
   } catch (caught) {
@@ -394,21 +423,17 @@ onMounted(async () => {
   // ask them; resolve the target and hand them back.
   if (session.signedIn) {
     if (window.opener && window.location.search.includes('popup=1')) {
-      try {
-        const grant = await authApi
-          .handoffToken({ target_uri: window.location.href })
-          .catch(() => null)
-        window.opener.postMessage(
-          {
-            channel: 'snfs-picker',
-            type: 'picker:auth-success',
-            token: grant?.token,
-          },
-          '*',
-        )
-      } catch {}
-      window.close()
-      return
+      const origin = await allowedOpenerOrigin()
+      if (origin) {
+        try {
+          const grant = await authApi
+            .handoffToken({ target_uri: window.location.href })
+            .catch(() => null)
+          notifyOpener(grant?.token, origin)
+        } catch {}
+        window.close()
+        return
+      }
     }
     if (landingRequested) void leave()
   }

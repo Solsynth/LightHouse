@@ -118,6 +118,23 @@ func (s *Store) CreateAffiliationResult(ctx context.Context, spellID uuid.UUID, 
 	return entity, nil
 }
 
+// ConsumeAffiliationResult records one use of a spell only while its usage
+// count is below maxUsages (nil = unlimited). The check and the insert run as
+// one statement, so concurrent consumers cannot all redeem a single-use invite.
+func (s *Store) ConsumeAffiliationResult(ctx context.Context, spellID uuid.UUID, resource string, maxUsages *int) (bool, error) {
+	now := time.Now().UTC()
+	res := s.DB.WithContext(ctx).Exec(`
+		INSERT INTO affiliation_results (id, resource_identifier, spell_id, created_at, updated_at)
+		SELECT ?, ?, ?, ?, ?
+		WHERE ?::int IS NULL
+		   OR (SELECT COUNT(*) FROM affiliation_results WHERE spell_id = ?) < ?::int`,
+		uuid.New(), resource, spellID, now, now, maxUsages, spellID, maxUsages)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}
+
 // SetAffiliationSpellAffected stamps affected_at (max_usages == 1).
 func (s *Store) SetAffiliationSpellAffected(ctx context.Context, spellID uuid.UUID, at time.Time) error {
 	return s.DB.WithContext(ctx).Unscoped().Model(&AffiliationSpellEntity{}).

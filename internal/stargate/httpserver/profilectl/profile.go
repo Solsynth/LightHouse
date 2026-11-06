@@ -13,6 +13,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -519,6 +520,15 @@ func (d Deps) updateProfile(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.Validation(map[string][]string{"body": {"Field exceeds the maximum allowed length."}}))
 		return
 	}
+	// Links render as anchors on the public profile. Only absolute http(s)
+	// URLs are accepted: a stored `javascript:`/`data:` value executes on the
+	// console origin when a visitor clicks it.
+	for _, link := range req.Links {
+		if !validProfileLink(link.Url) {
+			c.JSON(http.StatusBadRequest, errs.Validation(map[string][]string{"links": {"Links must be absolute http(s) URLs."}}))
+			return
+		}
+	}
 
 	ctx := c.Request.Context()
 	accountID := accountIDOf(user)
@@ -663,4 +673,17 @@ func (d Deps) requestDeleteAccount(c *gin.Context) {
 	c.SetCookie("AuthToken", "", -1, "/", domain, false, true)
 	c.SetCookie("RefreshToken", "", -1, "/", domain, false, true)
 	c.Status(http.StatusOK)
+}
+
+// validProfileLink reports whether a profile link may be rendered as an
+// anchor: an absolute http(s) URL with a host.
+func validProfileLink(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+	return parsed.Host != ""
 }
