@@ -2,8 +2,11 @@ package authctl
 
 // Pins the password-first login policy:
 //
-//   - a challenge for an account with a password offers only the password;
-//   - it never escalates to a second factor on repeated failures;
+//   - only the password can be submitted, whatever else the account has;
+//   - the risk model (including lockdown) still sets the step total, and the
+//     steps after the password wait for an in-app approval rather than an
+//     emailed code;
+//   - repeated failures never add factors;
 //   - the post-password review prompt survives the exchange that expires the
 //     challenge, and denying it signs out the session the login minted.
 
@@ -314,9 +317,10 @@ func TestDeclineSatisfiedChallengeRevokesSession(t *testing.T) {
 }
 
 // TestCreateChallengePasswordFirstDefersPrompt pins the HTTP contract: a
-// password account gets a single-step challenge, the picker offers only the
-// password (so no email code can be requested), and no login-attempt push is
-// sent before the password verifies.
+// password account keeps the risk model's step count (here password + email),
+// the picker offers only the password, no login-attempt push is sent before the
+// password verifies, and the remaining step is settled by the in-app prompt
+// instead of an emailed code.
 func TestCreateChallengePasswordFirstDefersPrompt(t *testing.T) {
 	pool, err := pgxpool.New(context.Background(), smokeDSN)
 	if err != nil {
@@ -344,11 +348,25 @@ func TestCreateChallengePasswordFirstDefersPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load account: %v", err)
 	}
+	const secret = "correct horse battery staple"
+	hash, err := auth.HashPassword(secret)
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE account_auth_factors SET secret = $1
+		WHERE account_id = $2 AND type = $3`, hash, accountID, int(model.AuthFactorTypePassword)); err != nil {
+		t.Fatalf("seed password secret: %v", err)
+	}
+	passwordFactor, err := st.GetAuthFactorByType(ctx, accountID, model.AuthFactorTypePassword)
+	if err != nil {
+		t.Fatalf("load password factor: %v", err)
+	}
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.POST("/auth/challenge", h.createChallenge)
 	router.GET("/auth/challenge/:id/factors", h.getChallengeFactors)
+	router.PATCH("/auth/challenge/:id", h.doChallenge)
 
 	body, _ := json.Marshal(map[string]any{
 		"account":     account.Name,
@@ -368,8 +386,10 @@ func TestCreateChallengePasswordFirstDefersPrompt(t *testing.T) {
 		t.Fatalf("decode challenge: %v", err)
 	}
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM auth_challenges WHERE id = $1`, created.Id) })
-	if created.StepTotal != 1 || created.StepRemain != 1 {
-		t.Fatalf("steps = %d/%d, want 1/1", created.StepRemain, created.StepTotal)
+	// A fresh device plus no prior session scores high enough to demand both
+	// completable factors; the policy must not flatten that to one step.
+	if created.StepTotal != 2 || created.StepRemain != 2 {
+		t.Fatalf("steps = %d/%d, want 2/2 (password + reviewable second step)", created.StepRemain, created.StepTotal)
 	}
 	if len(ring.pushes) != 0 {
 		t.Fatalf("prompt pushed before the password verified: %+v", ring.pushes)
@@ -378,8 +398,8 @@ func TestCreateChallengePasswordFirstDefersPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload challenge: %v", err)
 	}
-	if reloaded.ReviewUntil == nil {
-		t.Fatal("ReviewUntil is nil, want a post-login review window")
+	if reloaded.ReviewUntil != nil {
+		t.Fatal("ReviewUntil set before the password verified, want the prompt deferred")
 	}
 
 	rec = httptest.NewRecorder()
@@ -394,5 +414,133 @@ func TestCreateChallengePasswordFirstDefersPrompt(t *testing.T) {
 	}
 	if len(factors) != 1 || factors[0].Type != model.AuthFactorTypePassword {
 		t.Fatalf("factors = %+v, want only the password", factors)
+	}
+
+	// The password settles one step. The second one waits for the in-app
+	// approval, so the challenge is still incomplete and the login cannot be
+	// exchanged yet.
+	submit, _ := json.Marshal(map[string]any{
+		"factor_id": passwordFactor.Id,
+		"password":  secret,
+	})
+	req = httptest.NewRequest(http.MethodPatch, "/auth/challenge/"+created.Id, bytes.NewReader(submit))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("submit password status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	var afterPassword model.AuthChallenge
+	if err := json.Unmarshal(rec.Body.Bytes(), &afterPassword); err != nil {
+		t.Fatalf("decode challenge after password: %v", err)
+	}
+	if afterPassword.StepRemain != 1 || afterPassword.ApprovedAt != nil {
+		t.Fatalf("after password remain = %d approved = %v, want 1 and not approved",
+			afterPassword.StepRemain, afterPassword.ApprovedAt)
+	}
+	if len(ring.pushes) != 1 || ring.pushes[0].Topic != "auth.login_attempt" {
+		t.Fatalf("post-password prompt not pushed as auth.login_attempt: %+v", ring.pushes)
+	}
+
+	// Nothing is left to submit: only a trusted device's approval can settle
+	// the remaining step.
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet,
+		"/auth/challenge/"+created.Id+"/factors", nil))
+	var remaining []model.AuthFactor
+	if err := json.Unmarshal(rec.Body.Bytes(), &remaining); err != nil {
+		t.Fatalf("decode remaining factors: %v", err)
+	}
+	if len(remaining) != 0 {
+		t.Fatalf("remaining factors = %+v, want none after the password", remaining)
+	}
+
+	reloaded, err = st.GetAuthChallenge(ctx, uuid.MustParse(created.Id))
+	if err != nil {
+		t.Fatalf("reload challenge: %v", err)
+	}
+	if reloaded.ReviewUntil == nil {
+		t.Fatal("ReviewUntil is nil, want a post-login review window")
+	}
+	pending, err := st.ListPendingChallenges(ctx, accountID)
+	if err != nil {
+		t.Fatalf("list pending challenges: %v", err)
+	}
+	listed := false
+	for _, item := range pending {
+		if item.Id == created.Id {
+			listed = true
+		}
+	}
+	if !listed {
+		t.Fatalf("password-verified challenge %s is missing from the review list: %+v", created.Id, pending)
+	}
+}
+
+// TestCreateChallengePasswordFirstRespectsLockdown pins that password-first
+// does not weaken lockdown: every completable factor still raises the step
+// total, and none of those extra steps is an emailed code.
+func TestCreateChallengePasswordFirstRespectsLockdown(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(), smokeDSN)
+	if err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	defer pool.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := pool.Ping(ctx); err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+
+	st := store.New(pool)
+	ring := &fakeRing{}
+	h := &handler{d: Deps{
+		Store:   st,
+		Geo:     &geo.Service{},
+		Cfg:     &config.Config{},
+		Clients: &grpcclient.Clients{Ring: ring},
+		Log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}}
+	accountID := seedRiskAccount(t, ctx, pool,
+		model.AuthFactorTypePassword, model.AuthFactorTypeEmailCode)
+	account, err := st.GetAccountByID(ctx, uuid.MustParse(accountID))
+	if err != nil {
+		t.Fatalf("load account: %v", err)
+	}
+	if err := st.SetSecurityMode(ctx, accountID, model.SecurityModeLockdown); err != nil {
+		t.Fatalf("set lockdown: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `UPDATE accounts SET security_mode = 0 WHERE id = $1`, accountID)
+	})
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/auth/challenge", h.createChallenge)
+
+	body, _ := json.Marshal(map[string]any{
+		"account":     account.Name,
+		"device_id":   "lockdown-password-device",
+		"device_name": "Lockdown Test",
+		"platform":    int(model.ClientPlatformWeb),
+	})
+	req := httptest.NewRequest(http.MethodPost, "/auth/challenge", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create challenge status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	var created model.AuthChallenge
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode challenge: %v", err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM auth_challenges WHERE id = $1`, created.Id) })
+	if created.StepTotal != 2 || created.StepRemain != 2 {
+		t.Fatalf("lockdown steps = %d/%d, want 2/2 (password + second factor)",
+			created.StepRemain, created.StepTotal)
+	}
+	if len(ring.pushes) != 0 {
+		t.Fatalf("lockdown prompt pushed before the password verified: %+v", ring.pushes)
 	}
 }

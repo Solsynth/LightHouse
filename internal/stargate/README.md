@@ -238,15 +238,21 @@ form that cannot work.
 
 ### Login factors
 
-A username/password sign-in asks for the password only; the challenge is
-single-step and its picker offers no other factor. Once the password verifies,
-Stargate pushes an in-app confirmation prompt (`auth.challenge.pending` over
-the websocket and a savable `auth.login_attempt` Ring notification) to the
-account's other devices, including the console's shell-level prompt. Approving
-confirms the login; denying revokes the session the challenge minted. Failed
-attempts never escalate to another factor, and a sign-in never requests an
-emailed code, so it spends no email resources. Accounts without a password
-keep the previous risk-based factor flow, as do elevation ("sudo") challenges.
+A username/password sign-in submits the password as its only first factor: the
+picker offers nothing else. The risk model still owns the step total —
+lockdown demands every completable factor, and a risky device can demand more
+than one — but the steps after the password are settled only by an in-app
+confirmation from a trusted device, never by an emailed code.
+
+Once the password verifies, Stargate pushes the prompt
+(`auth.challenge.pending` over the websocket and a savable
+`auth.login_attempt` Ring notification) to the account's other devices,
+including the console's shell-level prompt. A challenge that still owes steps
+stays incomplete until one of them approves; denying is terminal and revokes
+any session the challenge minted. Failed attempts never add factors, and a
+sign-in never requests an emailed code, so it spends no email resources.
+Accounts without a password keep the previous risk-based factor flow, as do
+elevation ("sudo") challenges.
 
 ### Changing a credential
 

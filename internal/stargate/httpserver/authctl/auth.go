@@ -754,18 +754,21 @@ func (h *handler) createChallenge(c *gin.Context) {
 	}
 	steps := assessment.Steps
 	// Password-first login: an account that has a password proves it as the
-	// only first step. The risk assessment is still recorded — it explains the
-	// environment — but it no longer adds factor steps. Cross-device review
-	// happens through the in-app prompt published after the password verifies.
+	// only submitted first factor. The risk model (including lockdown) still
+	// owns the step total; every step left after the password is settled
+	// by the in-app confirmation prompt, never by an emailed code.
 	_, passwordFirst := enabledPasswordFactor(factors)
 	if passwordFirst {
-		steps = 1
+		if steps < 1 {
+			steps = 1
+		}
 		assessment.Signals = append(assessment.Signals, "policy:password_first")
 	}
-	// The review window is set now so the post-password prompt can still
-	// approve or deny after the exchange sets expired_at.
+	// The review window is opened when the prompt is published. A passwordless
+	// challenge publishes at creation; a password-first one waits for its
+	// password (see doChallenge).
 	var reviewUntil *model.Time
-	if passwordFirst {
+	if !passwordFirst {
 		reviewUntil = model.NewTime(now.Add(challengeReviewWindow))
 	}
 
@@ -885,6 +888,18 @@ func (h *handler) getChallengeFactors(c *gin.Context) {
 	}
 	minTrustworthy := challengeMinTrustworthy(challenge)
 	result := challengeFactorOptions(factors, passwordFirst, minTrustworthy)
+	if passwordFirst {
+		// Once the password is used, nothing is left to submit: the remaining
+		// steps wait for a trusted device's approval. An empty picker is what
+		// the client renders as "waiting for approval".
+		remaining := result[:0]
+		for _, f := range result {
+			if !containsString(challenge.BlacklistFactors, f.Id) {
+				remaining = append(remaining, f)
+			}
+		}
+		result = remaining
+	}
 	// An elevation challenge with the emailed fallback armed advertises one
 	// synthetic factor whose id is the challenge id: requesting its code
 	// emails a fallback code and verifying it settles the single step.
@@ -1125,6 +1140,12 @@ func (h *handler) doChallenge(c *gin.Context) {
 		challenge.StepRemain = 0
 	}
 	challenge.BlacklistFactors = append(challenge.BlacklistFactors, factor.Id)
+	if passwordFirst {
+		// The prompt is now live: it is the only way to settle the steps the
+		// risk model asked for beyond the password, and it also keeps the
+		// satisfied challenge reviewable after the exchange expires it.
+		challenge.ReviewUntil = model.NewTime(now.Add(challengeReviewWindow))
+	}
 	challenge.UpdatedAt = model.NewTime(now)
 	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
 		h.logError("update challenge", err)
@@ -1137,14 +1158,16 @@ func (h *handler) doChallenge(c *gin.Context) {
 				c.JSON(http.StatusServiceUnavailable, errs.New("SERVICE_UNAVAILABLE", "Elevation could not be verified.", http.StatusServiceUnavailable))
 				return
 			}
-		} else if passwordFirst {
-			// The password settled the challenge. Other devices get the
-			// actionable prompt now, never before: no email is sent, and a
-			// denial revokes the session this challenge mints.
-			h.publishLoginConfirmation(ctx, challenge)
-		} else {
+		} else if !passwordFirst {
 			h.pushLoginNotification(ctx, challenge, true)
 		}
+	}
+	if passwordFirst {
+		// Published after the password, never before. With steps left it is
+		// the required second factor (a trusted device approves the remaining
+		// steps); with none left it is the review prompt for a finished login.
+		// Either way no email is sent, and a denial revokes the session.
+		h.publishLoginConfirmation(ctx, challenge)
 	}
 	c.JSON(http.StatusOK, challenge)
 }
@@ -2189,6 +2212,14 @@ func (h *handler) approveChallenge(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_ALREADY_DECLINED", "Challenge already declined."))
 		return
 	}
+	// A password-first challenge cannot skip its first step: another device
+	// may settle what remains after the password, never replace the
+	// password itself.
+	if h.passwordFirstChallenge(ctx, challenge) && challenge.StepRemain == challenge.StepTotal {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_NOT_READY",
+			"Enter your password before approving this sign-in."))
+		return
+	}
 
 	challenge.StepRemain = 0
 	challenge.ApprovedAt = model.NewTime(now)
@@ -2265,11 +2296,11 @@ func (h *handler) declineChallenge(c *gin.Context) {
 
 	callerIP := middleware.ClientIP(c.Request)
 	callerUA := c.Request.UserAgent()
-	if challenge.StepRemain == 0 {
-		// A satisfied login challenge (the password was already entered) is
-		// under review: the denial is terminal and signs out the session the
-		// challenge minted, if it was already exchanged. Escalating instead
-		// would reopen a challenge that has nothing left to ask for.
+	if challenge.StepRemain == 0 || h.passwordFirstChallenge(ctx, challenge) {
+		// A password-first login is terminal either way: a denial while the
+		// in-app review is open (or after it settled) must not escalate the
+		// challenge back into a live one, and a challenge that already minted a
+		// session signs that session out.
 		challenge.DeclinedAt = model.NewTime(now)
 		challenge.UpdatedAt = model.NewTime(now)
 		if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {

@@ -36,7 +36,7 @@ export default {
   },
   loginPrompt: {
     title: 'Confirm this sign-in',
-    body: 'Someone is trying to sign in to your account from {device} at {ip}.',
+    body: 'A password was just entered for a sign-in from {device} at {ip}. Approve it to finish the login, or deny it to block it.',
     confirmTitle: 'Confirm this sign-in',
     confirmBody:
       'A sign-in from {device} at {ip} just completed with your password. Approve it if this was you, or deny it to sign that session out.',
