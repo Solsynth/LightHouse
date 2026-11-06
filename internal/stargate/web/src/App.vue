@@ -22,6 +22,7 @@ import { useUiStore } from '@/stores/ui'
 import { applyRouteTitle } from '@/router'
 import type { Locale } from '@/lib/prefs'
 import ElevationSheet from '@/components/ElevationSheet.vue'
+import PendingLoginPrompt from '@/components/PendingLoginPrompt.vue'
 import TextField from '@/components/TextField.vue'
 
 const session = useSessionStore()
@@ -447,5 +448,6 @@ function changeLocale(event: Event) {
     </footer>
 
     <ElevationSheet />
+    <PendingLoginPrompt />
   </div>
 </template>

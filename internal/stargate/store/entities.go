@@ -194,6 +194,7 @@ type ChallengeEntity struct {
 	DeviceID            string          `gorm:"column:device_id"`
 	DeviceName          *string         `gorm:"column:device_name"`
 	ExpiredAt           *time.Time      `gorm:"column:expired_at"`
+	ReviewUntil         *time.Time      `gorm:"column:review_until"`
 	FailedAttempts      int             `gorm:"column:failed_attempts"`
 	IPAddress           *string         `gorm:"column:ip_address"`
 	Location            *datatypes.JSON `gorm:"column:location;type:jsonb"`

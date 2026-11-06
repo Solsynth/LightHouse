@@ -148,9 +148,14 @@ type AuthChallenge struct {
 	// that decided how many steps it demanded. Trail is the append-only event
 	// log. None of these are on the wire: they are read through the admin
 	// surface only.
-	Origin      string           `json:"-"`
-	RiskScore   *float64         `json:"-"`
-	RiskSignals []string         `json:"-"`
+	Origin      string   `json:"-"`
+	RiskScore   *float64 `json:"-"`
+	RiskSignals []string `json:"-"`
+	// ReviewUntil bounds the post-login confirmation window. A satisfied
+	// password-first challenge stays reviewable (approve/deny) until this
+	// instant even after the exchange expires it, so another device can still
+	// deny the login and revoke the session it minted. Never on the wire.
+	ReviewUntil *Time            `json:"-"`
 	Trail       []ChallengeEvent `json:"-"`
 }
 

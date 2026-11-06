@@ -244,6 +244,61 @@ func completableAuthFactors(factors []model.AuthFactor) []model.AuthFactor {
 	return out
 }
 
+// enabledPasswordFactor returns the account's enabled password factor. A
+// password is the only factor a username login starts with: when it exists the
+// challenge is single-step (see createChallenge), the factor picker offers
+// nothing else, and no emailed code is ever requested for it.
+func enabledPasswordFactor(factors []model.AuthFactor) (*model.AuthFactor, bool) {
+	for i := range factors {
+		f := &factors[i]
+		if f.EnabledAt != nil && model.AuthFactorType(f.Type) == model.AuthFactorTypePassword {
+			return f, true
+		}
+	}
+	return nil, false
+}
+
+// passwordFirstChallenge reports whether a login challenge is bound to the
+// password-first policy: an ordinary password-origin challenge for an account
+// that has an enabled password factor. Such a challenge stays single-step:
+// failed attempts never add factors, only the password may satisfy it, and the
+// review prompt is published once the password verifies.
+func (h *handler) passwordFirstChallenge(ctx context.Context, challenge *model.AuthChallenge) bool {
+	if challenge.Purpose == model.AuthChallengePurposeSudo ||
+		challenge.Origin != model.ChallengeOriginPassword {
+		return false
+	}
+	factors, err := h.d.Store.GetAuthFactors(ctx, uuid.MustParse(challenge.AccountId))
+	if err != nil {
+		return false
+	}
+	_, ok := enabledPasswordFactor(factors)
+	return ok
+}
+
+// challengeFactorOptions returns the factors a challenge may offer. A
+// password-first login offers exactly the password: every other factor —
+// including the emailed code — would add a step after the password and spend
+// delivery resources for nothing. Elevation and passwordless login challenges
+// keep the historical set.
+func challengeFactorOptions(factors []model.AuthFactor, passwordFirst bool) []model.AuthFactor {
+	result := make([]model.AuthFactor, 0, len(factors))
+	for _, f := range factors {
+		ft := model.AuthFactorType(f.Type)
+		if f.EnabledAt == nil || f.Trustworthy < 1 ||
+			ft == model.AuthFactorTypeRecoveryCode ||
+			ft == model.AuthFactorTypeInAppCode ||
+			ft == model.AuthFactorTypeQrLogin {
+			continue
+		}
+		if passwordFirst && ft != model.AuthFactorTypePassword {
+			continue
+		}
+		result = append(result, f)
+	}
+	return result
+}
+
 // allRequiredStepCount returns the number of completable auth factors for the
 // account, i.e. the maximum number of steps a challenge can be escalated to.
 func (h *handler) allRequiredStepCount(ctx context.Context, accountID string) (int, error) {
@@ -575,6 +630,21 @@ type challengeRequest struct {
 	Scopes     []string             `json:"scopes"`
 }
 
+// challengeReviewWindow is how long a satisfied password-first login stays
+// reviewable from another device after its password verified. It matches the
+// challenge lifetime and outlives the exchange that expires the challenge.
+const challengeReviewWindow = time.Hour
+
+// reviewableChallenge reports whether a satisfied login is inside its
+// post-login review window. Such a challenge may still be approved or denied
+// even though the exchange has expired it: expiry is what stops the id from
+// minting more tokens, and it must not stop the review.
+func reviewableChallenge(challenge *model.AuthChallenge, now time.Time) bool {
+	return challenge.StepRemain == 0 &&
+		challenge.ReviewUntil != nil &&
+		now.Before(challenge.ReviewUntil.Time())
+}
+
 func (h *handler) createChallenge(c *gin.Context) {
 	ctx := c.Request.Context()
 	var req challengeRequest
@@ -669,10 +739,26 @@ func (h *handler) createChallenge(c *gin.Context) {
 		return
 	}
 	steps := assessment.Steps
+	// Password-first login: an account that has a password proves it as the
+	// only first step. The risk assessment is still recorded — it explains the
+	// environment — but it no longer adds factor steps. Cross-device review
+	// happens through the in-app prompt published after the password verifies.
+	_, passwordFirst := enabledPasswordFactor(factors)
+	if passwordFirst {
+		steps = 1
+		assessment.Signals = append(assessment.Signals, "policy:password_first")
+	}
+	// The review window is set now so the post-password prompt can still
+	// approve or deny after the exchange sets expired_at.
+	var reviewUntil *model.Time
+	if passwordFirst {
+		reviewUntil = model.NewTime(now.Add(challengeReviewWindow))
+	}
 
 	challenge := &model.AuthChallenge{
 		Id:          challengeID,
 		ExpiredAt:   model.NewTime(now.Add(time.Hour)),
+		ReviewUntil: reviewUntil,
 		StepTotal:   steps,
 		StepRemain:  steps,
 		Audiences:   req.Audiences,
@@ -704,11 +790,14 @@ func (h *handler) createChallenge(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
 		return
 	}
-	// Every challenge is pushed to the account's other devices so a trusted
-	// session can approve or decline it — the replacement for the removed
-	// in-app notification factor. Mirrors the other challenge handlers
-	// (doChallenge, approve/decline), which publish before responding.
-	h.publishChallengePending(ctx, challenge) // WS auth.challenge.pending + Ring auth.login_attempt
+	// Password-first challenges publish nothing yet: the review prompt must
+	// follow a verified password, not precede it. Other challenges are pushed
+	// to the account's other devices immediately so a trusted session can
+	// approve or decline them — the replacement for the removed in-app
+	// notification factor.
+	if !passwordFirst {
+		h.publishChallengePending(ctx, challenge) // WS auth.challenge.pending + Ring auth.login_attempt
+	}
 	c.JSON(http.StatusOK, challenge)
 }
 
@@ -775,15 +864,12 @@ func (h *handler) getChallengeFactors(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
 		return
 	}
-	result := make([]model.AuthFactor, 0, len(factors))
-	for _, f := range factors {
-		if f.EnabledAt != nil && f.Trustworthy >= 1 &&
-			model.AuthFactorType(f.Type) != model.AuthFactorTypeRecoveryCode &&
-			model.AuthFactorType(f.Type) != model.AuthFactorTypeInAppCode &&
-			model.AuthFactorType(f.Type) != model.AuthFactorTypeQrLogin {
-			result = append(result, f)
-		}
+	passwordFirst := false
+	if challenge.Purpose != model.AuthChallengePurposeSudo &&
+		challenge.Origin == model.ChallengeOriginPassword {
+		_, passwordFirst = enabledPasswordFactor(factors)
 	}
+	result := challengeFactorOptions(factors, passwordFirst)
 	// An elevation challenge with the emailed fallback armed advertises one
 	// synthetic factor whose id is the challenge id: requesting its code
 	// emails a fallback code and verifying it decrements by 2.
@@ -851,6 +937,15 @@ func (h *handler) requestFactorCode(c *gin.Context) {
 	account, err := h.d.Store.GetAccountByID(ctx, uuid.MustParse(challenge.AccountId))
 	if err != nil {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_ACCOUNT_NOT_FOUND", "Account was not found.", http.StatusNotFound))
+		return
+	}
+	// A password-first login never sends a code: the password is its only
+	// step, and the review prompt is published once it verifies. Refusing here
+	// keeps the client from spending an email on a step the challenge cannot
+	// take.
+	if h.passwordFirstChallenge(ctx, challenge) {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_SUPPORTED",
+			"Sign-in only accepts your password. Complete it, then confirm the login from a trusted device."))
 		return
 	}
 	// The in-app notification factor no longer issues a code: its approval
@@ -929,6 +1024,16 @@ func (h *handler) doChallenge(c *gin.Context) {
 	}
 	if factor.Trustworthy <= 0 {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_TRUSTWORTHY", "Auth factor is not trustworthy."))
+		return
+	}
+	// Password-first logins accept only the password as a step: the picker
+	// advertises nothing else, and a crafted request must not satisfy the
+	// challenge with a factor (an emailed code in particular) that the policy
+	// removed.
+	passwordFirst := h.passwordFirstChallenge(ctx, challenge)
+	if passwordFirst && model.AuthFactorType(factor.Type) != model.AuthFactorTypePassword {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_SUPPORTED",
+			"Sign-in only accepts your password. Complete it, then confirm the login from a trusted device."))
 		return
 	}
 
@@ -1016,6 +1121,11 @@ func (h *handler) doChallenge(c *gin.Context) {
 				c.JSON(http.StatusServiceUnavailable, errs.New("SERVICE_UNAVAILABLE", "Elevation could not be verified.", http.StatusServiceUnavailable))
 				return
 			}
+		} else if passwordFirst {
+			// The password settled the challenge. Other devices get the
+			// actionable prompt now, never before: no email is sent, and a
+			// denial revokes the session this challenge mints.
+			h.publishLoginConfirmation(ctx, challenge)
 		} else {
 			h.pushLoginNotification(ctx, challenge, true)
 		}
@@ -1090,6 +1200,12 @@ func (h *handler) doChallengeSudoFallback(c *gin.Context, challenge *model.AuthC
 // increasing its step count. Already-completed factors (in BlacklistFactors)
 // are preserved.
 func (h *handler) maybeEscalateFailure(ctx context.Context, challenge *model.AuthChallenge) error {
+	// A password-first login never grows a second step: repeated failures are
+	// already throttled by the fail2ban and per-challenge caps, and an extra
+	// step would reintroduce the emailed code the policy removed.
+	if h.passwordFirstChallenge(ctx, challenge) {
+		return nil
+	}
 	mode, err := h.d.Store.GetSecurityMode(ctx, challenge.AccountId)
 	if err != nil {
 		mode = model.SecurityModeDefault
@@ -1497,6 +1613,13 @@ func (h *handler) startPasskeyChallenge(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_DECLINED", "Auth challenge was declined."))
 		return
 	}
+	// Password-first challenges are satisfied by the password alone; the
+	// passkey endpoints must not bypass it.
+	if h.passwordFirstChallenge(ctx, challenge) {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_SUPPORTED",
+			"This sign-in only accepts your password."))
+		return
+	}
 	if challenge.Purpose == model.AuthChallengePurposeSudo && !h.elevationCallerAllowed(c, challenge) {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
 		return
@@ -1581,6 +1704,11 @@ func (h *handler) completePasskeyChallenge(c *gin.Context) {
 	}
 	if challenge.Purpose == model.AuthChallengePurposeSudo && !h.elevationCallerAllowed(c, challenge) {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
+		return
+	}
+	if h.passwordFirstChallenge(ctx, challenge) {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_SUPPORTED",
+			"This sign-in only accepts your password."))
 		return
 	}
 	factor, err := h.d.Store.GetAuthFactorByType(ctx, challenge.AccountId, model.AuthFactorTypePasskey)
@@ -1947,6 +2075,32 @@ func (h *handler) escalateChallenge(ctx context.Context, challenge *model.AuthCh
 	return h.d.Store.UpdateAuthChallenge(ctx, challenge)
 }
 
+// revokeSessionMintedByChallenge signs out the session a satisfied login
+// challenge produced. The challenge is marked declined before this runs, so an
+// unexchanged challenge can never mint one afterwards. Best-effort: a store or
+// cache failure must not turn the review decision into an error, and the trail
+// still records the revocation.
+func (h *handler) revokeSessionMintedByChallenge(ctx context.Context, challenge *model.AuthChallenge, declinedBySessionID, ipAddress, userAgent string) {
+	sessionID, err := h.d.Store.FindSessionIDByChallenge(ctx, challenge.Id)
+	if err != nil || sessionID == "" {
+		return
+	}
+	if h.d.Auth != nil {
+		_, _ = h.d.Auth.RevokeSession(ctx, uuid.MustParse(sessionID))
+	}
+	if h.d.Token != nil {
+		_ = h.d.Token.RevokeJti(ctx, sessionID)
+	}
+	_ = h.d.Store.AppendChallengeEvent(ctx, challenge.Id, model.ChallengeEvent{
+		At:        time.Now().UTC(),
+		Type:      model.ChallengeEventSessionRevoked,
+		SessionId: sessionID,
+		IpAddress: ipAddress,
+		UserAgent: userAgent,
+		Detail:    "declined_by_session=" + declinedBySessionID,
+	})
+}
+
 func (h *handler) getPendingChallenges(c *gin.Context) {
 	user := middleware.CurrentUser(c.Request.Context())
 	if user == nil {
@@ -1995,7 +2149,7 @@ func (h *handler) approveChallenge(c *gin.Context) {
 		return
 	}
 	now := time.Now().UTC()
-	if challenge.ExpiredAt != nil && now.After(challenge.ExpiredAt.Time()) {
+	if !reviewableChallenge(challenge, now) && challenge.ExpiredAt != nil && now.After(challenge.ExpiredAt.Time()) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_EXPIRED", "Auth challenge has expired."))
 		return
 	}
@@ -2068,7 +2222,7 @@ func (h *handler) declineChallenge(c *gin.Context) {
 		return
 	}
 	now := time.Now().UTC()
-	if challenge.ExpiredAt != nil && now.After(challenge.ExpiredAt.Time()) {
+	if !reviewableChallenge(challenge, now) && challenge.ExpiredAt != nil && now.After(challenge.ExpiredAt.Time()) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_EXPIRED", "Auth challenge has expired."))
 		return
 	}
@@ -2081,15 +2235,28 @@ func (h *handler) declineChallenge(c *gin.Context) {
 		return
 	}
 
-	if err := h.escalateChallenge(ctx, challenge); err != nil {
+	callerIP := middleware.ClientIP(c.Request)
+	callerUA := c.Request.UserAgent()
+	if challenge.StepRemain == 0 {
+		// A satisfied login challenge (the password was already entered) is
+		// under review: the denial is terminal and signs out the session the
+		// challenge minted, if it was already exchanged. Escalating instead
+		// would reopen a challenge that has nothing left to ask for.
+		challenge.DeclinedAt = model.NewTime(now)
+		challenge.UpdatedAt = model.NewTime(now)
+		if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
+			h.logError("update challenge", err)
+		}
+		h.revokeSessionMintedByChallenge(ctx, challenge, session.Id, callerIP, callerUA)
+	} else if err := h.escalateChallenge(ctx, challenge); err != nil {
 		h.logError("escalate challenge", err)
 	}
 	_ = h.d.Store.AppendChallengeEvent(ctx, challenge.Id, model.ChallengeEvent{
 		At:        now,
 		Type:      model.ChallengeEventDeclined,
 		SessionId: session.Id,
-		IpAddress: middleware.ClientIP(c.Request),
-		UserAgent: c.Request.UserAgent(),
+		IpAddress: callerIP,
+		UserAgent: callerUA,
 		Detail:    fmt.Sprintf("declined_by_session=%s terminal=%t", session.Id, challenge.DeclinedAt != nil),
 	})
 
@@ -2590,9 +2757,21 @@ func (h *handler) passkeyAllowedOrigins() []string {
 	return nil
 }
 
-// publishChallengePending mirrors the ws + ring side effects of the first
-// (pending) factor step in DoChallenge / CompletePasskeyChallenge.
+// publishChallengePending pushes a login attempt to the account's devices
+// before it is satisfied, so a trusted session can approve or decline it.
 func (h *handler) publishChallengePending(ctx context.Context, challenge *model.AuthChallenge) {
+	h.publishChallengeAlert(ctx, challenge, "loginAttemptTitle", "loginAttemptBody")
+}
+
+// publishLoginConfirmation is the prompt published after a password-first
+// login verified its password: the session is about to exist, and another
+// device can approve it or deny it (a denial revokes it). This replaces the
+// emailed code step, so no message leaves the mail service.
+func (h *handler) publishLoginConfirmation(ctx context.Context, challenge *model.AuthChallenge) {
+	h.publishChallengeAlert(ctx, challenge, "loginConfirmTitle", "loginConfirmBody")
+}
+
+func (h *handler) publishChallengeAlert(ctx context.Context, challenge *model.AuthChallenge, titleKey, bodyKey string) {
 	h.publishWS(ctx, challenge.AccountId, "auth.challenge.pending", map[string]any{
 		"challenge_id": challenge.Id,
 		"device_name":  challenge.DeviceName,
@@ -2613,8 +2792,8 @@ func (h *handler) publishChallengePending(ctx context.Context, challenge *model.
 		ipAddress = *challenge.IpAddress
 	}
 	h.pushNotification(ctx, account.Id, "auth.login_attempt",
-		localization.Localize(account.Language, "loginAttemptTitle", nil),
-		localization.Localize(account.Language, "loginAttemptBody", map[string]string{
+		localization.Localize(account.Language, titleKey, nil),
+		localization.Localize(account.Language, bodyKey, map[string]string{
 			"deviceName": deviceName,
 			"ipAddress":  ipAddress,
 		}), true)

@@ -33,6 +33,18 @@ export default {
     errorRequestFailed: '请求失败。',
     errorRedirectRefused: '该登录链接指向本服务无法登录的地址。已改为继续前往你的账号页面。',
   },
+  loginPrompt: {
+    title: '确认这次登录',
+    body: '有人正尝试从 {device}（IP 地址 {ip}）登录你的账号。',
+    confirmTitle: '确认这次登录',
+    confirmBody:
+      '有人刚刚使用你的密码从 {device}（IP 地址 {ip}）完成了登录。如果是你本人，请批准；否则请拒绝并退出该会话。',
+    approve: '批准',
+    deny: '拒绝',
+    approved: '登录已批准。',
+    denied: '登录已拒绝，该会话已退出。',
+    failed: '无法提交决定。',
+  },
   createAccount: {
     title: '创建账号',
     intro: '一个 Solar Network 账号通用于所有服务。创建后请验证邮箱以激活。',

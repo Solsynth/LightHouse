@@ -235,6 +235,19 @@ The emails Stargate sends for contact verification and password reset link to
 asks for a new password, and the verification form confirms the contact. A link
 that is wrong, already spent, or past its 24 hours says so instead of offering a
 form that cannot work.
+
+### Login factors
+
+A username/password sign-in asks for the password only; the challenge is
+single-step and its picker offers no other factor. Once the password verifies,
+Stargate pushes an in-app confirmation prompt (`auth.challenge.pending` over
+the websocket and a savable `auth.login_attempt` Ring notification) to the
+account's other devices, including the console's shell-level prompt. Approving
+confirms the login; denying revokes the session the challenge minted. Failed
+attempts never escalate to another factor, and a sign-in never requests an
+emailed code, so it spends no email resources. Accounts without a password
+keep the previous risk-based factor flow, as do elevation ("sudo") challenges.
+
 The visual system — tokens, type, layout tiers, and component rules — is
 documented in [`docs/design-system.md`](docs/design-system.md).
 

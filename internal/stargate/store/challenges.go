@@ -29,6 +29,7 @@ func challengeFromEntity(entity *ChallengeEntity) *model.AuthChallenge {
 		Id:                  entity.ID.String(),
 		AccountId:           accountIDOrSentinel(uuidPtrStr(entity.AccountID)),
 		ExpiredAt:           timePtr(entity.ExpiredAt),
+		ReviewUntil:         timePtr(entity.ReviewUntil),
 		StepRemain:          entity.StepRemain,
 		StepTotal:           entity.StepTotal,
 		FailedAttempts:      entity.FailedAttempts,
@@ -184,6 +185,7 @@ func (s *Store) CreateAuthChallenge(ctx context.Context, ch *model.AuthChallenge
 		DeviceID:         ch.DeviceId,
 		DeviceName:       ch.DeviceName,
 		ExpiredAt:        timeValue(ch.ExpiredAt),
+		ReviewUntil:      timeValue(ch.ReviewUntil),
 		FailedAttempts:   ch.FailedAttempts,
 		IPAddress:        ch.IpAddress,
 		Location:         location,
@@ -273,6 +275,7 @@ func (s *Store) UpdateAuthChallenge(ctx context.Context, ch *model.AuthChallenge
 			"blacklist_factors":      datatypes.JSON(jsonbOrEmpty(ch.BlacklistFactors)),
 			"declined_at":            timeValue(ch.DeclinedAt),
 			"expired_at":             timeValue(ch.ExpiredAt),
+			"review_until":           timeValue(ch.ReviewUntil),
 			"failed_attempts":        ch.FailedAttempts,
 			"step_remain":            ch.StepRemain,
 			"step_total":             ch.StepTotal,
@@ -315,14 +318,25 @@ func (s *Store) FindLiveChallenge(ctx context.Context, accountID, ipAddress, use
 	return challengeFromEntity(&entity), nil
 }
 
-// ListPendingChallenges lists the account's pending (unapproved, undeclined,
-// live) challenges newest first.
+// ListPendingChallenges lists the account's reviewable challenges newest
+// first: live time-limited challenges (step_remain > 0) and satisfied logins
+// awaiting a decision (step_remain = 0) inside their one-hour review window.
+// A settled trace record — a passkey/social login with nothing left to ask and
+// expired_at already reached — falls out of the expiry filter. Approving or
+// declining removes a row from this list.
 func (s *Store) ListPendingChallenges(ctx context.Context, accountID string) ([]model.AuthChallenge, error) {
 	var entities []ChallengeEntity
 	if err := s.DB.WithContext(ctx).
 		Where("account_id = ?", accountID).
-		Where("approved_at IS NULL AND declined_at IS NULL AND step_remain > 0").
-		Where("expired_at IS NULL OR expired_at > now()").
+		Where("approved_at IS NULL AND declined_at IS NULL").
+		// Elevation challenges belong to the session they are bound to and are
+		// never reviewed from another device; only login challenges belong in
+		// this list.
+		Where("purpose IS NULL").
+		// Live challenges stay listed while they can still be satisfied;
+		// satisfied password-first logins stay listed through their review
+		// window, which outlives the exchange that expires the challenge.
+		Where("(step_remain > 0 AND (expired_at IS NULL OR expired_at > now())) OR (review_until IS NOT NULL AND review_until > now())").
 		Order("created_at DESC").Find(&entities).Error; err != nil {
 		return nil, err
 	}
@@ -649,15 +663,14 @@ func (s *Store) FindSessionIDByChallenge(ctx context.Context, challengeID string
 	if err != nil {
 		return "", err
 	}
-	var id uuid.UUID
+	// uuid.UUID is a [16]byte array, which the database/sql Scan path reads as
+	// a byte slice rather than a UUID; select the text form instead.
+	var id string
 	if err := s.DB.WithContext(ctx).Model(&AuthSessionEntity{}).
-		Select("id").Where("challenge_id = ?", cid).Order("created_at").Limit(1).Scan(&id).Error; err != nil {
+		Select("id::text").Where("challenge_id = ?", cid).Order("created_at").Limit(1).Scan(&id).Error; err != nil {
 		return "", err
 	}
-	if id == uuid.Nil {
-		return "", nil
-	}
-	return id.String(), nil
+	return id, nil
 }
 
 // riskSignalsJSON encodes the signals for the nullable jsonb column; no signals

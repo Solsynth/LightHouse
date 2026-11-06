@@ -34,6 +34,18 @@ export default {
     errorRedirectRefused:
       'That sign-in link points somewhere this service cannot sign you in. Continue on your account page.',
   },
+  loginPrompt: {
+    title: 'Confirm this sign-in',
+    body: 'Someone is trying to sign in to your account from {device} at {ip}.',
+    confirmTitle: 'Confirm this sign-in',
+    confirmBody:
+      'A sign-in from {device} at {ip} just completed with your password. Approve it if this was you, or deny it to sign that session out.',
+    approve: 'Approve',
+    deny: 'Deny',
+    approved: 'Sign-in approved.',
+    denied: 'Sign-in denied and its session signed out.',
+    failed: 'The decision could not be submitted.',
+  },
   createAccount: {
     title: 'Create an Account',
     intro:
