@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import router from '@/router/index'
 
@@ -25,6 +26,37 @@ describe('magic-spell link', () => {
 
   it('keeps a word containing URL-safe punctuation intact', () => {
     expect(resolve('/spells/aB9%2Bc').params.word).toBe('aB9+c')
+  })
+})
+
+/**
+ * The first navigation waits for the boot session read. If a failing read
+ * rejected that navigation, the shell would stay mounted with no view behind
+ * it and the console would never recover without a reload.
+ */
+describe('boot session read', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('still lands on a usable page when the server answers with an error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ code: 'INTERNAL', message: 'boom', status: 500 }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+
+    await router.push('/account')
+
+    expect(router.currentRoute.value.name).toBe('sign-in')
   })
 })
 

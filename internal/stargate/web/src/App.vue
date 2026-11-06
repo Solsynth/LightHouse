@@ -23,6 +23,7 @@ import { applyRouteTitle } from '@/router'
 import type { Locale } from '@/lib/prefs'
 import ElevationSheet from '@/components/ElevationSheet.vue'
 import PendingLoginPrompt from '@/components/PendingLoginPrompt.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import TextField from '@/components/TextField.vue'
 
 const session = useSessionStore()
@@ -123,6 +124,12 @@ const showNav = computed(
   () => session.signedIn && !route.path.startsWith('/auth/') && route.name !== 'public-profile',
 )
 
+// Vue Router renders nothing until its first navigation resolves, and that
+// navigation waits for the session and module reads. Without a placeholder the
+// shell shows an empty card for that whole window, which reads as a broken
+// page on a slow connection. `matched` is empty only on the initial location.
+const booting = computed(() => route.matched.length === 0)
+
 const latest = computed(() => notice.items[notice.items.length - 1])
 
 const picture = computed(() => session.account?.profile?.picture)
@@ -191,45 +198,51 @@ const regionInner = ref<HTMLElement | null>(null)
 let regionObserver: ResizeObserver | null = null
 let regionSettle: number | undefined
 
-onMounted(() => {
-  const outer = region.value
-  const inner = regionInner.value
-  if (!outer || !inner) return
+// The boot placeholder occupies the region until the first navigation
+// resolves, so the measured element appears after mount; the observer attaches
+// when it does.
+watch(
+  regionInner,
+  (inner) => {
+    const outer = region.value
+    if (!inner || !outer) return
 
-  outer.style.height = `${inner.offsetHeight}px`
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    outer.style.height = 'auto'
-    return
-  }
-
-  let shown = inner.offsetHeight
-  let animating = false
-  regionObserver = new ResizeObserver(() => {
-    const next = inner.offsetHeight
-    if (next === shown && !animating) return
-    // ResizeObserver runs after layout, so the rendered box has already
-    // adopted the new height. Start from the last settled (or in-flight)
-    // height and let the transition carry it to the new one.
-    const from = animating ? outer.getBoundingClientRect().height : shown
-    // Pin the old height without a transition, then hand the next frame to
-    // the CSS transition. Two writes in one callback would be coalesced.
-    outer.style.transition = 'none'
-    outer.style.height = `${from}px`
-    void outer.offsetHeight
-    outer.style.transition = ''
-    shown = next
-    animating = true
-    requestAnimationFrame(() => {
-      outer.style.height = `${next}px`
-    })
-    window.clearTimeout(regionSettle)
-    regionSettle = window.setTimeout(() => {
+    outer.style.height = `${inner.offsetHeight}px`
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       outer.style.height = 'auto'
-      animating = false
-    }, 260)
-  })
-  regionObserver.observe(inner)
-})
+      return
+    }
+
+    let shown = inner.offsetHeight
+    let animating = false
+    regionObserver = new ResizeObserver(() => {
+      const next = inner.offsetHeight
+      if (next === shown && !animating) return
+      // ResizeObserver runs after layout, so the rendered box has already
+      // adopted the new height. Start from the last settled (or in-flight)
+      // height and let the transition carry it to the new one.
+      const from = animating ? outer.getBoundingClientRect().height : shown
+      // Pin the old height without a transition, then hand the next frame to
+      // the CSS transition. Two writes in one callback would be coalesced.
+      outer.style.transition = 'none'
+      outer.style.height = `${from}px`
+      void outer.offsetHeight
+      outer.style.transition = ''
+      shown = next
+      animating = true
+      requestAnimationFrame(() => {
+        outer.style.height = `${next}px`
+      })
+      window.clearTimeout(regionSettle)
+      regionSettle = window.setTimeout(() => {
+        outer.style.height = 'auto'
+        animating = false
+      }, 260)
+    })
+    regionObserver.observe(inner)
+  },
+  { flush: 'post' },
+)
 
 onBeforeUnmount(() => {
   regionObserver?.disconnect()
@@ -387,7 +400,25 @@ function changeLocale(event: Event) {
           </nav>
 
           <div ref="region" class="page-region">
-            <div ref="regionInner">
+            <div v-if="booting" class="px-page py-7 sm:px-page-wide sm:py-9">
+              <div class="mb-8 space-y-3" aria-hidden="true">
+                <span class="skeleton h-6 w-40" />
+                <span class="skeleton h-2.5 w-64 max-w-full" />
+              </div>
+              <section
+                class="overflow-hidden rounded-card bg-base-200/50"
+                aria-hidden="true"
+              >
+                <div class="px-6 pb-1.5 pt-5">
+                  <span class="skeleton h-2 w-24" />
+                </div>
+                <div class="px-6 py-5">
+                  <LoadingSkeleton :rows="4" :columns="[3, 2]" header />
+                </div>
+              </section>
+              <p class="sr-only" role="status">{{ t('common.loading') }}</p>
+            </div>
+            <div v-else ref="regionInner">
               <div :class="edgeToEdge ? '' : 'px-page py-7 sm:px-page-wide sm:py-9'">
                 <RouterView v-slot="{ Component }">
                   <component :is="Component" />

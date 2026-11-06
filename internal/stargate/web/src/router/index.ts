@@ -4,7 +4,9 @@ import type { LocationQuery, RouteMeta } from 'vue-router'
 import { MODULES } from '@/lib/modules'
 import { requestedLanding } from '@/lib/signInTarget'
 import { i18n } from '@/lib/i18n'
+import { StargateError } from '@/lib/api/client'
 import { useModulesStore } from '@/stores/modules'
+import { useNoticeStore } from '@/stores/notice'
 import { useSessionStore } from '@/stores/session'
 
 declare module 'vue-router' {
@@ -288,7 +290,22 @@ router.beforeEach(async (to) => {
   if (SESSION_TOKEN_PARAMS.some((key) => to.query[key] !== undefined)) {
     return { path: to.path, query: withoutTokenParams(to.query), hash: to.hash, replace: true }
   }
-  if (session.loading) await session.load()
+  if (session.loading) {
+    try {
+      await session.load()
+    } catch (error) {
+      // A boot read that fails for any reason other than the normal signed-out
+      // answer must not abort the first navigation: Vue Router would leave the
+      // shell mounted with no view behind it, forever. Drop the half-resolved
+      // session so the gate below sends the person to a page they can act
+      // from, and say what failed.
+      session.clear()
+      const notice = useNoticeStore()
+      notice.fail(
+        error instanceof StargateError ? error.message : i18n.global.t('errors.requestFailed'),
+      )
+    }
+  }
 
   // The module set is a single cached read, shared by every navigation. It
   // must land before the module gate below can decide anything; a failed
