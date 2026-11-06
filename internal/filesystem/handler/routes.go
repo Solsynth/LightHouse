@@ -1967,6 +1967,11 @@ func multipartPlan(fileSize int64) (partSize, partCount int64) {
 
 const maxClientUploadAnalysisBytes = 16 * 1024
 
+// maxClientReanalysisBytes is the largest client-analyzed source the server
+// re-reads only to refresh metadata. Above it the client's probe stays
+// authoritative and the object is not downloaded again after completion.
+const maxClientReanalysisBytes int64 = 256 << 20
+
 type clientUploadParameters struct {
 	ClientAnalysis map[string]any `json:"client_analysis,omitempty"`
 	Thumbnail      bool           `json:"thumbnail,omitempty"`
@@ -2357,7 +2362,7 @@ func completeDirectUpload(c *gin.Context, files *service.FileService, tasks *ser
 		}
 	}
 	clientParams := decodeClientUploadParameters(task.Parameters)
-	clientProcessed := len(clientParams.ClientAnalysis) > 0 || clientParams.Thumbnail || clientParams.Compression
+	clientHasAnalysis := len(clientParams.ClientAnalysis) > 0
 	if task.UploadStatus != database.UploadStatusUploading || task.SourceKey == nil || strings.TrimSpace(*task.SourceKey) == "" {
 		c.JSON(http.StatusConflict, gin.H{"error": "upload is not awaiting completion", "status": task.UploadStatus})
 		return
@@ -2421,15 +2426,10 @@ func completeDirectUpload(c *gin.Context, files *service.FileService, tasks *ser
 	// S3 reports application/octet-stream when the presigned PUT carried no
 	// Content-Type, so only a real (non-generic) stored type may override the
 	// type the client declared in prepare. The authoritative type is resolved
-	// from the actual bytes after the post-commit download below.
+	// in the background (reanalysis/rehash), never inside this request: reading
+	// the object back here would make completion as slow as the upload itself.
 	if m := strings.TrimSpace(info.MimeType); m != "" && !strings.EqualFold(m, "application/octet-stream") {
 		contentType = m
-	}
-	if strings.HasPrefix(contentType, "image/") && (len(clientParams.ClientAnalysis) == 0 || !clientParams.Compression) {
-		clientProcessed = false
-	}
-	if strings.HasPrefix(contentType, "video/") && (len(clientParams.ClientAnalysis) == 0 || !clientParams.Thumbnail) {
-		clientProcessed = false
 	}
 	object, err := files.CreateStoredObject(*task.SourceKey, &service.StagedFileInfo{Size: info.Size, ContentType: contentType})
 	if err != nil {
@@ -2453,43 +2453,70 @@ func completeDirectUpload(c *gin.Context, files *service.FileService, tasks *ser
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	if clientProcessed {
-		if len(clientParams.ClientAnalysis) > 0 {
-			refreshed, metadataErr := files.StoreClientSourceMetadata(file.ID, clientParams.ClientAnalysis)
-			if metadataErr != nil {
-				_ = tasks.MarkFailed(task.TaskID, metadataErr.Error())
-				c.JSON(http.StatusBadRequest, gin.H{"error": metadataErr.Error()})
-				return
-			}
-			file = refreshed
+	fileSize := int64(0)
+	if task.FileSize != nil {
+		fileSize = *task.FileSize
+	}
+
+	if clientHasAnalysis {
+		refreshed, metadataErr := files.StoreClientSourceMetadata(file.ID, clientParams.ClientAnalysis)
+		if metadataErr != nil {
+			_ = tasks.MarkFailed(task.TaskID, metadataErr.Error())
+			c.JSON(http.StatusBadRequest, gin.H{"error": metadataErr.Error()})
+			return
 		}
-		if clientParams.Thumbnail {
-			thumbKey := clientThumbnailKey(*task.SourceKey)
-			if _, thumbnailErr := files.CreateStoredDerivedFile(c.Request.Context(), backend, file.ID, thumbKey, "system.thumbnail", "image/jpeg"); thumbnailErr != nil {
-				_ = tasks.MarkFailed(task.TaskID, thumbnailErr.Error())
-				c.JSON(http.StatusBadRequest, gin.H{"error": thumbnailErr.Error()})
-				return
-			}
+		file = refreshed
+	}
+	if clientParams.Thumbnail {
+		thumbKey := clientThumbnailKey(*task.SourceKey)
+		if _, thumbnailErr := files.CreateStoredDerivedFile(c.Request.Context(), backend, file.ID, thumbKey, "system.thumbnail", "image/jpeg"); thumbnailErr != nil {
+			_ = tasks.MarkFailed(task.TaskID, thumbnailErr.Error())
+			c.JSON(http.StatusBadRequest, gin.H{"error": thumbnailErr.Error()})
+			return
 		}
-		if clientParams.Compression {
-			compressionKey := clientCompressionKey(*task.SourceKey)
-			compressionMime := strings.TrimSpace(clientParams.CompressionMimeType)
-			if compressionMime == "" {
-				compressionMime = "image/webp"
-			}
-			if _, compressionErr := files.CreateStoredDerivedFile(c.Request.Context(), backend, file.ID, compressionKey, "system.compression.low", compressionMime); compressionErr != nil {
-				_ = tasks.MarkFailed(task.TaskID, compressionErr.Error())
-				c.JSON(http.StatusBadRequest, gin.H{"error": compressionErr.Error()})
-				return
-			}
+	}
+	if clientParams.Compression {
+		compressionKey := clientCompressionKey(*task.SourceKey)
+		compressionMime := strings.TrimSpace(clientParams.CompressionMimeType)
+		if compressionMime == "" {
+			compressionMime = "image/webp"
 		}
-		if clientParams.Thumbnail || clientParams.Compression {
-			if derivativeErr := files.TouchCompatibilityFlags(file.ID); derivativeErr != nil {
-				_ = tasks.MarkFailed(task.TaskID, derivativeErr.Error())
-				c.JSON(http.StatusInternalServerError, gin.H{"error": derivativeErr.Error()})
-				return
-			}
+		if _, compressionErr := files.CreateStoredDerivedFile(c.Request.Context(), backend, file.ID, compressionKey, "system.compression.low", compressionMime); compressionErr != nil {
+			_ = tasks.MarkFailed(task.TaskID, compressionErr.Error())
+			c.JSON(http.StatusBadRequest, gin.H{"error": compressionErr.Error()})
+			return
 		}
+	}
+	if clientParams.Thumbnail || clientParams.Compression {
+		if derivativeErr := files.TouchCompatibilityFlags(file.ID); derivativeErr != nil {
+			_ = tasks.MarkFailed(task.TaskID, derivativeErr.Error())
+			c.JSON(http.StatusInternalServerError, gin.H{"error": derivativeErr.Error()})
+			return
+		}
+	}
+
+	// Completion must never read the source object back: doing so makes the
+	// last stage of an upload cost another full transfer. Whatever the client
+	// did not derive is produced by the worker (missing derivatives) or by the
+	// background reanalysis/rehash queues (metadata and object hash).
+	missingDerivative := false
+	switch {
+	case strings.HasPrefix(contentType, "image/"):
+		missingDerivative = !clientParams.Compression
+	case strings.HasPrefix(contentType, "video/"):
+		missingDerivative = !clientParams.Thumbnail
+	}
+	if missingDerivative {
+		// The worker reads the stored source once, generates the missing
+		// derivative and only then marks the file Completed.
+		if err := publishFileUploaded(c.Request.Context(), bus, dispatcher, eventbus.FileUploadedEvent{
+			FileID: file.ID, TaskID: task.TaskID, ContentType: contentType, StorageKey: *object.StorageKey,
+		}); err != nil {
+			_ = tasks.MarkFailed(task.TaskID, err.Error())
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	} else {
 		if err := tasks.MarkCompleted(task.TaskID); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -2498,43 +2525,29 @@ func completeDirectUpload(c *gin.Context, files *service.FileService, tasks *ser
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		// The client cannot be trusted to read EXIF or probe media, so hand the
-		// committed object to the worker for an authoritative server-side
-		// reanalysis. It republishes the corrected metadata when it lands.
-		if err := analyzer.ScheduleReanalysis(file.ID); err != nil {
-			logging.Log.Warn().Err(err).Str("fileId", file.ID).Msg("failed to schedule source reanalysis")
-		}
-		file, err = files.GetFileInWorkspace(file.ID, task.WorkspaceID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		if err := publishFileMetadataUpdated(c.Request.Context(), bus, dispatcher, file, task.TaskID); err != nil {
-			logging.Log.Error().Err(err).Str("fileId", file.ID).Msg("failed to publish client upload state")
-		}
-		c.JSON(http.StatusOK, file)
-		return
 	}
-	// Legacy direct uploads still use server-side analysis when the client did
-	// not provide metadata or derivatives.
-	analysis, resolvedMime, analysisErr := files.RefreshStoredObjectAnalysis(c.Request.Context(), backend, object.ID, *task.SourceKey, contentType)
-	if resolvedMime != "" {
-		contentType = resolvedMime
-	}
-	if analysisErr != nil {
-		logging.Log.Warn().Err(analysisErr).Str("fileId", file.ID).Str("storageKey", *task.SourceKey).Msg("failed to analyze direct-uploaded object")
-	} else {
-		refreshed, storeErr := files.StoreSourceAnalysis(file.ID, analysis)
-		if storeErr != nil {
-			logging.Log.Warn().Err(storeErr).Str("fileId", file.ID).Msg("failed to persist direct-uploaded object metadata")
-		} else {
-			file = refreshed
+
+	switch {
+	case strings.HasPrefix(contentType, "image/"), strings.HasPrefix(contentType, "video/"), strings.HasPrefix(contentType, "audio/"):
+		// The client cannot be trusted to read EXIF or probe media, so the
+		// committed object is handed to the reanalysis queue. Huge sources are
+		// exempt when the client already supplied metadata: re-reading
+		// gigabytes only to refresh fields the client derived is not worth it.
+		if !clientHasAnalysis || fileSize <= maxClientReanalysisBytes {
+			if err := analyzer.ScheduleReanalysis(file.ID); err != nil {
+				logging.Log.Warn().Err(err).Str("fileId", file.ID).Msg("failed to schedule source reanalysis")
+			}
+		}
+	default:
+		// Non-media sources have no analyzer; the rehash queue computes the
+		// canonical SHA-256 and MIME type in the background.
+		if err := files.MarkObjectNeedsRehash(object.ID); err != nil {
+			logging.Log.Warn().Err(err).Str("fileId", file.ID).Msg("failed to queue object rehash")
 		}
 	}
-	if err := publishFileUploaded(c.Request.Context(), bus, dispatcher, eventbus.FileUploadedEvent{
-		FileID: file.ID, TaskID: task.TaskID, ContentType: contentType, StorageKey: *object.StorageKey,
-	}); err != nil {
-		_ = tasks.MarkFailed(task.TaskID, err.Error())
+
+	file, err = files.GetFileInWorkspace(file.ID, task.WorkspaceID)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

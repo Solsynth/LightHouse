@@ -3,6 +3,8 @@ package worker
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -377,14 +379,25 @@ func (w *Worker) rehashObject(ctx context.Context, obj *database.FileObject) err
 	}
 	defer os.Remove(path)
 
-	data, err := os.ReadFile(path)
+	// Hash by streaming: rehashed sources can be arbitrarily large and must
+	// never be buffered in memory.
+	source, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("read temp: %w", err)
+		return fmt.Errorf("open temp: %w", err)
 	}
-	hash := service.ComputeHash(data)
+	hasher := sha256.New()
+	_, copyErr := io.Copy(hasher, source)
+	closeErr := source.Close()
+	if copyErr != nil {
+		return fmt.Errorf("hash temp: %w", copyErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close temp: %w", closeErr)
+	}
+	hash := hex.EncodeToString(hasher.Sum(nil))
 	mimeType := "application/octet-stream"
-	if len(data) > 0 {
-		mimeType = mimetype.Detect(data).String()
+	if detected, detectErr := mimetype.DetectFile(path); detectErr == nil {
+		mimeType = detected.String()
 	}
 
 	updates := map[string]any{
@@ -446,6 +459,26 @@ func (w *Worker) ProcessUploadedFile(_ context.Context, evt eventbus.FileUploade
 		err := fmt.Errorf("file object missing")
 		w.markUploadFailed(evt, err)
 		return err
+	}
+	mimeType := strings.TrimSpace(evt.ContentType)
+	if mimeType == "" {
+		mimeType = strings.TrimSpace(parent.Object.MimeType)
+	}
+	if !w.hasDerivativeHandler(mimeType) {
+		// Nothing to derive: do not pull the object out of storage just to
+		// discover that. Mark the upload complete and drop any staged copy.
+		if evt.IsTempFile && evt.ProcessingFilePath != "" {
+			_ = os.Remove(evt.ProcessingFilePath)
+		}
+		if err := w.markUploadCompleted(evt, parent); err != nil {
+			return err
+		}
+		logging.Log.Info().
+			Str("fileId", evt.FileID).
+			Str("taskId", evt.TaskID).
+			Str("contentType", mimeType).
+			Msg("uploaded file has no derivative handler; source read skipped")
+		return nil
 	}
 	path := evt.ProcessingFilePath
 	if path != "" {
@@ -581,18 +614,28 @@ func firstNonEmptyPtr(values ...*string) *string {
 	return nil
 }
 
+// hasDerivativeHandler reports whether processing this MIME type can produce
+// any derivative. It gates the source download in ProcessUploadedFile so a
+// generic file (archive, document, binary) never leaves the pool for nothing.
+func (w *Worker) hasDerivativeHandler(mimeType string) bool {
+	if w.derivatives == nil {
+		return false
+	}
+	_, ok := w.derivatives.Handler(strings.TrimSpace(mimeType))
+	return ok
+}
+
 func (w *Worker) processDerived(path string, evt eventbus.FileUploadedEvent, parent *database.CloudFile) error {
 	if parent.Object == nil {
 		return nil
 	}
 	mimeType := evt.ContentType
-	if mimeType == "" && parent.Object != nil {
+	if mimeType == "" {
 		mimeType = parent.Object.MimeType
 	}
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
 	}
-
 	if w.derivatives == nil {
 		return nil
 	}

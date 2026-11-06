@@ -2358,6 +2358,21 @@ func (s *FileService) ScheduleSourceReanalysis(fileID string) error {
 	}).Error
 }
 
+// MarkObjectNeedsRehash queues an object for the background rehash sweep,
+// which computes the canonical SHA-256 and sniffs the MIME type without
+// blocking the upload request. Direct uploads that skipped server-side source
+// analysis rely on this to populate those fields later.
+func (s *FileService) MarkObjectNeedsRehash(objectID string) error {
+	objectID = strings.TrimSpace(objectID)
+	if objectID == "" {
+		return fmt.Errorf("object id is required")
+	}
+	return s.db.Model(&database.FileObject{}).Where("id = ?", objectID).Updates(map[string]any{
+		"needs_rehash": true,
+		"updated_at":   time.Now(),
+	}).Error
+}
+
 // ReanalyzeStoredObject re-downloads an object written straight to storage and
 // recomputes the server's own source metadata: SHA-256 hash, resolved MIME
 // type, dimensions, EXIF, blurhash, and the media probe. Client-supplied

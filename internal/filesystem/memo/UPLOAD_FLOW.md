@@ -222,30 +222,23 @@ The endpoint performs these checks:
 7. Changes the task to `Processing`.
 8. Creates the source `FileObject` and visible `CloudFile`.
 9. Stores the task's created file ID for idempotent retries.
-10. Finalizes media metadata. For a client-assisted upload, the server
-    validates each requested derivative with `Stat`, requires a non-empty
-    bounded image object, persists the validated client analysis, and creates
-    the requested `system.thumbnail` and/or `system.compression.low` child.
-    It does not download or probe the original source. If the client did not
-    provide the requested metadata and derivative required for the declared
-    media type, DysonFS downloads the committed object and recomputes the
-    source metadata: SHA-256 hash plus the same EXIF / dimensions / blurhash /
-    media probe analysis the proxied flow runs on the staged file. The media
-    type is resolved authoritatively from the downloaded bytes (the declared
-    type is trusted unless it is the generic `application/octet-stream`, in
-    which case the bytes are sniffed) and persisted on the `FileObject`.
-    Server-side analysis is best-effort: if the download or analysis fails,
-    the upload still succeeds with whatever metadata it has.
-11. Queues a background source reanalysis for client-assisted media uploads.
-    The client metadata is only a first approximation, so the committed object
-    is flagged and a worker later re-runs the full server-side analysis. See
-    [Background Source Reanalysis](#background-source-reanalysis).
-12. Publishes the file metadata update event. A client-assisted upload skips
-    the normal upload-processing event and its derivative pass because the
-    required derivatives are already persisted; the queued reanalysis refreshes
-    source metadata only.
-13. Returns the visible file with status `2` for legacy server-side processing,
-    or status `3` for a client-assisted upload.
+10. Persists whatever the client uploaded: the validated client analysis and
+    the requested `system.thumbnail` and/or `system.compression.low` children.
+    Completion never downloads or probes the original source: doing so would
+    make its last stage cost another full transfer of the file.
+11. If the declared media type still needs a derivative the client did not
+    upload (image without compression, video without thumbnail), the file stays
+    `Processing` and the processing event is published. A worker then downloads
+    the source once, generates the missing derivative and marks the file
+    `Completed`. Otherwise the task and the file are marked `Completed` here.
+12. Queues background metadata work: client-assisted media is queued for
+    source reanalysis (only up to 256 MiB, see
+    [Background Source Reanalysis](#background-source-reanalysis)), and
+    non-media uploads are queued for the rehash sweep, which computes the
+    canonical SHA-256 and resolves the MIME type.
+13. Publishes the file metadata update event.
+14. Returns the visible file with status `2` (`Processing`) while derivative or
+    metadata work is still running, or status `3` (`Completed`) otherwise.
 
 Example response shape:
 
@@ -343,11 +336,16 @@ attempts; after that the entry is retired, so a permanently unanalyzable object
 cannot occupy the queue forever. Reanalysis never deletes or regenerates the
 client-produced derivatives.
 
+Client-assisted sources larger than 256 MiB are not queued: their client probe
+stays authoritative so the server never re-reads gigabytes only to refresh
+metadata. Their object hash is likewise left empty.
+
 ## Events
 
 ### Processing event
 
-The direct completion path publishes the processing event:
+The direct completion path publishes the processing event when the upload still
+needs a server-generated derivative:
 
 ```text
 filesystem.file.uploaded.v1
