@@ -203,7 +203,8 @@ export async function requestPage<T>(path: string, query?: Query): Promise<Page<
     headers: { Accept: 'application/json' },
     credentials: 'same-origin',
   })
-  const items = (await readJson<T[] | null>(response)) ?? []
+  const payload = await readJson<T[] | null>(response)
+  const items = Array.isArray(payload) ? payload : []
   return { items, total: Number(response.headers.get('X-Total') ?? items.length) }
 }
 
