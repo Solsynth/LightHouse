@@ -348,6 +348,36 @@ func (s *Store) GetAuthFactorByID(ctx context.Context, accountID string, id uuid
 	return &factor, nil
 }
 
+// GetEnabledPasswordFactor loads the account's live password factor. The
+// default scope excludes soft-deleted rows: a revoked password must not be the
+// credential a password change verifies against.
+func (s *Store) GetEnabledPasswordFactor(ctx context.Context, accountID string) (*model.AuthFactor, error) {
+	var entity AuthFactorEntity
+	if err := s.DB.WithContext(ctx).
+		Where("account_id = ? AND type = ? AND enabled_at IS NOT NULL", accountID, int(model.AuthFactorTypePassword)).
+		First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	factor := factorFromEntity(&entity)
+	return &factor, nil
+}
+
+// UpdateAuthFactorSecret replaces one live factor's secret. The default scope
+// excludes soft-deleted rows, so a revoked factor cannot be rewritten by a
+// password change.
+func (s *Store) UpdateAuthFactorSecret(ctx context.Context, accountID string, factorID uuid.UUID, secret string) error {
+	res := s.DB.WithContext(ctx).Model(&AuthFactorEntity{}).
+		Where("id = ? AND account_id = ?", factorID, accountID).
+		Updates(map[string]any{"secret": secret, "updated_at": time.Now().UTC()})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // CheckAuthFactorExists reports whether the account already has a factor of
 // the given type (CheckAuthFactorExists).
 func (s *Store) CheckAuthFactorExists(ctx context.Context, accountID string, ftype model.AuthFactorType) (bool, error) {

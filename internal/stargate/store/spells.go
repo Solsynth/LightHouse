@@ -208,15 +208,6 @@ func (s *Store) ActivateAccountAndGrantVerified(ctx context.Context, accountID u
 	return true, nil
 }
 
-// ResetPasswordFactor replaces an account's password auth factor secret,
-// mirroring the C# ResetPasswordFactorAsync on the account service.
-func (s *Store) ResetPasswordFactor(ctx context.Context, accountID, passwordHash string) error {
-	now := time.Now().UTC()
-	return s.DB.WithContext(ctx).Model(&AuthFactorEntity{}).
-		Where("account_id = ? AND type = ?", accountID, int(model.AuthFactorTypePassword)).
-		Updates(map[string]any{"secret": passwordHash, "updated_at": now}).Error
-}
-
 // ─────────────────────────── Affiliation spells ───────────────────────────
 
 func affiliationSpellFromEntity(entity *AffiliationSpellEntity) *model.AffiliationSpell {

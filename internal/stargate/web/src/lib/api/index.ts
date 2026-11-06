@@ -283,6 +283,15 @@ export const securityApi = {
     request<AuthFactor>(`/factors/${id}/enable`, { method: 'POST', body: code ?? undefined }),
   disableFactor: (id: string) => request<AuthFactor>(`/factors/${id}/disable`, { method: 'POST' }),
   deleteFactor: (id: string) => request<void>(`/factors/${id}`, { method: 'DELETE' }),
+  /**
+   * Replaces the current password. The current secret is the proof; no emailed
+   * magic spell and no elevation round trip are involved.
+   */
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<void>('/factors/password', {
+      method: 'POST',
+      body: { current_password: currentPassword, new_password: newPassword },
+    }),
   passkeys: () => request<Passkey[]>('/factors/passkey'),
   startPasskeyRegistration: (body: { device_id: string; device_name?: string }) =>
     request<PasskeyRegistrationStart>('/factors/passkey/start', { method: 'POST', body }),

@@ -177,6 +177,8 @@ func Run(parent context.Context, log *slog.Logger, factories []module.Factory[co
 	})
 
 	spellService := spell.NewService(st, rc, clients.Ring, cfg.SiteUrl, cfg, log)
+	// A redeemed reset spell must end every session that predates it.
+	spellService.SetSessionRevoker(authService)
 
 	// Event consumers are owned by the modules whose tables they touch.
 	if nc != nil {

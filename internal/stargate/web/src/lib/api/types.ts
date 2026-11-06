@@ -149,6 +149,7 @@ export interface AuthFactor {
   account_id: string
   created_at?: string
   updated_at?: string
+  deleted_at?: string | null
   created_response?: Record<string, unknown>
 }
 

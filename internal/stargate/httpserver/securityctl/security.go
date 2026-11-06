@@ -40,6 +40,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/permission"
 	"src.solsynth.dev/sosys/stargate/ports"
 	"src.solsynth.dev/sosys/stargate/redis"
+	"src.solsynth.dev/sosys/stargate/risk"
 	"src.solsynth.dev/sosys/stargate/spell"
 	"src.solsynth.dev/sosys/stargate/store"
 )
@@ -79,6 +80,9 @@ func Register(api *gin.RouterGroup, d Deps) {
 	// ── Auth factors ──
 	security.GET("factors", c.getAuthFactors)
 	security.POST("factors", middleware.RequireAuth(), middleware.RequireSudo(), c.createAuthFactor)
+	// Password change proves the current secret instead of an elevation; see
+	// changePassword for why sudo/email is the wrong gate here.
+	security.POST("factors/password", middleware.RequireAuth(), c.changePassword)
 	security.POST("factors/passkey/start", c.startPasskeyRegistration)
 	security.POST("factors/passkey/complete", middleware.RequireAuth(), middleware.RequireSudo(), c.completePasskeyRegistration)
 	security.GET("factors/passkey", c.getPasskeys)
@@ -426,6 +430,93 @@ func (c *controller) createAuthFactor(ctx *gin.Context) {
 	c.actionLog(reqCtx, user.Id, model.ActionLogAuthFactorCreate,
 		map[string]any{"factor_type": factorTypeString(factor.Type)}, ctx.Request, sessionID)
 	ctx.JSON(http.StatusOK, factor)
+}
+
+// changePasswordRequest is the console's change-password body.
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+// POST /api/factors/password
+//
+// This is the self-service counterpart to the emailed reset spell: the caller
+// proves the current password instead of redeeming a magic spell. Sudo is
+// deliberately not required — the elevation flow itself falls back to an
+// emailed code for an account whose only factor is a password, so requiring it
+// would turn a routine change into the very email round trip this exists to
+// avoid. Possession of the current secret is stronger evidence for rewriting
+// that same secret, and it is the mutation POST /factors refuses to make
+// ("Auth factor with type 0 already exists").
+//
+// Other sessions are left alive: a caller who proved the current password is
+// the account holder, and the reset-spell path — the one that runs without a
+// password — is where all sessions are revoked.
+func (c *controller) changePassword(ctx *gin.Context) {
+	reqCtx := ctx.Request.Context()
+	user := middleware.CurrentUser(reqCtx)
+	if user == nil {
+		ctx.JSON(http.StatusUnauthorized, unauthorized401())
+		return
+	}
+	var request changePasswordRequest
+	if err := ctx.ShouldBindJSON(&request); err != nil {
+		ctx.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
+		return
+	}
+	fieldErrors := map[string][]string{}
+	if strings.TrimSpace(request.CurrentPassword) == "" {
+		fieldErrors["current_password"] = []string{"The CurrentPassword field is required."}
+	}
+	if len(request.NewPassword) < 4 || len(request.NewPassword) > 128 {
+		fieldErrors["new_password"] = []string{"The field NewPassword must be a string or array type with a minimum length of 4 and a maximum length of 128."}
+	}
+	if len(fieldErrors) > 0 {
+		ctx.JSON(http.StatusBadRequest, validationError(fieldErrors))
+		return
+	}
+
+	ip := middleware.ClientIP(ctx.Request)
+	if !risk.IPAllowed(reqCtx, c.d.Redis, c.d.Cfg, ip) {
+		ctx.JSON(http.StatusTooManyRequests, errs.New("RATE_LIMITED",
+			"Too many failed attempts. Try again later.", http.StatusTooManyRequests))
+		return
+	}
+
+	factor, err := c.d.Store.GetEnabledPasswordFactor(reqCtx, user.Id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			ctx.JSON(http.StatusBadRequest, errs.New("AUTH_FACTOR_NOT_ENABLED", "Auth factor is not enabled.", http.StatusBadRequest))
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to load auth factors.", http.StatusInternalServerError))
+		return
+	}
+	ok, err := auth.VerifyFactorPassword(factor, request.CurrentPassword)
+	if err != nil || !ok {
+		// Same fail2ban record as a failed sign-in: a stolen session must not
+		// get unlimited guesses at the password that would let it take over.
+		if c.d.Cfg != nil {
+			risk.RecordFailure(reqCtx, c.d.Redis, c.d.Cfg, ip)
+		}
+		ctx.JSON(http.StatusBadRequest, errs.New("AUTH_INVALID_PASSWORD", "Invalid password.", http.StatusBadRequest))
+		return
+	}
+
+	hash, err := auth.HashPassword(request.NewPassword)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to change password.", http.StatusInternalServerError))
+		return
+	}
+	if err := c.d.Store.UpdateAuthFactorSecret(reqCtx, user.Id, uuid.MustParse(factor.Id), hash); err != nil {
+		ctx.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to change password.", http.StatusInternalServerError))
+		return
+	}
+	risk.ClearFailures(reqCtx, c.d.Redis, ip)
+	c.actionLog(reqCtx, user.Id, model.ActionLogAuthFactorResetPassword,
+		map[string]any{"factor_type": factorTypeString(factor.Type), "source": "self_service"},
+		ctx.Request, currentSessionID(reqCtx))
+	ctx.Status(http.StatusOK)
 }
 
 // buildAuthFactor mirrors AccountService.CreateAuthFactor.

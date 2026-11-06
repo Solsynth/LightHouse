@@ -351,8 +351,15 @@ func (s *dyAccountService) ListAuthFactors(ctx context.Context, req *gen.DyListA
 }
 
 // ResetPasswordFactor mirrors AccountServiceGrpc.ResetPasswordFactor: bcrypt
-// the new password, create-or-reset the Password factor, and record the
-// reset action log.
+// the new password, create-or-reset the Password factor, consume the reset
+// spell, and record the reset action log.
+//
+// The spell is required. This RPC has no per-caller authentication (the gRPC
+// port is fleet-internal and un-intercepted), so the redeemed
+// AuthPasswordReset spell is the only evidence that a reset was actually
+// requested and delivered. The C# caller passes SpellId for the same reason;
+// ignoring it — as this port did — let any in-fleet caller rewrite any
+// account's password without a magic spell and with no mail round trip.
 func (s *dyAccountService) ResetPasswordFactor(ctx context.Context, req *gen.DyResetPasswordFactorRequest) (*gen.DyAccountAuthFactor, error) {
 	accountID, err := uuid.Parse(req.AccountId)
 	if err != nil {
@@ -360,6 +367,23 @@ func (s *dyAccountService) ResetPasswordFactor(ctx context.Context, req *gen.DyR
 	}
 	if strings.TrimSpace(req.NewPassword) == "" {
 		return nil, status.Error(codes.InvalidArgument, "New password is required")
+	}
+	if len(req.NewPassword) < 4 || len(req.NewPassword) > 128 {
+		return nil, status.Error(codes.InvalidArgument, "New password must be 4 to 128 characters long")
+	}
+	spellID, err := uuid.Parse(strings.TrimSpace(req.GetSpellId().GetValue()))
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "A password reset spell id is required")
+	}
+	spell, err := s.d.Store.GetMagicSpellByID(ctx, spellID)
+	if err != nil || spell.DeletedAt != nil {
+		return nil, status.Error(codes.PermissionDenied, "Password reset spell not found")
+	}
+	if spell.Type != model.MagicSpellTypeAuthPasswordReset || spell.AccountId != accountID.String() {
+		return nil, status.Error(codes.PermissionDenied, "Password reset spell does not authorize this account")
+	}
+	if spell.ExpiresAt != nil && !spell.ExpiresAt.Time().After(timeNow()) {
+		return nil, status.Error(codes.PermissionDenied, "Password reset spell has expired")
 	}
 	exists, err := s.d.Store.AccountExists(ctx, accountID.String())
 	if err != nil {
@@ -376,9 +400,17 @@ func (s *dyAccountService) ResetPasswordFactor(ctx context.Context, req *gen.DyR
 	if err != nil {
 		return nil, err
 	}
+	// Single use: consume the spell before returning, so a replay of the same
+	// id cannot reset the password a second time.
+	if err := s.d.Store.DeleteMagicSpell(ctx, spell.Id); err != nil {
+		return nil, err
+	}
+	if s.d.Auth != nil {
+		_, _ = s.d.Auth.RevokeAllSessionsForAccount(ctx, accountID.String())
+	}
 	if s.d.Logs != nil {
 		_ = s.d.Logs.Create(ctx, accountID.String(), model.ActionLogAuthFactorResetPassword,
-			map[string]any{"factor_type": "Password"}, "", "", nil, nil)
+			map[string]any{"factor_type": "Password", "source": "recovery_spell", "spell_id": spell.Id}, "", "", nil, nil)
 	}
 	return authFactorToProto(factor), nil
 }

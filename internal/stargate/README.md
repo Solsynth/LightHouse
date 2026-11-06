@@ -248,6 +248,17 @@ attempts never escalate to another factor, and a sign-in never requests an
 emailed code, so it spends no email resources. Accounts without a password
 keep the previous risk-based factor flow, as do elevation ("sudo") challenges.
 
+### Changing a credential
+
+`POST /api/factors/password` replaces the signed-in account's password after
+the caller proves the current one (`current_password`, `new_password`, 4–128
+characters). It needs a session but no elevation and no emailed link, so an
+account whose only factor is a password can rotate it without a magic spell.
+The emailed reset flow stays for recovery: applying the link installs a 4–128
+character password, consumes the spell, and revokes every session that
+predates it. `ResetPasswordFactor` on the fleet gRPC surface requires the id of
+the redeemed reset spell and consumes it.
+
 The visual system — tokens, type, layout tiers, and component rules — is
 documented in [`docs/design-system.md`](docs/design-system.md).
 

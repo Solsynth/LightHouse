@@ -36,6 +36,13 @@ func Expired(spell *model.MagicSpell) bool {
 	return spell.ExpiresAt != nil && !spell.ExpiresAt.Time().After(time.Now().UTC())
 }
 
+// SessionRevoker revokes every live session of an account. The auth service
+// implements it; spell takes the interface so it stays store-only and tests
+// can observe the call without an auth service.
+type SessionRevoker interface {
+	RevokeAllSessionsForAccount(ctx context.Context, accountID string) (int, error)
+}
+
 // Service owns the magic-spell lifecycle.
 type Service struct {
 	store   *store.Store
@@ -44,11 +51,18 @@ type Service struct {
 	siteURL string
 	log     *slog.Logger
 	cfg     *config.Config
+	revoker SessionRevoker
 }
 
 // NewService wires the spell service. ring may be nil (email degrades).
 func NewService(st *store.Store, rc *redis.Client, ring gen.DyRingServiceClient, siteURL string, cfg *config.Config, log *slog.Logger) *Service {
 	return &Service{store: st, redis: rc, ring: ring, siteURL: siteURL, log: log, cfg: cfg}
+}
+
+// SetSessionRevoker attaches the session store helper used after a password
+// reset. Wired by the process after the auth service exists.
+func (s *Service) SetSessionRevoker(r SessionRevoker) {
+	s.revoker = r
 }
 
 // CreateOptions mirrors the optional parameters of
@@ -304,8 +318,14 @@ func (s *Service) clearActorPermissionCache(ctx context.Context, actor string) {
 	s.redis.ClearActorPermissionCache(ctx, actor)
 }
 
-// ApplyPasswordReset mirrors MagicSpellService.ApplyPasswordReset: replaces
-// the account's password factor and consumes the spell.
+// ApplyPasswordReset installs a new password for the spell's account and
+// consumes the spell.
+//
+// Unlike the C# remote call this is not a plain UPDATE by (account, type): an
+// account with no password row — or one whose row was soft-deleted — still
+// gets a working, enabled password instead of a silent no-op success. The
+// length rule matches registration (4–128), so a reset cannot install a
+// password the sign-in form would have refused.
 func (s *Service) ApplyPasswordReset(ctx context.Context, spell *model.MagicSpell, newPassword string) error {
 	if Expired(spell) {
 		return ErrSpellExpired
@@ -316,17 +336,32 @@ func (s *Service) ApplyPasswordReset(ctx context.Context, spell *model.MagicSpel
 	if spell.AccountId == "" {
 		return errors.New("password reset spell is missing account id")
 	}
-	if strings.TrimSpace(newPassword) == "" {
-		return errors.New("new password cannot be empty")
+	if len(newPassword) < 4 || len(newPassword) > 128 {
+		return errors.New("new password must be 4 to 128 characters long")
+	}
+	accountID, err := uuid.Parse(spell.AccountId)
+	if err != nil {
+		return errors.New("password reset spell contains an invalid account id")
 	}
 	hash, err := hashPassword(newPassword)
 	if err != nil {
 		return err
 	}
-	if err := s.store.ResetPasswordFactor(ctx, spell.AccountId, hash); err != nil {
+	if _, err := s.store.AdminUpsertPasswordFactor(ctx, accountID, hash, time.Now().UTC()); err != nil {
 		return err
 	}
-	return s.store.DeleteMagicSpell(ctx, spell.Id)
+	if err := s.store.DeleteMagicSpell(ctx, spell.Id); err != nil {
+		return err
+	}
+	// A reset is the "my credential leaked" flow: every session minted before
+	// it must die, or the attacker who holds one keeps it. The recovery-code
+	// path (RecoverAccountWithRecoveryCode) already does exactly this.
+	if s.revoker != nil {
+		if _, err := s.revoker.RevokeAllSessionsForAccount(ctx, spell.AccountId); err != nil && s.log != nil {
+			s.log.Warn("revoke sessions after password reset", "account_id", spell.AccountId, "error", err)
+		}
+	}
+	return nil
 }
 
 // ConsumeRegistrationInvite mirrors AffiliationSpellService.

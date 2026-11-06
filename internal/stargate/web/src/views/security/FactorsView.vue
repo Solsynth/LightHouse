@@ -48,6 +48,56 @@ const created = ref<AuthFactor | null>(null)
 
 const hasRecovery = computed(() => factors.value.some((f) => f.type === 5))
 
+/**
+ * The change-password form needs a live, enabled password factor; the server
+ * refuses without one and the "Add a Factor" panel is the place to create it.
+ */
+const passwordFactor = computed(() =>
+  factors.value.find((f) => f.type === 0 && f.enabled_at && !f.deleted_at),
+)
+const currentPassword = ref('')
+const nextPassword = ref('')
+const confirmPassword = ref('')
+const passwordError = ref('')
+
+const nextPasswordProblem = computed(() => {
+  if (!nextPassword.value) return ''
+  if (nextPassword.value.length < 4) return t('factors.passwordTooShort')
+  if (nextPassword.value.length > 128) return t('factors.passwordTooLong')
+  if (confirmPassword.value && confirmPassword.value !== nextPassword.value) {
+    return t('factors.passwordMismatch')
+  }
+  return ''
+})
+
+const canChangePassword = computed(
+  () =>
+    Boolean(passwordFactor.value) &&
+    currentPassword.value.length > 0 &&
+    nextPassword.value.length >= 4 &&
+    nextPassword.value.length <= 128 &&
+    confirmPassword.value === nextPassword.value &&
+    !busy.value,
+)
+
+async function changePassword() {
+  if (!canChangePassword.value) return
+  busy.value = true
+  passwordError.value = ''
+  try {
+    await securityApi.changePassword(currentPassword.value, nextPassword.value)
+    currentPassword.value = ''
+    nextPassword.value = ''
+    confirmPassword.value = ''
+    notice.ok(t('factors.noticePasswordChanged'))
+  } catch (caught) {
+    passwordError.value =
+      caught instanceof StargateError ? caught.message : t('factors.errorPasswordChange')
+  } finally {
+    busy.value = false
+  }
+}
+
 watch(addable, (options) => {
   if (!options.some((option) => option.type === chosenType.value)) {
     chosenType.value = options[0]?.type ?? 0
@@ -253,6 +303,52 @@ onMounted(load)
           <p v-else class="voice text-[12px]">
             {{ t('factors.allConfigured') }}
           </p>
+        </ConsolePanel>
+
+        <ConsolePanel v-if="passwordFactor" :title="t('factors.changePassword')">
+          <p class="voice text-[12px]">
+            {{ t('factors.changePasswordBody') }}
+          </p>
+
+          <TextField
+            id="password-current"
+            v-model="currentPassword"
+            root-class="mt-4"
+            :label="t('factors.currentPassword')"
+            type="password"
+            autocomplete="current-password"
+          />
+
+          <TextField
+            id="password-next"
+            v-model="nextPassword"
+            root-class="mt-4"
+            :label="t('factors.newPassword')"
+            type="password"
+            autocomplete="new-password"
+            :invalid="Boolean(nextPasswordProblem)"
+            :hint="nextPasswordProblem"
+          />
+
+          <TextField
+            id="password-confirm"
+            v-model="confirmPassword"
+            root-class="mt-4"
+            :label="t('factors.confirmPassword')"
+            type="password"
+            autocomplete="new-password"
+          />
+
+          <p v-if="passwordError" class="note note-error mt-3">{{ passwordError }}</p>
+
+          <button
+            type="button"
+            class="btn btn-primary btn-sm mt-4 w-full"
+            :disabled="!canChangePassword"
+            @click="changePassword"
+          >
+            {{ busy ? t('factors.changingPassword') : t('factors.changePasswordAction') }}
+          </button>
         </ConsolePanel>
 
         <ConsolePanel :title="t('factors.howSteps')">
