@@ -188,6 +188,33 @@
   --spacing-field: 0.75rem;
 }
 
+/* ── Safe areas ──────────────────────────────────────────────────────────
+   Below `sm` the card *is* the screen: its fill runs to the physical edge,
+   under the notch and the home indicator, while the chrome starts past the
+   unsafe insets. A gutter is therefore the larger of the page step and the
+   inset, never the inset alone — on hardware without a cutout the layout
+   keeps its normal rhythm. */
+@utility px-shell {
+  padding-inline: max(var(--spacing-page), env(safe-area-inset-left, 0px))
+    max(var(--spacing-page), env(safe-area-inset-right, 0px));
+}
+
+@utility px-shell-wide {
+  padding-inline: max(var(--spacing-page-wide), env(safe-area-inset-left, 0px))
+    max(var(--spacing-page-wide), env(safe-area-inset-right, 0px));
+}
+
+/* The status bar overlays the card's top edge; the fill stays behind it. */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* The home indicator overlays the footer's bottom edge. Its own 14 px step is
+   the floor, so devices without an inset keep the bar's height. */
+@utility pb-safe {
+  padding-bottom: max(0.875rem, env(safe-area-inset-bottom, 0px));
+}
+
 @layer base {
   html {
     color-scheme: dark;

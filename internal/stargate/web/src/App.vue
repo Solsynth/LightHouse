@@ -269,7 +269,7 @@ function changeLocale(event: Event) {
 <template>
   <div
     class="relative flex min-h-dvh flex-col items-center"
-    :class="fullBleed ? '' : 'px-page py-9 sm:py-14'"
+    :class="fullBleed ? '' : 'sm:px-page sm:py-14'"
   >
     <div
       v-if="session.signedIn && backdropUrl && !backdropFailed"
@@ -298,19 +298,24 @@ function changeLocale(event: Event) {
     >
       <div
         class="w-full"
-        :class="fullBleed ? 'flex flex-1 flex-col' : 'transition-[max-width] ' + cardWidth"
+        :class="
+          fullBleed
+            ? 'flex flex-1 flex-col'
+            : 'max-sm:flex max-sm:max-w-none max-sm:flex-1 max-sm:flex-col transition-[max-width] ' +
+              cardWidth
+        "
       >
         <main
           id="main"
           :class="
             fullBleed
-              ? 'flex flex-1 flex-col bg-base-100/40'
-              : 'overflow-hidden rounded-sheet bg-base-200/50 shadow-[0_24px_60px_-40px_rgb(0_0_0/0.55)]'
+              ? 'flex flex-1 flex-col bg-base-100/40 max-sm:pt-safe'
+              : 'max-sm:flex max-sm:flex-1 max-sm:flex-col overflow-hidden rounded-sheet bg-base-200/50 shadow-[0_24px_60px_-40px_rgb(0_0_0/0.55)] max-sm:rounded-none max-sm:shadow-none max-sm:pt-safe'
           "
         >
           <div
             class="flex items-center justify-between gap-4 py-3.5"
-            :class="fullBleed ? 'px-page sm:px-page-wide' : 'px-page'"
+            :class="fullBleed ? 'px-shell sm:px-shell-wide' : 'px-shell'"
           >
             <RouterLink to="/" class="group flex items-center gap-2.5" :aria-label="t('app.home')">
               <span
@@ -384,7 +389,7 @@ function changeLocale(event: Event) {
 
           <nav
             v-if="showNav"
-            class="flex items-center gap-1.5 overflow-x-auto px-page py-2 scrollbar-none sm:px-page-wide"
+            class="flex items-center gap-1.5 overflow-x-auto px-shell py-2 scrollbar-none sm:px-shell-wide"
             :aria-label="t('app.console')"
           >
             <RouterLink
@@ -400,7 +405,7 @@ function changeLocale(event: Event) {
           </nav>
 
           <div ref="region" class="page-region">
-            <div v-if="booting" class="px-page py-7 sm:px-page-wide sm:py-9">
+            <div v-if="booting" class="px-shell py-7 sm:px-shell-wide sm:py-9">
               <div class="mb-8 space-y-3" aria-hidden="true">
                 <span class="skeleton h-6 w-40" />
                 <span class="skeleton h-2.5 w-64 max-w-full" />
@@ -419,7 +424,7 @@ function changeLocale(event: Event) {
               <p class="sr-only" role="status">{{ t('common.loading') }}</p>
             </div>
             <div v-else ref="regionInner">
-              <div :class="edgeToEdge ? '' : 'px-page py-7 sm:px-page-wide sm:py-9'">
+              <div :class="edgeToEdge ? '' : 'px-shell py-7 sm:px-shell-wide sm:py-9'">
                 <RouterView v-slot="{ Component }">
                   <component :is="Component" />
                 </RouterView>
@@ -428,7 +433,7 @@ function changeLocale(event: Event) {
               <Transition name="notice">
                 <div
                   v-if="latest"
-                  class="flex items-baseline gap-2 px-page py-2.5 text-2xs"
+                  class="flex items-baseline gap-2 px-shell py-2.5 text-2xs"
                   role="status"
                   aria-live="polite"
                 >
@@ -448,8 +453,11 @@ function changeLocale(event: Event) {
       class="relative z-10 flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 text-2xs text-faint"
       :class="
         fullBleed
-          ? 'mt-0 rounded-card bg-base-200/40 px-page py-3.5 sm:px-page-wide'
-          : ['mt-8', cardWidth]
+          ? 'mt-0 rounded-card bg-base-200/40 px-shell py-3.5 sm:px-shell-wide max-sm:rounded-none max-sm:pb-safe'
+          : [
+              'mt-8 max-sm:mt-0 max-sm:max-w-none max-sm:rounded-none max-sm:bg-base-200/50 max-sm:px-shell max-sm:py-3.5 max-sm:pb-safe',
+              cardWidth,
+            ]
       "
     >
       <span>{{ t('app.copyright', { year }) }}</span>
