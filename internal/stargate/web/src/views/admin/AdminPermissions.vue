@@ -113,7 +113,7 @@ onMounted(load)
             :placeholder="t('admin.permissions.filterPlaceholder')"
             autocapitalize="off"
           />
-          <button type="submit" class="btn btn-ghost shrink-0" :disabled="loading">
+          <button type="submit" class="btn btn-ghost btn-field shrink-0" :disabled="loading">
             {{ t('admin.permissions.filter') }}
           </button>
         </form>

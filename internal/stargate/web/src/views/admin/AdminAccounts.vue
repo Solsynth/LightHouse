@@ -90,7 +90,7 @@ onMounted(load)
         />
         {{ t('admin.accounts.activatedOnly') }}
       </label>
-      <button type="submit" class="btn btn-primary shrink-0" :disabled="loading">
+      <button type="submit" class="btn btn-primary btn-field shrink-0" :disabled="loading">
         {{ t('common.search') }}
       </button>
     </form>

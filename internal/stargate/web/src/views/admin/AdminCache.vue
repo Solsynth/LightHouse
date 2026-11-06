@@ -189,7 +189,7 @@ onMounted(load)
           />
           <button
             type="button"
-            class="btn btn-ghost shrink-0"
+            class="btn btn-ghost btn-field shrink-0"
             :disabled="busy || !keyToClear.trim()"
             @click="clearKey"
           >

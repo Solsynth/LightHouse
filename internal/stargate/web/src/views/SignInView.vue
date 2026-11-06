@@ -483,7 +483,7 @@ onBeforeUnmount(() => {
           <div
             v-if="providers.length"
             class="flex flex-wrap items-center gap-2"
-            :class="{ 'mt-2': deviceWays.length }"
+            :class="{ 'mt-3': deviceWays.length }"
           >
             <a
               v-for="provider in providers"

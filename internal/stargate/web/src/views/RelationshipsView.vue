@@ -644,7 +644,7 @@ onMounted(load)
                 autocapitalize="off"
                 @input="searched = false"
               />
-              <button type="submit" class="btn btn-primary shrink-0" :disabled="searching">
+              <button type="submit" class="btn btn-primary btn-field shrink-0" :disabled="searching">
                 {{ t('common.search') }}
               </button>
             </div>

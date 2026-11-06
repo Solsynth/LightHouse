@@ -159,7 +159,7 @@ onMounted(begin)
           />
           <button
             type="button"
-            class="btn btn-primary shrink-0"
+            class="btn btn-primary btn-field shrink-0"
             :disabled="!secrets[factor.id] || busy"
             @click="submit(factor)"
           >

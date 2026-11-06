@@ -215,6 +215,26 @@
   padding-bottom: max(0.875rem, env(safe-area-inset-bottom, 0px));
 }
 
+/* ── Buttons that must outrank daisyUI ───────────────────────────────────
+   daisyUI's component rules sit in a sublayer of `utilities`, so a rule in
+   `@layer components` loses to them no matter how late it appears. These two
+   are declarations about a daisyUI class's shape, so they are utilities. */
+
+/* The outline is the one control that keeps a line, because the line is the
+   whole point of the variant. The theme zeroes `--border`, which leaves
+   `btn-outline` invisible; restore a deliberate edge instead. */
+@utility btn-outline {
+  border-width: 2px;
+  border-color: var(--console-line);
+}
+
+/* An action sharing a row with a field takes the field's height (`.field-sm`,
+   the default tier) rather than daisyUI's 40 px, so the input and its button
+   read as one control line instead of a short chip beside a well. */
+@utility btn-field {
+  height: 3rem;
+}
+
 @layer base {
   html {
     color-scheme: dark;
@@ -264,6 +284,13 @@
 @layer components {
   .eyebrow {
     @apply text-2xs uppercase tracking-[0.14em] text-faint;
+  }
+
+  /* A caption above a group of fields or alternative actions. It speaks in the
+     eyebrow's voice, and carries the gap to what follows so the controls below
+     never crowd it. */
+  .field-label {
+    @apply mb-2.5 text-2xs uppercase tracking-[0.14em] text-faint;
   }
 
   /* Human voice: guidance and empty states. Sans is the default face now, so
@@ -678,13 +705,6 @@
      felt rather than seen; it is the one motion every button shares. */
   .btn:not(:disabled):active {
     transform: translateY(1px) scale(0.985);
-  }
-
-  /* `btn-outline` is the one control that keeps a line, because the line is
-     the whole point of the variant. */
-  .btn-outline {
-    border-width: 1px;
-    border-color: var(--color-line);
   }
 
   /* Square buttons follow the same corner rather than becoming circles: a

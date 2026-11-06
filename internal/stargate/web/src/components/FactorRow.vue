@@ -64,7 +64,7 @@ function submit() {
       />
       <button
         type="button"
-        class="btn btn-primary shrink-0"
+        class="btn btn-primary btn-field shrink-0"
         :disabled="props.busy || !secret"
         @click="submit"
       >

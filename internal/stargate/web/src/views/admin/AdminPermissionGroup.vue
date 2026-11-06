@@ -163,7 +163,7 @@ onMounted(load)
           />
           <button
             type="button"
-            class="btn btn-primary shrink-0"
+            class="btn btn-primary btn-field shrink-0"
             :disabled="busy || !permissionKey.trim()"
             @click="grant"
           >
@@ -214,7 +214,7 @@ onMounted(load)
           />
           <button
             type="button"
-            class="btn btn-primary shrink-0"
+            class="btn btn-primary btn-field shrink-0"
             :disabled="busy || !memberActor.trim()"
             @click="addMember"
           >
