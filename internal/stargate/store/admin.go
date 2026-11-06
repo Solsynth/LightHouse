@@ -1275,6 +1275,111 @@ func (s *Store) adminQueryActionLogs(ctx context.Context, accountID uuid.UUID, a
 	return logs, int(total), nil
 }
 
+// ActionLogSummaryGroup is one action type's activity inside the summary
+// window: how often it fired and when it last did.
+type ActionLogSummaryGroup struct {
+	Action string
+	Count  int64
+	LastAt time.Time
+}
+
+// ActionLogSummaryBucket is one UTC day's action count.
+type ActionLogSummaryBucket struct {
+	Start time.Time
+	Count int64
+}
+
+// ActionLogSummary rolls an account's action log up instead of paging rows:
+// all-time and rolling totals, per-action groups and per-day buckets. The
+// groups/buckets cover [Since, Until]; the rolling totals are always relative
+// to Until.
+type ActionLogSummary struct {
+	Since   time.Time
+	Until   time.Time
+	Total   int64
+	Last24h int64
+	Last7d  int64
+	Last30d int64
+	Groups  []ActionLogSummaryGroup
+	Buckets []ActionLogSummaryBucket
+}
+
+// SummarizeActionLogs computes the dashboard rollup for one account. The
+// per-action and per-day queries aggregate in the database, so a busy account
+// never streams its timeline to the caller just to count it.
+func (s *Store) SummarizeActionLogs(ctx context.Context, accountID uuid.UUID, since time.Time) (ActionLogSummary, error) {
+	now := time.Now().UTC()
+	if since.IsZero() {
+		since = now.AddDate(0, 0, -30)
+	}
+	if since.After(now) {
+		since = now
+	}
+	base := func() *gorm.DB {
+		return s.DB.WithContext(ctx).Model(&ActionLogEntity{}).Where("account_id = ?", accountID)
+	}
+
+	summary := ActionLogSummary{Since: since, Until: now}
+	var counts struct {
+		Total   int64
+		Last24h int64 `gorm:"column:last_24h"`
+		Last7d  int64 `gorm:"column:last_7d"`
+		Last30d int64 `gorm:"column:last_30d"`
+	}
+	if err := base().Select(
+		"COUNT(*) AS total, "+
+			"COUNT(*) FILTER (WHERE created_at >= ?) AS last_24h, "+
+			"COUNT(*) FILTER (WHERE created_at >= ?) AS last_7d, "+
+			"COUNT(*) FILTER (WHERE created_at >= ?) AS last_30d",
+		now.Add(-24*time.Hour), now.Add(-7*24*time.Hour), now.Add(-30*24*time.Hour),
+	).Scan(&counts).Error; err != nil {
+		return summary, err
+	}
+	summary.Total = counts.Total
+	summary.Last24h = counts.Last24h
+	summary.Last7d = counts.Last7d
+	summary.Last30d = counts.Last30d
+
+	var groups []struct {
+		Action string
+		Count  int64
+		LastAt time.Time `gorm:"column:last_at"`
+	}
+	if err := base().
+		Select("action, COUNT(*) AS count, MAX(created_at) AS last_at").
+		Where("created_at >= ?", since).
+		Group("action").
+		Order("count DESC").
+		Order("action ASC").
+		Scan(&groups).Error; err != nil {
+		return summary, err
+	}
+	summary.Groups = make([]ActionLogSummaryGroup, 0, len(groups))
+	for _, group := range groups {
+		summary.Groups = append(summary.Groups, ActionLogSummaryGroup(group))
+	}
+
+	const dayExpr = "date_trunc('day', created_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'"
+	var buckets []struct {
+		Start time.Time
+		Count int64
+	}
+	if err := base().
+		Select(dayExpr+" AS start, COUNT(*) AS count").
+		Where("created_at >= ?", since).
+		Group(dayExpr).
+		Order("start ASC").
+		Scan(&buckets).Error; err != nil {
+		return summary, err
+	}
+	summary.Buckets = make([]ActionLogSummaryBucket, 0, len(buckets))
+	for _, bucket := range buckets {
+		summary.Buckets = append(summary.Buckets, ActionLogSummaryBucket(bucket))
+	}
+
+	return summary, nil
+}
+
 // AdminListConnections lists an account's connections (admin view),
 // filtering soft-deleted rows.
 func (s *Store) AdminListConnections(ctx context.Context, accountID uuid.UUID) ([]model.Connection, error) {

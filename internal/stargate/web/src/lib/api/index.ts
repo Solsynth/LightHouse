@@ -3,6 +3,7 @@ import type { Page } from './client'
 import type {
   Account,
   ActionLog,
+  ActionLogSummary,
   ActorPermissions,
   AdminAccountDetail,
   AdminAccountSummary,
@@ -383,6 +384,8 @@ export const appApi = {
 export const activityApi = {
   list: (query: { action?: string; take?: number; offset?: number } = {}) =>
     requestPage<ActionLog>('/actions', query),
+  summary: (query: { days?: number } = {}) =>
+    request<ActionLogSummary>('/actions/summary', { query }),
 }
 
 // ── Admin ──
@@ -603,11 +606,10 @@ export const adminApi = {
     request<void>(`/admin/accounts/${encodeURIComponent(name)}/spells/${spellId}`, {
       method: 'DELETE',
     }),
-  accountActionLogs: (
-    name: string,
-    query: { action?: string; take?: number; offset?: number } = {},
-  ) =>
-    requestPage<ActionLog>(`/admin/accounts/${encodeURIComponent(name)}/action-logs`, query),
+  accountActionLogSummary: (name: string, query: { days?: number } = {}) =>
+    request<ActionLogSummary>(`/admin/accounts/${encodeURIComponent(name)}/action-logs/summary`, {
+      query,
+    }),
   accountNameHistory: (name: string) =>
     request<NameHistoryEntry[]>(`/admin/accounts/${encodeURIComponent(name)}/name-history`),
   accountConnections: (name: string) =>

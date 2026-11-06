@@ -7,7 +7,7 @@ import { RouterLink } from 'vue-router'
 import { useNoticeStore } from '@/stores/notice'
 import { activityApi, adminApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
-import type { ActionLog, Punishment, WellbeingActivity, WellbeingStats } from '@/lib/api/types'
+import type { ActionLogSummary, Punishment, WellbeingActivity, WellbeingStats } from '@/lib/api/types'
 import { punishmentTypeLabel } from '@/lib/enums'
 import { relative, shortId, utcStamp } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
@@ -15,7 +15,6 @@ import AdminNav from '@/components/AdminNav.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import IconButton from '@/components/IconButton.vue'
-import TextField from '@/components/TextField.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 
 const { t } = useI18n()
@@ -25,11 +24,8 @@ const stats = ref<WellbeingStats | null>(null)
 const activity = ref<WellbeingActivity | null>(null)
 const punishments = ref<Punishment[]>([])
 const createdTotal = ref(0)
-const logs = ref<ActionLog[]>([])
-const logsTotal = ref(0)
-const logAction = ref('')
+const summary = ref<ActionLogSummary | null>(null)
 const loading = ref(true)
-const logsLoading = ref(false)
 const error = ref('')
 const busy = ref(false)
 const pendingDelete = ref<Punishment | null>(null)
@@ -40,40 +36,37 @@ const activeShare = computed(() => {
   return Math.round((value.daily_active_users / value.total_profiled_accounts) * 100)
 })
 
+const groups = computed(() => summary.value?.groups ?? [])
+const windowTotal = computed(() => groups.value.reduce((total, group) => total + group.count, 0))
+const maxGroupCount = computed(() => Math.max(1, ...groups.value.map((group) => group.count)))
+
+function share(count: number): string {
+  return `${Math.max(1, Math.round((count / maxGroupCount.value) * 100))}%`
+}
+
+function percent(count: number): number {
+  return windowTotal.value > 0 ? Math.round((count / windowTotal.value) * 100) : 0
+}
+
 async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [statsResult, activityResult, punishmentPage] = await Promise.all([
+    const [statsResult, activityResult, punishmentPage, summaryResult] = await Promise.all([
       adminApi.stats(),
       adminApi.activity(),
       adminApi.punishmentsCreated({ take: 25 }),
+      activityApi.summary({ days: 30 }),
     ])
     stats.value = statsResult
     activity.value = activityResult
     punishments.value = punishmentPage.items
     createdTotal.value = punishmentPage.total
+    summary.value = summaryResult
   } catch (caught) {
     error.value = caught instanceof StargateError ? caught.message : t('admin.audit.errorLoad')
   } finally {
     loading.value = false
-  }
-  await loadLogs()
-}
-
-async function loadLogs() {
-  logsLoading.value = true
-  try {
-    const page = await activityApi.list({
-      action: logAction.value.trim() || undefined,
-      take: 25,
-    })
-    logs.value = page.items
-    logsTotal.value = page.total
-  } catch (caught) {
-    notice.fail(caught instanceof StargateError ? caught.message : t('admin.audit.errorLogs'))
-  } finally {
-    logsLoading.value = false
   }
 }
 
@@ -219,39 +212,41 @@ onMounted(load)
       <ConsolePanel
         class="mt-6"
         :title="t('admin.audit.logsTitle')"
-        :note="t('admin.audit.logsNote', { n: logsTotal })"
+        :note="t('admin.audit.logsNote', { n: summary?.last_30d ?? 0 })"
       >
-        <form class="mb-4 flex items-end gap-2" @submit.prevent="loadLogs">
-          <TextField
-            id="audit-action"
-            v-model="logAction"
-            size="xs"
-            root-class="min-w-0 flex-1"
-            :label="t('admin.audit.logFilter')"
-            :placeholder="t('admin.audit.logFilterPlaceholder')"
-          />
-          <button type="submit" class="btn btn-ghost btn-xs shrink-0" :disabled="logsLoading">
-            {{ t('common.search') }}
-          </button>
-        </form>
+        <p class="mb-4 text-2xs text-faint">
+          {{
+            t('admin.audit.logsWindow', {
+              day: summary?.last_24h ?? 0,
+              week: summary?.last_7d ?? 0,
+            })
+          }}
+        </p>
 
-        <p v-if="!logs.length" class="voice py-6">{{ t('admin.audit.logsEmpty') }}</p>
+        <p v-if="!groups.length" class="voice py-6">{{ t('admin.audit.logsEmpty') }}</p>
         <ul v-else class="divide-y divide-line-soft">
           <li
-            v-for="log in logs"
-            :key="log.id"
-            class="flex flex-wrap items-baseline justify-between gap-2 py-2.5 first:pt-0 last:pb-0"
+            v-for="group in groups"
+            :key="group.action"
+            class="py-2.5 first:pt-0 last:pb-0"
           >
-            <div class="min-w-0">
-              <p class="font-mono text-2xs text-base-content">{{ log.action }}</p>
-              <p class="mt-0.5 truncate text-2xs text-faint">
-                {{ log.ip_address || t('admin.audit.noAddress') }}
-                <template v-if="log.user_agent"> · {{ log.user_agent }}</template>
+            <div class="flex items-baseline justify-between gap-3">
+              <p class="min-w-0 truncate font-mono text-2xs text-base-content" :title="group.action">
+                {{ group.action }}
               </p>
+              <span class="text-xs tabular-nums text-dim">{{ group.count }}</span>
             </div>
-            <span class="text-2xs text-faint" :title="utcStamp(log.created_at)">
-              {{ relative(log.created_at) }}
-            </span>
+            <div class="mt-1 flex items-center gap-2">
+              <div class="h-1 flex-1 overflow-hidden rounded-full bg-base-300/60">
+                <div class="h-full rounded-full bg-primary" :style="{ width: share(group.count) }" />
+              </div>
+              <span class="w-9 text-right text-2xs tabular-nums text-faint">
+                {{ percent(group.count) }}%
+              </span>
+            </div>
+            <p class="mt-0.5 text-2xs text-faint">
+              {{ t('admin.audit.lastSeen', { when: relative(group.last_at) }) }}
+            </p>
           </li>
         </ul>
       </ConsolePanel>

@@ -52,8 +52,9 @@ func Register(api *gin.RouterGroup, d Deps) {
 	// under /api as well; Stargate keeps the same paths). The overview is the
 	// public summary banner/sheet clients render for signed-out visitors; the
 	// detailed punishment records and the caller's own list stay authenticated.
-	api.Group("/actions", middleware.RequireAuth(), middleware.RequireInteractive()).
-		GET("", getActionLogs(d))
+	actions := api.Group("/actions", middleware.RequireAuth(), middleware.RequireInteractive())
+	actions.GET("", getActionLogs(d))
+	actions.GET("/summary", getActionLogSummary(d))
 	punishments := api.Group("/accounts")
 	punishments.GET("/me/punishments", middleware.RequireAuth(), getMyPunishments(d))
 	punishments.GET("/:name/punishments", middleware.RequireAuth(), getAccountPunishments(d))

@@ -219,8 +219,9 @@ func accountAdminRoutes(d Deps) []adminRoute {
 		{Method: http.MethodPost, Path: ":name/factors/password/reset", Keys: []string{permission.AdminAccountsFactorsManage}, Handler: resetAccountPasswordFactor(d)},
 		{Method: http.MethodDelete, Path: ":name/factors/:factorId", Keys: []string{permission.AdminAccountsFactorsManage}, Handler: deleteAccountAuthFactor(d)},
 
-		// Action logs (admin search)
+		// Action logs (admin search and grouped summary)
 		{Method: http.MethodGet, Path: ":name/action-logs", Keys: []string{permission.AccountsActionLogsView}, Handler: listAccountActionLogs(d)},
+		{Method: http.MethodGet, Path: ":name/action-logs/summary", Keys: []string{permission.AccountsActionLogsView}, Handler: getAccountActionLogSummary(d)},
 
 		// Profile management
 		{Method: http.MethodPatch, Path: ":name/profile", Keys: []string{permission.AccountsProfileManage}, Handler: updateAccountProfile(d)},

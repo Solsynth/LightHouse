@@ -288,6 +288,36 @@ export interface ActionLog {
   created_at?: string
 }
 
+/** One action type's count inside an action-log summary window. */
+export interface ActionLogSummaryGroup {
+  action: string
+  count: number
+  last_at: string
+}
+
+/** One UTC day's action count in an action-log summary. */
+export interface ActionLogSummaryBucket {
+  start: string
+  count: number
+}
+
+/**
+ * Grouped action-log rollup from GET /api/actions/summary. `total` is
+ * all-time; the rolling counts and the groups/buckets cover the requested
+ * `days` window.
+ */
+export interface ActionLogSummary {
+  days: number
+  since: string
+  until: string
+  total: number
+  last_24h: number
+  last_7d: number
+  last_30d: number
+  groups: ActionLogSummaryGroup[]
+  buckets: ActionLogSummaryBucket[]
+}
+
 export interface AdminAccountSummary {
   account: Account
   primary_email?: string

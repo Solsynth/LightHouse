@@ -6,21 +6,19 @@ import { RouterLink } from 'vue-router'
 import { useNoticeStore } from '@/stores/notice'
 import { adminApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
-import type { ActionLog, NameHistoryEntry, Punishment, Relationship } from '@/lib/api/types'
+import type { ActionLogSummary, NameHistoryEntry, Punishment, Relationship } from '@/lib/api/types'
 import { RELATIONSHIP_STATUS, punishmentTypeLabel } from '@/lib/enums'
 import { relative, shortId, utcStamp } from '@/lib/format'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
-import TextField from '@/components/TextField.vue'
 
 const props = defineProps<{ name: string }>()
 const { t } = useI18n()
 const notice = useNoticeStore()
 
 const punishments = ref<Punishment[]>([])
-const logs = ref<ActionLog[]>([])
-const logsTotal = ref(0)
+const summary = ref<ActionLogSummary | null>(null)
 const nameHistory = ref<NameHistoryEntry[]>([])
 const relationships = ref<Relationship[]>([])
 const relationshipTotal = ref(0)
@@ -38,7 +36,6 @@ const createDraft = ref({
 const editing = ref<Punishment | null>(null)
 const editDraft = ref({ type: 0, reason: '', expires: '', blocked: '' })
 const pendingDelete = ref<Punishment | null>(null)
-const logAction = ref('')
 
 const relationshipStatus = (status: number) => {
   if (status === RELATIONSHIP_STATUS.closeFriend) return t('relationships.standing.closeFriend')
@@ -48,21 +45,37 @@ const relationshipStatus = (status: number) => {
   return t('relationships.standing.requested')
 }
 
-const activeCount = computed(() => punishments.value.filter((item) => !item.expired_at || new Date(item.expired_at) > new Date()).length)
+const activeCount = computed(
+  () =>
+    punishments.value.filter(
+      (item) => !item.expired_at || new Date(item.expired_at) > new Date(),
+    ).length,
+)
+
+const groups = computed(() => summary.value?.groups ?? [])
+const windowTotal = computed(() => groups.value.reduce((total, group) => total + group.count, 0))
+const maxGroupCount = computed(() => Math.max(1, ...groups.value.map((group) => group.count)))
+
+function share(count: number): string {
+  return `${Math.max(1, Math.round((count / maxGroupCount.value) * 100))}%`
+}
+
+function percent(count: number): number {
+  return windowTotal.value > 0 ? Math.round((count / windowTotal.value) * 100) : 0
+}
 
 async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [punishmentPage, logPage, history, relationshipPage] = await Promise.all([
+    const [punishmentPage, summaryResult, history, relationshipPage] = await Promise.all([
       adminApi.accountPunishments(props.name, { take: 50 }),
-      adminApi.accountActionLogs(props.name, { take: 50, action: logAction.value.trim() || undefined }),
+      adminApi.accountActionLogSummary(props.name, { days: 30 }),
       adminApi.accountNameHistory(props.name),
       adminApi.accountRelationships(props.name, { take: 50 }),
     ])
     punishments.value = punishmentPage.items
-    logs.value = logPage.items
-    logsTotal.value = logPage.total
+    summary.value = summaryResult
     nameHistory.value = history
     relationships.value = relationshipPage.items
     relationshipTotal.value = relationshipPage.total
@@ -229,40 +242,43 @@ onMounted(load)
 
       <ConsolePanel
         :title="t('admin.account.moderation.logsTitle')"
-        :note="t('admin.account.moderation.logsNote', { n: logsTotal })"
+        :note="t('admin.account.moderation.logsNote', { n: summary?.last_30d ?? 0 })"
       >
-        <form class="mb-4 flex flex-wrap items-end gap-2" @submit.prevent="load">
-          <TextField
-            id="account-log-action"
-            v-model="logAction"
-            root-class="min-w-[200px] flex-1"
-            :label="t('admin.audit.logFilter')"
-            :placeholder="t('admin.audit.logFilterPlaceholder')"
-          />
-          <button type="submit" class="btn btn-ghost btn-field" :disabled="busy">
-            {{ t('common.search') }}
-          </button>
-        </form>
+        <p class="mb-3 text-2xs text-faint">
+          {{
+            t('admin.account.moderation.logsWindow', {
+              day: summary?.last_24h ?? 0,
+              week: summary?.last_7d ?? 0,
+            })
+          }}
+        </p>
 
-        <p v-if="!logs.length" class="voice py-3 text-[12px]">
+        <p v-if="!groups.length" class="voice py-3 text-[12px]">
           {{ t('admin.audit.logsEmpty') }}
         </p>
         <ul v-else class="divide-y divide-line-soft">
           <li
-            v-for="log in logs"
-            :key="log.id"
-            class="flex flex-wrap items-baseline justify-between gap-2 py-2 first:pt-0 last:pb-0"
+            v-for="group in groups"
+            :key="group.action"
+            class="py-2 first:pt-0 last:pb-0"
           >
-            <div class="min-w-0">
-              <p class="font-mono text-2xs text-base-content">{{ log.action }}</p>
-              <p class="mt-0.5 truncate text-2xs text-faint">
-                {{ log.ip_address || t('admin.audit.noAddress') }}
-                <template v-if="log.session_id"> · {{ shortId(log.session_id) }}</template>
+            <div class="flex items-baseline justify-between gap-3">
+              <p class="min-w-0 truncate font-mono text-2xs text-base-content" :title="group.action">
+                {{ group.action }}
               </p>
+              <span class="text-xs tabular-nums text-dim">{{ group.count }}</span>
             </div>
-            <span class="text-2xs text-faint" :title="utcStamp(log.created_at)">
-              {{ relative(log.created_at) }}
-            </span>
+            <div class="mt-1 flex items-center gap-2">
+              <div class="h-1 flex-1 overflow-hidden rounded-full bg-base-300/60">
+                <div class="h-full rounded-full bg-primary" :style="{ width: share(group.count) }" />
+              </div>
+              <span class="w-9 text-right text-2xs tabular-nums text-faint">
+                {{ percent(group.count) }}%
+              </span>
+            </div>
+            <p class="mt-0.5 text-2xs text-faint">
+              {{ t('admin.account.moderation.lastSeen', { when: relative(group.last_at) }) }}
+            </p>
           </li>
         </ul>
       </ConsolePanel>

@@ -1,49 +1,52 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronLeft16, ChevronRight16, Renew16 } from '@carbon/icons-vue'
+import { Renew16 } from '@carbon/icons-vue'
 
-import { useNoticeStore } from '@/stores/notice'
 import { activityApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
-import type { ActionLog } from '@/lib/api/types'
-import { describeAgent, place, shortId, utcStamp } from '@/lib/format'
+import type { ActionLogSummary } from '@/lib/api/types'
+import { relative } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import IconButton from '@/components/IconButton.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 
 const { t, te } = useI18n()
-const notice = useNoticeStore()
 
-const logs = ref<ActionLog[]>([])
-const total = ref(0)
+const ranges = [7, 30, 90]
+const range = ref(30)
+const summary = ref<ActionLogSummary | null>(null)
 const loading = ref(true)
 const error = ref('')
-const filter = ref('')
-const page = ref(0)
-const pageSize = 50
 
-const actions = computed(() => {
-  const unique = new Set<string>()
-  for (const log of logs.value) unique.add(log.action)
-  return [...unique].sort()
+const groups = computed(() => summary.value?.groups ?? [])
+const windowTotal = computed(() => groups.value.reduce((total, group) => total + group.count, 0))
+const maxGroupCount = computed(() => Math.max(1, ...groups.value.map((group) => group.count)))
+
+// Zero-fill days so a quiet day still shows as a gap instead of collapsing
+// the chart into a misleading run of adjacent bars.
+const series = computed(() => {
+  const data = summary.value
+  if (!data) return []
+  const counts = new Map<string, number>()
+  for (const bucket of data.buckets) counts.set(bucket.start.slice(0, 10), bucket.count)
+  const until = new Date(data.until)
+  const end = Date.UTC(until.getUTCFullYear(), until.getUTCMonth(), until.getUTCDate())
+  const points: { key: string; count: number }[] = []
+  for (let offset = data.days - 1; offset >= 0; offset -= 1) {
+    const key = new Date(end - offset * 86_400_000).toISOString().slice(0, 10)
+    points.push({ key, count: counts.get(key) ?? 0 })
+  }
+  return points
 })
-
-const offset = computed(() => page.value * pageSize)
-const lastPage = computed(() => Math.max(0, Math.ceil(total.value / pageSize) - 1))
+const maxDayCount = computed(() => Math.max(1, ...series.value.map((point) => point.count)))
 
 async function load() {
   loading.value = true
   error.value = ''
   try {
-    const result = await activityApi.list({
-      action: filter.value || undefined,
-      take: pageSize,
-      offset: offset.value,
-    })
-    logs.value = result.items
-    total.value = result.total
+    summary.value = await activityApi.summary({ days: range.value })
   } catch (caught) {
     error.value = caught instanceof StargateError ? caught.message : t('activity.errorLoad')
   } finally {
@@ -51,44 +54,30 @@ async function load() {
   }
 }
 
-function setFilter(action: string) {
-  filter.value = filter.value === action ? '' : action
-  page.value = 0
+function setRange(days: number) {
+  if (range.value === days) return
+  range.value = days
   void load()
 }
 
-function go(next: number) {
-  page.value = Math.min(Math.max(0, next), lastPage.value)
-  void load()
+function share(count: number): string {
+  return `${Math.max(1, Math.round((count / maxGroupCount.value) * 100))}%`
 }
 
-// Action ids are the stable contract (and what the API filter takes); the
-// localized label is only presentation. Unknown ids fall back to the raw id,
-// so a new backend action is never hidden from the log.
+function percent(count: number): number {
+  return windowTotal.value > 0 ? Math.round((count / windowTotal.value) * 100) : 0
+}
+
+function barHeight(count: number): string {
+  return `${count > 0 ? Math.max(4, Math.round((count / maxDayCount.value) * 100)) : 1}%`
+}
+
+// Action ids are the stable contract; the localized label is only
+// presentation. Unknown ids fall back to the raw id, so a new backend action
+// is never hidden from the summary.
 function actionLabel(action: string): string {
   const key = `activity.actions.${action.replace(/[^a-zA-Z0-9]+/g, '_')}`
   return te(key) ? t(key) : action
-}
-
-function metaSummary(meta?: Record<string, unknown>): string {
-  if (!meta) return ''
-  return Object.entries(meta)
-    .filter(([, value]) => value !== null && value !== undefined && value !== '')
-    .slice(0, 6)
-    .map(([key, value]) => {
-      const rendered = Array.isArray(value)
-        ? value.join(', ')
-        : typeof value === 'object'
-          ? JSON.stringify(value)
-          : String(value)
-      return `${key}=${rendered}`
-    })
-    .join(' · ')
-}
-
-function copyRow(log: ActionLog) {
-  const line = `${utcStamp(log.created_at)} ${log.action} ${shortId(log.id)} ${log.ip_address ?? ''}`
-  void navigator.clipboard.writeText(line).then(() => notice.ok(t('activity.noticeCopied')))
 }
 
 onMounted(load)
@@ -106,109 +95,118 @@ onMounted(load)
 
     <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
-    <div v-if="actions.length" class="mb-4 flex flex-wrap items-center gap-2">
-      <span class="text-2xs uppercase tracking-[0.12em] text-faint">{{
-        t('activity.filter')
-      }}</span>
-      <button
-        v-for="action in actions"
-        :key="action"
-        type="button"
-        class="chip transition-colors"
-        :class="filter === action ? 'chip-active' : ''"
-        :title="action"
-        @click="setFilter(action)"
-      >
-        {{ actionLabel(action) }}
-      </button>
-      <button
-        v-if="filter"
-        type="button"
-        class="text-2xs text-dim underline decoration-line underline-offset-4"
-        @click="setFilter(filter)"
-      >
-        {{ t('activity.clear') }}
-      </button>
+    <div class="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="rounded-card bg-base-200/50 px-4 py-5">
+        <p class="text-2xs uppercase tracking-[0.14em] text-faint">
+          {{ t('activity.last24h') }}
+        </p>
+        <p class="mt-2 text-2xl font-normal numeric text-base-content">
+          {{ summary?.last_24h ?? 0 }}
+        </p>
+      </div>
+      <div class="rounded-card bg-base-200/50 px-4 py-5">
+        <p class="text-2xs uppercase tracking-[0.14em] text-faint">
+          {{ t('activity.last7d') }}
+        </p>
+        <p class="mt-2 text-2xl font-normal numeric text-base-content">
+          {{ summary?.last_7d ?? 0 }}
+        </p>
+      </div>
+      <div class="rounded-card bg-base-200/50 px-4 py-5">
+        <p class="text-2xs uppercase tracking-[0.14em] text-faint">
+          {{ t('activity.last30d') }}
+        </p>
+        <p class="mt-2 text-2xl font-normal numeric text-base-content">
+          {{ summary?.last_30d ?? 0 }}
+        </p>
+      </div>
+      <div class="rounded-card bg-base-200/50 px-4 py-5">
+        <p class="text-2xs uppercase tracking-[0.14em] text-faint">
+          {{ t('activity.allTime') }}
+        </p>
+        <p class="mt-2 text-2xl font-normal numeric text-base-content">
+          {{ summary?.total ?? 0 }}
+        </p>
+      </div>
     </div>
 
     <ConsolePanel
-      :title="t('activity.log')"
-      :note="loading ? undefined : t('activity.entries', { n: total })"
+      class="mt-6"
+      :title="t('activity.breakdown')"
+      :note="t('activity.breakdownNote', { n: windowTotal })"
     >
-      <LoadingSkeleton v-if="loading" :rows="6" :columns="[5, 2]" header />
+      <div class="mb-4 flex flex-wrap items-center gap-2">
+        <span class="text-2xs uppercase tracking-[0.12em] text-faint">
+          {{ t('activity.window') }}
+        </span>
+        <button
+          v-for="days in ranges"
+          :key="days"
+          type="button"
+          class="chip transition-colors"
+          :class="range === days ? 'chip-active' : ''"
+          @click="setRange(days)"
+        >
+          {{ t('activity.days', { n: days }) }}
+        </button>
+      </div>
 
-      <p v-else-if="!logs.length" class="voice py-6 text-[12px]">
+      <LoadingSkeleton v-if="loading" :rows="5" :columns="[4, 1]" header />
+
+      <p v-else-if="!groups.length" class="voice py-6 text-[12px]">
         {{ t('activity.empty') }}
       </p>
 
-      <div v-else class="table-bleed overflow-x-auto">
-        <table class="ledger">
-          <thead>
-            <tr>
-              <th scope="col">{{ t('activity.time') }}</th>
-              <th scope="col">{{ t('activity.action') }}</th>
-              <th scope="col">{{ t('activity.detail') }}</th>
-              <th scope="col">{{ t('activity.origin') }}</th>
-              <th scope="col">{{ t('activity.client') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="log in logs" :key="log.id" class="cursor-pointer" @click="copyRow(log)">
-              <td class="whitespace-nowrap text-xs tabular-nums text-dim">
-                {{ utcStamp(log.created_at).slice(0, 19).replace('T', ' ') }}
-              </td>
-              <td class="whitespace-nowrap text-xs text-base-content" :title="log.action">
-                {{ actionLabel(log.action) }}
-              </td>
-              <td class="max-w-[280px] truncate text-2xs text-faint" :title="metaSummary(log.meta)">
-                {{ metaSummary(log.meta) || '—' }}
-              </td>
-              <td class="whitespace-nowrap text-xs text-dim">
-                {{ log.ip_address || '—' }}
-                <p class="text-2xs text-faint">{{ place(log.location) }}</p>
-              </td>
-              <td class="text-xs text-dim">{{ describeAgent(log.user_agent) }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <template #footer>
-        <div class="flex items-center justify-between text-2xs text-faint">
-          <span>{{ t('activity.copyHint') }}</span>
-          <div class="flex items-center gap-3">
-            <span v-if="!loading" class="tabular-nums">
-              {{
-                t('activity.range', {
-                  from: offset + 1,
-                  to: Math.min(offset + pageSize, total),
-                  total,
-                })
-              }}
+      <ul v-else class="divide-y divide-line-soft">
+        <li
+          v-for="group in groups"
+          :key="group.action"
+          class="py-3 first:pt-0 last:pb-0"
+        >
+          <div class="flex items-baseline justify-between gap-3">
+            <span class="text-xs text-base-content" :title="group.action">
+              {{ actionLabel(group.action) }}
             </span>
-            <button
-              type="button"
-              class="btn btn-ghost btn-xs px-1 text-dim disabled:text-faint"
-              :aria-label="t('common.previousPage')"
-              :title="t('common.previousPage')"
-              :disabled="page === 0 || loading"
-              @click="go(page - 1)"
-            >
-              <ChevronLeft16 aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              class="btn btn-ghost btn-xs px-1 text-dim disabled:text-faint"
-              :aria-label="t('common.nextPage')"
-              :title="t('common.nextPage')"
-              :disabled="page >= lastPage || loading"
-              @click="go(page + 1)"
-            >
-              <ChevronRight16 aria-hidden="true" />
-            </button>
+            <span class="text-xs tabular-nums text-dim">{{ group.count }}</span>
           </div>
+          <div class="mt-1.5 flex items-center gap-2">
+            <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-base-300/60">
+              <div class="h-full rounded-full bg-primary" :style="{ width: share(group.count) }" />
+            </div>
+            <span class="w-9 text-right text-2xs tabular-nums text-faint">
+              {{ percent(group.count) }}%
+            </span>
+          </div>
+          <p class="mt-1 text-2xs text-faint">
+            {{ t('activity.lastSeen', { when: relative(group.last_at) }) }}
+          </p>
+        </li>
+      </ul>
+    </ConsolePanel>
+
+    <ConsolePanel
+      class="mt-6"
+      :title="t('activity.timeline')"
+      :note="t('activity.timelineNote', { n: windowTotal })"
+    >
+      <div v-if="series.length" class="flex h-24 items-end gap-px sm:gap-0.5">
+        <div
+          v-for="point in series"
+          :key="point.key"
+          class="group flex h-full flex-1 items-end"
+          :title="`${point.key} · ${point.count}`"
+        >
+          <div
+            class="w-full rounded-t bg-primary/50 transition-colors group-hover:bg-primary"
+            :style="{ height: barHeight(point.count) }"
+          />
         </div>
-      </template>
+      </div>
+      <div v-if="series.length" class="mt-2 flex justify-between text-2xs text-faint">
+        <span>{{ series[0]?.key }}</span>
+        <span>{{ series[series.length - 1]?.key }}</span>
+      </div>
+      <p v-else class="voice py-6 text-[12px]">{{ t('activity.empty') }}</p>
     </ConsolePanel>
   </div>
 </template>
