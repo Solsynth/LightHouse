@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	fleetauth "src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
@@ -30,8 +29,8 @@ func AskPermission(permission gen.DyPermissionServiceClient, key string, log *sl
 		session := CurrentSession(c)
 
 		if session != nil && session.Type == gen.DySessionType_DY_OAUTH {
-			if !fleetauth.ScopeAllows(session.Scopes, key) {
-				matched, ok := fleetauth.MatchedScope(session.Scopes, key)
+			if !ScopeAllows(session.Scopes, key) {
+				matched, ok := MatchedScope(session.Scopes, key)
 				if !ok {
 					matched = "<none>"
 				}

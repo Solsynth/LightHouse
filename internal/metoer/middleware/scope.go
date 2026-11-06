@@ -1,11 +1,11 @@
-package auth
+package middleware
 
 import "strings"
 
-// PresetScopes are the scopes that describe identity, not a permission: the
-// scope gate skips them when matching a permission key. Mirrors
+// presetScopes are the scopes that describe identity, not a permission: the
+// scope filter skips them when matching a permission key. Mirrors
 // PermissionScopeGate.PresetScopes (case-insensitive).
-var PresetScopes = map[string]struct{}{
+var presetScopes = map[string]struct{}{
 	"openid":  {},
 	"profile": {},
 	"email":   {},
@@ -16,10 +16,9 @@ var PresetScopes = map[string]struct{}{
 //
 // A token scope is a filter over the permissions the account already holds,
 // never a grant: "*" matches every key (it removes the narrowing) but the
-// caller must still run the permission-service check. Unknown preset scopes
-// (openid/profile/email) permit nothing on their own, an exact key matches
-// itself, and "prefix.*" matches keys under prefix. An empty scope list
-// matches nothing.
+// caller must still run the permission-service check. Preset scopes permit
+// nothing on their own, an exact key matches itself, and "prefix.*" matches
+// keys under prefix. An empty scope list matches nothing.
 func MatchedScope(scopes []string, permissionKey string) (string, bool) {
 	if strings.TrimSpace(permissionKey) == "" {
 		return "", false
@@ -32,7 +31,7 @@ func MatchedScope(scopes []string, permissionKey string) (string, bool) {
 		if strings.EqualFold(scope, "*") {
 			return "*", true
 		}
-		if _, preset := PresetScopes[strings.ToLower(scope)]; preset {
+		if _, preset := presetScopes[strings.ToLower(scope)]; preset {
 			continue
 		}
 		if strings.EqualFold(scope, permissionKey) {
