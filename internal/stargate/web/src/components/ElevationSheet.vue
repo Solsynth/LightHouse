@@ -28,9 +28,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
+  <!-- Both sheets are daisyUI modals at z-999, so DOM order would otherwise
+       put the pending-login prompt (rendered after this) over the elevation
+       sheet and make sudo unusable while a login is awaiting approval. -->
   <dialog
     v-if="session.elevationOpen"
-    class="modal modal-open"
+    class="modal modal-open z-[1000]"
     aria-labelledby="elevation-title"
     aria-modal="true"
   >
