@@ -276,12 +276,45 @@ func (h *handler) passwordFirstChallenge(ctx context.Context, challenge *model.A
 	return ok
 }
 
-// challengeFactorOptions returns the factors a challenge may offer. A
-// password-first login offers exactly the password: every other factor —
-// including the emailed code — would add a step after the password and spend
-// delivery resources for nothing. Elevation and passwordless login challenges
-// keep the historical set. minTrustworthy is the strength floor; sudo raises
-// it so the picker never advertises a password it would reject on submit.
+// passwordFirstStepCapacity is how many steps a password-first challenge can
+// actually collect: the password itself, then TOTP, NFC, passkeys and email
+// codes. The email code is only a later-step option — issuing one requires the
+// caller to pick that factor, so the first step never sends mail. The cap
+// keeps the risk model from demanding a factor the picker cannot offer.
+func passwordFirstStepCapacity(factors []model.AuthFactor) int {
+	capacity := 0
+	for _, f := range factors {
+		if f.EnabledAt == nil || f.Trustworthy < 1 {
+			continue
+		}
+		switch model.AuthFactorType(f.Type) {
+		case model.AuthFactorTypePassword,
+			model.AuthFactorTypeTimedCode,
+			model.AuthFactorTypeNfcToken,
+			model.AuthFactorTypeEmailCode,
+			model.AuthFactorTypePasskey:
+			capacity++
+		}
+	}
+	if capacity < 1 {
+		capacity = 1
+	}
+	return capacity
+}
+
+// passwordFirstStepSettled reports whether a password-first challenge already
+// consumed its password, i.e. the remaining steps may be satisfied by another
+// factor.
+func passwordFirstStepSettled(challenge *model.AuthChallenge) bool {
+	return challenge.StepRemain < challenge.StepTotal
+}
+
+// challengeFactorOptions returns the factors a challenge may offer.
+// passwordFirst restricts the list to the password, which is the only factor the
+// first step accepts. Omit it after that step to offer the remaining factors.
+// Elevation and passwordless login challenges keep the historical set.
+// minTrustworthy is the strength floor; sudo raises it so the picker never
+// advertises a password it would reject on submit.
 func challengeFactorOptions(factors []model.AuthFactor, passwordFirst bool, minTrustworthy int) []model.AuthFactor {
 	if minTrustworthy < 1 {
 		minTrustworthy = 1
@@ -754,11 +787,20 @@ func (h *handler) createChallenge(c *gin.Context) {
 	}
 	steps := assessment.Steps
 	// Password-first login: an account that has a password proves it as the
-	// only submitted first factor. The risk model (including lockdown) still
-	// owns the step total; every step left after the password is settled
-	// by the in-app confirmation prompt, never by an emailed code.
+	// only submitted first factor. The risk model owns non-lockdown step totals
+	// (capped by the non-email factors the later steps can actually use), and
+	// lockdown demands that full capacity. The in-app prompt is an optional
+	// shortcut, never the only way to finish. No step ever spends an email code.
 	_, passwordFirst := enabledPasswordFactor(factors)
 	if passwordFirst {
+		capacity := passwordFirstStepCapacity(factors)
+		if mode == model.SecurityModeLockdown {
+			// Lockdown asks for every factor the flow can verify; the risk
+			// model's own max ignores passkeys and counts email.
+			steps = capacity
+		} else if steps > capacity {
+			steps = capacity
+		}
 		if steps < 1 {
 			steps = 1
 		}
@@ -887,16 +929,19 @@ func (h *handler) getChallengeFactors(c *gin.Context) {
 		_, passwordFirst = enabledPasswordFactor(factors)
 	}
 	minTrustworthy := challengeMinTrustworthy(challenge)
-	result := challengeFactorOptions(factors, passwordFirst, minTrustworthy)
+	// The first step accepts only the password. Once it is settled, the
+	// remaining steps offer every other factor the flow can verify (TOTP, NFC,
+	// passkey, email code); a used factor never comes back. An email code is
+	// only issued after that factor is picked, so the first step never mails.
+	firstStep := passwordFirst && !passwordFirstStepSettled(challenge)
+	result := challengeFactorOptions(factors, firstStep, minTrustworthy)
 	if passwordFirst {
-		// Once the password is used, nothing is left to submit: the remaining
-		// steps wait for a trusted device's approval. An empty picker is what
-		// the client renders as "waiting for approval".
 		remaining := result[:0]
 		for _, f := range result {
-			if !containsString(challenge.BlacklistFactors, f.Id) {
-				remaining = append(remaining, f)
+			if containsString(challenge.BlacklistFactors, f.Id) {
+				continue
 			}
+			remaining = append(remaining, f)
 		}
 		result = remaining
 	}
@@ -969,14 +1014,22 @@ func (h *handler) requestFactorCode(c *gin.Context) {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_ACCOUNT_NOT_FOUND", "Account was not found.", http.StatusNotFound))
 		return
 	}
-	// A password-first login never sends a code: the password is its only
-	// step, and the review prompt is published once it verifies. Refusing here
-	// keeps the client from spending an email on a step the challenge cannot
-	// take.
+	// A password-first login sends no code for its first step: only the
+	// password is accepted there. Once it is settled, the email factor may
+	// issue a code because the person explicitly picked it; every other
+	// later-step factor needs no code request.
 	if h.passwordFirstChallenge(ctx, challenge) {
-		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_SUPPORTED",
-			"Sign-in only accepts your password. Complete it, then confirm the login from a trusted device."))
-		return
+		ft := model.AuthFactorType(factor.Type)
+		switch {
+		case !passwordFirstStepSettled(challenge):
+			c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_SUPPORTED",
+				"Enter your password first. No code is sent for the first step."))
+			return
+		case ft != model.AuthFactorTypeEmailCode:
+			c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_SUPPORTED",
+				"That factor does not use a one-time code."))
+			return
+		}
 	}
 	// The in-app notification factor no longer issues a code: its approval
 	// prompt is published when the challenge is created, and completed by a
@@ -1057,15 +1110,25 @@ func (h *handler) doChallenge(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_TRUSTWORTHY", "Auth factor is not trustworthy."))
 		return
 	}
-	// Password-first logins accept only the password as a step: the picker
-	// advertises nothing else, and a crafted request must not satisfy the
-	// challenge with a factor (an emailed code in particular) that the policy
-	// removed.
+	// The first step accepts only the password. After it, the remaining
+	// steps accept the factors the picker advertises (TOTP, NFC, email code;
+	// passkeys use their own endpoint).
 	passwordFirst := h.passwordFirstChallenge(ctx, challenge)
-	if passwordFirst && model.AuthFactorType(factor.Type) != model.AuthFactorTypePassword {
-		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_SUPPORTED",
-			"Sign-in only accepts your password. Complete it, then confirm the login from a trusted device."))
-		return
+	if passwordFirst {
+		ft := model.AuthFactorType(factor.Type)
+		settled := passwordFirstStepSettled(challenge)
+		switch {
+		case !settled && ft != model.AuthFactorTypePassword:
+			c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_SUPPORTED",
+				"Enter your password first."))
+			return
+		case settled && ft != model.AuthFactorTypeTimedCode &&
+			ft != model.AuthFactorTypeNfcToken &&
+			ft != model.AuthFactorTypeEmailCode:
+			c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_SUPPORTED",
+				"That factor cannot satisfy this sign-in step."))
+			return
+		}
 	}
 
 	if challenge.StepRemain == 0 {
@@ -1140,10 +1203,12 @@ func (h *handler) doChallenge(c *gin.Context) {
 		challenge.StepRemain = 0
 	}
 	challenge.BlacklistFactors = append(challenge.BlacklistFactors, factor.Id)
-	if passwordFirst {
-		// The prompt is now live: it is the only way to settle the steps the
-		// risk model asked for beyond the password, and it also keeps the
-		// satisfied challenge reviewable after the exchange expires it.
+	passwordVerified := passwordFirst && model.AuthFactorType(factor.Type) == model.AuthFactorTypePassword
+	if passwordVerified {
+		// The prompt is now live. A trusted device may settle what remains
+		// (optional — the picker offers TOTP/NFC/passkeys for the same steps),
+		// and the window keeps the satisfied challenge reviewable after the
+		// exchange expires it.
 		challenge.ReviewUntil = model.NewTime(now.Add(challengeReviewWindow))
 	}
 	challenge.UpdatedAt = model.NewTime(now)
@@ -1162,11 +1227,9 @@ func (h *handler) doChallenge(c *gin.Context) {
 			h.pushLoginNotification(ctx, challenge, true)
 		}
 	}
-	if passwordFirst {
-		// Published after the password, never before. With steps left it is
-		// the required second factor (a trusted device approves the remaining
-		// steps); with none left it is the review prompt for a finished login.
-		// Either way no email is sent, and a denial revokes the session.
+	if passwordVerified {
+		// Published after the password, never before, and once: a later
+		// factor step must not send a second prompt.
 		h.publishLoginConfirmation(ctx, challenge)
 	}
 	c.JSON(http.StatusOK, challenge)
@@ -1657,11 +1720,11 @@ func (h *handler) startPasskeyChallenge(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_DECLINED", "Auth challenge was declined."))
 		return
 	}
-	// Password-first challenges are satisfied by the password alone; the
-	// passkey endpoints must not bypass it.
-	if h.passwordFirstChallenge(ctx, challenge) {
+	// Passkeys may settle a later step, never the first one: a password-first
+	// challenge must have consumed its password before this endpoint is usable.
+	if h.passwordFirstChallenge(ctx, challenge) && !passwordFirstStepSettled(challenge) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_SUPPORTED",
-			"This sign-in only accepts your password."))
+			"Enter your password first."))
 		return
 	}
 	if challenge.Purpose == model.AuthChallengePurposeSudo && !h.elevationCallerAllowed(c, challenge) {
@@ -1751,9 +1814,9 @@ func (h *handler) completePasskeyChallenge(c *gin.Context) {
 		c.JSON(http.StatusNotFound, errs.New("AUTH_CHALLENGE_NOT_FOUND", "Auth challenge was not found.", http.StatusNotFound))
 		return
 	}
-	if h.passwordFirstChallenge(ctx, challenge) {
+	if h.passwordFirstChallenge(ctx, challenge) && !passwordFirstStepSettled(challenge) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_SUPPORTED",
-			"This sign-in only accepts your password."))
+			"Enter your password first."))
 		return
 	}
 	factor, err := h.d.Store.GetAuthFactorByType(ctx, challenge.AccountId, model.AuthFactorTypePasskey)

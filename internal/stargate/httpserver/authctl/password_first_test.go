@@ -2,10 +2,10 @@ package authctl
 
 // Pins the password-first login policy:
 //
-//   - only the password can be submitted, whatever else the account has;
+//   - only the password can take the first step, whatever else the account has;
 //   - the risk model (including lockdown) still sets the step total, and the
-//     steps after the password wait for an in-app approval rather than an
-//     emailed code;
+//     later steps offer the other factors (TOTP, NFC, passkey, email code);
+//     the in-app prompt is an optional alternative to them;
 //   - repeated failures never add factors;
 //   - the post-password review prompt survives the exchange that expires the
 //     challenge, and denying it signs out the session the login minted.
@@ -24,6 +24,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pquerna/otp/totp"
 
 	"src.solsynth.dev/sosys/stargate/auth"
 	"src.solsynth.dev/sosys/stargate/config"
@@ -316,11 +317,11 @@ func TestDeclineSatisfiedChallengeRevokesSession(t *testing.T) {
 	}
 }
 
-// TestCreateChallengePasswordFirstDefersPrompt pins the HTTP contract: a
-// password account keeps the risk model's step count (here password + email),
-// the picker offers only the password, no login-attempt push is sent before the
-// password verifies, and the remaining step is settled by the in-app prompt
-// instead of an emailed code.
+// TestCreateChallengePasswordFirstDefersPrompt pins the HTTP contract: the
+// picker offers only the password, no login-attempt push is sent before the
+// password verifies, and an email-only second factor never becomes a step
+// (the sign-in spends no email). The prompt is review-only here, because the
+// password is the only factor the flow can verify.
 func TestCreateChallengePasswordFirstDefersPrompt(t *testing.T) {
 	pool, err := pgxpool.New(context.Background(), smokeDSN)
 	if err != nil {
@@ -386,10 +387,10 @@ func TestCreateChallengePasswordFirstDefersPrompt(t *testing.T) {
 		t.Fatalf("decode challenge: %v", err)
 	}
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM auth_challenges WHERE id = $1`, created.Id) })
-	// A fresh device plus no prior session scores high enough to demand both
-	// completable factors; the policy must not flatten that to one step.
+	// The email factor can take a later step, but no code is sent for the
+	// first one: the password is the only offered first factor.
 	if created.StepTotal != 2 || created.StepRemain != 2 {
-		t.Fatalf("steps = %d/%d, want 2/2 (password + reviewable second step)", created.StepRemain, created.StepTotal)
+		t.Fatalf("steps = %d/%d, want 2/2 (password + email kept for later)", created.StepRemain, created.StepTotal)
 	}
 	if len(ring.pushes) != 0 {
 		t.Fatalf("prompt pushed before the password verified: %+v", ring.pushes)
@@ -416,9 +417,8 @@ func TestCreateChallengePasswordFirstDefersPrompt(t *testing.T) {
 		t.Fatalf("factors = %+v, want only the password", factors)
 	}
 
-	// The password settles one step. The second one waits for the in-app
-	// approval, so the challenge is still incomplete and the login cannot be
-	// exchanged yet.
+	// The password settles the first step. The in-app prompt is published
+	// for review/early approval, and the email factor remains for the second.
 	submit, _ := json.Marshal(map[string]any{
 		"factor_id": passwordFactor.Id,
 		"password":  secret,
@@ -442,8 +442,8 @@ func TestCreateChallengePasswordFirstDefersPrompt(t *testing.T) {
 		t.Fatalf("post-password prompt not pushed as auth.login_attempt: %+v", ring.pushes)
 	}
 
-	// Nothing is left to submit: only a trusted device's approval can settle
-	// the remaining step.
+	// Email is available for the remaining step, but nothing has been sent
+	// yet: the code is issued only when the person picks that factor.
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet,
 		"/auth/challenge/"+created.Id+"/factors", nil))
@@ -451,8 +451,11 @@ func TestCreateChallengePasswordFirstDefersPrompt(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &remaining); err != nil {
 		t.Fatalf("decode remaining factors: %v", err)
 	}
-	if len(remaining) != 0 {
-		t.Fatalf("remaining factors = %+v, want none after the password", remaining)
+	if len(remaining) != 1 || remaining[0].Type != model.AuthFactorTypeEmailCode {
+		t.Fatalf("remaining factors = %+v, want the email code", remaining)
+	}
+	if len(ring.emails) != 0 {
+		t.Fatalf("email sent without a code request: %+v", ring.emails)
 	}
 
 	reloaded, err = st.GetAuthChallenge(ctx, uuid.MustParse(created.Id))
@@ -478,8 +481,8 @@ func TestCreateChallengePasswordFirstDefersPrompt(t *testing.T) {
 }
 
 // TestCreateChallengePasswordFirstRespectsLockdown pins that password-first
-// does not weaken lockdown: every completable factor still raises the step
-// total, and none of those extra steps is an emailed code.
+// does not weaken lockdown: every non-email factor the flow can verify still
+// raises the step total, and none of those extra steps is an emailed code.
 func TestCreateChallengePasswordFirstRespectsLockdown(t *testing.T) {
 	pool, err := pgxpool.New(context.Background(), smokeDSN)
 	if err != nil {
@@ -502,7 +505,7 @@ func TestCreateChallengePasswordFirstRespectsLockdown(t *testing.T) {
 		Log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}}
 	accountID := seedRiskAccount(t, ctx, pool,
-		model.AuthFactorTypePassword, model.AuthFactorTypeEmailCode)
+		model.AuthFactorTypePassword, model.AuthFactorTypeTimedCode)
 	account, err := st.GetAccountByID(ctx, uuid.MustParse(accountID))
 	if err != nil {
 		t.Fatalf("load account: %v", err)
@@ -543,4 +546,152 @@ func TestCreateChallengePasswordFirstRespectsLockdown(t *testing.T) {
 	if len(ring.pushes) != 0 {
 		t.Fatalf("lockdown prompt pushed before the password verified: %+v", ring.pushes)
 	}
+}
+
+// TestPasswordFirstOffersOtherFactorsForRemainingSteps pins that the password
+// is only the first step: once it is used, the picker returns the other
+// factors and a TOTP code finishes the challenge, with no email involved.
+func TestPasswordFirstOffersOtherFactorsForRemainingSteps(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(), smokeDSN)
+	if err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	defer pool.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := pool.Ping(ctx); err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+
+	st := store.New(pool)
+	ring := &fakeRing{}
+	h := &handler{d: Deps{
+		Store:   st,
+		Geo:     &geo.Service{},
+		Cfg:     &config.Config{},
+		Clients: &grpcclient.Clients{Ring: ring},
+		Log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}}
+	accountID := seedRiskAccount(t, ctx, pool,
+		model.AuthFactorTypePassword,
+		model.AuthFactorTypeTimedCode)
+	account, err := st.GetAccountByID(ctx, uuid.MustParse(accountID))
+	if err != nil {
+		t.Fatalf("load account: %v", err)
+	}
+	const password = "correct horse battery staple"
+	const totpSecret = "JBSWY3DPEHPK3PXP"
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE account_auth_factors SET secret = $1
+		WHERE account_id = $2 AND type = $3`, hash, accountID, int(model.AuthFactorTypePassword)); err != nil {
+		t.Fatalf("seed password secret: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE account_auth_factors SET secret = $1
+		WHERE account_id = $2 AND type = $3`, totpSecret, accountID, int(model.AuthFactorTypeTimedCode)); err != nil {
+		t.Fatalf("seed TOTP secret: %v", err)
+	}
+	passwordFactor, err := st.GetAuthFactorByType(ctx, accountID, model.AuthFactorTypePassword)
+	if err != nil {
+		t.Fatalf("load password factor: %v", err)
+	}
+	totpFactor, err := st.GetAuthFactorByType(ctx, accountID, model.AuthFactorTypeTimedCode)
+	if err != nil {
+		t.Fatalf("load TOTP factor: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/auth/challenge", h.createChallenge)
+	router.GET("/auth/challenge/:id/factors", h.getChallengeFactors)
+	router.PATCH("/auth/challenge/:id", h.doChallenge)
+
+	body, _ := json.Marshal(map[string]any{
+		"account":     account.Name,
+		"device_id":   "second-step-device",
+		"device_name": "Second Step Test",
+		"platform":    int(model.ClientPlatformWeb),
+	})
+	req := httptest.NewRequest(http.MethodPost, "/auth/challenge", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create challenge status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	var created model.AuthChallenge
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode challenge: %v", err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM auth_challenges WHERE id = $1`, created.Id) })
+	// password + TOTP: the email factor does not raise the cap.
+	if created.StepTotal != 2 || created.StepRemain != 2 {
+		t.Fatalf("steps = %d/%d, want 2/2 (password + TOTP)", created.StepRemain, created.StepTotal)
+	}
+
+	firstFactors := getChallengeFactors(t, router, created.Id)
+	if len(firstFactors) != 1 || firstFactors[0].Type != model.AuthFactorTypePassword {
+		t.Fatalf("first-step factors = %+v, want only the password", firstFactors)
+	}
+
+	if rec := submitFactor(t, router, created.Id, passwordFactor.Id, password); rec.Code != http.StatusOK {
+		t.Fatalf("submit password status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	if len(ring.pushes) != 1 || ring.pushes[0].Topic != "auth.login_attempt" {
+		t.Fatalf("post-password prompt not pushed once: %+v", ring.pushes)
+	}
+
+	secondFactors := getChallengeFactors(t, router, created.Id)
+	if len(secondFactors) != 1 || secondFactors[0].Type != model.AuthFactorTypeTimedCode {
+		t.Fatalf("second-step factors = %+v, want only TOTP (no email code)", secondFactors)
+	}
+
+	code, err := totp.GenerateCode(totpSecret, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("generate TOTP: %v", err)
+	}
+	rec = submitFactor(t, router, created.Id, totpFactor.Id, code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("submit TOTP status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	var finished model.AuthChallenge
+	if err := json.Unmarshal(rec.Body.Bytes(), &finished); err != nil {
+		t.Fatalf("decode finished challenge: %v", err)
+	}
+	if finished.StepRemain != 0 {
+		t.Fatalf("StepRemain = %d, want 0 after the TOTP step", finished.StepRemain)
+	}
+	if len(ring.pushes) != 1 {
+		t.Fatalf("factor step sent a second prompt: %+v", ring.pushes)
+	}
+	if len(ring.emails) != 0 {
+		t.Fatalf("sign-in sent email: %+v", ring.emails)
+	}
+}
+
+func getChallengeFactors(t *testing.T, router *gin.Engine, challengeID string) []model.AuthFactor {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet,
+		"/auth/challenge/"+challengeID+"/factors", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("factors status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	var factors []model.AuthFactor
+	if err := json.Unmarshal(rec.Body.Bytes(), &factors); err != nil {
+		t.Fatalf("decode factors: %v", err)
+	}
+	return factors
+}
+
+func submitFactor(t *testing.T, router *gin.Engine, challengeID, factorID, secret string) *httptest.ResponseRecorder {
+	t.Helper()
+	body, _ := json.Marshal(map[string]any{"factor_id": factorID, "password": secret})
+	req := httptest.NewRequest(http.MethodPatch, "/auth/challenge/"+challengeID, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
 }

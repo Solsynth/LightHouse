@@ -239,20 +239,22 @@ form that cannot work.
 ### Login factors
 
 A username/password sign-in submits the password as its only first factor: the
-picker offers nothing else. The risk model still owns the step total —
-lockdown demands every completable factor, and a risky device can demand more
-than one — but the steps after the password are settled only by an in-app
-confirmation from a trusted device, never by an emailed code.
+picker offers nothing else, so the first step never sends an email. The risk
+model still owns the step total — lockdown demands every factor the flow can
+verify, and a risky device can demand more than one — capped by the factors
+available. After the password, the picker returns the other factors (TOTP,
+NFC, passkeys, email code) for the remaining steps. An email code is issued
+only when that factor is picked, never automatically.
 
-Once the password verifies, Stargate pushes the prompt
+Once the password verifies, Stargate also pushes the in-app prompt
 (`auth.challenge.pending` over the websocket and a savable
 `auth.login_attempt` Ring notification) to the account's other devices,
-including the console's shell-level prompt. A challenge that still owes steps
-stays incomplete until one of them approves; denying is terminal and revokes
-any session the challenge minted. Failed attempts never add factors, and a
-sign-in never requests an emailed code, so it spends no email resources.
-Accounts without a password keep the previous risk-based factor flow, as do
-elevation ("sudo") challenges.
+including the console's shell-level prompt. Approving from a trusted device
+settles the remaining steps as an alternative to entering them locally; it is
+not a hard requirement. Denying is terminal and revokes any session the
+challenge minted. Failed attempts never add factors. Accounts without a
+password keep the previous risk-based factor flow, as do elevation ("sudo")
+challenges.
 
 ### Changing a credential
 
