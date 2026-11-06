@@ -768,7 +768,7 @@
      rectangle without an outline, so it sits beside a field without competing
      with a button. Selection lights it rather than outlining it. */
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-chip bg-base-200/70 px-3 py-1.5 text-2xs text-dim;
+    @apply inline-flex items-center gap-1 whitespace-nowrap rounded-chip bg-base-200/70 px-2 py-0.5 text-2xs text-dim;
     transition:
       background-color var(--duration-base) var(--ease-out),
       color var(--duration-base) var(--ease-out);
