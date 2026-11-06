@@ -32,7 +32,9 @@ disabled = []
 # webhookSecret = "replace-with-a-paddle-webhook-secret"
 # environment = "sandbox"
 # [modules.settings."app.solian.wallet".payment.auth.afdian]
-# credential = "..."
+# credential = "user_id:api-token"
+# webhookPublicKey = "-----BEGIN PUBLIC KEY-----..."  # optional: overrides the
+# bundled Afdian callback signing key
 # [modules.settings."app.solian.wallet".subscriptionCatalog]
 # settings = { defaultSubscriptionDurationDays = 30 }
 # definitions = []                  # empty = the default Stellar/Creator plans

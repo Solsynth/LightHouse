@@ -128,9 +128,14 @@ Modules own their schema:
 
 Wallet settings live under `[modules.settings."app.solian.wallet"]` (see
 [`config.example.toml`](config.example.toml)): `payment.auth.{paddle,afdian,appleStore}`
-hold the provider credentials, `subscriptionCatalog` seeds definitions, and
-`currencyExchange` sets the points/golds rates. Provider webhooks deduplicate
-through `inbound_orders`, so replayed callbacks are safe.
+hold the provider credentials (`payment.auth.afdian.webhookPublicKey` only
+overrides the bundled Afdian callback signing key), `subscriptionCatalog`
+seeds definitions, and `currencyExchange` sets the points/golds rates.
+Provider webhooks deduplicate through `inbound_orders`, so replayed callbacks
+are safe. The Afdian callback endpoint is public and its signatures cover only
+`out_trade_no`, `user_id`, `plan_id` and `total_amount`, so it re-reads the
+order from the Afdian open API before granting anything; an unsigned callback
+is still accepted but only via that lookup.
 
 Known differences from the C# service: realm-wallet membership needs a
 publisher directory Stargate does not have ported (realm wallets are

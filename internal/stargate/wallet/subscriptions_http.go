@@ -1025,6 +1025,10 @@ type restoreApplePurchaseRequest struct {
 
 // POST /api/subscriptions/order/restore/afdian
 func (s *Subscriptions) restoreAfdianHTTP(c *gin.Context) {
+	user, accountID, ok := currentWalletAccount(c)
+	if !ok {
+		return
+	}
 	var request restorePurchaseRequest
 	if err := c.ShouldBindJSON(&request); err != nil || strings.TrimSpace(request.OrderID) == "" {
 		c.JSON(http.StatusBadRequest, errs.Validation(map[string][]string{
@@ -1046,7 +1050,29 @@ func (s *Subscriptions) restoreAfdianHTTP(c *gin.Context) {
 			"Order with ID "+request.OrderID+" was not found.", http.StatusNotFound))
 		return
 	}
-	result, err := s.ApplyProviderOrder(c.Request.Context(), order.providerOrder(""), nil)
+	if !order.IsPaid() {
+		c.JSON(http.StatusBadRequest, errs.New("WALLET_SUBSCRIPTION_RESTORE_FAILED",
+			"Order with ID "+request.OrderID+" was not paid.", http.StatusBadRequest))
+		return
+	}
+	// The query returns any order of the shop, so the caller must be the buyer
+	// the checkout bound the order to (custom_order_id) or the linked Afdian
+	// account. Without this, a leaked or guessed order id would hand the
+	// credit to whoever asks first.
+	boundAccount, err := s.resolveAccountForOrder(c.Request.Context(),
+		order.providerOrder(order.CustomOrderID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, errs.New("INTERNAL_ERROR", "Failed to resolve the Afdian order.", http.StatusInternalServerError))
+		return
+	}
+	if boundAccount == nil || *boundAccount != accountID {
+		s.logger().Warn("afdian order restore rejected: order belongs to another account",
+			"order", request.OrderID, "account", accountID, "caller", user.Id)
+		c.JSON(http.StatusForbidden, errs.Forbidden("The order does not belong to this account."))
+		return
+	}
+	result, err := s.ApplyProviderOrder(c.Request.Context(),
+		order.providerOrder(order.CustomOrderID), nil)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, errs.New("WALLET_SUBSCRIPTION_RESTORE_FAILED", err.Error(), http.StatusBadRequest))
 		return
