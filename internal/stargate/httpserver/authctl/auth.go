@@ -1227,13 +1227,14 @@ func (h *handler) doChallenge(c *gin.Context) {
 				c.JSON(http.StatusServiceUnavailable, errs.New("SERVICE_UNAVAILABLE", "Elevation could not be verified.", http.StatusServiceUnavailable))
 				return
 			}
-		} else if !passwordFirst {
+		} else {
 			h.pushLoginNotification(ctx, challenge, true)
 		}
 	}
-	if passwordVerified {
-		// Published after the password, never before, and once: a later
-		// factor step must not send a second prompt.
+	if passwordVerified && challenge.StepRemain > 0 {
+		// Published after the password, never before, and only while the login
+		// still owes steps: a completed login gets the ordinary "new login"
+		// notification above and must not ask another device to approve it.
 		h.publishLoginConfirmation(ctx, challenge)
 	}
 	c.JSON(http.StatusOK, challenge)

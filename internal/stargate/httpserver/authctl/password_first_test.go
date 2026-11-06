@@ -692,8 +692,10 @@ func TestPasswordFirstOffersOtherFactorsForRemainingSteps(t *testing.T) {
 	if finished.StepRemain != 0 {
 		t.Fatalf("StepRemain = %d, want 0 after the TOTP step", finished.StepRemain)
 	}
-	if len(ring.pushes) != 1 {
-		t.Fatalf("factor step sent a second prompt: %+v", ring.pushes)
+	if len(ring.pushes) != 2 ||
+		ring.pushes[0].Topic != "auth.login_attempt" ||
+		ring.pushes[1].Topic != "auth.login" {
+		t.Fatalf("want one pending prompt then one new-login notice: %+v", ring.pushes)
 	}
 	if len(ring.emails) != 0 {
 		t.Fatalf("sign-in sent email: %+v", ring.emails)
