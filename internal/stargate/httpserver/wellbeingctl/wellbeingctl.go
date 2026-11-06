@@ -55,6 +55,13 @@ func requirePermission(d Deps, key string) gin.HandlerFunc {
 				errs.Unauthorized("Authentication is required before permission checks can run."))
 			return
 		}
+		// A token scope only narrows; it never stands in for the permission
+		// node the account must hold.
+		if !middleware.ScopeAllows(c, key) {
+			c.AbortWithStatusJSON(http.StatusForbidden,
+				errs.New("FORBIDDEN", "Permission "+key+" was omitted by the token scope.", http.StatusForbidden))
+			return
+		}
 		if user.IsSuperuser {
 			c.Next()
 			return

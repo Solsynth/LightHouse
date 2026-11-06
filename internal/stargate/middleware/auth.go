@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	fleetauth "src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/auth"
 	"src.solsynth.dev/sosys/stargate/model"
@@ -48,6 +49,13 @@ func WithCurrentUser(ctx context.Context, account *model.Account) context.Contex
 	return context.WithValue(ctx, ctxKeyCurrentUser, account)
 }
 
+// WithCurrentSession returns a context carrying session as the authenticated
+// session. The auth middleware is the production writer; this exists for tests
+// and in-process callers that already resolved the session.
+func WithCurrentSession(ctx context.Context, session *model.AuthSession) context.Context {
+	return context.WithValue(ctx, ctxKeyCurrentSession, session)
+}
+
 // CurrentSession extracts the authenticated session from the context.
 func CurrentSession(ctx context.Context) *model.AuthSession {
 	if v, ok := ctx.Value(ctxKeyCurrentSession).(*model.AuthSession); ok {
@@ -62,6 +70,26 @@ func CurrentTokenType(ctx context.Context) auth.TokenType {
 		return v
 	}
 	return auth.TokenTypeUnknown
+}
+
+// ScopeAllowsContext reports whether the session in ctx permits key.
+//
+// A token scope narrows what its session may do; it never grants. OAuth
+// sessions are filtered by the scopes the app was granted ("*" matches every
+// key and so removes the narrowing — the permission check still decides).
+// Login, OIDC and API-key sessions carry no app grant and are not filtered,
+// mirroring PermissionScopeGate in the C# fleet.
+func ScopeAllowsContext(ctx context.Context, key string) bool {
+	session := CurrentSession(ctx)
+	if session == nil || session.Type != model.SessionTypeOAuth {
+		return true
+	}
+	return fleetauth.ScopeAllows(session.Scopes, key)
+}
+
+// ScopeAllows is ScopeAllowsContext for a gin handler.
+func ScopeAllows(c *gin.Context, key string) bool {
+	return ScopeAllowsContext(c.Request.Context(), key)
 }
 
 // LastSeenToucher debounced-updates account_profiles.last_seen_at plus the

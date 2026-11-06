@@ -90,6 +90,11 @@ func (d Deps) isAdmin(ctx context.Context, account *model.Account) (bool, error)
 	if account == nil {
 		return false, nil
 	}
+	// The token scope narrows; it never grants. An OAuth app token must cover
+	// the key before the account's node decides.
+	if !middleware.ScopeAllowsContext(ctx, permission.TicketsAdmin) {
+		return false, nil
+	}
 	if account.IsSuperuser {
 		return true, nil
 	}

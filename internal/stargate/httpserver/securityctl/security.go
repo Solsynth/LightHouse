@@ -1995,6 +1995,12 @@ func (c *controller) authorizeAppScopes(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, unauthorized401())
 		return
 	}
+	// The token scope narrows; it never grants. An OAuth app token must cover
+	// the key before the account's node decides.
+	if !middleware.ScopeAllows(ctx, permission.AccountAuthorizedAppsManage) {
+		ctx.JSON(http.StatusForbidden, errs.Forbidden("You do not have permission to perform this action."))
+		return
+	}
 	allowed, err := c.d.Perm.HasPermission(reqCtx, uuid.MustParse(user.Id), permission.AccountAuthorizedAppsManage)
 	if err != nil || !allowed {
 		ctx.JSON(http.StatusForbidden, errs.Forbidden("You do not have permission to perform this action."))
@@ -2111,6 +2117,12 @@ func (c *controller) deauthorizeApp(ctx *gin.Context) {
 	user := middleware.CurrentUser(reqCtx)
 	if user == nil {
 		ctx.JSON(http.StatusUnauthorized, unauthorized401())
+		return
+	}
+	// The token scope narrows; it never grants. An OAuth app token must cover
+	// the key before the account's node decides.
+	if !middleware.ScopeAllows(ctx, permission.AccountAuthorizedAppsManage) {
+		ctx.JSON(http.StatusForbidden, errs.Forbidden("You do not have permission to perform this action."))
 		return
 	}
 	allowed, err := c.d.Perm.HasPermission(reqCtx, uuid.MustParse(user.Id), permission.AccountAuthorizedAppsManage)

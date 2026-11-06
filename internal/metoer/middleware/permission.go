@@ -3,26 +3,23 @@ package middleware
 import (
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
-	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
-
+	fleetauth "src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
-
-// presetScopes mirrors PermissionScopeGate.PresetScopes (case-insensitive).
-var presetScopes = map[string]struct{}{
-	"openid":  {},
-	"profile": {},
-	"email":   {},
-	"*":       {},
-}
 
 // AskPermission returns a middleware enforcing a permission key against the
 // current user, mirroring the C# [AskPermission(...)] attribute +
-// RemotePermissionMiddleware: scope gate for OAuth sessions, superuser
+// RemotePermissionMiddleware: scope filter for OAuth sessions, superuser
 // bypass, then a gRPC DyPermissionService.HasPermission call (Stargate).
+//
+// The token scope is a filter, never a grant. A "*" scope only means the token
+// asked for no narrowing; the permission service still decides. Skipping that
+// check for scopes containing "*" let any app holding the wildcard exercise
+// every permission of the signed-in account, including ones the account never
+// held.
 func AskPermission(permission gen.DyPermissionServiceClient, key string, log *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user := CurrentUser(c)
@@ -32,20 +29,15 @@ func AskPermission(permission gen.DyPermissionServiceClient, key string, log *sl
 		}
 		session := CurrentSession(c)
 
-		if hasFullScope(session) {
-			c.Next()
-			return
-		}
-
 		if session != nil && session.Type == gen.DySessionType_DY_OAUTH {
-			if !isPermissionEnabled(session.Scopes, key) {
-				matched := getMatchedPermissionScope(session.Scopes, key)
-				if matched == nil {
-					matched = new("<none>")
+			if !fleetauth.ScopeAllows(session.Scopes, key) {
+				matched, ok := fleetauth.MatchedScope(session.Scopes, key)
+				if !ok {
+					matched = "<none>"
 				}
 				if log != nil {
 					log.Warn("permission omitted by token scope",
-						"actor", user.Id, "required_key", key, "matched_scope", *matched)
+						"actor", user.Id, "required_key", key, "matched_scope", matched)
 				}
 				c.AbortWithStatusJSON(http.StatusForbidden, errs.Unauthorized("Permission "+key+" was omitted by token scope."))
 				return
@@ -84,54 +76,4 @@ func AskPermission(permission gen.DyPermissionServiceClient, key string, log *sl
 		}
 		c.Next()
 	}
-}
-
-// hasFullScope mirrors PermissionScopeGate.HasFullScope: the full-grant
-// wildcard only bypasses permission checks for OAuth sessions. Login, OIDC and
-// API-key sessions ignore it and always go through the permission-service
-// check below.
-func hasFullScope(session *gen.DyAuthSession) bool {
-	if session == nil || session.Type != gen.DySessionType_DY_OAUTH {
-		return false
-	}
-	for _, scope := range session.Scopes {
-		if scope == "*" {
-			return true
-		}
-	}
-	return false
-}
-
-// isPermissionEnabled mirrors PermissionScopeGate.IsPermissionEnabled.
-func isPermissionEnabled(scopes []string, permissionKey string) bool {
-	return getMatchedPermissionScope(scopes, permissionKey) != nil
-}
-
-// getMatchedPermissionScope mirrors PermissionScopeGate.GetMatchedPermissionScope.
-func getMatchedPermissionScope(scopes []string, permissionKey string) *string {
-	if strings.TrimSpace(permissionKey) == "" {
-		return nil
-	}
-	for _, rawScope := range scopes {
-		scope := strings.TrimSpace(rawScope)
-		if scope == "" {
-			continue
-		}
-		if strings.EqualFold(scope, "*") {
-			return new("*")
-		}
-		if _, ok := presetScopes[strings.ToLower(scope)]; ok {
-			continue
-		}
-		if strings.EqualFold(scope, permissionKey) {
-			return new(scope)
-		}
-		if strings.HasSuffix(scope, ".*") {
-			prefix := scope[:len(scope)-1]
-			if strings.HasPrefix(strings.ToLower(permissionKey), strings.ToLower(prefix)) {
-				return new(scope)
-			}
-		}
-	}
-	return nil
 }

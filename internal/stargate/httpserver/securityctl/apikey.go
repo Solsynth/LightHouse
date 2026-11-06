@@ -46,6 +46,12 @@ func apiKeyNotFound() *errs.ApiError {
 }
 
 func (c *controller) requireApiKeysManage(ctx *gin.Context, accountID string) bool {
+	// The token scope narrows; it never grants. An OAuth app token must cover
+	// the key before the account's node decides.
+	if !middleware.ScopeAllows(ctx, permission.AuthApiKeysManage) {
+		ctx.JSON(http.StatusForbidden, errs.Forbidden("You do not have permission to perform this action."))
+		return false
+	}
 	allowed, err := c.d.Perm.HasPermission(ctx.Request.Context(), uuid.MustParse(accountID), permission.AuthApiKeysManage)
 	if err != nil || !allowed {
 		ctx.JSON(http.StatusForbidden, errs.Forbidden("You do not have permission to perform this action."))

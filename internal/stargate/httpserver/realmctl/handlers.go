@@ -1403,6 +1403,12 @@ func (d Deps) permissionGuard(c *gin.Context) (*realm.RealmEntity, *model.Accoun
 		return nil, nil
 	}
 	actorID, _ := accountIDOf(account)
+	// The token scope narrows; it never grants. An OAuth app token must cover
+	// the permission before the realm node decides.
+	if !middleware.ScopeAllows(c, realm.PermRealmManage) {
+		forbidden(c, "You do not have permission to manage realm permissions.")
+		return nil, nil
+	}
 	ok, err := d.Service.HasPermission(c.Request.Context(), entity.ID, actorID, realm.PermRealmManage)
 	if err != nil {
 		internalError(c, d.Log, err)
@@ -1426,6 +1432,11 @@ func (d Deps) moderationLogs(c *gin.Context) {
 		return
 	}
 	actorID, _ := accountIDOf(account)
+	// The token scope narrows; it never grants.
+	if !middleware.ScopeAllows(c, realm.PermPostModerate) {
+		forbidden(c, "You do not have permission to view moderation logs.")
+		return
+	}
 	ok, err := d.Service.HasPermission(c.Request.Context(), entity.ID, actorID, realm.PermPostModerate)
 	if err != nil {
 		internalError(c, d.Log, err)

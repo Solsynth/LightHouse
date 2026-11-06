@@ -93,12 +93,23 @@ func mountAdminRoutes(g *gin.RouterGroup, d Deps, routes []adminRoute) {
 // requirePerm mirrors Padlock's LocalPermissionMiddleware: no authenticated
 // user → 401; superuser bypass; otherwise every required key must pass
 // (multiple [AskPermission] attributes are ANDed).
+//
+// The token scope is applied first and only narrows: an OAuth app token must
+// carry a scope covering the key ("*" covers every key without granting
+// anything), while the permission service still decides whether the account
+// holds it. A wildcard scope is not an admin permission.
 func requirePerm(d Deps, keys ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user := middleware.CurrentUser(c.Request.Context())
 		if user == nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, errs.Unauthorized("Authentication is required before permission checks can run."))
 			return
+		}
+		for _, key := range keys {
+			if !middleware.ScopeAllows(c, key) {
+				c.AbortWithStatusJSON(http.StatusForbidden, errs.New("FORBIDDEN", "Permission "+key+" was omitted by the token scope.", http.StatusForbidden))
+				return
+			}
 		}
 		if user.IsSuperuser {
 			c.Next()

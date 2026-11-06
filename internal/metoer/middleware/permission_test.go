@@ -40,22 +40,36 @@ func (denyPermissionClient) RemovePermissionNodeFromGroup(context.Context, *gen.
 	return nil, nil
 }
 
-// Login sessions are issued carrying the full-grant wildcard scope (Stargate
-// scopesWithFullScope). The wildcard only bypasses the permission chain for
-// OAuth sessions: a login session has to reach the permission service, so a
-// denied lookup still answers 403.
-func TestAskPermission_FullScopeOnlyBypassesOAuthSessions(t *testing.T) {
+// allowPermissionClient grants every lookup, like Stargate does for an account
+// that really holds the node.
+type allowPermissionClient struct{ denyPermissionClient }
+
+func (allowPermissionClient) HasPermission(context.Context, *gen.DyHasPermissionRequest, ...grpc.CallOption) (*gen.DyHasPermissionResponse, error) {
+	return &gen.DyHasPermissionResponse{HasPermission: true}, nil
+}
+
+// TestAskPermissionScopeIsAFilterNotAGrant pins the rule: "*" removes the
+// scope narrowing but never replaces the permission-service decision. An OAuth
+// token carrying the wildcard is still denied when the account holds no node
+// for the key, and is allowed only when the service grants it.
+func TestAskPermissionScopeIsAFilterNotAGrant(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
 		name    string
 		session gen.DySessionType
+		scopes  []string
+		client  gen.DyPermissionServiceClient
 		want    int
 	}{
-		{name: "login session", session: gen.DySessionType_DY_LOGIN, want: http.StatusForbidden},
-		{name: "oidc session", session: gen.DySessionType_DY_OIDC, want: http.StatusForbidden},
-		{name: "api key session", session: gen.DySessionType_DY_API_KEY, want: http.StatusForbidden},
-		{name: "oauth session", session: gen.DySessionType_DY_OAUTH, want: http.StatusOK},
+		{name: "login session has no scope filter", session: gen.DySessionType_DY_LOGIN, client: denyPermissionClient{}, want: http.StatusForbidden},
+		{name: "oidc session has no scope filter", session: gen.DySessionType_DY_OIDC, client: denyPermissionClient{}, want: http.StatusForbidden},
+		{name: "api key session has no scope filter", session: gen.DySessionType_DY_API_KEY, client: denyPermissionClient{}, want: http.StatusForbidden},
+		{name: "oauth wildcard still needs the permission", session: gen.DySessionType_DY_OAUTH, scopes: []string{"*"}, client: denyPermissionClient{}, want: http.StatusForbidden},
+		{name: "oauth wildcard passes a granted permission", session: gen.DySessionType_DY_OAUTH, scopes: []string{"*"}, client: allowPermissionClient{}, want: http.StatusOK},
+		{name: "oauth scope omission denies", session: gen.DySessionType_DY_OAUTH, scopes: []string{"chat.read"}, client: allowPermissionClient{}, want: http.StatusForbidden},
+		{name: "oauth matching scope passes a granted permission", session: gen.DySessionType_DY_OAUTH, scopes: []string{"notifications.send"}, client: allowPermissionClient{}, want: http.StatusOK},
+		{name: "oauth empty scope list denies", session: gen.DySessionType_DY_OAUTH, client: allowPermissionClient{}, want: http.StatusForbidden},
 	}
 
 	for _, tt := range tests {
@@ -66,10 +80,10 @@ func TestAskPermission_FullScopeOnlyBypassesOAuthSessions(t *testing.T) {
 
 			auth.WithAuth(c, &auth.AuthResult{
 				Account: &gen.DyAccount{Id: "65732f7f-b74d-4409-9a8e-3b4438b3b014", Name: "tester"},
-				Session: &gen.DyAuthSession{Type: tt.session, Scopes: []string{"*"}},
+				Session: &gen.DyAuthSession{Type: tt.session, Scopes: tt.scopes},
 			}, auth.TokenInfo{})
 
-			AskPermission(denyPermissionClient{}, "notifications.send", nil)(c)
+			AskPermission(tt.client, "notifications.send", nil)(c)
 
 			if recorder.Code != tt.want {
 				t.Fatalf("status = %d, want %d", recorder.Code, tt.want)

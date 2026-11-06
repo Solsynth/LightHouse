@@ -495,6 +495,12 @@ func (d Deps) isAdmin(c *gin.Context) bool {
 		c.JSON(http.StatusForbidden, errs.Forbidden("You do not have permission to perform this action."))
 		return false
 	}
+	// The token scope narrows; it never grants. An OAuth app token must cover
+	// the key before the permission service decides on the account's node.
+	if !middleware.ScopeAllows(c, "progression.admin") {
+		c.JSON(http.StatusForbidden, errs.Forbidden("You do not have permission to perform this action."))
+		return false
+	}
 	if account.IsSuperuser {
 		return true
 	}
