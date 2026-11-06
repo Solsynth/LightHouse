@@ -240,11 +240,12 @@ form that cannot work.
 
 A username/password sign-in submits the password as its only first factor: the
 picker offers nothing else, so the first step never sends an email. The risk
-model still owns the step total — lockdown demands every factor the flow can
-verify, and a risky device can demand more than one — capped by the factors
-available. After the password, the picker returns the other factors (TOTP,
-NFC, passkeys, email code) for the remaining steps. An email code is issued
-only when that factor is picked, never automatically.
+model still owns the step total — lockdown demands every step factor the flow
+can verify, and a risky device can demand more than one — capped by the
+factors available. After the password, the picker returns TOTP, NFC and
+the email code for the remaining steps; an email code is issued only when that
+factor is picked, never automatically. Passkeys, in-app approval and PIN are
+capabilities, not steps: passkey sign-in uses its dedicated one-tap endpoint.
 
 Once the password verifies, Stargate also pushes the in-app prompt
 (`auth.challenge.pending` over the websocket and a savable

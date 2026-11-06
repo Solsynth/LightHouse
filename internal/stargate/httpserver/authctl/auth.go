@@ -277,8 +277,10 @@ func (h *handler) passwordFirstChallenge(ctx context.Context, challenge *model.A
 }
 
 // passwordFirstStepCapacity is how many steps a password-first challenge can
-// actually collect: the password itself, then TOTP, NFC, passkeys and email
-// codes. The email code is only a later-step option — issuing one requires the
+// actually collect: the password itself, then TOTP, NFC and email codes.
+// Passkeys, in-app approval and PIN are capabilities, not challenge steps:
+// passkey sign-in uses its dedicated one-tap endpoint and is never counted
+// here. The email code is only a later-step option — issuing one requires the
 // caller to pick that factor, so the first step never sends mail. The cap
 // keeps the risk model from demanding a factor the picker cannot offer.
 func passwordFirstStepCapacity(factors []model.AuthFactor) int {
@@ -291,8 +293,7 @@ func passwordFirstStepCapacity(factors []model.AuthFactor) int {
 		case model.AuthFactorTypePassword,
 			model.AuthFactorTypeTimedCode,
 			model.AuthFactorTypeNfcToken,
-			model.AuthFactorTypeEmailCode,
-			model.AuthFactorTypePasskey:
+			model.AuthFactorTypeEmailCode:
 			capacity++
 		}
 	}
@@ -313,8 +314,9 @@ func passwordFirstStepSettled(challenge *model.AuthChallenge) bool {
 // passwordFirst restricts the list to the password, which is the only factor the
 // first step accepts. Omit it after that step to offer the remaining factors.
 // Elevation and passwordless login challenges keep the historical set.
-// minTrustworthy is the strength floor; sudo raises it so the picker never
-// advertises a password it would reject on submit.
+// Passkey, in-app approval and PIN are not selectable steps: passkeys use
+// their dedicated endpoint. minTrustworthy is the strength floor; sudo raises
+// it so the picker never advertises a password it would reject on submit.
 func challengeFactorOptions(factors []model.AuthFactor, passwordFirst bool, minTrustworthy int) []model.AuthFactor {
 	if minTrustworthy < 1 {
 		minTrustworthy = 1
@@ -325,7 +327,9 @@ func challengeFactorOptions(factors []model.AuthFactor, passwordFirst bool, minT
 		if f.EnabledAt == nil || f.Trustworthy < minTrustworthy ||
 			ft == model.AuthFactorTypeRecoveryCode ||
 			ft == model.AuthFactorTypeInAppCode ||
-			ft == model.AuthFactorTypeQrLogin {
+			ft == model.AuthFactorTypeQrLogin ||
+			ft == model.AuthFactorTypePinCode ||
+			ft == model.AuthFactorTypePasskey {
 			continue
 		}
 		if passwordFirst && ft != model.AuthFactorTypePassword {

@@ -148,6 +148,9 @@ func TestChallengeFactorOptionsPasswordFirst(t *testing.T) {
 		{Id: "pw", Type: model.AuthFactorTypePassword, Trustworthy: 1, EnabledAt: now},
 		{Id: "email", Type: model.AuthFactorTypeEmailCode, Trustworthy: 2, EnabledAt: now},
 		{Id: "totp", Type: model.AuthFactorTypeTimedCode, Trustworthy: 2, EnabledAt: now},
+		{Id: "passkey", Type: model.AuthFactorTypePasskey, Trustworthy: 4, EnabledAt: now},
+		{Id: "inapp", Type: model.AuthFactorTypeInAppCode, Trustworthy: 2, EnabledAt: now},
+		{Id: "pin", Type: model.AuthFactorTypePinCode, Trustworthy: 2, EnabledAt: now},
 		{Id: "disabled", Type: model.AuthFactorTypeNfcToken, Trustworthy: 1},
 	}
 
@@ -162,10 +165,10 @@ func TestChallengeFactorOptionsPasswordFirst(t *testing.T) {
 		ids[f.Id] = true
 	}
 	if !ids["pw"] || !ids["email"] || !ids["totp"] {
-		t.Fatalf("passwordless options = %+v, want every enabled factor", passwordless)
+		t.Fatalf("passwordless options = %+v, want every enabled step factor", passwordless)
 	}
-	if ids["disabled"] {
-		t.Fatal("passwordless options offered a disabled factor")
+	if ids["disabled"] || ids["passkey"] || ids["inapp"] || ids["pin"] {
+		t.Fatalf("passwordless options = %+v, want no capability or disabled factor", passwordless)
 	}
 
 	// Sudo raises the floor: the picker must not advertise the password it
@@ -176,7 +179,37 @@ func TestChallengeFactorOptionsPasswordFirst(t *testing.T) {
 		sudoIDs[f.Id] = true
 	}
 	if sudoIDs["pw"] || !sudoIDs["email"] || !sudoIDs["totp"] {
-		t.Fatalf("sudo options = %+v, want only Trustworthy >= %d factors", sudo, auth.SudoMinTrustworthy)
+		t.Fatalf("sudo options = %+v, want only Trustworthy >= %d step factors", sudo, auth.SudoMinTrustworthy)
+	}
+	if sudoIDs["passkey"] || sudoIDs["inapp"] || sudoIDs["pin"] {
+		t.Fatalf("sudo options = %+v, want no capability factors", sudo)
+	}
+}
+
+// TestPasswordFirstStepCapacitySkipsCapabilities pins that passkey, in-app and
+// PIN are capabilities rather than challenge steps. Only password, TOTP,
+// NFC and email contribute to the step capacity; a password+passkey
+// account therefore needs exactly one step.
+func TestPasswordFirstStepCapacitySkipsCapabilities(t *testing.T) {
+	now := model.NewTime(time.Now().UTC())
+	factors := []model.AuthFactor{
+		{Id: "pw", Type: model.AuthFactorTypePassword, Trustworthy: 1, EnabledAt: now},
+		{Id: "totp", Type: model.AuthFactorTypeTimedCode, Trustworthy: 2, EnabledAt: now},
+		{Id: "email", Type: model.AuthFactorTypeEmailCode, Trustworthy: 2, EnabledAt: now},
+		{Id: "passkey", Type: model.AuthFactorTypePasskey, Trustworthy: 4, EnabledAt: now},
+		{Id: "inapp", Type: model.AuthFactorTypeInAppCode, Trustworthy: 2, EnabledAt: now},
+		{Id: "pin", Type: model.AuthFactorTypePinCode, Trustworthy: 2, EnabledAt: now},
+	}
+	if got := passwordFirstStepCapacity(factors); got != 3 {
+		t.Fatalf("capacity = %d, want 3 (password + TOTP + email)", got)
+	}
+
+	onlyPasskeyCapability := []model.AuthFactor{
+		{Id: "pw", Type: model.AuthFactorTypePassword, Trustworthy: 1, EnabledAt: now},
+		{Id: "passkey", Type: model.AuthFactorTypePasskey, Trustworthy: 4, EnabledAt: now},
+	}
+	if got := passwordFirstStepCapacity(onlyPasskeyCapability); got != 1 {
+		t.Fatalf("capacity = %d, want 1 (password only; passkey is not a step)", got)
 	}
 }
 
