@@ -10,10 +10,16 @@ import type { AdminAccountDetail } from '@/lib/api/types'
 import { factorTypeLabel, punishmentTypeLabel } from '@/lib/enums'
 import { age, relative, remaining, shortId, utcStamp } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
+import AdminNav from '@/components/AdminNav.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import TextField from '@/components/TextField.vue'
+import TabBox from '@/components/TabBox.vue'
+import AdminAccountSecurity from '@/views/admin/AdminAccountSecurity.vue'
+import AdminAccountIdentity from '@/views/admin/AdminAccountIdentity.vue'
+import AdminAccountModeration from '@/views/admin/AdminAccountModeration.vue'
+import type { Tab } from '@/components/tab'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -34,6 +40,15 @@ const pendingAction = ref<'revoke' | 'activate' | 'delete' | null>(null)
 
 const name = computed(() => String(route.params.name ?? ''))
 const account = computed(() => detail.value?.account)
+
+type DetailTab = 'overview' | 'security' | 'identity' | 'moderation'
+const tab = ref<DetailTab>('overview')
+const tabs = computed<Tab[]>(() => [
+  { key: 'overview', label: t('admin.accountDetail.tabs.overview') },
+  { key: 'security', label: t('admin.accountDetail.tabs.security') },
+  { key: 'identity', label: t('admin.accountDetail.tabs.identity') },
+  { key: 'moderation', label: t('admin.accountDetail.tabs.moderation') },
+])
 
 const restriction = computed(() => detail.value?.active_punishment ?? null)
 
@@ -164,11 +179,23 @@ onMounted(load)
       </template>
     </PageHeader>
 
+    <AdminNav />
+
+    <TabBox
+      :tabs="tabs"
+      :active="tab"
+      :label="t('admin.accountDetail.tabs.label')"
+      @select="tab = $event as DetailTab"
+    />
+
     <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 
     <LoadingSkeleton v-if="loading" compact :rows="5" :columns="[3, 3, 2, 1]" header />
 
-    <div v-else-if="detail" class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+    <div
+      v-else-if="detail && tab === 'overview'"
+      class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]"
+    >
       <div class="space-y-6">
         <ConsolePanel v-if="restriction" :title="t('admin.accountDetail.activeRestriction')">
           <div class="flex flex-wrap items-start justify-between gap-3">
@@ -342,6 +369,16 @@ onMounted(load)
         </ConsolePanel>
       </div>
     </div>
+
+    <AdminAccountSecurity v-else-if="detail && tab === 'security'" :name="name" />
+
+    <AdminAccountIdentity
+      v-else-if="detail && tab === 'identity' && account"
+      :name="name"
+      :account="account"
+    />
+
+    <AdminAccountModeration v-else-if="detail && tab === 'moderation'" :name="name" />
 
     <ConfirmAction
       v-if="pendingAction"

@@ -9,6 +9,7 @@ import { StargateError } from '@/lib/api/client'
 import type { CacheGroup, CacheStats } from '@/lib/api/types'
 import { bytes, compactNumber } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
+import AdminNav from '@/components/AdminNav.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
 import IconButton from '@/components/IconButton.vue'
@@ -112,6 +113,8 @@ onMounted(load)
         </IconButton>
       </template>
     </PageHeader>
+
+    <AdminNav />
 
     <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 

@@ -30,7 +30,7 @@ export class StargateError extends Error {
 
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
-export type Query = Record<string, string | number | boolean | undefined>
+export type Query = Record<string, string | number | boolean | string[] | undefined>
 
 export interface RequestOptions {
   method?: Method
@@ -100,7 +100,12 @@ async function readJson<T>(response: Response): Promise<T> {
 function buildUrl(path: string, query?: Query): string {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(query ?? {})) {
-    if (value !== undefined && value !== '') params.set(key, String(value))
+    if (value === undefined || value === '') continue
+    if (Array.isArray(value)) {
+      for (const entry of value) params.append(key, String(entry))
+      continue
+    }
+    params.set(key, String(value))
   }
   const suffix = params.size ? `?${params.toString()}` : ''
   return `/api${path}${suffix}`
@@ -200,6 +205,20 @@ export async function requestPage<T>(path: string, query?: Query): Promise<Page<
   })
   const items = (await readJson<T[] | null>(response)) ?? []
   return { items, total: Number(response.headers.get('X-Total') ?? items.length) }
+}
+
+/** Downloads a binary body and its server-supplied filename (CSV exports). */
+export async function requestBlob(
+  path: string,
+  query?: Query,
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await send(buildUrl(path, query), {
+    headers: { Accept: '*/*' },
+    credentials: 'same-origin',
+  })
+  const disposition = response.headers.get('Content-Disposition') ?? ''
+  const match = /filename="?([^";]+)"?/i.exec(disposition)
+  return { blob: await response.blob(), filename: match?.[1] ?? 'download' }
 }
 
 /** Sends a request whose body is a bare JSON string (the device-label routes). */

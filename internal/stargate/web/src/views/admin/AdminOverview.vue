@@ -9,6 +9,7 @@ import { StargateError } from '@/lib/api/client'
 import type { CacheStats, GeographyBucket } from '@/lib/api/types'
 import { bytes, compactNumber } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
+import AdminNav from '@/components/AdminNav.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import IconButton from '@/components/IconButton.vue'
@@ -43,7 +44,10 @@ async function load() {
     const [accountPage, punished, geography] = await Promise.all([
       adminApi.accounts({ take: 1 }),
       adminApi.accounts({ take: 1, hasPunishment: true }),
-      adminApi.geography('country').catch(() => [] as GeographyBucket[]),
+      adminApi
+        .geography('country')
+        .then((stats) => stats.buckets)
+        .catch(() => [] as GeographyBucket[]),
     ])
     accounts.value = accountPage.total
     suspended.value = punished.total
@@ -72,6 +76,8 @@ onMounted(load)
         </IconButton>
       </template>
     </PageHeader>
+
+    <AdminNav />
 
     <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 

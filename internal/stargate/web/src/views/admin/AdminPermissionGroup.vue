@@ -11,6 +11,7 @@ import type { PermissionGroupDetail } from '@/lib/api/types'
 import { actorTypeLabel } from '@/lib/enums'
 import { relative, remaining } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
+import AdminNav from '@/components/AdminNav.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
@@ -143,6 +144,8 @@ onMounted(load)
         </button>
       </template>
     </PageHeader>
+
+    <AdminNav />
 
     <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 

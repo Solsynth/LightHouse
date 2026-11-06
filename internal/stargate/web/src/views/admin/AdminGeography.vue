@@ -7,6 +7,7 @@ import { StargateError } from '@/lib/api/client'
 import type { GeographyBucket } from '@/lib/api/types'
 import { utcStamp } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
+import AdminNav from '@/components/AdminNav.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 
@@ -26,7 +27,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    buckets.value = await adminApi.geography(precision.value)
+    buckets.value = (await adminApi.geography(precision.value)).buckets
   } catch (caught) {
     error.value = caught instanceof StargateError ? caught.message : t('admin.geography.errorLoad')
   } finally {
@@ -66,6 +67,8 @@ onMounted(load)
         </div>
       </template>
     </PageHeader>
+
+    <AdminNav />
 
     <p v-if="error" class="note note-error mb-4">{{ error }}</p>
 

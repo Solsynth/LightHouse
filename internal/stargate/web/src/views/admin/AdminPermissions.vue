@@ -10,6 +10,7 @@ import { StargateError } from '@/lib/api/client'
 import type { PermissionGroup } from '@/lib/api/types'
 import { relative } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
+import AdminNav from '@/components/AdminNav.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
@@ -101,6 +102,8 @@ onMounted(load)
       :title="t('admin.permissions.title')"
       :description="t('admin.permissions.description')"
     />
+
+    <AdminNav />
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div>

@@ -10,6 +10,7 @@ import type { AdminAccountSummary } from '@/lib/api/types'
 import { punishmentTypeLabel } from '@/lib/enums'
 import { relative, shortId } from '@/lib/format'
 import PageHeader from '@/components/PageHeader.vue'
+import AdminNav from '@/components/AdminNav.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import TextField from '@/components/TextField.vue'
@@ -62,6 +63,8 @@ onMounted(load)
 <template>
   <div>
     <PageHeader :title="t('admin.accounts.title')" :description="t('admin.accounts.description')" />
+
+    <AdminNav />
 
     <form class="mb-5 flex flex-wrap items-start gap-3" @submit.prevent="search">
       <TextField

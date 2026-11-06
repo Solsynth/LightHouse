@@ -1,4 +1,4 @@
-import { request, requestForm, requestPage, sendString } from './client'
+import { request, requestBlob, requestForm, requestPage, sendString } from './client'
 import type { Page } from './client'
 import type {
   Account,
@@ -40,6 +40,23 @@ import type {
   ModulesState,
   Relationship,
   RelationshipSummary,
+  AdminBadge,
+  AdminBoardItem,
+  AdminAuthFactor,
+  AdminDevice,
+  AdminRealm,
+  AdminRealmDetail,
+  NameHistoryEntry,
+  OnCallAdmin,
+  ProgressionDefinition,
+  ProgressionUpsert,
+  RealmMember,
+  SessionChallenge,
+  VerificationMark,
+  WalletOrder,
+  WalletProductSummary,
+  WellbeingActivity,
+  WellbeingStats,
 } from './types'
 
 export type { Page }
@@ -445,7 +462,423 @@ export const adminApi = {
   clearCache: () =>
     request<{ scope: string; removed_count: number }>('/admin/cache/clear', { method: 'POST' }),
   geography: (precision: 'country' | 'city', since?: string) =>
-    request<GeographyBucket[]>('/admin/stats/users/geography', {
-      query: { precision, since },
+    request<{
+      calculated_at: string
+      since: string
+      precision: 'country' | 'city'
+      accounts_with_location: number
+      buckets: GeographyBucket[]
+    }>('/admin/stats/users/geography', { query: { precision, since } }),
+  stats: () => request<WellbeingStats>('/admin/stats'),
+  activity: () => request<WellbeingActivity>('/admin/accounts/metrics/activity'),
+
+  // ── Account subresources ──
+
+  accountSessions: (
+    name: string,
+    query: { take?: number; offset?: number; activeOnly?: boolean; includeChildren?: boolean } = {},
+  ) =>
+    requestPage<AuthSession>(`/admin/accounts/${encodeURIComponent(name)}/sessions`, query),
+  accountSessionChildren: (
+    name: string,
+    sessionId: string,
+    query: { take?: number; offset?: number } = {},
+  ) =>
+    requestPage<AuthSession>(
+      `/admin/accounts/${encodeURIComponent(name)}/sessions/${sessionId}/children`,
+      query,
+    ),
+  accountSessionChallenge: (name: string, sessionId: string) =>
+    request<SessionChallenge>(
+      `/admin/accounts/${encodeURIComponent(name)}/sessions/${sessionId}/challenge`,
+    ),
+  revokeAccountSession: (name: string, sessionId: string) =>
+    request<void>(`/admin/accounts/${encodeURIComponent(name)}/sessions/${sessionId}`, {
+      method: 'DELETE',
     }),
+  accountDevices: (name: string, query: { take?: number; offset?: number } = {}) =>
+    requestPage<AdminDevice>(`/admin/accounts/${encodeURIComponent(name)}/devices`, query),
+  revokeDeviceSessions: (name: string, deviceId: string) =>
+    request<void>(
+      `/admin/accounts/${encodeURIComponent(name)}/devices/${deviceId}/sessions/revoke`,
+      { method: 'POST' },
+    ),
+  batchRevokeDevices: (name: string, deviceIds: string[]) =>
+    request<void>(`/admin/accounts/${encodeURIComponent(name)}/devices/batch/revoke`, {
+      method: 'POST',
+      body: { device_ids: deviceIds },
+    }),
+  accountContacts: (name: string) =>
+    request<Contact[]>(`/admin/accounts/${encodeURIComponent(name)}/contacts`),
+  createContact: (name: string, body: { type: number; content: string }) =>
+    request<Contact>(`/admin/accounts/${encodeURIComponent(name)}/contacts`, {
+      method: 'POST',
+      body,
+    }),
+  updateContact: (name: string, contactId: string, body: { type?: number; content?: string }) =>
+    request<Contact>(
+      `/admin/accounts/${encodeURIComponent(name)}/contacts/${contactId}`,
+      { method: 'PATCH', body },
+    ),
+  requestContactVerification: (name: string, contactId: string) =>
+    request<void>(
+      `/admin/accounts/${encodeURIComponent(name)}/contacts/${contactId}/verify/request`,
+      { method: 'POST' },
+    ),
+  verifyContact: (name: string, contactId: string, body: { verified_at?: string | null } = {}) =>
+    request<void>(`/admin/accounts/${encodeURIComponent(name)}/contacts/${contactId}/verify`, {
+      method: 'POST',
+      body,
+    }),
+  unverifyContact: (name: string, contactId: string) =>
+    request<void>(`/admin/accounts/${encodeURIComponent(name)}/contacts/${contactId}/verify`, {
+      method: 'DELETE',
+    }),
+  setPrimaryContact: (name: string, contactId: string) =>
+    request<void>(`/admin/accounts/${encodeURIComponent(name)}/contacts/${contactId}/primary`, {
+      method: 'POST',
+    }),
+  setContactVisibility: (name: string, contactId: string, isPublic: boolean) =>
+    request<void>(
+      `/admin/accounts/${encodeURIComponent(name)}/contacts/${contactId}/visibility`,
+      { method: 'POST', body: { is_public: isPublic } },
+    ),
+  deleteContact: (name: string, contactId: string) =>
+    request<void>(`/admin/accounts/${encodeURIComponent(name)}/contacts/${contactId}`, {
+      method: 'DELETE',
+    }),
+  batchVerifyContacts: (name: string, contactIds: string[]) =>
+    request<void>(`/admin/accounts/${encodeURIComponent(name)}/contacts/batch/verify`, {
+      method: 'POST',
+      body: { contact_ids: contactIds },
+    }),
+  accountFactors: (name: string) =>
+    request<AdminAuthFactor[]>(`/admin/accounts/${encodeURIComponent(name)}/factors`),
+  createFactor: (
+    name: string,
+    body: { type: number; secret?: string; enable?: boolean; code?: string },
+  ) =>
+    request<AdminAuthFactor>(`/admin/accounts/${encodeURIComponent(name)}/factors`, {
+      method: 'POST',
+      body,
+    }),
+  enableFactor: (name: string, factorId: string) =>
+    request<AdminAuthFactor>(
+      `/admin/accounts/${encodeURIComponent(name)}/factors/${factorId}/enable`,
+      { method: 'POST' },
+    ),
+  disableFactor: (name: string, factorId: string) =>
+    request<AdminAuthFactor>(
+      `/admin/accounts/${encodeURIComponent(name)}/factors/${factorId}/disable`,
+      { method: 'POST' },
+    ),
+  resetPasswordFactor: (
+    name: string,
+    body: { new_password: string; revoke_sessions: boolean },
+  ) =>
+    request<AdminAuthFactor>(
+      `/admin/accounts/${encodeURIComponent(name)}/factors/password/reset`,
+      { method: 'POST', body },
+    ),
+  deleteFactor: (name: string, factorId: string) =>
+    request<void>(`/admin/accounts/${encodeURIComponent(name)}/factors/${factorId}`, {
+      method: 'DELETE',
+    }),
+  accountSpells: (name: string) =>
+    request<MagicSpell[]>(`/admin/accounts/${encodeURIComponent(name)}/spells`),
+  createSpell: (
+    name: string,
+    body: { type: number; meta?: Record<string, unknown>; code?: string; send_email?: boolean },
+  ) =>
+    request<MagicSpell>(`/admin/accounts/${encodeURIComponent(name)}/spells`, {
+      method: 'POST',
+      body,
+    }),
+  resendSpell: (name: string, spellId: string, bypassVerify = false) =>
+    request<MagicSpell>(`/admin/accounts/${encodeURIComponent(name)}/spells/${spellId}/resend`, {
+      method: 'POST',
+      body: { bypass_verify: bypassVerify },
+    }),
+  deleteSpell: (name: string, spellId: string) =>
+    request<void>(`/admin/accounts/${encodeURIComponent(name)}/spells/${spellId}`, {
+      method: 'DELETE',
+    }),
+  accountActionLogs: (
+    name: string,
+    query: { action?: string; take?: number; offset?: number } = {},
+  ) =>
+    requestPage<ActionLog>(`/admin/accounts/${encodeURIComponent(name)}/action-logs`, query),
+  accountNameHistory: (name: string) =>
+    request<NameHistoryEntry[]>(`/admin/accounts/${encodeURIComponent(name)}/name-history`),
+  accountConnections: (name: string) =>
+    request<Connection[]>(`/admin/accounts/${encodeURIComponent(name)}/connections`),
+  accountPasskeys: (name: string) =>
+    request<Passkey[]>(`/admin/accounts/${encodeURIComponent(name)}/passkeys`),
+  deleteAccountPasskey: (name: string, passkeyId: string) =>
+    request<void>(`/admin/accounts/${encodeURIComponent(name)}/passkeys/${passkeyId}`, {
+      method: 'DELETE',
+    }),
+  accountRelationships: (
+    name: string,
+    query: { status?: number; take?: number; offset?: number } = {},
+  ) =>
+    requestPage<Relationship>(`/admin/accounts/${encodeURIComponent(name)}/relationships`, query),
+  updateAccountProfile: (name: string, body: Partial<Record<keyof Profile, unknown>>) =>
+    request<Profile>(`/admin/accounts/${encodeURIComponent(name)}/profile`, {
+      method: 'PATCH',
+      body,
+    }),
+
+  // ── Punishments ──
+
+  punishmentsCreated: (query: { take?: number; offset?: number } = {}) =>
+    requestPage<Punishment>('/admin/accounts/punishments/created', query),
+  accountPunishments: (name: string, query: { take?: number; offset?: number } = {}) =>
+    requestPage<Punishment>(`/accounts/${encodeURIComponent(name)}/punishments`, query),
+  createPunishment: (
+    name: string,
+    body: {
+      reason: string
+      type: number
+      expired_at?: string | null
+      blocked_permissions?: string[]
+    },
+  ) =>
+    request<Punishment>(`/admin/accounts/${encodeURIComponent(name)}/punishments`, {
+      method: 'POST',
+      body,
+    }),
+  updatePunishment: (
+    name: string,
+    punishmentId: string,
+    body: {
+      reason?: string
+      type?: number
+      expired_at?: string | null
+      blocked_permissions?: string[]
+    },
+  ) =>
+    request<Punishment>(
+      `/admin/accounts/${encodeURIComponent(name)}/punishments/${punishmentId}`,
+      { method: 'PATCH', body },
+    ),
+  deletePunishment: (name: string, punishmentId: string) =>
+    request<void>(
+      `/admin/accounts/${encodeURIComponent(name)}/punishments/${punishmentId}`,
+      { method: 'DELETE' },
+    ),
+
+  // ── Communications ──
+
+  notify: (body: {
+    account_id?: string
+    account_ids?: string[]
+    broadcast_to_all?: boolean
+    topic: string
+    title?: string
+    subtitle?: string
+    body?: string
+    action_uri?: string
+    push_type?: string
+    is_silent?: boolean
+    is_savable?: boolean
+    meta?: Record<string, unknown>
+  }) =>
+    request<{
+      requested: number
+      resolved: number
+      sent: number
+      skipped: number
+      broadcast_to_all: boolean
+    }>('/admin/accounts/notifications', { method: 'POST', body }),
+  sendEmails: (body: {
+    account_id?: string
+    account_ids?: string[]
+    broadcast_to_all?: boolean
+    subject: string
+    html_body: string
+  }) =>
+    request<{
+      requested: number
+      resolved: number
+      sent: number
+      skipped: number
+      broadcast_to_all: boolean
+    }>('/admin/accounts/emails', { method: 'POST', body }),
+  exportEmails: (query: {
+    accountId?: string
+    accountIds?: string[]
+    broadcastToAll?: boolean
+  }) => requestBlob('/admin/accounts/emails/export', query),
+  nightOwl: (name: string, hour: number) =>
+    request<unknown>(
+      `/admin/accounts/${encodeURIComponent(name)}/notifications/night-owl`,
+      { method: 'POST', body: { hour } },
+    ),
+
+  // ── Account records ──
+
+  badges: (name: string) =>
+    request<AdminBadge[]>(`/admin/accounts/${encodeURIComponent(name)}/badges`),
+  grantBadge: (
+    name: string,
+    body: {
+      type: string
+      label?: string
+      caption?: string
+      meta?: Record<string, unknown>
+      activated_at?: string | null
+      expired_at?: string | null
+    },
+  ) =>
+    request<AdminBadge>(`/admin/accounts/${encodeURIComponent(name)}/badges`, {
+      method: 'POST',
+      body,
+    }),
+  activateBadge: (name: string, badgeId: string) =>
+    request<void>(`/admin/accounts/${encodeURIComponent(name)}/badges/${badgeId}/active`, {
+      method: 'POST',
+    }),
+  revokeBadge: (name: string, badgeId: string) =>
+    request<void>(`/admin/accounts/${encodeURIComponent(name)}/badges/${badgeId}`, {
+      method: 'DELETE',
+    }),
+  board: (name: string) =>
+    request<AdminBoardItem[]>(`/admin/accounts/${encodeURIComponent(name)}/board`),
+  replaceBoard: (name: string, items: Array<Record<string, unknown>>) =>
+    request<AdminBoardItem[]>(`/admin/accounts/${encodeURIComponent(name)}/board`, {
+      method: 'PUT',
+      body: items,
+    }),
+  updateBoardPayload: (name: string, itemId: string, payload: Record<string, unknown>) =>
+    request<AdminBoardItem>(
+      `/admin/accounts/${encodeURIComponent(name)}/board/items/${itemId}/payload`,
+      { method: 'POST', body: { payload } },
+    ),
+  deleteBoardItem: (name: string, itemId: string) =>
+    request<void>(`/admin/accounts/${encodeURIComponent(name)}/board/items/${itemId}`, {
+      method: 'DELETE',
+    }),
+  setVerification: (name: string, body: VerificationMark) =>
+    request<VerificationMark>(`/admin/accounts/${encodeURIComponent(name)}/verification`, {
+      method: 'POST',
+      body,
+    }),
+  clearVerification: (name: string) =>
+    request<void>(`/admin/accounts/${encodeURIComponent(name)}/verification`, {
+      method: 'DELETE',
+    }),
+  invalidateCredits: (name: string) =>
+    request<unknown>(`/admin/accounts/${encodeURIComponent(name)}/credits`, { method: 'POST' }),
+
+  // ── Realms ──
+
+  realms: (
+    query: {
+      query?: string
+      offset?: number
+      take?: number
+      isPublic?: boolean
+      isCommunity?: boolean
+      verified?: boolean
+      accountId?: string
+    } = {},
+  ) => requestPage<AdminRealm>('/admin/realms', query),
+  realm: (slug: string) =>
+    request<AdminRealmDetail>(`/admin/realms/${encodeURIComponent(slug)}`),
+  updateRealm: (
+    slug: string,
+    body: {
+      slug?: string
+      name?: string
+      description?: string
+      is_community?: boolean
+      is_public?: boolean
+      account_id?: string
+    },
+  ) =>
+    request<AdminRealm>(`/admin/realms/${encodeURIComponent(slug)}`, {
+      method: 'PATCH',
+      body,
+    }),
+  setRealmVerification: (slug: string, body: VerificationMark) =>
+    request<VerificationMark>(`/admin/realms/${encodeURIComponent(slug)}/verification`, {
+      method: 'POST',
+      body,
+    }),
+  clearRealmVerification: (slug: string) =>
+    request<void>(`/admin/realms/${encodeURIComponent(slug)}/verification`, {
+      method: 'DELETE',
+    }),
+  realmMembers: (
+    slug: string,
+    query: { pendingOnly?: boolean; role?: number; offset?: number; take?: number } = {},
+  ) => requestPage<RealmMember>(`/admin/realms/${encodeURIComponent(slug)}/members`, query),
+  updateRealmMemberRole: (slug: string, memberId: string, role: number) =>
+    request<RealmMember>(
+      `/admin/realms/${encodeURIComponent(slug)}/members/${memberId}/role`,
+      { method: 'PATCH', body: { role } },
+    ),
+  removeRealmMember: (slug: string, memberId: string) =>
+    request<void>(`/admin/realms/${encodeURIComponent(slug)}/members/${memberId}`, {
+      method: 'DELETE',
+    }),
+  deleteRealm: (slug: string) =>
+    request<void>(`/admin/realms/${encodeURIComponent(slug)}`, { method: 'DELETE' }),
+
+  // ── Tickets ──
+
+  onCall: () => request<OnCallAdmin[]>('/admin/tickets/on-call'),
+  addOnCall: (accountId: string) =>
+    request<OnCallAdmin>('/admin/tickets/on-call', {
+      method: 'POST',
+      body: { account_id: accountId },
+    }),
+  removeOnCall: (accountId: string) =>
+    request<void>(`/admin/tickets/on-call/${accountId}`, { method: 'DELETE' }),
+
+  // ── Progression ──
+
+  achievements: () => request<ProgressionDefinition[]>('/admin/progression/achievements'),
+  createAchievement: (body: ProgressionUpsert) =>
+    request<ProgressionDefinition>('/admin/progression/achievements', {
+      method: 'POST',
+      body,
+    }),
+  updateAchievement: (identifier: string, body: ProgressionUpsert) =>
+    request<ProgressionDefinition>(
+      `/admin/progression/achievements/${encodeURIComponent(identifier)}`,
+      { method: 'PUT', body },
+    ),
+  toggleAchievement: (identifier: string) =>
+    request<ProgressionDefinition>(
+      `/admin/progression/achievements/${encodeURIComponent(identifier)}/enable`,
+      { method: 'POST' },
+    ),
+  quests: () => request<ProgressionDefinition[]>('/admin/progression/quests'),
+  createQuest: (body: ProgressionUpsert) =>
+    request<ProgressionDefinition>('/admin/progression/quests', { method: 'POST', body }),
+  updateQuest: (identifier: string, body: ProgressionUpsert) =>
+    request<ProgressionDefinition>(`/admin/progression/quests/${encodeURIComponent(identifier)}`, {
+      method: 'PUT',
+      body,
+    }),
+  toggleQuest: (identifier: string) =>
+    request<ProgressionDefinition>(
+      `/admin/progression/quests/${encodeURIComponent(identifier)}/enable`,
+      { method: 'POST' },
+    ),
+  syncProgression: () => request<unknown>('/admin/progression/sync', { method: 'POST' }),
+  testProgressionPacket: (body: Record<string, unknown> = {}) =>
+    request<unknown>('/admin/progression/test-ws-packet', { method: 'POST', body }),
+
+  // ── Wallet products ──
+
+  walletProduct: () =>
+    request<WalletProductSummary>('/admin/wallet-products/golds-resupply-pack'),
+  applyWalletOrder: (orderId: string) =>
+    request<WalletOrder>(
+      `/admin/wallet-products/orders/${encodeURIComponent(orderId)}/apply`,
+      { method: 'POST' },
+    ),
 }

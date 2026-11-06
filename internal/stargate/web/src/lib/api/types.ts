@@ -102,6 +102,7 @@ export interface Profile {
   links?: Link[]
   username_color?: UsernameColor
   birthday?: string
+  verification?: VerificationMark
   last_seen_at?: string
   active_badge?: unknown
   experience: number
@@ -563,6 +564,248 @@ export interface MagicSpell {
   meta: Record<string, unknown>
   account_id?: string
   account?: Account
+  created_at?: string
+  updated_at?: string
+}
+
+// ── Admin account subresources ──
+
+/** One device as `GET /api/admin/accounts/:name/devices` reports it. */
+export interface AdminDevice {
+  id: string
+  device_id: string
+  device_name: string
+  device_label?: string
+  account_id: string
+  platform: number
+  category?: string
+  trusted?: boolean
+  created_at?: string
+  updated_at?: string
+  deleted_at?: string | null
+  sessions: AuthSession[]
+}
+
+export interface NameHistoryEntry {
+  id: string
+  account_id: string
+  name: string
+  created_at?: string
+  updated_at?: string
+  deleted_at?: string | null
+}
+
+export interface SessionChallenge {
+  challenge_id: string
+  origin: string
+  risk_score?: number
+  risk_signals?: string[]
+  step_total: number
+  step_remain: number
+  ip_address?: string
+  user_agent?: string
+  location?: GeoPoint
+  device_id: string
+  device_name?: string
+  platform: number
+  created_at?: string
+  approved_at?: string
+  declined_at?: string
+  trail: Array<Record<string, unknown>>
+}
+
+// ── Admin account records ──
+
+export interface AdminBadge {
+  id: string
+  type: string
+  label?: string
+  caption?: string
+  meta?: Record<string, unknown>
+  activated_at?: string
+  expired_at?: string
+  account_id: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface AdminBoardItem {
+  id: string
+  account_id: string
+  order: number
+  kind: number
+  widget_key?: string
+  custom_app_id?: string
+  custom_app_widget_key?: string
+  is_enabled: boolean
+  payload: Record<string, unknown>
+  created_at?: string
+  updated_at?: string
+}
+
+export interface VerificationMark {
+  type: number
+  title?: string
+  description?: string
+  verified_by?: string
+}
+
+// ── Admin wellbeing ──
+
+export interface WellbeingStats {
+  calculated_at: string
+  total_profiled_accounts: number
+  active_users_last_day: number
+  active_users_last_week: number
+  active_users_last_month: number
+  registered_users_last_day: number
+  registered_users_last_week: number
+  registered_users_last_month: number
+}
+
+export interface WellbeingActivity {
+  calculated_at: string
+  current_day_started_at: string
+  daily_active_users: number
+  weekly_active_users: number
+  monthly_active_users: number
+  previous_daily_active_users: number
+  previous_weekly_active_users: number
+  previous_monthly_active_users: number
+  new_accounts_today: number
+  new_accounts_this_week: number
+  new_accounts_this_month: number
+  total_profiled_accounts: number
+}
+
+// ── Admin realms ──
+
+export interface AdminRealm {
+  id: string
+  slug: string
+  name: string
+  description: string
+  is_community: boolean
+  is_public: boolean
+  verification?: VerificationMark
+  account_id: string
+  boost_points: number | string
+  boost_level: number
+  resource_identifier: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface AdminRealmDetail {
+  realm: AdminRealm
+  member_count: number
+  pending_invite_count: number
+  label_count: number
+  active_boost_contribution_count: number
+}
+
+export interface RealmMember {
+  realm_id: string
+  account_id: string
+  nick?: string
+  bio?: string
+  label_id?: string
+  experience: number
+  level: number
+  leveling_progress: number
+  role: number
+  joined_at?: string
+  leave_at?: string
+  created_at?: string
+  account?: Account
+}
+
+// ── Admin tickets ──
+
+export interface OnCallAdmin {
+  id: string
+  account_id: string
+  account?: Account
+  created_at?: string
+  updated_at?: string
+}
+
+// ── Admin progression ──
+
+/**
+ * An achievement or quest definition as the admin listing serializes it.
+ * `trigger`, `schedule` and `reward` are free-form JSON schemas owned by the
+ * progression service, so the console edits them as JSON.
+ */
+export interface ProgressionDefinition {
+  id: string
+  identifier: string
+  title: string
+  summary: string
+  icon?: string
+  series_identifier?: string
+  series_title?: string
+  series_order?: number
+  sort_order: number
+  hidden: boolean
+  is_enabled: boolean
+  is_seed_managed: boolean
+  is_progress_enabled: boolean
+  available_from?: string
+  available_until?: string
+  target_count: number
+  trigger: Record<string, unknown>
+  schedule?: Record<string, unknown>
+  reward: Record<string, unknown>
+  created_at?: string
+  updated_at?: string
+}
+
+/** The POST/PUT body for one progression definition. */
+export interface ProgressionUpsert {
+  identifier: string
+  title: string
+  summary: string
+  icon?: string | null
+  series_identifier?: string | null
+  series_title?: string | null
+  series_order?: number | null
+  sort_order: number
+  hidden: boolean
+  is_enabled?: boolean
+  is_seed_managed?: boolean
+  is_progress_enabled: boolean
+  available_from?: string | null
+  available_until?: string | null
+  target_count: number
+  trigger: Record<string, unknown>
+  schedule?: Record<string, unknown> | null
+  reward: Record<string, unknown>
+}
+
+// ── Admin wallet ──
+
+export interface WalletProductSummary {
+  key: string
+  identifier: string
+  display_name: string
+  currency: string
+  provider_mappings: Record<string, Record<string, number>>
+}
+
+export interface WalletOrder {
+  id: string
+  status: number
+  currency: string
+  remarks?: string
+  app_identifier?: string
+  product_identifier?: string
+  meta?: unknown
+  amount: number | string
+  expired_at?: string
+  payer_wallet_id?: string
+  payee_wallet_id?: string
+  transaction_id?: string
   created_at?: string
   updated_at?: string
 }
