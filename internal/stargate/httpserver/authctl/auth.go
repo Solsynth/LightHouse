@@ -280,12 +280,16 @@ func (h *handler) passwordFirstChallenge(ctx context.Context, challenge *model.A
 // password-first login offers exactly the password: every other factor —
 // including the emailed code — would add a step after the password and spend
 // delivery resources for nothing. Elevation and passwordless login challenges
-// keep the historical set.
-func challengeFactorOptions(factors []model.AuthFactor, passwordFirst bool) []model.AuthFactor {
+// keep the historical set. minTrustworthy is the strength floor; sudo raises
+// it so the picker never advertises a password it would reject on submit.
+func challengeFactorOptions(factors []model.AuthFactor, passwordFirst bool, minTrustworthy int) []model.AuthFactor {
+	if minTrustworthy < 1 {
+		minTrustworthy = 1
+	}
 	result := make([]model.AuthFactor, 0, len(factors))
 	for _, f := range factors {
 		ft := model.AuthFactorType(f.Type)
-		if f.EnabledAt == nil || f.Trustworthy < 1 ||
+		if f.EnabledAt == nil || f.Trustworthy < minTrustworthy ||
 			ft == model.AuthFactorTypeRecoveryCode ||
 			ft == model.AuthFactorTypeInAppCode ||
 			ft == model.AuthFactorTypeQrLogin {
@@ -297,6 +301,16 @@ func challengeFactorOptions(factors []model.AuthFactor, passwordFirst bool) []mo
 		result = append(result, f)
 	}
 	return result
+}
+
+// challengeMinTrustworthy is the factor-strength floor for a challenge step.
+// Sudo demands a second, stronger proof than the login password; every other
+// challenge keeps the historical "any enabled factor above zero" rule.
+func challengeMinTrustworthy(challenge *model.AuthChallenge) int {
+	if challenge != nil && challenge.Purpose == model.AuthChallengePurposeSudo {
+		return auth.SudoMinTrustworthy
+	}
+	return 1
 }
 
 // allRequiredStepCount returns the number of completable auth factors for the
@@ -869,10 +883,11 @@ func (h *handler) getChallengeFactors(c *gin.Context) {
 		challenge.Origin == model.ChallengeOriginPassword {
 		_, passwordFirst = enabledPasswordFactor(factors)
 	}
-	result := challengeFactorOptions(factors, passwordFirst)
+	minTrustworthy := challengeMinTrustworthy(challenge)
+	result := challengeFactorOptions(factors, passwordFirst, minTrustworthy)
 	// An elevation challenge with the emailed fallback armed advertises one
 	// synthetic factor whose id is the challenge id: requesting its code
-	// emails a fallback code and verifying it decrements by 2.
+	// emails a fallback code and verifying it settles the single step.
 	if challenge.Purpose == model.AuthChallengePurposeSudo && challenge.ExtraFactorType != nil {
 		result = append(result, model.AuthFactor{
 			Id:          challenge.Id,
@@ -1022,7 +1037,8 @@ func (h *handler) doChallenge(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_ENABLED", "Auth factor is not enabled."))
 		return
 	}
-	if factor.Trustworthy <= 0 {
+	minTrustworthy := challengeMinTrustworthy(challenge)
+	if factor.Trustworthy < minTrustworthy {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_TRUSTWORTHY", "Auth factor is not trustworthy."))
 		return
 	}
@@ -1101,9 +1117,9 @@ func (h *handler) doChallenge(c *gin.Context) {
 		Detail:     fmt.Sprintf("factor_type=%d remain=%d", factor.Type, challenge.StepRemain-1),
 	})
 
-	// One verified factor settles one step regardless of its strength score:
-	// the elevation demanded one step per factor, so anything more would let a
-	// strong factor cover steps it was never counted for.
+	// One verified factor settles one step regardless of its strength score.
+	// Elevation demands exactly one strong factor; login challenges compute
+	// their step total separately.
 	challenge.StepRemain--
 	if challenge.StepRemain < 0 {
 		challenge.StepRemain = 0
@@ -1200,6 +1216,11 @@ func (h *handler) doChallengeSudoFallback(c *gin.Context, challenge *model.AuthC
 // increasing its step count. Already-completed factors (in BlacklistFactors)
 // are preserved.
 func (h *handler) maybeEscalateFailure(ctx context.Context, challenge *model.AuthChallenge) error {
+	// Sudo is always exactly one strong factor; escalating a failure would
+	// reintroduce weak factors the elevation policy rejects.
+	if challenge.Purpose == model.AuthChallengePurposeSudo {
+		return nil
+	}
 	// A password-first login never grows a second step: repeated failures are
 	// already throttled by the fail2ban and per-challenge caps, and an extra
 	// step would reintroduce the emailed code the policy removed.
@@ -1628,11 +1649,12 @@ func (h *handler) startPasskeyChallenge(c *gin.Context) {
 	if err != nil {
 		h.logError("load factors", err)
 	}
+	minTrustworthy := challengeMinTrustworthy(challenge)
 	var passkeyFactor *model.AuthFactor
 	for i := range factors {
 		f := &factors[i]
 		if model.AuthFactorType(f.Type) == model.AuthFactorTypePasskey && f.EnabledAt != nil &&
-			f.Trustworthy > 0 && !containsString(challenge.BlacklistFactors, f.Id) {
+			f.Trustworthy >= minTrustworthy && !containsString(challenge.BlacklistFactors, f.Id) {
 			passkeyFactor = f
 			break
 		}
@@ -1720,7 +1742,7 @@ func (h *handler) completePasskeyChallenge(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_ENABLED", "Auth factor is not enabled."))
 		return
 	}
-	if factor.Trustworthy <= 0 {
+	if factor.Trustworthy < challengeMinTrustworthy(challenge) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_TRUSTWORTHY", "Auth factor is not trustworthy."))
 		return
 	}
@@ -2057,6 +2079,12 @@ func (h *handler) requireTrusted(ctx context.Context, session *model.AuthSession
 // single-factor account there is no higher level, so the decline is terminal:
 // DeclinedAt is set and the challenge dies.
 func (h *handler) escalateChallenge(ctx context.Context, challenge *model.AuthChallenge) error {
+	if challenge.Purpose == model.AuthChallengePurposeSudo {
+		now := time.Now().UTC()
+		challenge.DeclinedAt = model.NewTime(now)
+		challenge.UpdatedAt = model.NewTime(now)
+		return h.d.Store.UpdateAuthChallenge(ctx, challenge)
+	}
 	maxSteps, err := h.allRequiredStepCount(ctx, challenge.AccountId)
 	if err != nil {
 		return err
@@ -3001,24 +3029,22 @@ func (h *handler) createSudoChallenge(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
 		return
 	}
-	// The elevation costs one step per factor the client can present as a
-	// pickable factor, and each verified factor settles exactly one step —
-	// never its Trustworthy score. A password-only account therefore elevates
-	// with its password; an account with password + TOTP still needs both. The
-	// demanded step count equals what it actually costs to satisfy, so it can
-	// never strand the challenge on an unreachable last step.
-	steps := len(auth.SudoPickableFactorTypes(factors))
+	// Sudo asks for exactly one acceptable factor, not one per enabled factor.
+	// "Acceptable" means Trustworthy >= auth.SudoMinTrustworthy: a password or
+	// NFC token proves the login secret, not that the account owner is present,
+	// so a password-only account falls through to the emailed code (trust 2)
+	// when a verified contact exists, and fails closed otherwise.
+	pickable := auth.SudoPickableFactorTypes(factors)
+	assertable := auth.SudoAssertableFactorTypes(factors)
+	steps := 0
 	fallbackArmed := false
 	switch {
-	case steps > 0:
-		// Covered by the pickable factors.
-	case len(auth.SudoAssertableFactorTypes(factors)) > 0:
-		// A passkey is presented through its own assertion endpoint rather
-		// than the picker, but it satisfies a step just the same.
-		steps = len(auth.SudoAssertableFactorTypes(factors))
+	case len(pickable) > 0 || len(assertable) > 0:
+		// One pickable factor (email/TOTP/...) or a passkey ceremony is enough.
+		steps = 1
 	default:
-		// Nothing presentable is enabled: the emailed fallback is the only way
-		// to re-authenticate, and it settles the single step.
+		// Nothing strong enough is enabled: the emailed fallback is the only
+		// way to re-authenticate, and it settles the single step.
 		_, cerr := h.d.Store.GetEmailContactForNotify(ctx, user.Id, true)
 		if cerr == nil {
 			steps = 1

@@ -61,7 +61,7 @@ func Register(api *gin.RouterGroup, d Deps) {
 	api.POST("/auth/login/apple/mobile", d.appleMobileLogin)
 	api.GET("/auth/callback/:provider", d.handleCallback)
 	api.POST("/auth/callback/:provider", d.handleCallback)
-	api.POST("/auth/connect/apple/mobile", middleware.RequireAuth(), d.connectAppleMobile)
+	api.POST("/auth/connect/apple/mobile", middleware.RequireAuth(), middleware.RequireInteractive(), middleware.RequireSudo(), d.connectAppleMobile)
 }
 
 // oidcState mirrors OidcState. The C# cache serializer emits snake_case with

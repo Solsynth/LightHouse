@@ -91,12 +91,12 @@ func Register(api *gin.RouterGroup, d Deps) {
 	// ── Sessions ──
 	security.GET("sessions", c.getSessions)
 	security.GET("sessions/:id/children", c.getSessionChildren)
-	security.DELETE("sessions/:id", c.deleteSession)
+	security.DELETE("sessions/:id", middleware.RequireAuth(), middleware.RequireSudo(), c.deleteSession)
 	security.DELETE("sessions/current", c.deleteCurrentSession)
 
 	// ── Devices ──
 	security.GET("devices", c.getDevices)
-	security.DELETE("devices/:deviceId", c.deleteDevice)
+	security.DELETE("devices/:deviceId", middleware.RequireAuth(), middleware.RequireSudo(), c.deleteDevice)
 	security.PATCH("devices/:deviceId/label", c.updateDeviceLabel)
 	security.PATCH("devices/current/label", c.updateCurrentDeviceLabel)
 
@@ -105,18 +105,18 @@ func Register(api *gin.RouterGroup, d Deps) {
 	security.POST("contacts", middleware.RequireAuth(), middleware.RequireSudo(), c.createContact)
 	security.POST("contacts/:id/verify", middleware.RequireAuth(), middleware.RequireSudo(), c.verifyContact)
 	security.POST("contacts/:id/primary", middleware.RequireAuth(), middleware.RequireSudo(), c.setPrimaryContact)
-	security.POST("contacts/:id/public", c.setPublicContact)
-	security.DELETE("contacts/:id/public", c.unsetPublicContact)
+	security.POST("contacts/:id/public", middleware.RequireAuth(), middleware.RequireSudo(), c.setPublicContact)
+	security.DELETE("contacts/:id/public", middleware.RequireAuth(), middleware.RequireSudo(), c.unsetPublicContact)
 	security.DELETE("contacts/:id", middleware.RequireAuth(), middleware.RequireSudo(), c.deleteContact)
 
 	// ── Security preferences ──
 	security.GET("security/preferences", c.getSecurityPreferences)
-	security.PATCH("security/preferences", c.updateSecurityPreferences)
+	security.PATCH("security/preferences", middleware.RequireAuth(), middleware.RequireSudo(), c.updateSecurityPreferences)
 
 	// ── Authorized apps ──
 	security.GET("authorized-apps", c.getAuthorizedApps)
-	security.POST("authorized-apps/:id/scopes", c.authorizeAppScopes)
-	security.DELETE("authorized-apps/:id", c.deauthorizeApp)
+	security.POST("authorized-apps/:id/scopes", middleware.RequireAuth(), middleware.RequireSudo(), c.authorizeAppScopes)
+	security.DELETE("authorized-apps/:id", middleware.RequireAuth(), middleware.RequireSudo(), c.deauthorizeApp)
 
 	// ── API keys (ApiKeyController; [Authorize] only, no interactive gate) ──
 	api.GET("api-keys", c.listApiKeys)
@@ -126,8 +126,8 @@ func Register(api *gin.RouterGroup, d Deps) {
 
 	// ── Connections (ConnectionController; [Authorize] only) ──
 	api.GET("connections", c.getConnections)
-	api.DELETE("connections/:id", c.removeConnection)
-	api.POST("connections/:id/visibility", c.setConnectionVisibility)
+	api.DELETE("connections/:id", middleware.RequireAuth(), middleware.RequireInteractive(), middleware.RequireSudo(), c.removeConnection)
+	api.POST("connections/:id/visibility", middleware.RequireAuth(), middleware.RequireInteractive(), middleware.RequireSudo(), c.setConnectionVisibility)
 }
 
 // ---------------------------------------------------------------------------

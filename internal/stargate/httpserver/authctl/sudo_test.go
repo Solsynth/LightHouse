@@ -317,10 +317,10 @@ func decodeChallenge(t *testing.T, rec *httptest.ResponseRecorder) *model.AuthCh
 	return &ch
 }
 
-// TestSudoPasswordOnlyElevatesInOneStep pins (a): the elevation costs one step
-// per pickable factor, so a password-only account elevates with its password.
-// The emailed fallback stays disarmed — a real factor exists.
-func TestSudoPasswordOnlyElevatesInOneStep(t *testing.T) {
+// TestSudoPasswordOnlyFallsBackToEmail pins (a): a password (Trustworthy 1)
+// cannot satisfy sudo. With a verified email the emailed fallback (trust 2) is
+// armed as the single step, and a crafted password submission is rejected.
+func TestSudoPasswordOnlyFallsBackToEmail(t *testing.T) {
 	sh := newSudoHarness(t, sudoSeed{
 		verifiedEmail: true,
 		factors:       []sudoFactorSeed{sudoPasswordSeed(t, model.AuthFactorTypePassword, sudoTestPassword, 1)},
@@ -333,7 +333,8 @@ func TestSudoPasswordOnlyElevatesInOneStep(t *testing.T) {
 		t.Fatalf("step %d/%d, want 1/1", ch.StepRemain, ch.StepTotal)
 	}
 
-	// No synthetic fallback (id == challenge id): password is pickable.
+	// The password is below the floor, so the picker offers only the synthetic
+	// emailed fallback (its id is the challenge id).
 	rec := sh.request(t, http.MethodGet, "/auth/challenge/"+ch.Id+"/factors", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("factors: %d %s", rec.Code, rec.Body.String())
@@ -342,43 +343,59 @@ func TestSudoPasswordOnlyElevatesInOneStep(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &factors); err != nil {
 		t.Fatalf("decode factors: %v", err)
 	}
-	for _, f := range factors {
-		if f.Id == ch.Id {
-			t.Fatalf("emailed fallback armed although a password is enabled: %+v", factors)
-		}
+	if len(factors) != 1 || factors[0].Id != ch.Id || model.AuthFactorType(factors[0].Type) != model.AuthFactorTypeEmailCode {
+		t.Fatalf("factors = %+v, want only the emailed fallback", factors)
 	}
 
 	rec = sh.submitFactor(t, ch.Id, sh.factorID(t, model.AuthFactorTypePassword), sudoTestPassword)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("password step: %d %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("password step: got %d, want 400 (body %s)", rec.Code, rec.Body.String())
 	}
-	got := decodeChallenge(t, rec)
-	if got.StepRemain != 0 || got.SudoUntil == nil {
-		t.Fatalf("password did not complete the elevation: %+v", got)
+	if code := responseErrorCode(t, rec); code != "AUTH_FACTOR_NOT_TRUSTWORTHY" {
+		t.Fatalf("code = %q, want AUTH_FACTOR_NOT_TRUSTWORTHY", code)
 	}
-	if !sh.isElevated(t) {
-		t.Fatal("password-only account was not elevated by its password")
+	if sh.isElevated(t) {
+		t.Fatal("password elevated the session")
 	}
 }
 
-// TestSudoPasskeyCountsAsOneStep pins the step accounting: a factor's strength
-// score (a passkey scores 4) must not inflate the demand. Two pickable factors
-// cost two steps, not five.
-func TestSudoPasskeyCountsAsOneStep(t *testing.T) {
+// TestSudoStrongFactorCountsAsOneStep pins (b): one factor at or above
+// SudoMinTrustworthy satisfies the challenge, regardless of how many strong
+// factors the account has. The picker hides the password it would reject.
+func TestSudoStrongFactorCountsAsOneStep(t *testing.T) {
 	key, _ := totp.Generate(totp.GenerateOpts{Issuer: "SolarNetwork", AccountName: "sudo-test"})
 	sh := newSudoHarness(t, sudoSeed{factors: []sudoFactorSeed{
 		sudoPasswordSeed(t, model.AuthFactorTypePassword, sudoTestPassword, 1),
 		{ftype: model.AuthFactorTypeTimedCode, trustworthy: 3, secret: key.Secret()},
 	}})
 	ch := sh.createSudo(t)
-	if ch.StepTotal != 2 || ch.StepRemain != 2 {
-		t.Fatalf("step %d/%d, want 2/2 (one per pickable factor, not summed weights)", ch.StepRemain, ch.StepTotal)
+	if ch.StepTotal != 1 || ch.StepRemain != 1 {
+		t.Fatalf("step %d/%d, want 1/1", ch.StepRemain, ch.StepTotal)
+	}
+
+	rec := sh.request(t, http.MethodGet, "/auth/challenge/"+ch.Id+"/factors", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("factors: %d %s", rec.Code, rec.Body.String())
+	}
+	var factors []model.AuthFactor
+	if err := json.Unmarshal(rec.Body.Bytes(), &factors); err != nil {
+		t.Fatalf("decode factors: %v", err)
+	}
+	seen := map[model.AuthFactorType]bool{}
+	for _, f := range factors {
+		seen[model.AuthFactorType(f.Type)] = true
+	}
+	if seen[model.AuthFactorTypePassword] {
+		t.Fatalf("picker offered the weak password: %+v", factors)
+	}
+	if !seen[model.AuthFactorTypeTimedCode] {
+		t.Fatalf("picker omitted the strong TOTP factor: %+v", factors)
 	}
 }
 
-// TestSudoPasswordAndTotpElevates pins (b): a password+TOTP account satisfies the
-// demand in two steps and is granted elevation; no login session is minted.
-func TestSudoPasswordAndTotpElevates(t *testing.T) {
+// TestSudoPasswordRejectedButTotpElevates pins (c): submitting the login
+// password cannot consume the sudo step; a qualifying TOTP code completes it.
+func TestSudoPasswordRejectedButTotpElevates(t *testing.T) {
 	key, err := totp.Generate(totp.GenerateOpts{Issuer: "SolarNetwork", AccountName: "sudo-test"})
 	if err != nil {
 		t.Fatalf("generate totp: %v", err)
@@ -389,11 +406,14 @@ func TestSudoPasswordAndTotpElevates(t *testing.T) {
 		{ftype: model.AuthFactorTypeTimedCode, trustworthy: 3, secret: totpSecret},
 	}})
 	ch := sh.createSudo(t)
-	if ch.StepTotal != 2 {
-		t.Fatalf("step_total = %d, want 2", ch.StepTotal)
+	if ch.StepTotal != 1 {
+		t.Fatalf("step_total = %d, want 1", ch.StepTotal)
 	}
-	if rec := sh.submitFactor(t, ch.Id, sh.factorID(t, model.AuthFactorTypePassword), sudoTestPassword); rec.Code != http.StatusOK {
-		t.Fatalf("password step: %d %s", rec.Code, rec.Body.String())
+	if rec := sh.submitFactor(t, ch.Id, sh.factorID(t, model.AuthFactorTypePassword), sudoTestPassword); rec.Code != http.StatusBadRequest {
+		t.Fatalf("password step: got %d, want 400 (body %s)", rec.Code, rec.Body.String())
+	}
+	if sh.isElevated(t) {
+		t.Fatal("password submitted before the strong factor elevated the session")
 	}
 	code, err := totp.GenerateCode(totpSecret, time.Now())
 	if err != nil {
@@ -411,7 +431,7 @@ func TestSudoPasswordAndTotpElevates(t *testing.T) {
 		t.Fatal("sudo_until not returned after elevation")
 	}
 	if !sh.isElevated(t) {
-		t.Fatal("password+TOTP account was not elevated")
+		t.Fatal("TOTP did not elevate the session")
 	}
 }
 
@@ -544,8 +564,8 @@ func TestSudoGatedRouteRequiresElevation(t *testing.T) {
 	if body["code"] != "AUTH_SUDO_REQUIRED" {
 		t.Fatalf("code = %v, want AUTH_SUDO_REQUIRED", body["code"])
 	}
-	if body["detail"] != "password,timed_code" {
-		t.Fatalf("detail = %v, want password,timed_code", body["detail"])
+	if body["detail"] != "timed_code" {
+		t.Fatalf("detail = %v, want timed_code", body["detail"])
 	}
 
 	if _, err := sh.authSvc.GrantSudo(sh.ctx, sh.sessionID); err != nil {

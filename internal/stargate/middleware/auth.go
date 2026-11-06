@@ -298,11 +298,12 @@ func getSudoChecker() SudoChecker {
 //   - otherwise it answers 403 AUTH_SUDO_REQUIRED with the usable factor type
 //     names in `detail`, and records the denied attempt.
 //
-// There is deliberately no "no factors, so skip" path. Every account has a
-// factor it can present — registration seeds a password — so an empty hint
-// would only be reachable for a broken or half-provisioned account, and letting
-// those through would hand an unelevated session the security settings. Such
-// accounts are told what is missing instead (see SudoFactorHint).
+// There is deliberately no "no factors, so skip" path. Elevation requires a
+// factor with Trustworthy >= 2 (see auth.SudoMinTrustworthy); a password-only
+// account without a verified email cannot elevate, and handing it an implicit
+// grant would expose the security settings. Such accounts are told what is
+// missing instead (SudoFactorHint returns an empty detail) and the request
+// still fails closed.
 func RequireSudo() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		checker := getSudoChecker()

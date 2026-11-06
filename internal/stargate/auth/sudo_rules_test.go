@@ -17,9 +17,9 @@ func disabledFactor(ftype model.AuthFactorType, trustworthy int) model.AuthFacto
 	return model.AuthFactor{Type: ftype, Trustworthy: trustworthy}
 }
 
-// TestSudoFactorTypes pins the step-counting rules: one entry per enabled,
-// trustworthy factor type, regardless of its strength score, with PIN and
-// recovery codes excluded and duplicates collapsed.
+// TestSudoFactorTypes pins the eligibility rules: only enabled factors at or
+// above SudoMinTrustworthy count, with PIN/recovery excluded and duplicate
+// types collapsed. Strength is a floor, not a step count.
 func TestSudoFactorTypes(t *testing.T) {
 	got := SudoFactorTypes([]model.AuthFactor{
 		enabledFactor(model.AuthFactorTypePassword, 1),
@@ -31,7 +31,6 @@ func TestSudoFactorTypes(t *testing.T) {
 		disabledFactor(model.AuthFactorTypeNfcToken, 1),
 	})
 	want := []model.AuthFactorType{
-		model.AuthFactorTypePassword,
 		model.AuthFactorTypePasskey,
 		model.AuthFactorTypeTimedCode,
 	}
@@ -39,22 +38,25 @@ func TestSudoFactorTypes(t *testing.T) {
 		t.Fatalf("SudoFactorTypes = %v, want %v", got, want)
 	}
 
-	// The strength score never inflates the demand: a password + passkey account
-	// costs two steps, not five.
-	if len(got[0:2]) != 2 {
-		t.Fatalf("password + passkey counted as %d steps, want 2", len(got[0:2]))
+	// A password (or NFC token) sits below the floor: proving the login secret
+	// is not the same as proving presence for an elevation.
+	for _, ft := range got {
+		if ft == model.AuthFactorTypePassword || ft == model.AuthFactorTypeNfcToken {
+			t.Fatalf("weak factor %v counted as sudo-eligible", ft)
+		}
 	}
 }
 
 func TestSudoPickableFactorTypes(t *testing.T) {
 	factors := []model.AuthFactor{
 		enabledFactor(model.AuthFactorTypePassword, 1),
+		enabledFactor(model.AuthFactorTypeEmailCode, 2),
 		enabledFactor(model.AuthFactorTypePasskey, 4),
 		enabledFactor(model.AuthFactorTypeQrLogin, 3),
 		enabledFactor(model.AuthFactorTypeInAppCode, 2),
 	}
 	got := SudoPickableFactorTypes(factors)
-	want := []model.AuthFactorType{model.AuthFactorTypePassword}
+	want := []model.AuthFactorType{model.AuthFactorTypeEmailCode}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("SudoPickableFactorTypes = %v, want %v", got, want)
 	}
@@ -68,16 +70,22 @@ func TestSudoFactorHintAnswers(t *testing.T) {
 		want     []string
 	}{
 		{
-			name:    "password and totp, sorted",
+			name:    "password is below the sudo floor",
 			factors: []model.AuthFactor{enabledFactor(model.AuthFactorTypeTimedCode, 3), enabledFactor(model.AuthFactorTypePassword, 1)},
-			want:    []string{"password", "timed_code"},
+			want:    []string{"timed_code"},
 		},
 		{
-			name:    "password only never arms the email fallback",
+			name:    "password only arms the email fallback",
 			factors: []model.AuthFactor{enabledFactor(model.AuthFactorTypePassword, 1)},
-			// The verified email is irrelevant while a pickable factor exists.
+			// The password cannot elevate, so the verified email is the only
+			// remaining path.
 			hasEmail: true,
-			want:     []string{"password"},
+			want:     []string{"email_code"},
+		},
+		{
+			name:    "password only without a verified email",
+			factors: []model.AuthFactor{enabledFactor(model.AuthFactorTypePassword, 1)},
+			want:    []string{},
 		},
 		{
 			name:     "passkey only needs no emailed fallback",

@@ -55,7 +55,7 @@ func Register(api *gin.RouterGroup, d Deps) {
 		g.POST("/mls/groups/:groupId/messages/fanout", s.handleFanoutMlsMessageToGroup)
 		g.GET("/mls/envelopes/pending", s.handleGetMlsPendingByDevice)
 		g.POST("/mls/envelopes/:envelopeId/ack", s.handleAckMlsEnvelope)
-		g.POST("/mls/devices/:deviceId/revoke", s.handleRevokeMlsDevice)
+		g.POST("/mls/devices/:deviceId/revoke", middleware.RequireInteractive(), middleware.RequireSudo(), s.handleRevokeMlsDevice)
 		g.POST("/mls/devices/:deviceId/membership", s.handleAddMlsDeviceMembership)
 		g.POST("/mls/groups/:groupId/reset", s.handleResetMlsGroup)
 	}

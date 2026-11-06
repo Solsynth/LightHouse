@@ -6,16 +6,23 @@ import (
 	"src.solsynth.dev/sosys/stargate/model"
 )
 
+// SudoMinTrustworthy is the minimum factor strength that may satisfy an
+// elevation. A password (1) or NFC token (1) is not enough on its own: sudo
+// mode is a second proof that the person at the keyboard is the account
+// owner, so it demands a factor the account holder had to provision beyond
+// the login secret. Email/in-app codes (2), TOTP (3), passkeys (4) and QR
+// (3) qualify; PIN and recovery codes never do (they have their own flow).
+const SudoMinTrustworthy = 2
+
 // SudoFactorTypes is the set of an account's enabled factors that can satisfy
-// an elevation ("sudo") step. The strength score (Trustworthy) plays no part in
-// the count: a passkey (4) must not cost more steps than a password (1), and
-// summing it could push the demand past the challenge's step columns. PIN and
-// recovery codes never count — they are untrustworthy or have their own flow.
+// an elevation ("sudo") step. Strength sets the floor (SudoMinTrustworthy),
+// never the step count: an elevation asks for one qualifying factor, so a
+// passkey (4) costs the same one step as an emailed code (2).
 func SudoFactorTypes(factors []model.AuthFactor) []model.AuthFactorType {
 	seen := make(map[model.AuthFactorType]bool, len(factors))
 	types := make([]model.AuthFactorType, 0, len(factors))
 	for _, f := range factors {
-		if f.EnabledAt == nil || f.Trustworthy < 1 {
+		if f.EnabledAt == nil || f.Trustworthy < SudoMinTrustworthy {
 			continue
 		}
 		ft := model.AuthFactorType(f.Type)

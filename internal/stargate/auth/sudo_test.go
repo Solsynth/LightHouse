@@ -129,14 +129,14 @@ func TestSudoFactorHint(t *testing.T) {
 	}
 	svc := NewAuthService(store.New(pool), nil, config.Default(), nil, nil, nil, nil, nil, sudoTestLogger())
 
-	t.Run("password and timed_code", func(t *testing.T) {
+	t.Run("password is below the sudo floor", func(t *testing.T) {
 		accountID := seedSudoHintAccount(t, ctx, pool, false, model.AuthFactorTypePassword, model.AuthFactorTypeTimedCode)
 		hint, err := svc.SudoFactorHint(ctx, accountID)
 		if err != nil {
 			t.Fatalf("SudoFactorHint: %v", err)
 		}
-		if hint != "password,timed_code" {
-			t.Fatalf("hint = %q, want password,timed_code", hint)
+		if hint != "timed_code" {
+			t.Fatalf("hint = %q, want timed_code", hint)
 		}
 	})
 
@@ -173,14 +173,14 @@ func TestSudoFactorHint(t *testing.T) {
 		}
 	})
 
-	t.Run("password without an email contact has no fallback", func(t *testing.T) {
+	t.Run("password without an email contact yields no hint", func(t *testing.T) {
 		accountID := seedSudoHintAccount(t, ctx, pool, false, model.AuthFactorTypePassword)
 		hint, err := svc.SudoFactorHint(ctx, accountID)
 		if err != nil {
 			t.Fatalf("SudoFactorHint: %v", err)
 		}
-		if hint != "password" {
-			t.Fatalf("hint = %q, want password", hint)
+		if hint != "" {
+			t.Fatalf("hint = %q, want empty (password cannot elevate)", hint)
 		}
 	})
 }

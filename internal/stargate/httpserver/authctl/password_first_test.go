@@ -147,12 +147,12 @@ func TestChallengeFactorOptionsPasswordFirst(t *testing.T) {
 		{Id: "disabled", Type: model.AuthFactorTypeNfcToken, Trustworthy: 1},
 	}
 
-	got := challengeFactorOptions(factors, true)
+	got := challengeFactorOptions(factors, true, 1)
 	if len(got) != 1 || got[0].Id != "pw" {
 		t.Fatalf("password-first options = %+v, want only the password", got)
 	}
 
-	passwordless := challengeFactorOptions(factors, false)
+	passwordless := challengeFactorOptions(factors, false, 1)
 	ids := map[string]bool{}
 	for _, f := range passwordless {
 		ids[f.Id] = true
@@ -162,6 +162,17 @@ func TestChallengeFactorOptionsPasswordFirst(t *testing.T) {
 	}
 	if ids["disabled"] {
 		t.Fatal("passwordless options offered a disabled factor")
+	}
+
+	// Sudo raises the floor: the picker must not advertise the password it
+	// would reject on submit.
+	sudo := challengeFactorOptions(factors, false, auth.SudoMinTrustworthy)
+	sudoIDs := map[string]bool{}
+	for _, f := range sudo {
+		sudoIDs[f.Id] = true
+	}
+	if sudoIDs["pw"] || !sudoIDs["email"] || !sudoIDs["totp"] {
+		t.Fatalf("sudo options = %+v, want only Trustworthy >= %d factors", sudo, auth.SudoMinTrustworthy)
 	}
 }
 
