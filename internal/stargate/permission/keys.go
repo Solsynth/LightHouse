@@ -328,6 +328,10 @@ const (
 	ProgressionQuestsManage       = "progression.quests.manage"
 	ProgressionSync               = "progression.sync"
 	ProgressionBadgesManage       = "progression.badges.manage"
+	// ProgressionBadgesAdmin gates granting, revoking and force-activating
+	// badges on other accounts. ProgressionBadgesManage stays self-service
+	// (activating one's own badge) and is granted to every account.
+	ProgressionBadgesAdmin = "progression.badges.admin"
 
 	// ── Domain Trust ──
 	DomainTrustCreate   = "domain.trust.create"
@@ -724,6 +728,7 @@ var AllKeys = []string{
 	ProgressionQuestsManage,
 	ProgressionSync,
 	ProgressionBadgesManage,
+	ProgressionBadgesAdmin,
 
 	DomainTrustCreate,
 	DomainTrustUpdate,

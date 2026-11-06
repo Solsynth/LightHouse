@@ -141,6 +141,14 @@ func (s *Store) DeleteMagicSpell(ctx context.Context, id string) error {
 	return s.DB.WithContext(ctx).Unscoped().Delete(&MagicSpellEntity{}, "id = ?", id).Error
 }
 
+// ClaimMagicSpell hard-deletes a spell and reports whether this caller was the
+// one that consumed it. Redemption flows claim before applying their effect,
+// so two concurrent applies cannot both succeed on the same single-use spell.
+func (s *Store) ClaimMagicSpell(ctx context.Context, id string) (bool, error) {
+	res := s.DB.WithContext(ctx).Unscoped().Delete(&MagicSpellEntity{}, "id = ?", id)
+	return res.RowsAffected > 0, res.Error
+}
+
 // GetEmailContactForNotify returns an account's email contact for spell
 // delivery: primary first, optionally verified only (NotifyMagicSpell's
 // remote contact lookup with verifiedOnly: !bypassVerify).

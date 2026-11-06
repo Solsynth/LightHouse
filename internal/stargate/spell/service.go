@@ -347,10 +347,17 @@ func (s *Service) ApplyPasswordReset(ctx context.Context, spell *model.MagicSpel
 	if err != nil {
 		return err
 	}
-	if _, err := s.store.AdminUpsertPasswordFactor(ctx, accountID, hash, time.Now().UTC()); err != nil {
+	// Claim the spell before touching the credential: the delete is the
+	// single-use lock, so two concurrent applies cannot both install a
+	// password from the same link.
+	claimed, err := s.store.ClaimMagicSpell(ctx, spell.Id)
+	if err != nil {
 		return err
 	}
-	if err := s.store.DeleteMagicSpell(ctx, spell.Id); err != nil {
+	if !claimed {
+		return errors.New("this password reset spell has already been used")
+	}
+	if _, err := s.store.AdminUpsertPasswordFactor(ctx, accountID, hash, time.Now().UTC()); err != nil {
 		return err
 	}
 	// A reset is the "my credential leaked" flow: every session minted before

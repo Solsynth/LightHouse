@@ -131,8 +131,10 @@ type TokenInfo struct {
 }
 
 // ExtractToken mirrors Padlock's _ExtractToken order: Authorization header
-// (Bearer/Bot), then tk query param, then AuthToken cookie. Legacy AtField /
-// AkField schemes are dropped (grace window ended 2026-03-20).
+// (Bearer/Bot), then the AuthToken cookie. The legacy `?tk=` query parameter
+// is gone: URLs leak into access logs, browser history, Referer headers and
+// shared links, and a bearer token carried there is a credential leak. Legacy
+// AtField / AkField schemes are dropped too (grace window ended 2026-03-20).
 func ExtractToken(r *http.Request) *TokenInfo {
 	authHeader := normalizeAuthHeader(r.Header.Get("Authorization"))
 	if authHeader != "" {
@@ -143,9 +145,6 @@ func ExtractToken(r *http.Request) *TokenInfo {
 		if rest, ok := strings.CutPrefix(authHeader, "Bot "); ok {
 			return &TokenInfo{Token: strings.TrimSpace(rest), Type: TokenTypeApiKey}
 		}
-	}
-	if tk := r.URL.Query().Get("tk"); tk != "" {
-		return &TokenInfo{Token: tk, Type: TokenTypeAuthKey}
 	}
 	if cookie, err := r.Cookie("AuthToken"); err == nil && cookie.Value != "" {
 		return &TokenInfo{Token: cookie.Value, Type: tokenTypeFor(cookie.Value)}

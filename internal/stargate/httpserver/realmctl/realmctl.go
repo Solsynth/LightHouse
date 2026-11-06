@@ -123,18 +123,39 @@ func Register(api *gin.RouterGroup, d Deps) {
 	realms.GET("/:slug/posts/moderation-logs", middleware.RequireAuth(), d.moderationLogs)
 }
 
+// adminRoute is one console route plus the platform permission it demands.
+type adminRoute struct {
+	Method  string
+	Path    string
+	Key     string
+	Handler gin.HandlerFunc
+}
+
+// adminRoutes lists the /api/admin/realms console routes. Every one of them is
+// a platform moderation action and must be gated on realms.moderate: the
+// self-service keys (realms.update/delete/members.manage) are granted to every
+// activated account, so gating these routes on them let any user rewrite,
+// reassign or delete any realm.
+func adminRoutes(d Deps) []adminRoute {
+	return []adminRoute{
+		{Method: http.MethodGet, Path: "", Key: permission.RealmsModerate, Handler: d.adminListRealms},
+		{Method: http.MethodGet, Path: "/:slug", Key: permission.RealmsModerate, Handler: d.adminGetRealm},
+		{Method: http.MethodPatch, Path: "/:slug", Key: permission.RealmsModerate, Handler: d.adminUpdateRealm},
+		{Method: http.MethodPost, Path: "/:slug/verification", Key: permission.RealmsModerate, Handler: d.adminSetVerification},
+		{Method: http.MethodDelete, Path: "/:slug/verification", Key: permission.RealmsModerate, Handler: d.adminClearVerification},
+		{Method: http.MethodGet, Path: "/:slug/members", Key: permission.RealmsModerate, Handler: d.adminListMembers},
+		{Method: http.MethodPatch, Path: "/:slug/members/:memberId/role", Key: permission.RealmsModerate, Handler: d.adminUpdateMemberRole},
+		{Method: http.MethodDelete, Path: "/:slug/members/:memberId", Key: permission.RealmsModerate, Handler: d.adminRemoveMember},
+		{Method: http.MethodDelete, Path: "/:slug", Key: permission.RealmsModerate, Handler: d.adminDeleteRealm},
+	}
+}
+
 // RegisterAdmin mounts the /api/admin/realms console routes.
 func RegisterAdmin(api *gin.RouterGroup, d Deps) {
 	admin := api.Group("/admin/realms")
-	admin.GET("", middleware.AskPermission(d.Perm, permission.RealmsModerate), d.adminListRealms)
-	admin.GET("/:slug", middleware.AskPermission(d.Perm, permission.RealmsModerate), d.adminGetRealm)
-	admin.PATCH("/:slug", middleware.AskPermission(d.Perm, permission.RealmsUpdate), d.adminUpdateRealm)
-	admin.POST("/:slug/verification", middleware.AskPermission(d.Perm, permission.RealmsModerate), d.adminSetVerification)
-	admin.DELETE("/:slug/verification", middleware.AskPermission(d.Perm, permission.RealmsModerate), d.adminClearVerification)
-	admin.GET("/:slug/members", middleware.AskPermission(d.Perm, permission.RealmsModerate), d.adminListMembers)
-	admin.PATCH("/:slug/members/:memberId/role", middleware.AskPermission(d.Perm, permission.RealmsMembersManage), d.adminUpdateMemberRole)
-	admin.DELETE("/:slug/members/:memberId", middleware.AskPermission(d.Perm, permission.RealmsMembersManage), d.adminRemoveMember)
-	admin.DELETE("/:slug", middleware.AskPermission(d.Perm, permission.RealmsDelete), d.adminDeleteRealm)
+	for _, route := range adminRoutes(d) {
+		admin.Handle(route.Method, route.Path, middleware.AskPermission(d.Perm, route.Key), route.Handler)
+	}
 }
 
 // ─────────────────────────── helpers ───────────────────────────

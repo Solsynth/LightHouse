@@ -291,6 +291,13 @@ func (s *Service) IsMlsGroupMember(ctx context.Context, accountID, deviceID, gro
 	return s.store.IsMlsGroupMember(ctx, accountID, deviceID, groupID)
 }
 
+// IsMlsGroupAccountMember reports whether any device of the account belongs to
+// the group. It is the authorization check for group-wide mutations, which are
+// not tied to the calling device.
+func (s *Service) IsMlsGroupAccountMember(ctx context.Context, accountID, groupID string) (bool, error) {
+	return s.store.IsMlsGroupAccountMember(ctx, accountID, groupID)
+}
+
 // UploadGroupInfo mirrors UploadGroupInfoAsync (SERIALIZABLE; epoch must
 // match the current state when the group exists).
 func (s *Service) UploadGroupInfo(ctx context.Context, groupID string, groupInfo, ratchetTree []byte, expectedEpoch int64) (*UploadGroupInfoResult, error) {

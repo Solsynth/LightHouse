@@ -1,6 +1,7 @@
 package e2eectl
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -137,6 +138,42 @@ func (s *Service) requireGroupMember(c *gin.Context, accountID, deviceID, groupI
 	return true
 }
 
+// requireGroupAccountMember guards group-wide mutations (commit, reset,
+// reshare bookkeeping, capable-device listing): the caller's account must
+// already belong to the group, even if the calling device is not enrolled
+// yet. Without it any authenticated account could rewrite or destroy an
+// arbitrary group.
+func (s *Service) requireGroupAccountMember(c *gin.Context, accountID, groupID string) bool {
+	ok, err := s.IsMlsGroupAccountMember(c.Request.Context(), accountID, groupID)
+	if err != nil {
+		s.serviceError(c, err)
+		return false
+	}
+	if !ok {
+		c.AbortWithStatus(http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
+// authorizeGroupAccess reports whether the caller may act on the group as its
+// bootstrap account or as an account that already has a member device. It
+// covers reading group-scoped state (capable devices) and enrolling a new
+// device of an existing member; a stranger is neither.
+func (s *Service) authorizeGroupAccess(ctx context.Context, accountID, groupID string) (bool, error) {
+	state, err := s.GetGroupState(ctx, groupID)
+	if err != nil {
+		return false, err
+	}
+	if state == nil {
+		return false, nil
+	}
+	if boot, _ := state.Meta["bootstrap_account_id"].(string); boot != "" && boot == accountID {
+		return true, nil
+	}
+	return s.IsMlsGroupAccountMember(ctx, accountID, groupID)
+}
+
 // parseRouteUUID mirrors the ASP.NET {id:guid} route constraint: a non-GUID
 // fails to match the route and produces a 404 with an empty body.
 func parseRouteUUID(c *gin.Context, raw string) (string, bool) {
@@ -270,6 +307,19 @@ func (s *Service) handleCheckMlsUserReady(c *gin.Context) {
 
 // GET /api/e2ee/mls/groups/:groupId/devices/capable — GetCapableDevices.
 func (s *Service) handleGetCapableDevices(c *gin.Context) {
+	if !requireUser(c, false) {
+		return
+	}
+	user := middleware.CurrentUser(c.Request.Context())
+	allowed, err := s.authorizeGroupAccess(c.Request.Context(), user.Id, c.Param("groupId"))
+	if err != nil {
+		s.serviceError(c, err)
+		return
+	}
+	if !allowed {
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
 	result, err := s.GetCapableDevices(c.Request.Context(), c.Param("groupId"))
 	if err != nil {
 		s.serviceError(c, err)
@@ -292,6 +342,20 @@ func (s *Service) handleBootstrapMlsGroup(c *gin.Context) {
 	if body.StateVersion != nil {
 		stateVersion = *body.StateVersion
 	}
+	// A bootstrap of an existing group is a replay of its state: only the
+	// bootstrap account or an existing member may read it back. A group id
+	// that does not exist yet is created by the first caller.
+	state, err := s.GetGroupState(c.Request.Context(), c.Param("groupId"))
+	if err != nil {
+		s.serviceError(c, err)
+		return
+	}
+	if state != nil {
+		boot, _ := state.Meta["bootstrap_account_id"].(string)
+		if boot != user.Id && !s.requireGroupAccountMember(c, user.Id, c.Param("groupId")) {
+			return
+		}
+	}
 	result, err := s.BootstrapMlsGroup(c.Request.Context(), user.Id, c.Param("groupId"), body.Epoch, stateVersion, body.Meta)
 	if err != nil {
 		s.serviceError(c, err)
@@ -313,6 +377,9 @@ func (s *Service) handleCommitMlsGroup(c *gin.Context) {
 		body.Reason = "client_commit"
 	}
 	user := middleware.CurrentUser(c.Request.Context())
+	if !s.requireGroupAccountMember(c, user.Id, c.Param("groupId")) {
+		return
+	}
 	result, err := s.CommitMlsGroup(c.Request.Context(), user.Id, c.Param("groupId"), body.Epoch, body.Reason, body.Meta)
 	if err != nil {
 		s.serviceError(c, err)
@@ -378,6 +445,10 @@ func (s *Service) handleMarkMlsReshareRequired(c *gin.Context) {
 	}
 	if body.TargetDeviceId == "" {
 		validationError(c, map[string][]string{"targetDeviceId": {"The TargetDeviceId field is required."}})
+		return
+	}
+	user := middleware.CurrentUser(c.Request.Context())
+	if !s.requireGroupAccountMember(c, user.Id, c.Param("groupId")) {
 		return
 	}
 	result, err := s.MarkMlsReshareRequired(c.Request.Context(), c.Param("groupId"), body.TargetAccountId, body.TargetDeviceId, body.Epoch, body.Reason)
@@ -738,7 +809,27 @@ func (s *Service) handleAddMlsDeviceMembership(c *gin.Context) {
 		validationError(c, map[string][]string{"groupId": {"The GroupId field is required."}})
 		return
 	}
+	// Enrolling a device is a group mutation: the group must exist and the
+	// caller must be its bootstrap account or an existing member.
 	user := middleware.CurrentUser(c.Request.Context())
+	state, err := s.GetGroupState(c.Request.Context(), body.GroupId)
+	if err != nil {
+		s.serviceError(c, err)
+		return
+	}
+	if state == nil {
+		c.JSON(http.StatusNotFound, errs.New("E2EE_GROUP_NOT_FOUND", "MLS group was not found.", http.StatusNotFound))
+		return
+	}
+	enrollable, err := s.authorizeGroupAccess(c.Request.Context(), user.Id, body.GroupId)
+	if err != nil {
+		s.serviceError(c, err)
+		return
+	}
+	if !enrollable {
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
 	result, err := s.AddMlsDeviceMembership(c.Request.Context(), user.Id, c.Param("deviceId"), body.GroupId, body.Epoch)
 	if err != nil {
 		s.serviceError(c, err)
@@ -754,6 +845,10 @@ func (s *Service) handleResetMlsGroup(c *gin.Context) {
 	}
 	var body resetMlsGroupBody
 	if !bindJSON(c, &body) {
+		return
+	}
+	user := middleware.CurrentUser(c.Request.Context())
+	if !s.requireGroupAccountMember(c, user.Id, c.Param("groupId")) {
 		return
 	}
 	result, err := s.ResetMlsGroup(c.Request.Context(), c.Param("groupId"), body.NewEpoch, body.StateVersion, body.Reason)

@@ -482,6 +482,26 @@ func (s *service) handleUserInfo(c *gin.Context) {
 		c.Status(http.StatusUnauthorized)
 		return
 	}
+	// The signed token is not enough: a session can be revoked or rotated
+	// before its access token expires. Only an unexpired OAuth/OIDC session
+	// whose epoch still matches the token may answer userinfo, so a revoked
+	// or refreshed session stops yielding identity/email immediately instead
+	// of at token expiry.
+	if session.ExpiredAt != nil && !session.ExpiredAt.Time().After(time.Now().UTC()) {
+		c.Header("WWW-Authenticate", `Bearer error="invalid_token"`)
+		c.Status(http.StatusUnauthorized)
+		return
+	}
+	if session.Type != model.SessionTypeOidc && session.Type != model.SessionTypeOAuth {
+		c.Header("WWW-Authenticate", `Bearer error="invalid_token"`)
+		c.Status(http.StatusUnauthorized)
+		return
+	}
+	if epoch, ok := claims["epoch"].(string); ok && epoch != strconv.Itoa(session.Epoch) {
+		c.Header("WWW-Authenticate", `Bearer error="invalid_token"`)
+		c.Status(http.StatusUnauthorized)
+		return
+	}
 	currentUser := session.Account
 
 	scopes := scopesFromClaims(claims)

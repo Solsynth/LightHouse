@@ -16,14 +16,38 @@ const passkeyTestRpID = "localhost"
 
 var passkeyTestOrigins = []string{"https://app.solian.app"}
 
+// WebAuthn authenticator-data flags.
+const (
+	flagUP = 0x01 // user present
+	flagUV = 0x04 // user verified
+	flagED = 0x80 // extension data included
+)
+
 // passkeyAuthData builds authenticator data with the rpIdHash the verifier
-// must accept and the given flags byte (bit 0 = UserPresent).
+// must accept, the given flags byte, and a zero signature counter.
 func passkeyAuthData(rpID string, flags byte) []byte {
+	return passkeyAuthDataWithCounter(rpID, flags, 0)
+}
+
+// passkeyAuthDataWithCounter builds authenticator data with an explicit
+// signature counter (bytes 33-36, big endian).
+func passkeyAuthDataWithCounter(rpID string, flags byte, counter uint32) []byte {
 	authData := make([]byte, 37)
 	hash := sha256.Sum256([]byte(rpID))
 	copy(authData[:32], hash[:])
 	authData[32] = flags
+	authData[33] = byte(counter >> 24)
+	authData[34] = byte(counter >> 16)
+	authData[35] = byte(counter >> 8)
+	authData[36] = byte(counter)
 	return authData
+}
+
+// verifyAssertion adapts the two-value verifier to the boolean the test
+// assertions compare against.
+func verifyAssertion(cred *model.PasskeyCredential, credentialID, cJSON, aData, sig, storedChallenge, rpID string, origins []string) bool {
+	_, ok := verifyPasskeyAssertionSignature(cred, credentialID, cJSON, aData, sig, storedChallenge, rpID, origins)
+	return ok
 }
 
 // navigator.credentials.get: the 32-byte digest
@@ -67,7 +91,8 @@ func signAssertion(t *testing.T, priv *ecdsa.PrivateKey, authData []byte, client
 // checked over the 32-byte digest SHA-256(authenticatorData ||
 // SHA-256(clientDataJSON)) — the full authenticator data, hashed — the
 // clientDataJSON must be a webauthn.get ceremony echoing the stored
-// challenge, and both DER and raw r||s signature layouts are accepted.
+// challenge, both UserPresent and UserVerified must be set, and both DER and
+// raw r||s signature layouts are accepted.
 func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -85,7 +110,7 @@ func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 	}
 
 	storedChallenge := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
-	authData := passkeyAuthData(passkeyTestRpID, 0x01) // UserPresent
+	authData := passkeyAuthData(passkeyTestRpID, flagUP|flagUV)
 
 	clientDataJSON, err := json.Marshal(map[string]any{
 		"type":      "webauthn.get",
@@ -98,14 +123,14 @@ func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 
 	t.Run("accepts a valid DER assertion", func(t *testing.T) {
 		cJSON, aData, sig := signAssertion(t, priv, authData, string(clientDataJSON), false)
-		if !verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
+		if !verifyAssertion(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature rejected a valid assertion")
 		}
 	})
 
 	t.Run("accepts a raw r||s signature", func(t *testing.T) {
 		cJSON, aData, sig := signAssertion(t, priv, authData, string(clientDataJSON), true)
-		if !verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
+		if !verifyAssertion(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature rejected a raw r||s signature")
 		}
 	})
@@ -119,7 +144,7 @@ func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 		}
 		sigBytes[0] ^= 0x01
 		tampered := base64.RawURLEncoding.EncodeToString(sigBytes)
-		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, tampered, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
+		if verifyAssertion(cred, cred.CredentialId, cJSON, aData, tampered, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature accepted a tampered signature")
 		}
 	})
@@ -127,7 +152,7 @@ func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 	t.Run("rejects a mismatched credential id", func(t *testing.T) {
 		cJSON, aData, sig := signAssertion(t, priv, authData, string(clientDataJSON), false)
 		other := base64.StdEncoding.EncodeToString([]byte("some-other-credential"))
-		if verifyPasskeyAssertionSignature(cred, other, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
+		if verifyAssertion(cred, other, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature accepted a mismatched credential id")
 		}
 	})
@@ -144,16 +169,24 @@ func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 			t.Fatal(err)
 		}
 		cJSON, aData, sig := signAssertion(t, priv, authData, string(badClientDataJSON), false)
-		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
+		if verifyAssertion(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature accepted a challenge mismatch")
 		}
 	})
 
 	t.Run("rejects a missing UserPresent flag", func(t *testing.T) {
-		noUP := passkeyAuthData(passkeyTestRpID, 0)
+		noUP := passkeyAuthData(passkeyTestRpID, flagUV)
 		cJSON, aData, sig := signAssertion(t, priv, noUP, string(clientDataJSON), false)
-		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
+		if verifyAssertion(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature accepted an assertion without UserPresent")
+		}
+	})
+
+	t.Run("rejects a missing UserVerified flag", func(t *testing.T) {
+		noUV := passkeyAuthData(passkeyTestRpID, flagUP)
+		cJSON, aData, sig := signAssertion(t, priv, noUV, string(clientDataJSON), false)
+		if verifyAssertion(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
+			t.Fatal("verifyPasskeyAssertionSignature accepted an assertion without UserVerified")
 		}
 	})
 
@@ -167,7 +200,7 @@ func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 			t.Fatal(err)
 		}
 		cJSON, aData, sig := signAssertion(t, priv, authData, string(badType), false)
-		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
+		if verifyAssertion(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature accepted a non-assertion ceremony")
 		}
 	})
@@ -177,17 +210,17 @@ func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 		// authenticator's uv/prf handling) return authData longer than 37
 		// bytes; the signature covers the FULL data, so truncation to [:37]
 		// must not happen.
-		extAuthData := passkeyAuthData(passkeyTestRpID, 0x01|0x80) // UP | ED
+		extAuthData := passkeyAuthData(passkeyTestRpID, flagUP|flagUV|flagED)
 		extAuthData = append(extAuthData, 1, 2, 3, 4, 5, 6, 7, 8)
 		cJSON, aData, sig := signAssertion(t, priv, extAuthData, string(clientDataJSON), false)
-		if !verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
+		if !verifyAssertion(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature rejected a valid assertion with extension data")
 		}
 	})
 	t.Run("rejects a credential registered for another relying party", func(t *testing.T) {
-		otherRpData := passkeyAuthData("evil.example", 0x01)
+		otherRpData := passkeyAuthData("evil.example", flagUP|flagUV)
 		cJSON, aData, sig := signAssertion(t, priv, otherRpData, string(clientDataJSON), false)
-		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
+		if verifyAssertion(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature accepted a mismatched rpIdHash")
 		}
 	})
@@ -202,7 +235,7 @@ func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 			t.Fatal(err)
 		}
 		cJSON, aData, sig := signAssertion(t, priv, authData, string(badOrigin), false)
-		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
+		if verifyAssertion(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature accepted an unlisted origin")
 		}
 	})
@@ -216,10 +249,47 @@ func TestVerifyPasskeyAssertionSignature(t *testing.T) {
 			t.Fatal(err)
 		}
 		cJSON, aData, sig := signAssertion(t, priv, authData, string(noOrigin), false)
-		if verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
+		if verifyAssertion(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 			t.Fatal("verifyPasskeyAssertionSignature accepted an assertion without an origin")
 		}
 	})
+}
+
+// TestVerifyPasskeyAssertionCounter pins clone detection: once a credential
+// has a non-zero stored counter, an assertion whose counter does not advance
+// (including an exact replay of the previous assertion) is rejected, while a
+// higher counter is accepted.
+func TestVerifyPasskeyAssertionCounter(t *testing.T) {
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	x := make([]byte, 32)
+	y := make([]byte, 32)
+	priv.PublicKey.X.FillBytes(x)
+	priv.PublicKey.Y.FillBytes(y)
+	cred := &model.PasskeyCredential{
+		CredentialId: base64.StdEncoding.EncodeToString([]byte("counter-credential")),
+		PublicKeyX:   x,
+		PublicKeyY:   y,
+		Counter:      10,
+	}
+	storedChallenge := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	clientDataJSON, _ := json.Marshal(map[string]any{
+		"type":      "webauthn.get",
+		"challenge": storedChallenge,
+		"origin":    "https://app.solian.app",
+	})
+
+	cJSON, aData, sig := signAssertion(t, priv, passkeyAuthDataWithCounter(passkeyTestRpID, flagUP|flagUV, 10), string(clientDataJSON), false)
+	if verifyAssertion(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
+		t.Fatal("verifyPasskeyAssertionSignature accepted a non-advancing signature counter")
+	}
+
+	cJSON, aData, sig = signAssertion(t, priv, passkeyAuthDataWithCounter(passkeyTestRpID, flagUP|flagUV, 11), string(clientDataJSON), false)
+	if !verifyAssertion(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
+		t.Fatal("verifyPasskeyAssertionSignature rejected an advancing signature counter")
+	}
 }
 
 // TestVerifyPasskeyAssertionSignatureKeySize guards against signers whose
@@ -250,14 +320,14 @@ func TestVerifyPasskeyAssertionSignatureKeySize(t *testing.T) {
 		PublicKeyY:   yBytes,
 	}
 	storedChallenge := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
-	authData := passkeyAuthData(passkeyTestRpID, 0x01)
+	authData := passkeyAuthData(passkeyTestRpID, flagUP|flagUV)
 	clientDataJSON, _ := json.Marshal(map[string]any{
 		"type":      "webauthn.get",
 		"challenge": storedChallenge,
 		"origin":    "https://app.solian.app",
 	})
 	cJSON, aData, sig := signAssertion(t, priv, authData, string(clientDataJSON), false)
-	if !verifyPasskeyAssertionSignature(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
+	if !verifyAssertion(cred, cred.CredentialId, cJSON, aData, sig, storedChallenge, passkeyTestRpID, passkeyTestOrigins) {
 		t.Fatal("verifyPasskeyAssertionSignature rejected a valid assertion with short coordinates")
 	}
 }

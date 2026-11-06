@@ -939,6 +939,17 @@ func createAccountMagicSpell(d Deps) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, errs.New("PASSPORT_SPELL_DEACTIVATION_NO_EMAIL", "Account deactivation magic spells cannot be sent by email.", http.StatusBadRequest))
 			return
 		}
+		// A password-reset spell is a bearer credential for the account's
+		// password: the creator picks the word, and redeeming it anonymously
+		// replaces the password without email delivery or a second factor.
+		// The route is gated on the general accounts.manage key, so the reset type
+		// additionally demands the dedicated credential-management permission.
+		if typ == model.MagicSpellTypeAuthPasswordReset {
+			requirePerm(d, permission.AdminAccountsFactorsManage)(c)
+			if c.IsAborted() {
+				return
+			}
+		}
 		opts := spell.CreateOptions{
 			Code:          derefString(request.Code),
 			PreventRepeat: request.PreventRepeat,

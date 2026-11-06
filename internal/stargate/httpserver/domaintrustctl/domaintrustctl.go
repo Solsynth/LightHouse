@@ -5,15 +5,15 @@ package domaintrustctl
 
 import (
 	"encoding/json"
+	"errors"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"io"
 	"log/slog"
 	"net/http"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 	"strconv"
 	"strings"
-
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 
 	"src.solsynth.dev/sosys/stargate/domaintrust"
 	"src.solsynth.dev/sosys/stargate/middleware"
@@ -36,7 +36,7 @@ func Register(api *gin.RouterGroup, d Deps) {
 	group.GET("/metrics/:domain", middleware.RequireAuth(), d.getMetric)
 	group.GET("/check", d.checkURL)
 	group.POST("/validate", d.validateURL)
-	group.POST("", middleware.RequireAuth(), d.createRule)
+	group.POST("", middleware.AskPermission(d.Perm, permission.DomainTrustCreate), d.createRule)
 	group.GET("/:id", middleware.RequireAuth(), d.getRule)
 	group.PATCH("/:id", middleware.AskPermission(d.Perm, permission.DomainTrustUpdate), d.updateRule)
 	group.DELETE("/:id", middleware.AskPermission(d.Perm, permission.DomainTrustDelete), d.deleteRule)
@@ -107,6 +107,10 @@ func (d Deps) createRule(c *gin.Context) {
 		return
 	}
 	row, err := d.Service.CreateRule(c.Request.Context(), input, &id)
+	if errors.Is(err, domaintrust.ErrInvalidTrustLevel) {
+		validation(c, "trust_level", err.Error())
+		return
+	}
 	if err != nil {
 		d.internal(c, err)
 		return
@@ -126,6 +130,10 @@ func (d Deps) updateRule(c *gin.Context) {
 	row, err := d.Service.UpdateRule(c.Request.Context(), id, input)
 	if domaintrust.IsNotFound(err) {
 		d.ruleNotFound(c)
+		return
+	}
+	if errors.Is(err, domaintrust.ErrInvalidTrustLevel) {
+		validation(c, "trust_level", err.Error())
 		return
 	}
 	if err != nil {

@@ -51,9 +51,9 @@ func Register(api *gin.RouterGroup, d Deps) {
 func RegisterAdmin(api *gin.RouterGroup, d Deps) {
 	admin := api.Group("/admin/accounts", middleware.RequireAuth())
 	admin.GET("/:name/badges", d.requirePerm(permission.AccountsView), d.adminGetBadges)
-	admin.POST("/:name/badges", d.requirePerm(permission.ProgressionBadgesManage), d.adminGrantBadge)
-	admin.POST("/:name/badges/:badgeId/active", d.requirePerm(permission.ProgressionBadgesManage), d.adminActivateBadge)
-	admin.DELETE("/:name/badges/:badgeId", d.requirePerm(permission.ProgressionBadgesManage), d.adminRevokeBadge)
+	admin.POST("/:name/badges", d.requirePerm(permission.ProgressionBadgesAdmin), d.adminGrantBadge)
+	admin.POST("/:name/badges/:badgeId/active", d.requirePerm(permission.ProgressionBadgesAdmin), d.adminActivateBadge)
+	admin.DELETE("/:name/badges/:badgeId", d.requirePerm(permission.ProgressionBadgesAdmin), d.adminRevokeBadge)
 
 	admin.GET("/:name/board", d.requirePerm(permission.AccountsView), d.adminGetBoard)
 	admin.PUT("/:name/board", d.requirePerm(permission.AccountsBoardManage), d.adminReplaceBoard)

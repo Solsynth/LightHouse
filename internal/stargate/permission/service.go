@@ -596,6 +596,7 @@ var moderatorPermissionKeys = []string{
 	PunishmentsDelete,
 	NotificationsSend,
 	EmailsSend,
+	ProgressionBadgesAdmin,
 }
 
 // developerPermissionKeys mirrors PermissionSeedService.DeveloperPermissionKeys.

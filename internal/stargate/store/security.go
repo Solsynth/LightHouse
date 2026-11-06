@@ -556,6 +556,26 @@ func (s *Store) UpdatePasskeyLabel(ctx context.Context, id uuid.UUID, label stri
 	return &passkey, nil
 }
 
+// UpdatePasskeyCredential rewrites the stored credential JSON (used to persist
+// the authenticator's signature counter after a successful assertion).
+func (s *Store) UpdatePasskeyCredential(ctx context.Context, id uuid.UUID, credential string) (*model.Passkey, error) {
+	res := s.DB.WithContext(ctx).Unscoped().Model(&PasskeyEntity{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"credential": datatypes.JSON([]byte(credential)), "updated_at": time.Now().UTC()})
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, ErrNotFound
+	}
+	var entity PasskeyEntity
+	if err := s.DB.WithContext(ctx).Unscoped().Where("id = ?", id).First(&entity).Error; err != nil {
+		return nil, mapNotFound(err)
+	}
+	passkey := passkeyFromEntity(&entity)
+	return &passkey, nil
+}
+
 // DeletePasskeyRow hard-deletes a passkey row.
 func (s *Store) DeletePasskeyRow(ctx context.Context, id uuid.UUID) error {
 	return s.DB.WithContext(ctx).Unscoped().

@@ -936,6 +936,18 @@ func (s *Store) IsMlsGroupMember(ctx context.Context, accountID, deviceID, group
 	return count > 0, err
 }
 
+// IsMlsGroupAccountMember reports whether any device of the account is (or
+// was) a member of the group. Group mutations are authorized at account scope:
+// the device performing the mutation may be new, but the account must already
+// belong to the group.
+func (s *Store) IsMlsGroupAccountMember(ctx context.Context, accountID, groupID string) (bool, error) {
+	var count int64
+	err := s.DB.WithContext(ctx).Model(&MLSDeviceMembershipEntity{}).
+		Where("mls_group_id = ? AND account_id = ?", groupID, accountID).
+		Limit(1).Count(&count).Error
+	return count > 0, err
+}
+
 // MarkMlsReshareRequired creates or updates the membership with
 // last_reshare_required_at set (mirrors MarkMlsReshareRequiredAsync).
 func (s *Store) MarkMlsReshareRequired(ctx context.Context, groupID, accountID, deviceID string, epoch int64, now time.Time) (*MlsDeviceMembership, error) {

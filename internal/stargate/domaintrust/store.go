@@ -12,6 +12,12 @@ import (
 // ErrNotFound reports a missing rule or metric.
 var ErrNotFound = errors.New("domaintrust: not found")
 
+// ErrInvalidTrustLevel reports a trust level outside the blocked/neutral/
+// verified range. Rule creation and updates accept the enum only: a rule with
+// an unknown level compares as neither blocked nor verified, silently
+// disabling the fleet's URL validation.
+var ErrInvalidTrustLevel = errors.New("domaintrust: trust level must be 0 (blocked), 1 (neutral) or 2 (verified)")
+
 // Store owns the two domain-trust tables.
 type Store struct {
 	DB *gorm.DB

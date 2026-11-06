@@ -308,14 +308,26 @@ func (h *handler) approveQrChallenge(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("PADLOCK_AUTH_CHALLENGE_NOT_FOUND", "Associated auth challenge not found."))
 		return
 	}
+	accountID, err := uuid.Parse(user.Id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("PADLOCK_AUTH_CHALLENGE_NOT_FOUND", "Associated auth challenge not found."))
+		return
+	}
+	approvedNow, err := h.d.Store.ApproveAuthChallenge(ctx, authChallengeUUID(qr.AuthChallengeId), &accountID, sessionUUIDPtr(session.Id), now)
+	if err != nil {
+		h.logError("approve auth challenge", err)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+	if !approvedNow {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("PADLOCK_QR_CHALLENGE_NOT_PENDING", "QR challenge is no longer pending."))
+		return
+	}
 	authChallenge.AccountId = user.Id
 	authChallenge.StepRemain = 0
 	authChallenge.ApprovedAt = model.NewTime(now)
 	authChallenge.ApprovedBySessionId = &session.Id
 	authChallenge.UpdatedAt = model.NewTime(now)
-	if err := h.d.Store.UpdateAuthChallenge(ctx, authChallenge); err != nil {
-		h.logError("update auth challenge", err)
-	}
 	_ = h.d.Store.AppendChallengeEvent(ctx, authChallenge.Id, model.ChallengeEvent{
 		At:        now,
 		Type:      model.ChallengeEventApproved,

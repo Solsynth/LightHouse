@@ -73,6 +73,85 @@ func (s *Store) GetAuthChallenge(ctx context.Context, id uuid.UUID) (*model.Auth
 	return challengeFromEntity(&entity), nil
 }
 
+// IncrementAuthChallengeFailures adds one failed attempt atomically and
+// returns the new count. A read-modify-write from the handler loses
+// concurrent failures (two wrong codes both write n+1), which is exactly the
+// counter the throttle and escalation logic rely on.
+func (s *Store) IncrementAuthChallengeFailures(ctx context.Context, id uuid.UUID, now time.Time) (int, error) {
+	var failed int
+	err := s.DB.WithContext(ctx).Raw(
+		`UPDATE auth_challenges SET failed_attempts = failed_attempts + 1, updated_at = ?
+		 WHERE id = ? RETURNING failed_attempts`, now, id).Scan(&failed).Error
+	if err != nil {
+		return 0, err
+	}
+	return failed, nil
+}
+
+// ApproveAuthChallenge atomically approves a still-pending challenge and
+// reports whether this caller won. The guard makes approval single-shot:
+// concurrent approvals (or an approve racing a decline) cannot both land.
+func (s *Store) ApproveAuthChallenge(ctx context.Context, id uuid.UUID, accountID *uuid.UUID, approvedBy *uuid.UUID, now time.Time) (bool, error) {
+	res := s.DB.WithContext(ctx).Model(&ChallengeEntity{}).
+		Where("id = ? AND approved_at IS NULL AND declined_at IS NULL AND step_remain > 0", id).
+		Updates(map[string]any{
+			"account_id":             accountID,
+			"step_remain":            0,
+			"approved_at":            now,
+			"approved_by_session_id": approvedBy,
+			"updated_at":             now,
+		})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}
+
+// DeclineAuthChallenge atomically declines a still-pending challenge and
+// reports whether this caller won.
+func (s *Store) DeclineAuthChallenge(ctx context.Context, id uuid.UUID, now time.Time) (bool, error) {
+	res := s.DB.WithContext(ctx).Model(&ChallengeEntity{}).
+		Where("id = ? AND approved_at IS NULL AND declined_at IS NULL", id).
+		Updates(map[string]any{"declined_at": now, "updated_at": now})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}
+
+// ConsumeAuthChallengeStep atomically spends one step of a challenge and
+// blacklists the settled factor. It returns the refreshed challenge, or
+// (nil, false) when the challenge is complete or that factor was already
+// settled — the state a concurrent request would otherwise race past.
+func (s *Store) ConsumeAuthChallengeStep(ctx context.Context, id uuid.UUID, factorID string, now time.Time, reviewUntil *time.Time) (*model.AuthChallenge, bool, error) {
+	factorJSON, err := json.Marshal([]string{factorID})
+	if err != nil {
+		return nil, false, err
+	}
+	updates := map[string]any{
+		"step_remain":       gorm.Expr("GREATEST(step_remain - 1, 0)"),
+		"blacklist_factors": gorm.Expr("COALESCE(blacklist_factors, '[]'::jsonb) || ?::jsonb", string(factorJSON)),
+		"updated_at":        now,
+	}
+	if reviewUntil != nil {
+		updates["review_until"] = *reviewUntil
+	}
+	res := s.DB.WithContext(ctx).Model(&ChallengeEntity{}).
+		Where("id = ? AND step_remain > 0 AND NOT (COALESCE(blacklist_factors, '[]'::jsonb) @> ?::jsonb)", id, string(factorJSON)).
+		Updates(updates)
+	if res.Error != nil {
+		return nil, false, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, false, nil
+	}
+	challenge, err := s.GetAuthChallenge(ctx, id)
+	if err != nil {
+		return nil, false, err
+	}
+	return challenge, true, nil
+}
+
 // nullableAccountID maps the all-zero-UUID sentinel to NULL so anonymous
 // challenges (discoverable passkey login, QR login) can be stored without an
 // accounts row (account_id is nullable; see 0003 migration).

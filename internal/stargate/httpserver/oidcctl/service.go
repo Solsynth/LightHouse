@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -24,6 +25,9 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	goredis "github.com/redis/go-redis/v9"
+
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/cache"
 
 	"src.solsynth.dev/sosys/stargate/auth"
 	"src.solsynth.dev/sosys/stargate/config"
@@ -574,15 +578,22 @@ func (s *service) storeAuthorizationCode(ctx context.Context, info *authorizatio
 }
 
 func (s *service) validateAuthorizationCode(ctx context.Context, code, clientID string, redirectURI, codeVerifier *string, isPublicClient bool) (*authorizationCodeInfo, error) {
-	if !s.cacheAvailable() {
+	if !s.cacheAvailable() || s.redis.Raw == nil {
 		return nil, errors.New("OIDC authorization requires the cache service")
 	}
-	var info authorizationCodeInfo
-	found, err := s.redis.Cache.Get(ctx, cacheKeyPrefixAuthCode+code, &info)
+	// Claim the code before validating it. A GET-then-DEL let two concurrent
+	// exchanges redeem the same code: both read the payload, then both deleted
+	// it, minting two token sets. GETDEL makes the claim single-winner. A
+	// failed validation still burns the code, which is the safer failure.
+	raw, err := s.redis.Raw.GetDel(ctx, cache.NormalizeKey(cacheKeyPrefixAuthCode+code)).Result()
+	if errors.Is(err, goredis.Nil) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
-	if !found {
+	var info authorizationCodeInfo
+	if err := json.Unmarshal([]byte(raw), &info); err != nil {
 		return nil, nil
 	}
 	if info.ClientId != clientID {
@@ -602,7 +613,6 @@ func (s *service) validateAuthorizationCode(ctx context.Context, code, clientID 
 			return nil, nil
 		}
 	}
-	_ = s.redis.Cache.Remove(ctx, cacheKeyPrefixAuthCode+code)
 	return &info, nil
 }
 

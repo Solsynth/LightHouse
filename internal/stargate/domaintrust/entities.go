@@ -32,6 +32,12 @@ const (
 	TrustVerified TrustLevel = 2
 )
 
+// ValidTrustLevel reports whether level is one of the three defined trust
+// levels.
+func ValidTrustLevel(level int) bool {
+	return level == int(TrustBlocked) || level == int(TrustNeutral) || level == int(TrustVerified)
+}
+
 // DomainBlockEntity is `domain_blocks` (SnDomainBlock).
 type DomainBlockEntity struct {
 	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`

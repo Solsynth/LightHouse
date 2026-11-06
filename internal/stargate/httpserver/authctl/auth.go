@@ -1172,9 +1172,7 @@ func (h *handler) doChallenge(c *gin.Context) {
 	callerUA := c.Request.UserAgent()
 	okVerify, _ := h.verifyFactorCode(ctx, factor, req.Password)
 	if !okVerify {
-		challenge.FailedAttempts++
-		challenge.UpdatedAt = model.NewTime(now)
-		_ = h.d.Store.UpdateAuthChallenge(ctx, challenge)
+		h.recordChallengeFailure(ctx, challenge, now)
 		risk.RecordFailure(ctx, h.d.Redis, h.d.Cfg, derefStr(challenge.IpAddress))
 		_ = h.d.Store.AppendChallengeEvent(ctx, challenge.Id, model.ChallengeEvent{
 			At:         now,
@@ -1201,24 +1199,30 @@ func (h *handler) doChallenge(c *gin.Context) {
 
 	// One verified factor settles one step regardless of its strength score.
 	// Elevation demands exactly one strong factor; login challenges compute
-	// their step total separately.
-	challenge.StepRemain--
-	if challenge.StepRemain < 0 {
-		challenge.StepRemain = 0
-	}
-	challenge.BlacklistFactors = append(challenge.BlacklistFactors, factor.Id)
+	// their step total separately. The step decrement and the factor
+	// blacklist are written by one conditional UPDATE, so two concurrent
+	// submissions of the same factor cannot settle two steps.
 	passwordVerified := passwordFirst && model.AuthFactorType(factor.Type) == model.AuthFactorTypePassword
+	var reviewUntil *time.Time
 	if passwordVerified {
 		// The prompt is now live. A trusted device may settle what remains
 		// (optional — the picker offers TOTP/NFC/passkeys for the same steps),
 		// and the window keeps the satisfied challenge reviewable after the
 		// exchange expires it.
-		challenge.ReviewUntil = model.NewTime(now.Add(challengeReviewWindow))
+		until := now.Add(challengeReviewWindow)
+		reviewUntil = &until
 	}
-	challenge.UpdatedAt = model.NewTime(now)
-	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
-		h.logError("update challenge", err)
+	updated, consumed, err := h.d.Store.ConsumeAuthChallengeStep(ctx, uuid.MustParse(challenge.Id), factor.Id, now, reviewUntil)
+	if err != nil {
+		h.logError("consume challenge step", err)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
 	}
+	if !consumed {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_ALREADY_USED", "Auth factor already used."))
+		return
+	}
+	challenge = updated
 
 	if challenge.StepRemain == 0 {
 		if challenge.Purpose == model.AuthChallengePurposeSudo {
@@ -1275,24 +1279,26 @@ func (h *handler) doChallengeSudoFallback(c *gin.Context, challenge *model.AuthC
 		}
 	}
 	if !h.verifySudoFallbackCode(ctx, challenge, code) {
-		challenge.FailedAttempts++
-		challenge.UpdatedAt = model.NewTime(now)
-		_ = h.d.Store.UpdateAuthChallenge(ctx, challenge)
+		h.recordChallengeFailure(ctx, challenge, now)
 		risk.RecordFailure(ctx, h.d.Redis, h.d.Cfg, derefStr(challenge.IpAddress))
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_PASSWORD", "Invalid password."))
 		return
 	}
 	// The fallback is armed only when it is the challenge's sole step (no
 	// pickable factor on the account), so verifying it settles that one step.
-	challenge.StepRemain--
-	if challenge.StepRemain < 0 {
-		challenge.StepRemain = 0
+	// The conditional UPDATE keeps a concurrent double-submit from settling
+	// the same step twice.
+	updated, consumed, err := h.d.Store.ConsumeAuthChallengeStep(ctx, uuid.MustParse(challenge.Id), challenge.Id, now, nil)
+	if err != nil {
+		h.logError("consume challenge step", err)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
 	}
-	challenge.BlacklistFactors = append(challenge.BlacklistFactors, challenge.Id)
-	challenge.UpdatedAt = model.NewTime(now)
-	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
-		h.logError("update challenge", err)
+	if !consumed {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_ALREADY_USED", "Auth factor already used."))
+		return
 	}
+	challenge = updated
 	if challenge.StepRemain == 0 {
 		if err := h.completeSudoElevation(ctx, challenge); err != nil {
 			h.logError("grant sudo elevation", err)
@@ -1344,6 +1350,44 @@ func (h *handler) maybeEscalateFailure(ctx context.Context, challenge *model.Aut
 	challenge.StepRemain = remaining
 	challenge.UpdatedAt = model.NewTime(now)
 	return h.d.Store.UpdateAuthChallenge(ctx, challenge)
+}
+
+// recordChallengeFailure charges one failed attempt against the challenge and
+// refreshes the in-memory copy with the stored counter. The increment is a
+// single UPDATE ... RETURNING so parallel wrong guesses cannot overwrite each
+// other's counts and slip past the attempt cap.
+func (h *handler) recordChallengeFailure(ctx context.Context, challenge *model.AuthChallenge, now time.Time) {
+	id, err := uuid.Parse(challenge.Id)
+	if err != nil {
+		return
+	}
+	failed, err := h.d.Store.IncrementAuthChallengeFailures(ctx, id, now)
+	if err != nil {
+		h.logError("increment challenge failures", err)
+		return
+	}
+	challenge.FailedAttempts = failed
+	challenge.UpdatedAt = model.NewTime(now)
+}
+
+// sessionUUIDPtr parses a session id for the challenge store; invalid ids
+// become nil (the column is nullable).
+func sessionUUIDPtr(id string) *uuid.UUID {
+	parsed, err := uuid.Parse(id)
+	if err != nil {
+		return nil
+	}
+	return &parsed
+}
+
+// authChallengeUUID parses a challenge id known to be valid (it was just
+// loaded by id).
+func authChallengeUUID(id string) uuid.UUID {
+	parsed, err := uuid.Parse(id)
+	if err != nil {
+		return uuid.Nil
+	}
+	return parsed
 }
 
 // ---------------------------------------------------------------------------
@@ -1572,7 +1616,7 @@ func (h *handler) generatePasskeyAssertionChallenge(ctx context.Context, challen
 	return challenge, nil
 }
 
-func (h *handler) verifyPasskeyAssertion(ctx context.Context, cred *model.PasskeyCredential, challengeID, credentialID, clientDataJson, authenticatorData, signature, rpID string, allowedOrigins []string) bool {
+func (h *handler) verifyPasskeyAssertion(ctx context.Context, passkey *model.Passkey, cred *model.PasskeyCredential, challengeID, credentialID, clientDataJson, authenticatorData, signature, rpID string, allowedOrigins []string) bool {
 	if h.d.Redis == nil || !h.d.Redis.Available() {
 		return false
 	}
@@ -1581,10 +1625,24 @@ func (h *handler) verifyPasskeyAssertion(ctx context.Context, cred *model.Passke
 	if err != nil || !found || storedChallenge == "" {
 		return false
 	}
-	if !verifyPasskeyAssertionSignature(cred, credentialID, clientDataJson, authenticatorData, signature, storedChallenge, rpID, allowedOrigins) {
+	counter, ok := verifyPasskeyAssertionSignature(cred, credentialID, clientDataJson, authenticatorData, signature, storedChallenge, rpID, allowedOrigins)
+	if !ok {
 		return false
 	}
 	_ = h.d.Redis.Cache.Remove(ctx, "passkey:assertion:"+challengeID)
+	// Persist the authenticator's signature counter so a later assertion
+	// cannot replay an older, captured one. Authenticators without a counter
+	// report 0; those stay at 0 and are unaffected.
+	if passkey != nil && counter != cred.Counter {
+		cred.Counter = counter
+		if data, err := json.Marshal(cred); err == nil {
+			if id, err := uuid.Parse(passkey.Id); err == nil {
+				if _, err := h.d.Store.UpdatePasskeyCredential(ctx, id, string(data)); err != nil && h.d.Log != nil {
+					h.d.Log.WarnContext(ctx, "persist passkey counter", "passkey_id", passkey.Id, "error", err)
+				}
+			}
+		}
+	}
 	return true
 }
 
@@ -1592,7 +1650,10 @@ func (h *handler) verifyPasskeyAssertion(ctx context.Context, cred *model.Passke
 // stored challenge without touching Redis, mirroring webauthn §7.2:
 //
 //   - the credential id must match the registered credential;
-//   - the authenticatorData must carry the UserPresent flag (UP bit);
+//   - the authenticatorData must carry the UserPresent (UP) and UserVerified
+//     (UV) flags: a cloned credential must not authenticate without the
+//     biometric/PIN check;
+//   - the signature counter must not go backwards (clone detection);
 //   - the authenticatorData rpIdHash must equal SHA-256(rpID), so a credential
 //     registered for another relying party cannot be replayed here;
 //   - clientDataJSON must be a webauthn.get ceremony echoing the stored
@@ -1600,25 +1661,36 @@ func (h *handler) verifyPasskeyAssertion(ctx context.Context, cred *model.Passke
 //   - the signature must verify over authenticatorData || SHA-256(clientDataJSON)
 //     with the registered ES256 public key (DER, with a raw 64-byte r||s
 //     fallback).
-func verifyPasskeyAssertionSignature(cred *model.PasskeyCredential, credentialID, clientDataJson, authenticatorData, signature, storedChallenge, rpID string, allowedOrigins []string) bool {
+//
+// It returns the assertion's signature counter on success.
+func verifyPasskeyAssertionSignature(cred *model.PasskeyCredential, credentialID, clientDataJson, authenticatorData, signature, storedChallenge, rpID string, allowedOrigins []string) (uint64, bool) {
 	if cred.CredentialId != credentialID || strings.TrimSpace(rpID) == "" {
-		return false
+		return 0, false
 	}
 	authData, err := decodeBase64OrBase64Url(authenticatorData)
 	if err != nil || len(authData) < 37 {
-		return false
+		return 0, false
 	}
 	rpIDHash := sha256.Sum256([]byte(rpID))
 	if subtle.ConstantTimeCompare(authData[:32], rpIDHash[:]) != 1 {
-		return false
+		return 0, false
 	}
-	if authData[32]&0x01 == 0 {
-		return false
+	// UP (0x01) proves a human touched the authenticator; UV (0x04) proves
+	// they passed its user-verification check (biometric/PIN). Without UV a
+	// stolen or cloned credential is a bearer key.
+	if authData[32]&0x01 == 0 || authData[32]&0x04 == 0 {
+		return 0, false
+	}
+	counter := uint64(authData[33])<<24 | uint64(authData[34])<<16 | uint64(authData[35])<<8 | uint64(authData[36])
+	// WebAuthn §7.2 step 21: if both counters are non-zero and the new one is
+	// not greater, the authenticator may be cloned.
+	if cred.Counter != 0 && counter != 0 && counter <= cred.Counter {
+		return 0, false
 	}
 
 	clientDataBytes, err := decodeClientDataJsonBytes(clientDataJson)
 	if err != nil {
-		return false
+		return 0, false
 	}
 	// WebAuthn §7.2 Step 16: the signature covers the 32-byte digest
 	//   SHA-256(authenticatorData || SHA-256(clientDataJSON))
@@ -1637,7 +1709,7 @@ func verifyPasskeyAssertionSignature(cred *model.PasskeyCredential, credentialID
 
 	sig, err := decodeBase64OrBase64Url(signature)
 	if err != nil {
-		return false
+		return 0, false
 	}
 	pub := &ecdsa.PublicKey{
 		Curve: elliptic.P256(),
@@ -1649,12 +1721,12 @@ func verifyPasskeyAssertionSignature(cred *model.PasskeyCredential, credentialID
 	// authenticators.
 	if !ecdsa.VerifyASN1(pub, digest[:], sig) {
 		if len(sig) != 64 {
-			return false
+			return 0, false
 		}
 		r := new(big.Int).SetBytes(sig[:32])
 		s := new(big.Int).SetBytes(sig[32:])
 		if !ecdsa.Verify(pub, digest[:], r, s) {
-			return false
+			return 0, false
 		}
 	}
 
@@ -1664,21 +1736,21 @@ func verifyPasskeyAssertionSignature(cred *model.PasskeyCredential, credentialID
 		Origin    string `json:"origin"`
 	}
 	if err := json.Unmarshal(clientDataBytes, &clientData); err != nil {
-		return false
+		return 0, false
 	}
 	if clientData.Type != "webauthn.get" {
-		return false
+		return 0, false
 	}
 	if clientData.Challenge != storedChallenge {
-		return false
+		return 0, false
 	}
 	if strings.TrimSpace(clientData.Origin) == "" {
-		return false
+		return 0, false
 	}
 	if len(allowedOrigins) > 0 && !passkeyOriginAllowed(clientData.Origin, allowedOrigins) {
-		return false
+		return 0, false
 	}
-	return true
+	return counter, true
 }
 
 // passkeyOriginAllowed reports whether origin is one of the configured
@@ -1790,7 +1862,7 @@ func (h *handler) startPasskeyChallenge(c *gin.Context) {
 		RpId:             h.passkeyRpId(c),
 		AllowCredentials: credentials,
 		Timeout:          60000,
-		UserVerification: "preferred",
+		UserVerification: "required",
 	})
 }
 
@@ -1882,11 +1954,9 @@ func (h *handler) completePasskeyChallenge(c *gin.Context) {
 
 	isFirstFactor := len(challenge.BlacklistFactors) == 0
 
-	if !h.verifyPasskeyAssertion(ctx, credential, challenge.Id, credentialID,
+	if !h.verifyPasskeyAssertion(ctx, passkey, credential, challenge.Id, credentialID,
 		req.ClientDataJson, req.AuthenticatorData, req.Signature, h.passkeyRpId(c), h.passkeyAllowedOrigins()) {
-		challenge.FailedAttempts++
-		challenge.UpdatedAt = model.NewTime(now)
-		_ = h.d.Store.UpdateAuthChallenge(ctx, challenge)
+		h.recordChallengeFailure(ctx, challenge, now)
 		risk.RecordFailure(ctx, h.d.Redis, h.d.Cfg, derefStr(challenge.IpAddress))
 		_ = h.maybeEscalateFailure(ctx, challenge)
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_PASSKEY_ASSERTION", "Invalid passkey assertion."))
@@ -1895,16 +1965,19 @@ func (h *handler) completePasskeyChallenge(c *gin.Context) {
 
 	// A passkey assertion settles one step, like any other factor (see
 	// doChallenge): a passkey-only elevation costs exactly the one step it
-	// demanded.
-	challenge.StepRemain--
-	if challenge.StepRemain < 0 {
-		challenge.StepRemain = 0
+	// demanded. The conditional UPDATE rejects a second concurrent assertion
+	// for the same factor.
+	updated, consumed, err := h.d.Store.ConsumeAuthChallengeStep(ctx, uuid.MustParse(challenge.Id), factor.Id, now, nil)
+	if err != nil {
+		h.logError("consume challenge step", err)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
 	}
-	challenge.BlacklistFactors = append(challenge.BlacklistFactors, factor.Id)
-	challenge.UpdatedAt = model.NewTime(now)
-	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
-		h.logError("update challenge", err)
+	if !consumed {
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_ALREADY_USED", "Auth factor already used."))
+		return
 	}
+	challenge = updated
 
 	if isFirstFactor && challenge.StepRemain > 0 {
 		h.publishChallengePending(ctx, challenge)
@@ -2000,7 +2073,7 @@ func (h *handler) startPasskeyLogin(c *gin.Context) {
 			RpId:             h.passkeyRpId(c),
 			AllowCredentials: []passkeyCredentialDescriptor{},
 			Timeout:          60000,
-			UserVerification: "preferred",
+			UserVerification: "required",
 		},
 		AuthChallengeId: challenge.Id,
 	})
@@ -2083,11 +2156,9 @@ func (h *handler) completePasskeyLogin(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_PASSKEY_INVALID", "Passkey is invalid."))
 		return
 	}
-	if !h.verifyPasskeyAssertion(ctx, credential, challenge.Id, credentialID,
+	if !h.verifyPasskeyAssertion(ctx, passkey, credential, challenge.Id, credentialID,
 		req.ClientDataJson, req.AuthenticatorData, req.Signature, h.passkeyRpId(c), h.passkeyAllowedOrigins()) {
-		challenge.FailedAttempts++
-		challenge.UpdatedAt = model.NewTime(now)
-		_ = h.d.Store.UpdateAuthChallenge(ctx, challenge)
+		h.recordChallengeFailure(ctx, challenge, now)
 		risk.RecordFailure(ctx, h.d.Redis, h.d.Cfg, derefStr(challenge.IpAddress))
 		_ = h.maybeEscalateFailure(ctx, challenge)
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_INVALID_PASSKEY_ASSERTION", "Invalid passkey assertion."))
@@ -2289,13 +2360,21 @@ func (h *handler) approveChallenge(c *gin.Context) {
 		return
 	}
 
+	approved, err := h.d.Store.ApproveAuthChallenge(ctx, id, nil, sessionUUIDPtr(session.Id), now)
+	if err != nil {
+		h.logError("approve challenge", err)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+	if !approved {
+		// Lost the race to another approval/decline.
+		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_NOT_PENDING", "Auth challenge is no longer pending."))
+		return
+	}
 	challenge.StepRemain = 0
 	challenge.ApprovedAt = model.NewTime(now)
 	challenge.ApprovedBySessionId = &session.Id
 	challenge.UpdatedAt = model.NewTime(now)
-	if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
-		h.logError("update challenge", err)
-	}
 	_ = h.d.Store.AppendChallengeEvent(ctx, challenge.Id, model.ChallengeEvent{
 		At:        now,
 		Type:      model.ChallengeEventApproved,
@@ -2369,11 +2448,19 @@ func (h *handler) declineChallenge(c *gin.Context) {
 		// in-app review is open (or after it settled) must not escalate the
 		// challenge back into a live one, and a challenge that already minted a
 		// session signs that session out.
+		declined, err := h.d.Store.DeclineAuthChallenge(ctx, id, now)
+		if err != nil {
+			h.logError("decline challenge", err)
+			c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+			return
+		}
+		if !declined {
+			// Lost the race to another approval/decline.
+			c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CHALLENGE_NOT_PENDING", "Auth challenge is no longer pending."))
+			return
+		}
 		challenge.DeclinedAt = model.NewTime(now)
 		challenge.UpdatedAt = model.NewTime(now)
-		if err := h.d.Store.UpdateAuthChallenge(ctx, challenge); err != nil {
-			h.logError("update challenge", err)
-		}
 		h.revokeSessionMintedByChallenge(ctx, challenge, session.Id, callerIP, callerUA)
 	} else if err := h.escalateChallenge(ctx, challenge); err != nil {
 		h.logError("escalate challenge", err)

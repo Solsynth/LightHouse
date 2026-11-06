@@ -122,9 +122,22 @@ func RoleDescription(role int) string {
 
 // ─────────────────────────── permissions ───────────────────────────
 
-// HasPermission mirrors RealmService.HasPermission: a per-user override wins,
-// then the realm's role permission row, then the built-in role defaults.
+// HasPermission mirrors RealmService.HasPermission: an active membership is
+// required first, then a per-user override wins, then the realm's role
+// permission row, then the built-in role defaults.
+//
+// The membership check must precede the override: an override row outlives
+// the member (kick/leave), and evaluating it first let a removed member keep
+// whatever the override granted.
 func (s *Service) HasPermission(ctx context.Context, realmID, accountID uuid.UUID, permission string) (bool, error) {
+	member, err := s.Store.GetActiveMember(ctx, realmID, accountID)
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
 	override, err := s.Store.GetUserPermission(ctx, realmID, accountID)
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return false, err
@@ -134,18 +147,11 @@ func (s *Service) HasPermission(ctx context.Context, realmID, accountID uuid.UUI
 			return value, nil
 		}
 	}
-
-	member, err := s.Store.GetActiveMember(ctx, realmID, accountID)
-	if errors.Is(err, ErrNotFound) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
 	roleRow, err := s.Store.GetRolePermission(ctx, realmID, member.Role)
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return false, err
 	}
+
 	if roleRow != nil {
 		value, ok := rolePermissionValue(roleRow, permission)
 		if !ok {

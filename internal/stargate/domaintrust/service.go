@@ -317,6 +317,9 @@ type RuleInput struct {
 
 // CreateRule mirrors DomainTrustService.CreateRuleAsync.
 func (s *Service) CreateRule(ctx context.Context, input RuleInput, creator *uuid.UUID) (*DomainBlockEntity, error) {
+	if input.TrustLevel != nil && !ValidTrustLevel(*input.TrustLevel) {
+		return nil, ErrInvalidTrustLevel
+	}
 	row := &DomainBlockEntity{
 		ID:                 uuid.New(),
 		DomainPattern:      derefOrEmpty(input.DomainPattern),
@@ -348,6 +351,9 @@ func (s *Service) UpdateRule(ctx context.Context, id uuid.UUID, input RuleInput)
 	row, err := s.Store.GetBlock(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if input.TrustLevel != nil && !ValidTrustLevel(*input.TrustLevel) {
+		return nil, ErrInvalidTrustLevel
 	}
 	if input.DomainPattern != nil {
 		row.DomainPattern = *input.DomainPattern
