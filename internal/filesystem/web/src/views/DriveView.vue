@@ -178,7 +178,7 @@ function retry() {
 
       <div
         v-if="vault.error && !vault.loading"
-        class="absolute inset-0 grid place-items-center overflow-y-auto bg-raised px-5"
+        class="absolute inset-0 grid place-items-center overflow-y-auto bg-base-100 px-5"
       >
         <div class="w-full max-w-[380px] rounded-sheet bg-base-200/60 px-6 py-8 text-center">
           <WarningAlt16 class="mx-auto h-6 w-6 text-error" />

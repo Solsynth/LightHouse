@@ -7,10 +7,10 @@
 /* SnFS — the Solar Network file system console, drawn with the Solar Network
    console vocabulary (see docs/design-system.md).
 
-   The surface is a set of islands: the page ground, a raised sheet, and one
-   brand-tinted sheet, separated by space rather than by lines. There is no
-   border between regions and no rule between rows; a change of tone and a gap
-   are the only separations the interface uses.
+   Chrome is a set of islands: the header, rail, and footer are sheets on the
+   page ground, while the working surface between them is the ground itself.
+   There is no border between regions and no rule between rows; a change of
+   tone and a gap are the only separations the interface uses.
 
    The palette is Solian's neutral ramp — a near-neutral lavender-gray, not
    blue-gray and not warm — plus one brand signal (indigo). No second hue is
@@ -64,19 +64,14 @@
   --field-fill-focus: #2d2d32;
   --field-line: #3c3c40;
 
-  /* ── Islands ────────────────────────────────────────────────────────────
-     Three tones of the same paper. `raised` is the sheet a region sits on,
-     `raised-hover` the step under the pointer, `tint` the brand hue mixed
-     into that sheet for the rare thing asking to be noticed. */
-  --surface-raised: #232326;
-  --surface-raised-hover: #2a2a2e;
+  /* ── Tint ───────────────────────────────────────────────────────────────
+     `tint` is the brand hue mixed into a quiet chrome sheet, used only for
+     the thing asking to be noticed. */
   --surface-tint: #262833;
 }
 
 /* Daylight drive: the same ramp read at the light end, derived from the same
-   indigo seed rather than inverted from the dark theme. A card is a step
-   down in tone here, because tinted stock on near-white paper reads as an
-   object while a lighter fill reads as a hole. */
+   indigo seed rather than inverted from the dark theme. */
 @plugin 'daisyui/theme' {
   name: 'snfs-light';
   default: false;
@@ -119,8 +114,6 @@
   --depth: 0;
   --noise: 0;
 
-  --surface-raised: #efebf0;
-  --surface-raised-hover: #e9e4eb;
   --surface-tint: #e8e9f5;
 
   --field-fill: #efeaf0;
@@ -152,8 +145,6 @@
   --color-line-soft: var(--console-line-soft);
   --color-faint: var(--console-faint);
   --color-dim: var(--console-dim);
-  --color-raised: var(--surface-raised);
-  --color-raised-hover: var(--surface-raised-hover);
   --color-tint: var(--surface-tint);
   --color-ink: var(--color-base-100);
   --text-2xs: 0.6875rem;
@@ -272,54 +263,13 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* ── Islands ────────────────────────────────────────────────────────── */
+  /* ── Chrome sheets ──────────────────────────────────────────────────── */
 
-  /* The page itself is the ground; everything the person works with is a
-     sheet floating on it. Two sheets never touch: the gutter between them is
-     the separation. */
-  .island {
-    @apply rounded-card bg-raised;
-  }
-
-  /* A quieter sheet for chrome that should recede: the sidebar, the header,
-     the footer. */
+  /* The header, rail, and footer are sheets; the working surface is the
+     ground itself. Two sheets never touch: the gutter between them is the
+     separation. */
   .island-quiet {
     @apply rounded-card bg-base-200;
-  }
-
-  /* A brand-tinted sheet for the one region that should be noticed. */
-  .island-tint {
-    @apply rounded-card bg-tint;
-  }
-
-  /* A nested tonal well: search lines, segmented controls, media beds, block
-     quotes, and rows nested inside an island. Never outlined. */
-  .well {
-    @apply rounded-chip bg-base-200/60;
-  }
-
-  .well-hover {
-    @apply rounded-chip bg-base-200/60 transition-colors duration-[var(--duration-fast)] ease-[var(--ease-out)];
-  }
-  .well-hover:hover {
-    @apply bg-base-300/70;
-  }
-
-  /* ── Rows ───────────────────────────────────────────────────────────── */
-
-  /* A listing row is a tonal bar with its own corner, separated from its
-     neighbours by a 2 px gutter of ground. No rule, no zebra. */
-  .row-bar {
-    @apply rounded-chip bg-base-200/80 transition-colors duration-[var(--duration-fast)] ease-[var(--ease-out)];
-  }
-
-  .row-bar:hover {
-    @apply bg-base-300/65;
-  }
-
-  .row-bar[aria-selected='true'],
-  .row-bar.is-selected {
-    @apply bg-primary/12;
   }
 
   /* Terminal-style ledger built on the same bar: border-spacing opens the
@@ -870,6 +820,46 @@
     transform-origin: top right;
     animation: menu-pop var(--duration-base) var(--ease-back) both;
   }
+  /* A toolbar menu is a compact tonal trigger: the current value is the
+     label, so the control reads as one line instead of a row of chips. */
+  .menu-trigger {
+    @apply flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-[12px] bg-base-200/60 px-2.5 text-[11.5px] text-dim;
+    transition:
+      background-color var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out);
+  }
+
+  .menu-trigger:hover {
+    @apply bg-base-300/70 text-base-content;
+  }
+
+  .menu-trigger::-webkit-details-marker {
+    display: none;
+  }
+
+  .menu-trigger::marker {
+    content: '';
+  }
+
+  details[open] > .menu-trigger {
+    @apply bg-base-300/80 text-base-content;
+  }
+
+  .menu-choice {
+    @apply flex w-full items-center gap-2 rounded-[10px] px-2.5 py-1.5 text-left text-[12px] text-dim;
+    transition:
+      background-color var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out);
+  }
+
+  .menu-choice:hover {
+    @apply bg-base-300/70 text-base-content;
+  }
+
+  .menu-choice[aria-checked='true'] {
+    @apply font-semibold text-base-content;
+  }
+
 
   @keyframes menu-pop {
     from {

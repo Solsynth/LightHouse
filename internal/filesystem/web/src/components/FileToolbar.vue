@@ -6,6 +6,7 @@ import {
   ArrowUp16,
   Catalog16,
   Checkmark16,
+  ChevronDown16,
   Close16,
   FolderAdd16,
   Grid16,
@@ -53,6 +54,33 @@ const sorts: { key: FileOrder; label: string }[] = [
   { key: 'name', label: 'drive.sortName' },
   { key: 'size', label: 'drive.sortSize' },
 ]
+
+const currentSort = computed(() => sorts.find((entry) => entry.key === vault.order) ?? sorts[0]!)
+const currentKind = computed(() => kinds.find((entry) => entry.key === vault.kind) ?? kinds[0]!)
+const sortArrow = computed(() => (vault.orderDesc ? '↓' : '↑'))
+
+function closeMenu(event: Event) {
+  const trigger = event.currentTarget as HTMLElement | null
+  trigger?.closest('details')?.removeAttribute('open')
+}
+
+function openMenu(event: Event) {
+  const current = (event.currentTarget as HTMLElement).closest('details')
+  if (!(current instanceof HTMLDetailsElement)) return
+  document.querySelectorAll<HTMLDetailsElement>('details[data-toolbar-menu]').forEach((entry) => {
+    if (entry !== current) entry.open = false
+  })
+}
+
+function chooseSort(key: FileOrder, event: Event) {
+  sortBy(key)
+  closeMenu(event)
+}
+
+function chooseKind(key: KindFilter, event: Event) {
+  vault.setKind(key)
+  closeMenu(event)
+}
 
 /** The view buttons name the mode they switch to; the union keeps the key real. */
 function viewLabel(key: ViewMode): string {
@@ -192,40 +220,70 @@ function restoreSelection() {
           {{ t('drive.selectAll') }}
         </button>
 
-        <div class="flex items-center gap-0.5" role="group" :aria-label="t('drive.sortOrder')">
-          <span class="mr-1 hidden text-[11px] text-faint lg:inline">{{ t('drive.sort') }}</span>
-          <button
-            v-for="entry in sorts"
-            :key="entry.key"
-            type="button"
-            class="flex h-8 items-center gap-0.5 rounded-[12px] px-2 text-[11.5px] transition-colors duration-150"
-            :class="
-              vault.order === entry.key
-                ? 'bg-base-200/70 font-semibold text-base-content'
-                : 'text-faint hover:bg-base-200/50 hover:text-dim'
-            "
-            :aria-pressed="vault.order === entry.key"
-            @click="sortBy(entry.key)"
+        <details data-toolbar-menu class="dropdown dropdown-end">
+          <summary
+            class="menu-trigger"
+            :title="`${t('drive.sort')}: ${t(currentSort.label)} ${sortArrow}`"
+            @click="openMenu"
           >
-            {{ t(entry.label) }}
-            <span v-if="vault.order === entry.key" class="text-primary" aria-hidden="true">
-              {{ vault.orderDesc ? '↓' : '↑' }}
-            </span>
-          </button>
-        </div>
+            <span class="hidden lg:inline">{{ t('drive.sort') }}</span>
+            <span>{{ t(currentSort.label) }}</span>
+            <span class="text-[10px] text-primary" aria-hidden="true">{{ sortArrow }}</span>
+            <ChevronDown16 class="h-3 w-3 text-faint" aria-hidden="true" />
+          </summary>
+          <div
+            class="menu-plate dropdown-content z-50 mt-2 w-[170px] p-1.5"
+            role="menu"
+            :aria-label="t('drive.sortOrder')"
+          >
+            <button
+              v-for="entry in sorts"
+              :key="entry.key"
+              type="button"
+              role="menuitemradio"
+              class="menu-choice"
+              :aria-checked="vault.order === entry.key"
+              @click="chooseSort(entry.key, $event)"
+            >
+              <span class="flex-1">{{ t(entry.label) }}</span>
+              <span v-if="vault.order === entry.key" class="text-2xs text-faint">
+                {{ sortArrow }}
+              </span>
+              <Checkmark16
+                v-if="vault.order === entry.key"
+                class="h-3.5 w-3.5 shrink-0 text-primary"
+              />
+            </button>
+          </div>
+        </details>
 
-        <div class="seg" role="group" :aria-label="t('drive.filterKind')">
-          <button
-            v-for="entry in kinds"
-            :key="entry.key"
-            type="button"
-            class="seg-item h-7 px-2.5"
-            :aria-pressed="vault.kind === entry.key"
-            @click="vault.setKind(entry.key)"
+        <details data-toolbar-menu class="dropdown dropdown-end">
+          <summary class="menu-trigger" :title="t(currentKind.label)" @click="openMenu">
+            <span>{{ t(currentKind.label) }}</span>
+            <ChevronDown16 class="h-3 w-3 text-faint" aria-hidden="true" />
+          </summary>
+          <div
+            class="menu-plate dropdown-content z-50 mt-2 w-[160px] p-1.5"
+            role="menu"
+            :aria-label="t('drive.filterKind')"
           >
-            {{ t(entry.label) }}
-          </button>
-        </div>
+            <button
+              v-for="entry in kinds"
+              :key="entry.key"
+              type="button"
+              role="menuitemradio"
+              class="menu-choice"
+              :aria-checked="vault.kind === entry.key"
+              @click="chooseKind(entry.key, $event)"
+            >
+              <span class="flex-1">{{ t(entry.label) }}</span>
+              <Checkmark16
+                v-if="vault.kind === entry.key"
+                class="h-3.5 w-3.5 shrink-0 text-primary"
+              />
+            </button>
+          </div>
+        </details>
 
         <div class="seg" role="group" :aria-label="t('view.label')">
           <button

@@ -13,16 +13,17 @@ search line, a browsable object list, and a details column.
 
 ## 1. Principles
 
-1. **Islands, not frames.** Every region is a sheet of paper floating on the
-   page ground. Separation comes from the gap between sheets and the tone of a
-   sheet — never from a border, divider, or rule.
+1. **Chrome is islands.** The header, rail, footer, and dialogs are sheets of
+   paper on the page ground; the working surface between them is the ground
+   itself. Separation comes from the gap between sheets and the tone of a
+   block — never from a border, divider, or rule.
 2. **Blocks, not lines.** Lists are bars with their own corner and a 2 px
    gutter. Groups are wells. A selected row is a tinted block. No horizontal
    or vertical hairlines are used to separate content.
 3. **One brand signal.** Periwinkle-indigo (`primary`) is the only decorative
    colour. It marks the active location, the selected object, focus, and the
    primary action. Surface variants (`base-100`, `base-200`, `base-300`,
-   `raised`, `tint`) carry all structure. Semantic tones appear only where
+   `tint`) carry all structure. Semantic tones appear only where
    state demands them: an error, a completed transfer, a warning.
 4. **A calm, precise workspace.** The interface reports file systems, storage
    metrics, and transfers with instrument-level clarity. No hero metrics or
@@ -41,17 +42,17 @@ search line, a browsable object list, and a details column.
 
 ## 2. Layout
 
-The console is a stack of islands on a padded ground:
+The console is chrome islands around a flat working surface:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  header island: lockup · search · actions                       │
 ├───────────────────┬─────────────────────────────────────────────┤
-│  rail island      │  content island                             │
-│  locations        │  toolbar (breadcrumb · sort · kind · views) │
-│  pools            │  ┌───────────────────────────────────────┐  │
-│  ┌─────────────┐  │  │  object bars / grid cards / columns   │  │
-│  │ quota well  │  │  └───────────────────────────────────────┘  │
+│  rail island      │  content surface (the page ground)          │
+│  locations        │  toolbar (crumbs · sort · filter · view)    │
+│  pools            │  object bars / grid cards / columns         │
+│  ┌─────────────┐  │                                             │
+│  │ quota well  │  │                                             │
 │  └─────────────┘  │                                             │
 ├───────────────────┴─────────────────────────────────────────────┤
 │  status + language island                                       │
@@ -59,8 +60,9 @@ The console is a stack of islands on a padded ground:
 ```
 
 - The gutter between islands is 8 px on small screens and 10 px above.
-- The rail is 248 px and uses `base-200`; the content is `raised`; nested
-  lists and wells step to `base-200` or `base-300`.
+- The header, rail, and footer are `base-200` sheets. The content area is the
+  page ground: toolbars and object views sit directly on it, and rows, cards,
+  and wells carry the tonal blocks.
 - Content is left-aligned. The rail, toolbar, and status line share one
   horizontal rhythm; object names lead, metadata trails.
 - Below `md` the rail becomes a rounded drawer over a dimmed ground, and the
@@ -82,11 +84,9 @@ not warm — with indigo as the single brand signal.
 | Role | Token | Dark | Light |
 | --- | --- | --- | --- |
 | Page ground | `--color-base-100` | `#171618` | `#faf7f9` |
-| Quiet island / rail | `--color-base-200` | `#1d1d20` | `#f6f2f6` |
-| Nested well / step | `--color-base-300` | `#2e2e31` | `#e4e1e5` |
-| Content island | `--surface-raised` (`bg-raised`) | `#232326` | `#efebf0` |
-| Raised hover | `--surface-raised-hover` | `#2a2a2e` | `#e9e4eb` |
-| Brand-tinted island | `--surface-tint` (`bg-tint`) | `#262833` | `#e8e9f5` |
+| Chrome sheet (header, rail, footer) | `--color-base-200` | `#1d1d20` | `#f6f2f6` |
+| Row / well step | `--color-base-300` | `#2e2e31` | `#e4e1e5` |
+| Brand-tinted block | `--surface-tint` (`bg-tint`) | `#262833` | `#e8e9f5` |
 | Text content | `--color-base-content` | `#edeaee` | `#1f1f22` |
 | Soft line (focus, scrollbar) | `--console-line` | `#4b4b4f` | `#d3d1d5` |
 | Secondary text | `--console-dim` | `#c8c5ca` | `#4b4b4f` |
@@ -123,25 +123,22 @@ this list is spent on files, folders, or regions.
 
 | Class | Meaning |
 | --- | --- |
-| `.island` | A content sheet: `rounded-card bg-raised` |
-| `.island-quiet` | Quiet chrome sheet: `rounded-card bg-base-200` |
-| `.island-tint` | The one brand-tinted sheet |
-| `.well` | A nested tonal block for search lines, media beds, notes |
-| `.row-bar` | A list row: rounded chip with hover/selected tone |
+| `.island-quiet` | Chrome sheet (header, rail, footer): `rounded-card bg-base-200` |
 | `.ledger` | Row-bar table: 2 px border spacing, tinted cells, no rules |
 | `.seg` / `.seg-item` | Segmented control; the pressed item takes `base-300` |
+| `.menu-trigger` / `.menu-choice` | Toolbar dropdown trigger and its menu rows |
 | `.chip` | Inline token for tags, filters, counts |
 | `.note` | Tinted status block (`note-error`, `note-success`, `note-warning`) |
 
 Rules of thumb:
 
-- A nested block is always a different tone from its parent. On a `raised`
-  island, nested rows are `base-200`; inside a `base-200` column, rows are
-  `base-100` or `base-300`.
+- On the page ground, rows and cards are `base-200`; nested wells step to
+  `base-300` or `base-100`. Inside a `base-200` chrome sheet, nested rows step
+  to `base-300`.
 - Hover steps one tone up; selection mixes `primary` at 12–18 % into the
   surface, so selection never introduces a second hue.
-- Sticky table headers use the island's solid fill (`bg-raised`) so rows scroll
-  underneath without a shadow or rule.
+- Sticky table headers use the ground's solid fill (`bg-base-100`) so rows
+  scroll underneath without a shadow or rule.
 
 ## 6. Forms and controls
 
