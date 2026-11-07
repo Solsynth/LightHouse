@@ -165,6 +165,12 @@ func run(log *slog.Logger) error {
 			Target:        cfg.Services.Stargate.GRPC,
 			UseTLS:        true,
 			TLSSkipVerify: true,
+			// Stargate enforces mutual TLS: the handshake needs this
+			// instance's client certificate, otherwise token validation
+			// fails and every request looks unauthenticated.
+			CAFile:   cfg.GRPC.CAFile,
+			CertFile: cfg.GRPC.ClientCertFile,
+			KeyFile:  cfg.GRPC.ClientKeyFile,
 		}
 		grpcAuth, err := auth.NewGrpcTokenAuthenticator(authCfg)
 		if err != nil {

@@ -92,6 +92,12 @@ func (i *instance) Prepare(_ context.Context, services *core.Services) ([]gin.Ha
 			Target:        cfg.Auth.Target,
 			UseTLS:        cfg.Auth.UseTLS,
 			TLSSkipVerify: cfg.Auth.TLSSkipVerify,
+			// Stargate enforces mutual TLS: without the fleet client
+			// certificate the handshake fails, every token resolves to
+			// unauthenticated, and protected routes answer 401.
+			CAFile:   cfg.GRPC.CAFile,
+			CertFile: cfg.GRPC.ClientCertFile,
+			KeyFile:  cfg.GRPC.ClientKeyFile,
 		})
 		if err != nil {
 			return nil, err
