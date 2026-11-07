@@ -408,7 +408,19 @@ func main() {
 			logging.Log.Fatal().Err(err).Str("port", cfg.GRPC.Port).Msg("Failed to listen gRPC server")
 		}
 
-		grpcSrv = grpc.NewServer()
+		grpcOpts := []grpc.ServerOption{}
+		if cfg.GRPC.UseTLS {
+			if cfg.GRPC.CertFile == "" || cfg.GRPC.KeyFile == "" {
+				logging.Log.Fatal().Msg("gRPC TLS requires grpc.certFile and grpc.keyFile")
+			}
+			creds, err := credentials.NewServerTLSFromFile(cfg.GRPC.CertFile, cfg.GRPC.KeyFile)
+			if err != nil {
+				logging.Log.Fatal().Err(err).Msg("Failed to load gRPC TLS credentials")
+			}
+			grpcOpts = append(grpcOpts, grpc.Creds(creds))
+		}
+
+		grpcSrv = grpc.NewServer(grpcOpts...)
 		if wsService != nil {
 			grpcWSService := wsgateway.NewGRPCService(wsService)
 			grpcWSService.SetPushPublisher(wsPushPublisher)
@@ -420,7 +432,7 @@ func main() {
 		reflection.Register(grpcSrv)
 
 		go func() {
-			logging.Log.Info().Str("port", cfg.GRPC.Port).Msg("Starting gRPC server")
+			logging.Log.Info().Str("port", cfg.GRPC.Port).Bool("tls", cfg.GRPC.UseTLS).Msg("Starting gRPC server")
 			if err := grpcSrv.Serve(lis); err != nil {
 				logging.Log.Fatal().Err(err).Msg("Failed to start gRPC server")
 			}

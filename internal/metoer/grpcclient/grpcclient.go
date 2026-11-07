@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/tls"
 	"log/slog"
+	"net/url"
 	"strings"
 	"time"
 
@@ -37,9 +38,9 @@ func Dial(target string) (*grpc.ClientConn, error) {
 	)
 }
 
-// DialPlaintext creates a plaintext gRPC connection. Blade is the only
-// sibling that serves gRPC without TLS (its server is started with no
-// credentials), so outbound Blade clients must use this instead of Dial.
+// DialPlaintext creates a plaintext gRPC connection. It is selected by an
+// explicit http:// or grpc:// target, for deployments that still serve a
+// dependency over h2c; the fleet default is TLS via Dial.
 func DialPlaintext(target string) (*grpc.ClientConn, error) {
 	if target == "" {
 		return nil, nil
@@ -69,7 +70,7 @@ func NewClients(cfg *config.Config) (*Clients, error) {
 func NewClientsWithResolver(cfg *config.Config, resolver *discovery.Resolver) (*Clients, error) {
 	c := &Clients{}
 	dial := func(service, target string, plaintext bool) *grpc.ClientConn {
-		address := strings.TrimSpace(target)
+		address, useTLS := splitTarget(target, !plaintext)
 		if resolver != nil {
 			address = discovery.Target(service)
 		}
@@ -81,10 +82,10 @@ func NewClientsWithResolver(cfg *config.Config, resolver *discovery.Resolver) (*
 		}
 		var conn *grpc.ClientConn
 		var err error
-		if plaintext {
-			conn, err = DialPlaintext(address)
-		} else {
+		if useTLS {
 			conn, err = Dial(address)
+		} else {
+			conn, err = DialPlaintext(address)
 		}
 		if err != nil || conn == nil {
 			return nil
@@ -95,11 +96,33 @@ func NewClientsWithResolver(cfg *config.Config, resolver *discovery.Resolver) (*
 	if conn := dial("stargate", cfg.Services.Stargate.GRPC, false); conn != nil {
 		c.Stargate = conn
 	}
-	// Blade serves plaintext gRPC, unlike the TLS fleet (stargate et al.).
-	if conn := dial("blade", cfg.Services.Blade.GRPC, true); conn != nil {
+	// Blade serves TLS like the rest of the fleet; an explicit http:// target
+	// selects the plaintext h2c path for older deployments.
+	if conn := dial("blade", cfg.Services.Blade.GRPC, false); conn != nil {
 		c.Blade = conn
 	}
 	return c, nil
+}
+
+// splitTarget splits a configured target into its dial address and transport.
+// An explicit scheme wins; otherwise defaultTLS selects the fleet default.
+func splitTarget(raw string, defaultTLS bool) (string, bool) {
+	target := strings.TrimSpace(raw)
+	if target == "" {
+		return "", defaultTLS
+	}
+	parsed, err := url.Parse(target)
+	if err != nil {
+		return target, defaultTLS
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "grpc", "http":
+		return parsed.Host, false
+	case "grpcs", "https":
+		return parsed.Host, true
+	default:
+		return target, defaultTLS
+	}
 }
 
 // Close closes all dialed connections.

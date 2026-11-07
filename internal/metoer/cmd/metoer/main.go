@@ -21,7 +21,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
+
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
@@ -253,7 +253,7 @@ func run(log *slog.Logger) error {
 		if err := discovery.Validate(opts); err != nil {
 			return fmt.Errorf("discovery: %w", err)
 		}
-		conn, err := grpc.NewClient(discovery.DialTarget(cfg.Discovery.Target), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := discovery.Dial(cfg.Discovery.Target)
 		if err != nil {
 			return fmt.Errorf("dial blade discovery %s: %w", cfg.Discovery.Target, err)
 		}

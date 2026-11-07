@@ -51,7 +51,8 @@ type CacheConfig struct {
 
 // DiscoveryConfig enables Blade's Redis-backed, leased service registry.
 // In-network services register over the internal gRPC listener without a
-// credential. RegistrationToken protects the public relay control plane
+// credential; that listener can be TLS-wrapped with [grpc] useTLS.
+// RegistrationToken protects the public relay control plane
 // (PUT/DELETE /relays/{id}); it is not used by the gRPC API.
 type DiscoveryConfig struct {
 	Enabled            bool              `mapstructure:"enabled"`
@@ -79,10 +80,18 @@ type ServerConfig struct {
 	WriteTimeout time.Duration `mapstructure:"writeTimeout"`
 }
 
+// GrpcServerConfig is the in-network listener that serves the websocket
+// gateway and service discovery. UseTLS wraps it with the same self-signed
+// certificate pair the rest of the fleet uses; clients skip CA validation.
 type GrpcServerConfig struct {
-	Enabled             bool   `mapstructure:"enabled"`
-	Port                string `mapstructure:"port"`
-	ClientTLSSkipVerify bool   `mapstructure:"clientTlsSkipVerify"`
+	Enabled  bool   `mapstructure:"enabled"`
+	Port     string `mapstructure:"port"`
+	UseTLS   bool   `mapstructure:"useTLS"`
+	CertFile string `mapstructure:"certFile"`
+	KeyFile  string `mapstructure:"keyFile"`
+	// ClientTLSSkipVerify applies to outbound capability scrapes, not to this
+	// listener.
+	ClientTLSSkipVerify bool `mapstructure:"clientTlsSkipVerify"`
 }
 
 type WebSocketConfig struct {

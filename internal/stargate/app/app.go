@@ -20,7 +20,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
+
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
@@ -336,7 +336,7 @@ func Run(parent context.Context, log *slog.Logger, factories []module.Factory[co
 		if err := discovery.Validate(opts); err != nil {
 			return fmt.Errorf("discovery: %w", err)
 		}
-		conn, err := grpc.NewClient(discovery.DialTarget(cfg.Discovery.Target), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := discovery.Dial(cfg.Discovery.Target)
 		if err != nil {
 			log.Warn("blade discovery unavailable; registration disabled", "target", cfg.Discovery.Target, "error", err)
 		} else {

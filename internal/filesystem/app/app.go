@@ -18,7 +18,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
+
 	"google.golang.org/grpc/reflection"
 
 	sharedcache "src.solsynth.dev/sosys/lighthouse/shared/pkg/cache"
@@ -257,7 +257,7 @@ func (r *Runtime) setupDiscovery() error {
 		r.discoveryResolver = nil
 		return err
 	}
-	conn, err := grpc.NewClient(discovery.DialTarget(cfg.Discovery.Target), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := discovery.Dial(cfg.Discovery.Target)
 	if err != nil {
 		_ = resolver.Close()
 		r.discoveryResolver = nil

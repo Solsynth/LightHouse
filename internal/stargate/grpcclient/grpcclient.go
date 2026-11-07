@@ -13,6 +13,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"time"
 
@@ -41,10 +42,9 @@ func Dial(target string) (*grpc.ClientConn, error) {
 	)
 }
 
-// DialInsecure creates a plaintext gRPC connection. Blade's wsgateway serves
-// plaintext h2c — the C# fleet (http://blade) and Stargate's own discovery
-// registration dial it that way — so the Blade client must not use the
-// TLS-always Dial above.
+// DialInsecure creates a plaintext gRPC connection. It is selected by an
+// explicit http:// or grpc:// target, for deployments that still serve a
+// dependency over h2c; the fleet default is TLS via Dial.
 func DialInsecure(target string) (*grpc.ClientConn, error) {
 	target = strings.TrimSpace(target)
 	if target == "" {
@@ -169,10 +169,10 @@ func NewClientsWithResolver(cfg *config.Config, resolver *discovery.Resolver) (*
 		// Passport hosts the NFC validation service on the same instance.
 		c.Nfc = gen.NewDyNfcServiceClient(conn)
 	}
-	if conn := dial("blade", cfg.Services.Blade.GRPC, true); conn != nil {
-		// Blade's wsgateway is the fleet's plaintext exception (plaintext h2c);
-		// the TLS-always Dial would fail the handshake and silently degrade
-		// every presence read. See DialInsecure.
+	if conn := dial("blade", cfg.Services.Blade.GRPC, false); conn != nil {
+		// Blade serves TLS like the rest of the fleet; an explicit http://
+		// target selects the plaintext h2c path for older deployments.
+		// The transport scheme is applied in dialService.
 		c.Blade = gen.NewWebSocketServiceClient(conn)
 	}
 	if conn := dial("ring", cfg.Services.Ring.GRPC, false); conn != nil {
@@ -182,7 +182,7 @@ func NewClientsWithResolver(cfg *config.Config, resolver *discovery.Resolver) (*
 }
 
 func dialService(service, target string, plaintext bool, resolver *discovery.Resolver) (*grpc.ClientConn, error) {
-	address := strings.TrimSpace(target)
+	address, useTLS := splitTarget(target, !plaintext)
 	if resolver != nil {
 		address = discovery.Target(service)
 	}
@@ -192,10 +192,31 @@ func dialService(service, target string, plaintext bool, resolver *discovery.Res
 	if discovery.IsTarget(address) && resolver == nil {
 		return nil, fmt.Errorf("dial %s: service discovery is not configured", service)
 	}
-	if plaintext {
-		return DialInsecure(address)
+	if useTLS {
+		return Dial(address)
 	}
-	return Dial(address)
+	return DialInsecure(address)
+}
+
+// splitTarget splits a configured target into its dial address and transport.
+// An explicit scheme wins; otherwise defaultTLS selects the fleet default.
+func splitTarget(raw string, defaultTLS bool) (string, bool) {
+	target := strings.TrimSpace(raw)
+	if target == "" {
+		return "", defaultTLS
+	}
+	parsed, err := url.Parse(target)
+	if err != nil {
+		return target, defaultTLS
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "grpc", "http":
+		return parsed.Host, false
+	case "grpcs", "https":
+		return parsed.Host, true
+	default:
+		return target, defaultTLS
+	}
 }
 
 // Close closes all dialed connections.

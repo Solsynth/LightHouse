@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/url"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
@@ -51,7 +53,7 @@ func NewResolver(target string, fallback map[string]string) (*Resolver, error) {
 	if target == "" {
 		return nil, fmt.Errorf("service discovery: target is empty")
 	}
-	conn, err := grpc.NewClient(DialTarget(target), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := Dial(target)
 	if err != nil {
 		return nil, fmt.Errorf("service discovery: dial %s: %w", target, err)
 	}
@@ -93,6 +95,44 @@ func DialTarget(raw string) string {
 		return target
 	}
 	return "dns:///" + target
+}
+
+// Dial opens a client connection to Blade's discovery endpoint. The target
+// scheme selects the transport, matching the fleet's grpcclient convention:
+// grpc:// and http:// are plaintext, grpcs:// and https:// are TLS with CA
+// validation skipped because fleet certificates are self-signed. A bare
+// host:port defaults to TLS, like every other fleet target; plaintext is the
+// explicit http:// or grpc:// choice.
+func Dial(target string) (*grpc.ClientConn, error) {
+	address, useTLS := SplitTarget(target)
+	if address == "" {
+		return nil, fmt.Errorf("discovery target is empty")
+	}
+	creds := credentials.TransportCredentials(insecure.NewCredentials())
+	if useTLS {
+		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true})
+	}
+	return grpc.NewClient(DialTarget(address), grpc.WithTransportCredentials(creds))
+}
+
+// SplitTarget reports the dial address and whether the target asks for TLS.
+func SplitTarget(raw string) (string, bool) {
+	target := strings.TrimSpace(raw)
+	if target == "" {
+		return "", true
+	}
+	parsed, err := url.Parse(target)
+	if err != nil {
+		return target, true
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "grpc", "http":
+		return parsed.Host, false
+	case "grpcs", "https":
+		return parsed.Host, true
+	default:
+		return target, true
+	}
 }
 
 // Resolve returns healthy gRPC endpoints, falling back to the static address

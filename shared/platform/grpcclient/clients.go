@@ -179,10 +179,11 @@ func NewWithResolver(targets Targets, resolver *discovery.Resolver) (*Clients, e
 	} else if conn != nil {
 		clients.Dev = gen.NewDyCustomAppServiceClient(conn)
 	}
-	// Blade's gateway serves plaintext h2c; a bare target keeps TLS, an
-	// explicit http:// scheme selects h2c. Discovery keeps that transport
-	// choice while the address follows the registry.
-	if conn, err := dial("blade", targets.Blade, false); err != nil {
+	// Blade serves TLS like the rest of the fleet; a bare target keeps TLS and
+	// an explicit http:// scheme selects the plaintext h2c path for older
+	// deployments. Discovery keeps that transport choice while the address
+	// follows the registry.
+	if conn, err := dial("blade", targets.Blade, true); err != nil {
 		return nil, err
 	} else if conn != nil {
 		clients.Blade = gen.NewWebSocketServiceClient(conn)
