@@ -37,7 +37,6 @@ const password = ref('')
 const confirm = ref('')
 const busy = ref(false)
 const done = ref(false)
-const error = ref('')
 
 const isReset = computed(() => spell.value?.type === RESET)
 
@@ -125,7 +124,6 @@ async function load() {
 async function apply() {
   if (!canSubmit.value) return
   busy.value = true
-  error.value = ''
   try {
     // A reset spell consumes the word and installs the password in one request:
     // the word is single-use, so validating it in a separate call first would
@@ -140,7 +138,7 @@ async function apply() {
     if (caught instanceof StargateError && caught.status === 410) {
       state.value = 'expired'
     } else {
-      error.value = caught instanceof Error ? caught.message : t('spell.errorApplyFailed')
+      notice.fail(caught instanceof Error ? caught.message : t('spell.errorApplyFailed'))
     }
   } finally {
     busy.value = false
@@ -205,8 +203,6 @@ onMounted(load)
           busy ? t('spell.applying') : isReset ? t('spell.submitReset') : t('spell.submitVerify')
         }}
       </button>
-
-      <p v-if="error" class="note note-error mt-4">{{ error }}</p>
     </form>
 
     <p v-if="done" class="note note-success">

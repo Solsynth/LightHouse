@@ -39,7 +39,6 @@ const router = useRouter()
 const route = useRoute()
 
 const account = ref('')
-const error = ref('')
 const busy = ref(false)
 const started = ref(false)
 const passkeyFactor = ref<AuthFactor | null>(null)
@@ -114,7 +113,6 @@ async function loadProviders() {
 async function qrApproved(challengeId: string) {
   if (busy.value) return
   busy.value = true
-  error.value = ''
   try {
     await signInApi.exchange(challengeId)
     await session.load()
@@ -122,7 +120,7 @@ async function qrApproved(challengeId: string) {
     notice.ok(t('signIn.noticeSignedIn'))
     await leave()
   } catch (caught) {
-    error.value = messageOf(caught)
+    notice.fail(messageOf(caught))
     mode.value = 'identify'
   } finally {
     busy.value = false
@@ -182,7 +180,6 @@ function messageOf(caught: unknown): string {
 async function identify() {
   if (!account.value.trim()) return
   busy.value = true
-  error.value = ''
   try {
     await signIn.start(account.value.trim())
     started.value = true
@@ -190,7 +187,7 @@ async function identify() {
     if (signIn.complete) await finish()
     else await autoSelect()
   } catch (caught) {
-    error.value = messageOf(caught)
+    notice.fail(messageOf(caught))
   } finally {
     busy.value = false
   }
@@ -199,7 +196,6 @@ async function identify() {
 /** Account-less passkey sign-in: the authenticator picks the credential. */
 async function passkeyDiscoverable() {
   busy.value = true
-  error.value = ''
   try {
     const device = deviceIdentity()
     const start = await signInApi.passkeyDiscoverableStart({
@@ -220,7 +216,7 @@ async function passkeyDiscoverable() {
     notice.ok(t('signIn.noticePasskey'))
     await leave()
   } catch (caught) {
-    error.value = caught instanceof StargateError ? messageOf(caught) : passkeyFailure(caught)
+    notice.fail(caught instanceof StargateError ? messageOf(caught) : passkeyFailure(caught))
   } finally {
     busy.value = false
   }
@@ -230,7 +226,6 @@ async function passkeyDiscoverable() {
 async function passkeyBound() {
   if (!signIn.challenge || !passkeyFactor.value) return
   busy.value = true
-  error.value = ''
   try {
     const start = await signInApi.passkeyStart(signIn.challenge.id)
     const assertion = await getAssertion({
@@ -243,7 +238,7 @@ async function passkeyBound() {
     await signInApi.passkeyComplete(signIn.challenge.id, assertion)
     await finish()
   } catch (caught) {
-    error.value = caught instanceof StargateError ? messageOf(caught) : passkeyFailure(caught)
+    notice.fail(caught instanceof StargateError ? messageOf(caught) : passkeyFailure(caught))
   } finally {
     busy.value = false
   }
@@ -266,13 +261,12 @@ async function autoSelect() {
 
 async function sendCode(factor: AuthFactor | null) {
   if (!factor) return
-  error.value = ''
   try {
     await signIn.requestCode(factor.id)
     codeSentIds.value = [...codeSentIds.value, factor.id]
     notice.ok(t('signIn.noticeCodeSent', { factor: factorTypeLabel(factor.type) }))
   } catch (caught) {
-    error.value = messageOf(caught)
+    notice.fail(messageOf(caught))
   }
 }
 
@@ -290,7 +284,7 @@ async function submit(factor: AuthFactor | null, secret: string) {
     selectedFactorId.value = null
     await autoSelect()
   } catch (caught) {
-    error.value = messageOf(caught)
+    notice.fail(messageOf(caught))
   }
 }
 
@@ -372,7 +366,6 @@ async function finish() {
     started.value = false
     selectedFactorId.value = null
     codeSentIds.value = []
-    error.value = ''
     notice.ok(t('signIn.noticeSignedIn'))
     if (window.opener && window.location.search.includes('popup=1')) {
       const origin = await allowedOpenerOrigin()
@@ -384,7 +377,7 @@ async function finish() {
     }
     await leave()
   } catch (caught) {
-    error.value = messageOf(caught)
+    notice.fail(messageOf(caught))
   } finally {
     busy.value = false
     finishing.value = false
@@ -417,7 +410,7 @@ function startPolling() {
     // watching it instead of repeating an expired read until the person acts.
     if (expired.value) {
       stopPolling()
-      error.value = t('signIn.errorChallengeExpired')
+      notice.fail(t('signIn.errorChallengeExpired'))
     }
   }, 4000)
 }
@@ -430,7 +423,6 @@ function restart() {
   passkeyFactor.value = null
   selectedFactorId.value = null
   codeSentIds.value = []
-  error.value = ''
   startPolling()
 }
 
@@ -449,10 +441,10 @@ onMounted(async () => {
       if (signIn.complete) await finish()
       else if (expired.value) {
         stopPolling()
-        error.value = t('signIn.errorChallengeExpired')
+        notice.fail(t('signIn.errorChallengeExpired'))
       } else await autoSelect()
     } catch (caught) {
-      error.value = messageOf(caught)
+      notice.fail(messageOf(caught))
     } finally {
       busy.value = false
     }
@@ -651,10 +643,6 @@ onBeforeUnmount(stopPolling)
             </Transition>
           </div>
         </div>
-
-        <p v-if="error || signIn.error" class="note note-error mt-3">
-          {{ error || signIn.error }}
-        </p>
       </div>
     </Transition>
 

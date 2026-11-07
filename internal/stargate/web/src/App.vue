@@ -27,6 +27,7 @@ import PendingLoginPrompt from '@/components/PendingLoginPrompt.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import { SkeletonBox } from 'skullet/vue'
 import TextField from '@/components/TextField.vue'
+import StatusNotice from '@/components/StatusNotice.vue'
 
 const session = useSessionStore()
 const notice = useNoticeStore()
@@ -146,8 +147,6 @@ const showNav = computed(
 // shell shows an empty card for that whole window, which reads as a broken
 // page on a slow connection. `matched` is empty only on the initial location.
 const booting = computed(() => route.matched.length === 0)
-
-const latest = computed(() => notice.items[notice.items.length - 1])
 
 const picture = computed(() => session.account?.profile?.picture)
 const pictureUrl = computed(
@@ -427,10 +426,7 @@ function changeLocale(event: Event) {
                 <SkeletonBox height="1.5rem" width="10rem" />
                 <SkeletonBox height="0.625rem" width="16rem" class="max-w-full" />
               </div>
-              <section
-                class="overflow-hidden rounded-card bg-base-200/50"
-                aria-hidden="true"
-              >
+              <section class="overflow-hidden rounded-card bg-base-200/50" aria-hidden="true">
                 <div class="px-6 pb-1.5 pt-5">
                   <SkeletonBox height="0.5rem" width="6rem" />
                 </div>
@@ -446,20 +442,6 @@ function changeLocale(event: Event) {
                   <component :is="Component" />
                 </RouterView>
               </div>
-
-              <Transition name="notice">
-                <div
-                  v-if="latest"
-                  class="flex items-baseline gap-2 px-shell py-2.5 text-2xs"
-                  role="status"
-                  aria-live="polite"
-                >
-                  <span :class="latest.tone === 'error' ? 'text-error' : 'text-success'">
-                    {{ latest.tone === 'error' ? 'ERROR' : 'OK' }}
-                  </span>
-                  <span class="truncate text-dim">{{ latest.message }}</span>
-                </div>
-              </Transition>
             </div>
           </div>
         </main>
@@ -502,6 +484,7 @@ function changeLocale(event: Event) {
         </TextField>
       </div>
     </footer>
+    <StatusNotice />
 
     <ElevationSheet />
     <PendingLoginPrompt />

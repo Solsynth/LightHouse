@@ -26,7 +26,6 @@ const form = ref({
 const captcha = ref<CaptchaConfig | null>(null)
 const captchaToken = ref('')
 const busy = ref(false)
-const error = ref('')
 const fieldErrors = ref<Record<string, string[]>>({})
 const created = ref(false)
 
@@ -69,7 +68,6 @@ const valid = computed(
 async function submit() {
   if (!valid.value) return
   busy.value = true
-  error.value = ''
   fieldErrors.value = {}
   try {
     await signInApi.register({ ...form.value, captcha_token: captchaToken.value })
@@ -77,12 +75,8 @@ async function submit() {
     notice.ok(t('createAccount.noticeCreated'))
     await router.push({ name: 'sign-in', query: landingQuery(route.query) })
   } catch (caught) {
-    if (caught instanceof StargateError) {
-      fieldErrors.value = caught.fields ?? {}
-      error.value = caught.message
-    } else {
-      error.value = caught instanceof Error ? caught.message : t('createAccount.errorCreateFailed')
-    }
+    if (caught instanceof StargateError) fieldErrors.value = caught.fields ?? {}
+    notice.fail(caught instanceof Error ? caught.message : t('createAccount.errorCreateFailed'))
   } finally {
     busy.value = false
   }
@@ -174,8 +168,6 @@ onMounted(async () => {
           @verified="captchaToken = $event"
         />
       </div>
-
-      <p v-if="error" class="note note-error mt-4">{{ error }}</p>
 
       <button type="submit" class="btn btn-primary mt-5 w-full" :disabled="busy || !valid">
         {{ busy ? t('createAccount.creating') : t('createAccount.submit') }}

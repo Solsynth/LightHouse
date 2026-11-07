@@ -6,6 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { useSessionStore } from '@/stores/session'
 import { useUiStore } from '@/stores/ui'
+import { useNoticeStore } from '@/stores/notice'
 import { authApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
 import type { CloudFileRef, DeviceCodeStatus } from '@/lib/api/types'
@@ -20,12 +21,12 @@ const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
 const ui = useUiStore()
+const notice = useNoticeStore()
 
 const code = ref(typeof route.query.code === 'string' ? route.query.code : '')
 const status = ref<DeviceCodeStatus | null>(null)
 const loading = ref(false)
 const busy = ref(false)
-const error = ref('')
 
 /**
  * The device flow's verification URL carries the code as `?code=`, so the page
@@ -95,7 +96,6 @@ async function lookup(raw: string) {
   const value = raw.trim()
   if (!value) return
   loading.value = true
-  error.value = ''
   try {
     status.value = await authApi.deviceCodeStatus(value)
     // Keep the address shareable and reload-safe: the code is the only state.
@@ -104,7 +104,7 @@ async function lookup(raw: string) {
     }
   } catch (caught) {
     status.value = null
-    error.value = caught instanceof StargateError ? caught.message : t('device.errorLookup')
+    notice.fail(caught instanceof StargateError ? caught.message : t('device.errorLookup'))
   } finally {
     loading.value = false
   }
@@ -113,7 +113,6 @@ async function lookup(raw: string) {
 async function decide(approve: boolean) {
   if (!status.value) return
   busy.value = true
-  error.value = ''
   try {
     if (approve) await authApi.deviceCodeApprove(status.value.user_code)
     else await authApi.deviceCodeDecline(status.value.user_code)
@@ -122,12 +121,13 @@ async function decide(approve: boolean) {
       status: approve ? 'approved' : 'declined',
     }
   } catch (caught) {
-    error.value =
+    notice.fail(
       caught instanceof StargateError
         ? caught.message
         : approve
           ? t('device.errorApprove')
-          : t('device.errorDecline')
+          : t('device.errorDecline'),
+    )
   } finally {
     busy.value = false
   }
@@ -266,7 +266,5 @@ onMounted(() => {
         {{ status.client_name || status.client_slug || status.client_id }}
       </p>
     </div>
-
-    <p v-if="error" class="note note-error mt-4">{{ error }}</p>
   </div>
 </template>

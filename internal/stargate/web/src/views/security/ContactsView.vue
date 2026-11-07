@@ -44,14 +44,13 @@ async function load() {
 async function add() {
   if (!content.value.trim()) return
   busy.value = true
-  error.value = ''
   try {
     await securityApi.createContact(type.value, content.value.trim())
     content.value = ''
     notice.ok(t('contacts.noticeAdded'))
     await load()
   } catch (caught) {
-    error.value = caught instanceof StargateError ? caught.message : t('contacts.errorAdd')
+    notice.fail(caught instanceof StargateError ? caught.message : t('contacts.errorAdd'))
   } finally {
     busy.value = false
   }

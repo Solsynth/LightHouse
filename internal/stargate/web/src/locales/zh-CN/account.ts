@@ -64,8 +64,7 @@ export default {
   },
   activity: {
     title: '活动',
-    description:
-      '该账号与安全相关操作的汇总统计。以计数、操作类型和每日趋势替代逐条记录。',
+    description: '该账号与安全相关操作的汇总统计。以计数、操作类型和每日趋势替代逐条记录。',
     last24h: '最近 24 小时',
     last7d: '最近 7 天',
     last30d: '最近 30 天',
@@ -410,8 +409,6 @@ export default {
       '此账号没有能完成这一步的验证方式。请在安全设置中添加验证方式，或从持有你通行密钥的设备重试。',
     resendCode: '重新发送验证码',
     sendCode: '发送验证码',
-    codePlaceholder: '6 位验证码',
-    credentialPlaceholder: '密码',
     usePasskey: '使用通行密钥验证',
     footer: '只在此浏览器中生效。',
     cancelElevation: '取消提权',
@@ -438,9 +435,18 @@ export default {
     mutualFriends: '共同好友',
     contacts: '公开联系方式',
   },
+  factorSecret: {
+    password: '密码',
+    email: '邮箱验证码',
+    totp: '身份验证器代码',
+    pin: 'PIN 码',
+    recovery: '恢复代码',
+    nfc: 'NFC 标签',
+    codePlaceholder: '6 位验证码',
+    recoveryPlaceholder: '恢复代码',
+  },
   factorRow: {
     sendCode: '发送验证码',
     resend: '重新发送',
-    codePlaceholder: '6 位验证码',
   },
 }

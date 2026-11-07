@@ -6,6 +6,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { useSessionStore } from '@/stores/session'
 import { useUiStore } from '@/stores/ui'
+import { useNoticeStore } from '@/stores/notice'
 import { authApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
 import type { AuthorizeClientInfo, CloudFileRef } from '@/lib/api/types'
@@ -18,6 +19,7 @@ const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
 const ui = useUiStore()
+const notice = useNoticeStore()
 
 const info = ref<AuthorizeClientInfo | null>(null)
 const loading = ref(true)
@@ -80,7 +82,6 @@ async function load() {
 
 async function decide(approve: boolean) {
   busy.value = true
-  error.value = ''
   try {
     const form = queryParams()
     form.set('authorize', approve ? 'true' : 'false')
@@ -91,7 +92,7 @@ async function decide(approve: boolean) {
     }
     await router.push('/account')
   } catch (caught) {
-    error.value = caught instanceof StargateError ? caught.message : t('authorize.errorSubmit')
+    notice.fail(caught instanceof StargateError ? caught.message : t('authorize.errorSubmit'))
   } finally {
     busy.value = false
   }

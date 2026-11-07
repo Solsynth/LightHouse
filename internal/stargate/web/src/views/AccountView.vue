@@ -34,10 +34,8 @@ const form = ref({
 })
 
 const saving = ref(false)
-const error = ref('')
 const editing = ref(false)
 const artBusy = ref<'picture' | 'background' | null>(null)
-const artError = ref('')
 const deleteOpen = ref(false)
 const deleteConfirm = ref('')
 const deleting = ref(false)
@@ -82,7 +80,6 @@ function loadForm() {
 
 async function save() {
   saving.value = true
-  error.value = ''
   try {
     await accountApi.updateProfile({
       first_name: form.value.first_name,
@@ -97,7 +94,7 @@ async function save() {
     editing.value = false
     notice.ok(t('account.noticeSaved'))
   } catch (caught) {
-    error.value = caught instanceof StargateError ? caught.message : t('account.errorSave')
+    notice.fail(caught instanceof StargateError ? caught.message : t('account.errorSave'))
   } finally {
     saving.value = false
   }
@@ -106,7 +103,6 @@ async function save() {
 function cancel() {
   loadForm()
   editing.value = false
-  error.value = ''
 }
 
 /**
@@ -117,7 +113,6 @@ function cancel() {
  */
 async function chooseArt(kind: 'picture' | 'background') {
   artBusy.value = kind
-  artError.value = ''
   try {
     const file = await pickImage({
       title: t(kind === 'picture' ? 'account.choosePicture' : 'account.chooseBackground'),
@@ -131,8 +126,7 @@ async function chooseArt(kind: 'picture' | 'background') {
     await session.refreshAccount()
     notice.ok(t(kind === 'picture' ? 'account.pictureUpdated' : 'account.backgroundUpdated'))
   } catch (caught) {
-    artError.value = caught instanceof StargateError ? caught.message : t('account.errorArt')
-    notice.fail(artError.value)
+    notice.fail(caught instanceof StargateError ? caught.message : t('account.errorArt'))
   } finally {
     artBusy.value = null
   }
@@ -140,14 +134,12 @@ async function chooseArt(kind: 'picture' | 'background') {
 
 async function clearArt(kind: 'picture' | 'background') {
   artBusy.value = kind
-  artError.value = ''
   try {
     await accountApi.updateProfile(kind === 'picture' ? { picture_id: '' } : { background_id: '' })
     await session.refreshAccount()
     notice.ok(t(kind === 'picture' ? 'account.pictureCleared' : 'account.backgroundCleared'))
   } catch (caught) {
-    artError.value = caught instanceof StargateError ? caught.message : t('account.errorArt')
-    notice.fail(artError.value)
+    notice.fail(caught instanceof StargateError ? caught.message : t('account.errorArt'))
   } finally {
     artBusy.value = null
   }
@@ -275,9 +267,6 @@ onMounted(loadForm)
             </div>
           </div>
           <p class="mt-4 voice text-[12px] text-faint">{{ t('account.artHint') }}</p>
-          <p v-if="artError" class="note note-error mt-2">
-            {{ artError }}
-          </p>
         </ConsolePanel>
 
         <ConsolePanel
@@ -373,8 +362,6 @@ onMounted(loadForm)
               :label="t('account.bio')"
               :rows="4"
             />
-
-            <p v-if="error" class="note note-error">{{ error }}</p>
 
             <div class="mt-4 flex items-center gap-2">
               <button type="submit" class="btn btn-primary btn-sm" :disabled="saving">

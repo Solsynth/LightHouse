@@ -12,7 +12,7 @@ import type { AuthChallenge, AuthFactor } from '@/lib/api/types'
 import { codeRequestFactorTypes, factorTypeLabel, pickableFactorTypes } from '@/lib/enums'
 import { remaining } from '@/lib/format'
 import { getAssertion, passkeyFailure, passkeysSupported } from '@/lib/webauthn'
-import TextField from '@/components/TextField.vue'
+import FactorSecretField from '@/components/FactorSecretField.vue'
 
 const emit = defineEmits<{ done: [challenge: AuthChallenge] }>()
 
@@ -25,7 +25,6 @@ const factors = ref<AuthFactor[]>([])
 const used = ref<string[]>([])
 const secrets = ref<Record<string, string>>({})
 const codeSentFor = ref<string | null>(null)
-const error = ref('')
 const busy = ref(false)
 const challenge = ref<AuthChallenge | null>(null)
 // Passkeys assert through their own endpoint, so the challenge picker never
@@ -35,12 +34,11 @@ const passkeyFactor = ref(false)
 
 async function begin() {
   busy.value = true
-  error.value = ''
   try {
     challenge.value = elevation.state?.challenge ?? (await elevation.begin())
     await loadFactors()
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : t('elevation.errorStart')
+    notice.fail(caught instanceof Error ? caught.message : t('elevation.errorStart'))
   } finally {
     busy.value = false
   }
@@ -67,7 +65,6 @@ async function loadFactors() {
 
 async function sendCode(factor: AuthFactor) {
   if (!challenge.value) return
-  error.value = ''
   try {
     await request<void>(`/auth/challenge/${challenge.value.id}/factors/${factor.id}`, {
       method: 'POST',
@@ -75,7 +72,7 @@ async function sendCode(factor: AuthFactor) {
     codeSentFor.value = factor.id
     notice.ok(t('elevation.noticeCodeSent', { factor: factorTypeLabel(factor.type) }))
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : t('elevation.errorCode')
+    notice.fail(caught instanceof Error ? caught.message : t('elevation.errorCode'))
   }
 }
 
@@ -83,7 +80,6 @@ async function submit(factor: AuthFactor) {
   const secret = secrets.value[factor.id]
   if (!challenge.value || !secret) return
   busy.value = true
-  error.value = ''
   try {
     const updated = await request<AuthChallenge>(`/auth/challenge/${challenge.value.id}`, {
       method: 'PATCH',
@@ -102,7 +98,7 @@ async function submit(factor: AuthFactor) {
       await loadFactors()
     }
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : t('errors.credentialRejected')
+    notice.fail(caught instanceof Error ? caught.message : t('errors.credentialRejected'))
   } finally {
     busy.value = false
   }
@@ -113,7 +109,6 @@ async function submitPasskey() {
   const current = challenge.value
   if (!current) return
   busy.value = true
-  error.value = ''
   try {
     const start = await signInApi.passkeyStart(current.id)
     const assertion = await getAssertion({
@@ -136,7 +131,7 @@ async function submitPasskey() {
       await loadFactors()
     }
   } catch (caught) {
-    error.value = caught instanceof StargateError ? caught.message : passkeyFailure(caught)
+    notice.fail(caught instanceof StargateError ? caught.message : passkeyFailure(caught))
   } finally {
     busy.value = false
   }
@@ -148,7 +143,6 @@ function reset() {
   passkeyFactor.value = false
   secrets.value = {}
   codeSentFor.value = null
-  error.value = ''
   challenge.value = null
 }
 
@@ -191,9 +185,9 @@ onMounted(begin)
     <ul v-if="factors.length" class="space-y-5">
       <li v-for="factor in factors" :key="factor.id">
         <div class="flex items-baseline justify-between gap-3">
-          <label :for="`factor-${factor.id}`" class="text-xs text-base-content">
+          <p class="text-xs text-base-content">
             {{ factorTypeLabel(factor.type) }}
-          </label>
+          </p>
           <button
             v-if="codeRequestFactorTypes[factor.type] === true"
             type="button"
@@ -204,17 +198,12 @@ onMounted(begin)
           </button>
         </div>
         <div class="mt-2 flex items-start gap-2">
-          <TextField
+          <FactorSecretField
             :id="`factor-${factor.id}`"
             v-model="secrets[factor.id]"
+            :factor="factor"
             root-class="min-w-0 flex-1"
-            type="password"
-            autocomplete="current-password"
-            :placeholder="
-              codeRequestFactorTypes[factor.type] === true
-                ? t('elevation.codePlaceholder')
-                : t('elevation.credentialPlaceholder')
-            "
+            :disabled="busy"
             @keydown.enter="submit(factor)"
           />
           <button
@@ -228,7 +217,5 @@ onMounted(begin)
         </div>
       </li>
     </ul>
-
-    <p v-if="error" class="note note-error mt-4">{{ error }}</p>
   </div>
 </template>

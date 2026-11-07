@@ -58,7 +58,6 @@ const passwordFactor = computed(() =>
 const currentPassword = ref('')
 const nextPassword = ref('')
 const confirmPassword = ref('')
-const passwordError = ref('')
 
 const nextPasswordProblem = computed(() => {
   if (!nextPassword.value) return ''
@@ -83,7 +82,6 @@ const canChangePassword = computed(
 async function changePassword() {
   if (!canChangePassword.value) return
   busy.value = true
-  passwordError.value = ''
   try {
     await securityApi.changePassword(currentPassword.value, nextPassword.value)
     currentPassword.value = ''
@@ -91,8 +89,7 @@ async function changePassword() {
     confirmPassword.value = ''
     notice.ok(t('factors.noticePasswordChanged'))
   } catch (caught) {
-    passwordError.value =
-      caught instanceof StargateError ? caught.message : t('factors.errorPasswordChange')
+    notice.fail(caught instanceof StargateError ? caught.message : t('factors.errorPasswordChange'))
   } finally {
     busy.value = false
   }
@@ -118,7 +115,6 @@ async function load() {
 
 async function create() {
   busy.value = true
-  error.value = ''
   try {
     const factor = await securityApi.createFactor(chosenType.value, secret.value || undefined)
     created.value = factor
@@ -126,7 +122,7 @@ async function create() {
     notice.ok(t('factors.noticeAdded', { factor: factorTypeLabel(factor.type) }))
     await load()
   } catch (caught) {
-    error.value = caught instanceof StargateError ? caught.message : t('factors.errorAdd')
+    notice.fail(caught instanceof StargateError ? caught.message : t('factors.errorAdd'))
   } finally {
     busy.value = false
   }
@@ -134,7 +130,6 @@ async function create() {
 
 async function toggle(factor: AuthFactor) {
   busy.value = true
-  error.value = ''
   try {
     if (factor.enabled_at) {
       await securityApi.disableFactor(factor.id)
@@ -145,7 +140,7 @@ async function toggle(factor: AuthFactor) {
     }
     await load()
   } catch (caught) {
-    error.value = caught instanceof StargateError ? caught.message : t('factors.errorUpdate')
+    notice.fail(caught instanceof StargateError ? caught.message : t('factors.errorUpdate'))
   } finally {
     busy.value = false
   }
@@ -338,8 +333,6 @@ onMounted(load)
             type="password"
             autocomplete="new-password"
           />
-
-          <p v-if="passwordError" class="note note-error mt-3">{{ passwordError }}</p>
 
           <button
             type="button"

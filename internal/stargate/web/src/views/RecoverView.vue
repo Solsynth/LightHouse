@@ -19,13 +19,11 @@ const captcha = ref<CaptchaConfig | null>(null)
 const account = ref('')
 const captchaToken = ref('')
 const busy = ref(false)
-const error = ref('')
 const sent = ref(false)
 
 async function requestReset() {
   if (!account.value.trim()) return
   busy.value = true
-  error.value = ''
   try {
     await signInApi.requestPasswordReset({
       account: account.value.trim(),
@@ -34,7 +32,7 @@ async function requestReset() {
     sent.value = true
     notice.ok(t('recover.noticeRequested'))
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : t('recover.errorRequestFailed')
+    notice.fail(caught instanceof Error ? caught.message : t('recover.errorRequestFailed'))
   } finally {
     busy.value = false
   }
@@ -88,7 +86,6 @@ onMounted(async () => {
         />
       </div>
 
-      <p v-if="error" class="note note-error mt-4">{{ error }}</p>
       <p v-if="sent" class="note note-success mt-4">
         {{ t('recover.accepted') }}
       </p>

@@ -48,7 +48,6 @@ async function load() {
 
 async function save() {
   saving.value = true
-  error.value = ''
   try {
     const preferences = await securityApi.updatePreferences(mode.value)
     saved.value = preferences.mode
@@ -56,7 +55,7 @@ async function save() {
       t('preferences.noticeMode', { mode: modeNames.value[preferences.mode] ?? preferences.mode }),
     )
   } catch (caught) {
-    error.value = caught instanceof StargateError ? caught.message : t('preferences.errorSave')
+    notice.fail(caught instanceof StargateError ? caught.message : t('preferences.errorSave'))
   } finally {
     saving.value = false
   }

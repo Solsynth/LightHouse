@@ -4,7 +4,6 @@ import { computed, ref } from 'vue'
 import { request } from '@/lib/api/client'
 import type { AuthChallenge, AuthFactor, TokenPair } from '@/lib/api/types'
 import { deviceIdentity } from '@/lib/device'
-import { translate } from '@/lib/i18n'
 
 /** Web platform value the server expects (model.ClientPlatformWeb). */
 const PLATFORM_WEB = 1
@@ -19,7 +18,6 @@ export const useSignInStore = defineStore('signIn', () => {
   const factors = ref<AuthFactor[]>([])
   const usedFactorIds = ref<string[]>([])
   const busy = ref(false)
-  const error = ref('')
 
   const account = ref('')
   const password = ref('')
@@ -83,7 +81,6 @@ export const useSignInStore = defineStore('signIn', () => {
   async function submitFactor(factorId: string, secret: string) {
     if (!challenge.value) return
     busy.value = true
-    error.value = ''
     try {
       challenge.value = await request<AuthChallenge>(`/auth/challenge/${challenge.value.id}`, {
         method: 'PATCH',
@@ -92,10 +89,6 @@ export const useSignInStore = defineStore('signIn', () => {
       usedFactorIds.value = [...usedFactorIds.value, factorId]
       password.value = ''
       if (!complete.value) await loadFactors()
-    } catch (caught) {
-      error.value =
-        caught instanceof Error ? caught.message : translate('errors.credentialRejected')
-      throw caught
     } finally {
       busy.value = false
     }
@@ -133,7 +126,6 @@ export const useSignInStore = defineStore('signIn', () => {
     usedFactorIds.value = []
     account.value = ''
     password.value = ''
-    error.value = ''
   }
 
   return {
@@ -141,7 +133,6 @@ export const useSignInStore = defineStore('signIn', () => {
     factors,
     usedFactorIds,
     busy,
-    error,
     account,
     password,
     complete,

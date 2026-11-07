@@ -187,8 +187,8 @@ chrome beyond the card header.
 │        │                                          │  │
 │        │ panels / forms / ledgers                 │  │
 │        │                                          │  │
-│        │ status bar (OK/ERROR + message)          │  │
 │        └──────────────────────────────────────────┘  │
+│   status toast (OK/ERROR + message) floats above     │
 │        © 2026 Solar Network        [☾]  [Language ▾]  │
 └──────────────────────────────────────────────────────┘
 ```
@@ -247,7 +247,7 @@ in the gutter around the card. Do not reintroduce a translucent card.
 
 **Never nest a bordered card inside the page card.** Content sits directly on
 the page surface; panels use `bg-base-200/30` at radius 12 px to group a
-region, and the status bar and table footers are separated by spacing, not
+region; table footers and status notes are separated by spacing, not
 rules.
 
 ## 5. Components
@@ -665,11 +665,14 @@ reserved for forms and first-class choices.
 A compact chip with only an icon and a tooltip; it swaps to a checkmark after
 copying. The accessible name includes what is being copied.
 
-### Status bar
+### Status toast
 
-The footer of the shell, rendered after any notice: uppercase `OK` in
-`text-success` or `ERROR` in `text-error`, followed by the message in `dim`.
-Never lowercase the marker.
+Action results — both confirmations and failures — are announced by a floating
+stack at the bottom of the viewport (`StatusNotice`), above the elevation sheet.
+Each item carries the shell's uppercase `OK` in `text-success` or `ERROR` in
+`text-error`, the message in `text-base-content`, and a dismiss control. Errors
+stay for 12 s, confirmations for 5 s. Inline notes are for content that failed
+to load and for field validation; an action failure never stays inline.
 
 ### Modals
 
@@ -688,7 +691,7 @@ Motion explains a change, never decorates:
 | --- | --- | --- |
 | step swap | 160 ms, 6 px rise | sign-in identify ↔ challenge |
 | row enter/leave | 160 ms | factor rows |
-| notice | 160 ms | status bar |
+| notice | 200 ms | status toast |
 | card height | 220 ms | shell region resize |
 
 All of it is disabled under `prefers-reduced-motion: reduce`. Do not add
@@ -754,10 +757,10 @@ same verb through the flow, and state outcomes plainly.
 | i18n instance and helpers | `web/src/lib/i18n.ts` |
 | message catalogs | `web/src/locales/{en,zh-CN}/*.ts` |
 | date/number/enum presentation | `web/src/lib/format.ts`, `web/src/lib/enums.ts` |
-| shell and status bar | `web/src/App.vue` |
+| shell and status toast | `web/src/App.vue`, `web/src/components/StatusNotice.vue` |
 | width tiers and titles | `web/src/router/index.ts` |
 | shared surfaces | `web/src/components/` |
-| every form control | `web/src/components/TextField.vue` |
+| every form control | `web/src/components/TextField.vue`, `web/src/components/OneTimeCodeField.vue` |
 
 ## 11. Adding a screen
 

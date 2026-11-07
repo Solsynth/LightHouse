@@ -54,7 +54,6 @@ async function load() {
 async function addPasskey() {
   if (!supported || !factorEnabled.value) return
   adding.value = true
-  error.value = ''
   try {
     const device = deviceIdentity()
     const start = await securityApi.startPasskeyRegistration({
@@ -80,7 +79,7 @@ async function addPasskey() {
     notice.ok(t('passkeys.noticeAdded'))
     await load()
   } catch (caught) {
-    error.value = caught instanceof StargateError ? caught.message : passkeyFailure(caught)
+    notice.fail(caught instanceof StargateError ? caught.message : passkeyFailure(caught))
   } finally {
     adding.value = false
   }
