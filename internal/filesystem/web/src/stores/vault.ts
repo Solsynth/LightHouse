@@ -593,12 +593,17 @@ export const useVaultStore = defineStore('vault', () => {
       orderDesc: false,
       recycled: false,
     }
-    if (parentId) return (await driveApi.children(parentId, options)).items
-    if (mode.value === 'recycle') {
-      return (await driveApi.owned({ ...options, recycled: true })).items
+    let items: CloudFile[]
+    if (parentId) {
+      items = (await driveApi.children(parentId, options)).items
+    } else if (mode.value === 'recycle') {
+      items = (await driveApi.owned({ ...options, recycled: true })).items
+    } else if (mode.value === 'unindexed') {
+      items = (await driveApi.unindexed(options)).items
+    } else {
+      items = (await driveApi.root(options)).items
     }
-    if (mode.value === 'unindexed') return (await driveApi.unindexed(options)).items
-    return (await driveApi.root(options)).items
+    return arrangeFoldersFirst(items)
   }
 
   function previewFor(file: CloudFile): string {
