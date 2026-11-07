@@ -25,14 +25,14 @@ import (
 
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
 
+	shareddiscovery "src.solsynth.dev/sosys/lighthouse/shared/platform/discovery"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpctls"
 	"src.solsynth.dev/sosys/metoer/config"
 	"src.solsynth.dev/sosys/metoer/db"
-	"src.solsynth.dev/sosys/metoer/discovery"
 	"src.solsynth.dev/sosys/metoer/email"
 	"src.solsynth.dev/sosys/metoer/events"
 	"src.solsynth.dev/sosys/metoer/grpcclient"
 	"src.solsynth.dev/sosys/metoer/grpcserver"
-	"src.solsynth.dev/sosys/metoer/grpctls"
 	"src.solsynth.dev/sosys/metoer/httpserver"
 	"src.solsynth.dev/sosys/metoer/httpserver/adminctl"
 	"src.solsynth.dev/sosys/metoer/httpserver/notificationctl"
@@ -242,9 +242,9 @@ func run(log *slog.Logger) error {
 	// Blade service discovery: without registration, Blade's /meta
 	// capability aggregator never sees this instance and the
 	// notifications.* / admin.* capabilities disappear from /meta.
-	var discoveryReg *discovery.Registration
+	var discoveryReg *shareddiscovery.Registration
 	if cfg.Discovery.Enabled {
-		opts := discovery.Options{
+		opts := shareddiscovery.Options{
 			Service:      cfg.Discovery.Service,
 			InstanceID:   cfg.Discovery.InstanceID,
 			HttpEndpoint: cfg.Discovery.HttpEndpoint,
@@ -261,15 +261,15 @@ func run(log *slog.Logger) error {
 		if opts.GrpcEndpoint == "" {
 			opts.GrpcEndpoint = opts.Service + ":" + cfg.GRPC.Port
 		}
-		if err := discovery.Validate(opts); err != nil {
+		if err := shareddiscovery.Validate(opts); err != nil {
 			return fmt.Errorf("discovery: %w", err)
 		}
-		conn, err := discovery.Dial(cfg.Discovery.Target, clientFiles)
+		conn, err := shareddiscovery.Dial(cfg.Discovery.Target, clientFiles)
 		if err != nil {
 			return fmt.Errorf("dial blade discovery %s: %w", cfg.Discovery.Target, err)
 		}
 		defer conn.Close()
-		discoveryReg = discovery.New(gen.NewDyServiceDiscoveryServiceClient(conn), opts, log)
+		discoveryReg = shareddiscovery.New(gen.NewDyServiceDiscoveryServiceClient(conn), opts, log)
 		go discoveryReg.Run(ctx)
 		log.Info("blade service discovery enabled",
 			"service", opts.Service, "instance_id", opts.InstanceID, "target", cfg.Discovery.Target,
@@ -345,11 +345,11 @@ func run(log *slog.Logger) error {
 // newDiscoveryResolver wires Metoer's outbound gRPC clients to Blade's
 // registry. The static [services] targets remain fallbacks so enabling
 // discovery does not disable an integration before the sibling registers.
-func newDiscoveryResolver(cfg *config.Config, files grpctls.Files, log *slog.Logger) (*discovery.Resolver, func()) {
+func newDiscoveryResolver(cfg *config.Config, files grpctls.Files, log *slog.Logger) (*shareddiscovery.Resolver, func()) {
 	if cfg == nil || !cfg.Discovery.Enabled || strings.TrimSpace(cfg.Discovery.Target) == "" {
 		return nil, nil
 	}
-	provider, err := discovery.NewRemoteProvider(cfg.Discovery.Target, files)
+	provider, err := shareddiscovery.NewRemoteProvider(cfg.Discovery.Target, files)
 	if err != nil {
 		log.Warn("blade discovery resolver unavailable; using static [services] targets", "error", err)
 		return nil, nil
@@ -358,11 +358,11 @@ func newDiscoveryResolver(cfg *config.Config, files grpctls.Files, log *slog.Log
 	if strings.TrimSpace(bladeTarget) == "" {
 		bladeTarget = cfg.Discovery.Target
 	}
-	resolver := discovery.NewResolver(provider, map[string]string{
+	resolver := shareddiscovery.NewResolver(provider, map[string]string{
 		"stargate": cfg.Services.Stargate.GRPC,
 		"blade":    bladeTarget,
 	})
-	discovery.RegisterResolver(resolver)
+	shareddiscovery.RegisterResolver(resolver)
 	log.Info("blade discovery resolver enabled", "target", cfg.Discovery.Target)
 	return resolver, func() { _ = provider.Close() }
 }

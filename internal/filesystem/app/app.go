@@ -25,17 +25,17 @@ import (
 	"src.solsynth.dev/sosys/filesystem/config"
 	"src.solsynth.dev/sosys/filesystem/core"
 	"src.solsynth.dev/sosys/filesystem/database"
-	"src.solsynth.dev/sosys/filesystem/discovery"
 	"src.solsynth.dev/sosys/filesystem/dispatch"
 	"src.solsynth.dev/sosys/filesystem/eventbus"
 	"src.solsynth.dev/sosys/filesystem/grpcsvc"
-	"src.solsynth.dev/sosys/filesystem/grpctls"
 	"src.solsynth.dev/sosys/filesystem/logging"
 	"src.solsynth.dev/sosys/filesystem/module"
 	"src.solsynth.dev/sosys/filesystem/server"
 	"src.solsynth.dev/sosys/filesystem/service"
 	"src.solsynth.dev/sosys/filesystem/storage"
 	"src.solsynth.dev/sosys/filesystem/worker"
+	shareddiscovery "src.solsynth.dev/sosys/lighthouse/shared/platform/discovery"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpctls"
 )
 
 // Runtime is a constructed process: the core service graph plus the listeners
@@ -52,8 +52,8 @@ type Runtime struct {
 	httpSrv *http.Server
 	grpcSrv *grpc.Server
 
-	discoveryReg      *discovery.Registration
-	discoveryResolver *discovery.Resolver
+	discoveryReg      *shareddiscovery.Registration
+	discoveryProvider *shareddiscovery.RemoteProvider
 	discoveryConn     *grpc.ClientConn
 
 	resolution *module.Resolution
@@ -221,52 +221,53 @@ func (r *Runtime) setupDiscovery() error {
 		// Modules read Auth.Target when they dial Stargate. Point them at the
 		// registry; the resolver falls back to the old address until Stargate
 		// registers and passes Blade's health probe.
-		cfg.Auth.Target = discovery.Target("stargate")
+		cfg.Auth.Target = shareddiscovery.Target("stargate")
 	}
 
-	resolver, err := discovery.NewResolver(cfg.Discovery.Target, grpcClientFiles(cfg), fallback)
+	provider, err := shareddiscovery.NewRemoteProvider(cfg.Discovery.Target, grpcClientFiles(cfg))
 	if err != nil {
 		return err
 	}
-	discovery.RegisterResolver(resolver)
-	r.discoveryResolver = resolver
+	resolver := shareddiscovery.NewResolver(provider, fallback)
+	shareddiscovery.RegisterResolver(resolver)
+	r.discoveryProvider = provider
 
 	if !servesHTTP(r.Mode) {
 		return nil
 	}
-	options := discovery.Options{
+	options := shareddiscovery.Options{
 		Service:      cfg.Discovery.Service,
 		InstanceID:   cfg.Discovery.InstanceID,
-		HTTPEndpoint: cfg.Discovery.HTTPEndpoint,
-		GRPCEndpoint: cfg.Discovery.GRPCEndpoint,
+		HttpEndpoint: cfg.Discovery.HTTPEndpoint,
+		GrpcEndpoint: cfg.Discovery.GRPCEndpoint,
 		LeaseSeconds: cfg.Discovery.LeaseSeconds,
 		Weight:       cfg.Discovery.Weight,
 	}
 	if options.InstanceID == "" {
 		options.InstanceID = uuid.NewString()
 	}
-	if options.HTTPEndpoint == "" {
-		options.HTTPEndpoint = "http://" + options.Service + ":" + cfg.HTTP.Port
+	if options.HttpEndpoint == "" {
+		options.HttpEndpoint = "http://" + options.Service + ":" + cfg.HTTP.Port
 	}
-	if options.GRPCEndpoint == "" {
-		options.GRPCEndpoint = options.Service + ":" + cfg.GRPC.Port
+	if options.GrpcEndpoint == "" {
+		options.GrpcEndpoint = options.Service + ":" + cfg.GRPC.Port
 	}
-	if err := discovery.Validate(options); err != nil {
-		_ = resolver.Close()
-		r.discoveryResolver = nil
+	if err := shareddiscovery.Validate(options); err != nil {
+		_ = provider.Close()
+		r.discoveryProvider = nil
 		return err
 	}
-	conn, err := discovery.Dial(cfg.Discovery.Target, grpcClientFiles(cfg))
+	conn, err := shareddiscovery.Dial(cfg.Discovery.Target, grpcClientFiles(cfg))
 	if err != nil {
-		_ = resolver.Close()
-		r.discoveryResolver = nil
+		_ = provider.Close()
+		r.discoveryProvider = nil
 		return fmt.Errorf("service discovery: dial %s: %w", cfg.Discovery.Target, err)
 	}
 	r.discoveryConn = conn
-	r.discoveryReg = discovery.NewRegistration(
+	r.discoveryReg = shareddiscovery.NewWithLogger(
 		gen.NewDyServiceDiscoveryServiceClient(conn),
 		options,
-		logging.Log,
+		zerologLogger{log: logging.Log},
 	)
 	logging.Log.Info().
 		Str("target", cfg.Discovery.Target).
@@ -478,8 +479,8 @@ func (r *Runtime) Stop(ctx context.Context) error {
 	if r.discoveryReg != nil {
 		r.discoveryReg.Deregister(ctx)
 	}
-	if r.discoveryResolver != nil {
-		_ = r.discoveryResolver.Close()
+	if r.discoveryProvider != nil {
+		_ = r.discoveryProvider.Close()
 	}
 	if r.discoveryConn != nil {
 		_ = r.discoveryConn.Close()

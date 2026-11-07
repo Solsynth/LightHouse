@@ -12,7 +12,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
-	"src.solsynth.dev/sosys/stargate/grpctls"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpctls"
 )
 
 // Config is the root configuration for Stargate.

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	shareddiscovery "src.solsynth.dev/sosys/lighthouse/shared/platform/discovery"
 	"srv.solsynth.dev/sosys/blade/config"
 	discovery "srv.solsynth.dev/sosys/blade/discovery"
 	"srv.solsynth.dev/sosys/blade/logging"
@@ -152,7 +153,7 @@ func (a *Aggregator) checkRegisteredServices(ctx context.Context, services map[s
 			continue
 		}
 		for _, instance := range instances {
-			httpEndpoint := discovery.Endpoint(instance, "http")
+			httpEndpoint := shareddiscovery.Endpoint(instance, "http")
 			if httpEndpoint == "" {
 				continue
 			}

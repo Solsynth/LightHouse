@@ -22,6 +22,8 @@ import (
 
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
+	shareddiscovery "src.solsynth.dev/sosys/lighthouse/shared/platform/discovery"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpctls"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/stargate/actionlog"
 	"src.solsynth.dev/sosys/stargate/auth"
@@ -29,11 +31,9 @@ import (
 	"src.solsynth.dev/sosys/stargate/config"
 	"src.solsynth.dev/sosys/stargate/core"
 	"src.solsynth.dev/sosys/stargate/db"
-	"src.solsynth.dev/sosys/stargate/discovery"
 	"src.solsynth.dev/sosys/stargate/geo"
 	"src.solsynth.dev/sosys/stargate/grpcclient"
 	"src.solsynth.dev/sosys/stargate/grpcserver"
-	"src.solsynth.dev/sosys/stargate/grpctls"
 	"src.solsynth.dev/sosys/stargate/httpserver"
 	"src.solsynth.dev/sosys/stargate/middleware"
 	"src.solsynth.dev/sosys/stargate/migrate"
@@ -315,10 +315,10 @@ func Run(parent context.Context, log *slog.Logger, factories []module.Factory[co
 
 	// Blade service discovery is an integration; without the module there is
 	// no registration and no dependency on Blade.
-	var discoveryReg *discovery.Registration
+	var discoveryReg *shareddiscovery.Registration
 	files := cfg.ClientFiles()
 	if resolution.Enabled["app.solian.blade"] && cfg.Discovery.Enabled && strings.TrimSpace(cfg.Discovery.Target) != "" {
-		opts := discovery.Options{
+		opts := shareddiscovery.Options{
 			Service:      cfg.Discovery.Service,
 			InstanceID:   cfg.Discovery.InstanceID,
 			HttpEndpoint: cfg.Discovery.HttpEndpoint,
@@ -335,15 +335,15 @@ func Run(parent context.Context, log *slog.Logger, factories []module.Factory[co
 		if opts.GrpcEndpoint == "" {
 			opts.GrpcEndpoint = opts.Service + ":" + cfg.GRPC.Port
 		}
-		if err := discovery.Validate(opts); err != nil {
+		if err := shareddiscovery.Validate(opts); err != nil {
 			return fmt.Errorf("discovery: %w", err)
 		}
-		conn, err := discovery.Dial(cfg.Discovery.Target, files)
+		conn, err := shareddiscovery.Dial(cfg.Discovery.Target, files)
 		if err != nil {
 			log.Warn("blade discovery unavailable; registration disabled", "target", cfg.Discovery.Target, "error", err)
 		} else {
 			defer conn.Close()
-			discoveryReg = discovery.New(gen.NewDyServiceDiscoveryServiceClient(conn), opts, log)
+			discoveryReg = shareddiscovery.New(gen.NewDyServiceDiscoveryServiceClient(conn), opts, log)
 			go discoveryReg.Run(ctx)
 			log.Info("blade service discovery enabled",
 				"service", opts.Service, "instance_id", opts.InstanceID, "target", cfg.Discovery.Target)
@@ -407,11 +407,11 @@ func enabledIDs(resolution *module.Resolution[core.Services]) []string {
 // registry. The static [services] targets stay as fallbacks for services that
 // have not registered yet, so turning discovery on never turns an integration
 // off by accident.
-func newDiscoveryResolver(cfg *config.Config, log *slog.Logger) (*discovery.Resolver, func()) {
+func newDiscoveryResolver(cfg *config.Config, log *slog.Logger) (*shareddiscovery.Resolver, func()) {
 	if cfg == nil || !cfg.Discovery.Enabled || strings.TrimSpace(cfg.Discovery.Target) == "" {
 		return nil, nil
 	}
-	provider, err := discovery.NewRemoteProvider(cfg.Discovery.Target, cfg.ClientFiles())
+	provider, err := shareddiscovery.NewRemoteProvider(cfg.Discovery.Target, cfg.ClientFiles())
 	if err != nil {
 		log.Warn("blade discovery resolver unavailable; using static [services] targets", "error", err)
 		return nil, nil
@@ -420,15 +420,15 @@ func newDiscoveryResolver(cfg *config.Config, log *slog.Logger) (*discovery.Reso
 	if strings.TrimSpace(bladeTarget) == "" {
 		bladeTarget = cfg.Discovery.Target
 	}
-	resolver := discovery.NewResolver(provider, map[string]string{
+	resolver := shareddiscovery.NewResolverWithAliases(provider, map[string]string{
 		"wallet":  cfg.Services.Wallet.GRPC,
 		"develop": cfg.Services.Develop.GRPC,
 		"drive":   cfg.Services.Drive.GRPC,
 		"pass":    cfg.Services.Pass.GRPC,
 		"blade":   bladeTarget,
 		"ring":    cfg.Services.Ring.GRPC,
-	})
-	discovery.RegisterResolver(resolver)
+	}, map[string]string{"develop": "express", "express": "develop"})
+	shareddiscovery.RegisterResolver(resolver)
 	log.Info("blade discovery resolver enabled", "target", cfg.Discovery.Target)
 	return resolver, func() { _ = provider.Close() }
 }

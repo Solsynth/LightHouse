@@ -8,8 +8,8 @@ import (
 	"google.golang.org/grpc"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpctls"
 	"src.solsynth.dev/sosys/stargate/grpcclient"
-	"src.solsynth.dev/sosys/stargate/grpctls"
 )
 
 // Sources holds the optional downstream DyRewindService clients. Passport

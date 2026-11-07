@@ -14,9 +14,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+	shareddiscovery "src.solsynth.dev/sosys/lighthouse/shared/platform/discovery"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpctls"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
-	discovery "srv.solsynth.dev/sosys/blade/discovery"
-	"srv.solsynth.dev/sosys/blade/grpctls"
 )
 
 const (
@@ -123,7 +123,7 @@ func (a *Aggregator) Refresh(ctx context.Context) {
 		}
 		available := false
 		for _, instance := range instances {
-			grpcEndpoint := discovery.Endpoint(instance, "grpc")
+			grpcEndpoint := shareddiscovery.Endpoint(instance, "grpc")
 			if !instance.GetHealthy() || grpcEndpoint == "" {
 				continue
 			}

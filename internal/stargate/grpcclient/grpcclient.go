@@ -19,11 +19,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+	shareddiscovery "src.solsynth.dev/sosys/lighthouse/shared/platform/discovery"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
-	"src.solsynth.dev/sosys/stargate/discovery"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpctls"
 	"src.solsynth.dev/sosys/stargate/config"
-	"src.solsynth.dev/sosys/stargate/grpctls"
 	"src.solsynth.dev/sosys/stargate/model"
 )
 
@@ -143,7 +143,7 @@ func NewClients(cfg *config.Config) (*Clients, error) {
 // discovery is available and falls back to the configured [services] target
 // when the service has no registration. With a resolver, an empty target still
 // creates a client: the service is discovered at connect time.
-func NewClientsWithResolver(cfg *config.Config, resolver *discovery.Resolver) (*Clients, error) {
+func NewClientsWithResolver(cfg *config.Config, resolver *shareddiscovery.Resolver) (*Clients, error) {
 	c := &Clients{}
 	if cfg == nil {
 		return c, nil
@@ -190,15 +190,15 @@ func NewClientsWithResolver(cfg *config.Config, resolver *discovery.Resolver) (*
 	return c, nil
 }
 
-func dialService(service, target string, plaintext bool, resolver *discovery.Resolver, files grpctls.Files) (*grpc.ClientConn, error) {
+func dialService(service, target string, plaintext bool, resolver *shareddiscovery.Resolver, files grpctls.Files) (*grpc.ClientConn, error) {
 	address, useTLS := splitTarget(target, !plaintext)
 	if resolver != nil {
-		address = discovery.Target(service)
+		address = shareddiscovery.Target(service)
 	}
 	if address == "" {
 		return nil, nil
 	}
-	if discovery.IsTarget(address) && resolver == nil {
+	if shareddiscovery.IsTarget(address) && resolver == nil {
 		return nil, fmt.Errorf("dial %s: service discovery is not configured", service)
 	}
 	if useTLS {

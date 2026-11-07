@@ -22,10 +22,10 @@ import (
 	"src.solsynth.dev/sosys/filesystem/config"
 	"src.solsynth.dev/sosys/filesystem/database"
 	"src.solsynth.dev/sosys/filesystem/eventbus"
-	"src.solsynth.dev/sosys/filesystem/grpctls"
 	"src.solsynth.dev/sosys/filesystem/logging"
 	"src.solsynth.dev/sosys/filesystem/media"
 	"src.solsynth.dev/sosys/filesystem/storage"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpctls"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"github.com/gabriel-vasile/mimetype"

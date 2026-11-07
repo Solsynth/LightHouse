@@ -17,9 +17,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/structpb"
+	shareddiscovery "src.solsynth.dev/sosys/lighthouse/shared/platform/discovery"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpctls"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
-	"src.solsynth.dev/sosys/metoer/discovery"
-	"src.solsynth.dev/sosys/metoer/grpctls"
 
 	"src.solsynth.dev/sosys/metoer/config"
 )
@@ -76,7 +76,7 @@ func NewClients(cfg *config.Config) (*Clients, error) {
 // NewClientsWithResolver follows Blade's registry while it is available and
 // falls back to the configured [services] target for a service with no
 // registration. An empty target still creates a discovery-backed client.
-func NewClientsWithResolver(cfg *config.Config, resolver *discovery.Resolver) (*Clients, error) {
+func NewClientsWithResolver(cfg *config.Config, resolver *shareddiscovery.Resolver) (*Clients, error) {
 	c := &Clients{}
 	files := grpctls.Files{
 		CAFile:   cfg.GRPC.CAFile,
@@ -86,12 +86,12 @@ func NewClientsWithResolver(cfg *config.Config, resolver *discovery.Resolver) (*
 	dial := func(service, target string, plaintext bool) *grpc.ClientConn {
 		address, useTLS := splitTarget(target, !plaintext)
 		if resolver != nil {
-			address = discovery.Target(service)
+			address = shareddiscovery.Target(service)
 		}
 		if address == "" {
 			return nil
 		}
-		if discovery.IsTarget(address) && resolver == nil {
+		if shareddiscovery.IsTarget(address) && resolver == nil {
 			return nil
 		}
 		var conn *grpc.ClientConn

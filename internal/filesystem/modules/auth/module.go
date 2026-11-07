@@ -11,10 +11,10 @@ import (
 
 	"src.solsynth.dev/sosys/filesystem/config"
 	"src.solsynth.dev/sosys/filesystem/core"
-	"src.solsynth.dev/sosys/filesystem/grpctls"
 	"src.solsynth.dev/sosys/filesystem/logging"
 	"src.solsynth.dev/sosys/filesystem/module"
 	"src.solsynth.dev/sosys/filesystem/service"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpctls"
 )
 
 // ModuleID is the auth module's registry ID.

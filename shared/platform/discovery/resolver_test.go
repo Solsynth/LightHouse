@@ -112,3 +112,43 @@ func TestEndpointAddress(t *testing.T) {
 		}
 	}
 }
+
+type mapProvider map[string]Resolution
+
+func (m mapProvider) Resolve(_ context.Context, service string) (Resolution, error) {
+	if resolution, ok := m[service]; ok {
+		return resolution, nil
+	}
+	return Resolution{}, nil
+}
+
+func TestResolverUsesAliasForUnregisteredSibling(t *testing.T) {
+	provider := mapProvider{
+		"express": {Registered: true, Endpoints: []string{"express:5001"}},
+	}
+	resolver := NewResolverWithAliases(provider,
+		map[string]string{"develop": "develop:5001", "express": "express:5001"},
+		map[string]string{"develop": "express", "express": "develop"})
+
+	got, err := resolver.Resolve(context.Background(), "develop")
+	if err != nil {
+		t.Fatalf("Resolve(develop): %v", err)
+	}
+	if len(got.Endpoints) != 1 || got.Endpoints[0] != "express:5001" || !got.Registered {
+		t.Fatalf("Resolve(develop) = %#v, want the express instance", got)
+	}
+}
+
+func TestResolverFallsBackToAliasStaticAddress(t *testing.T) {
+	resolver := NewResolverWithAliases(mapProvider{},
+		map[string]string{"express": "http://express:5001"},
+		map[string]string{"develop": "express"})
+
+	got, err := resolver.Resolve(context.Background(), "develop")
+	if err != nil {
+		t.Fatalf("Resolve(develop): %v", err)
+	}
+	if len(got.Endpoints) != 1 || got.Endpoints[0] != "express:5001" {
+		t.Fatalf("Resolve(develop) = %#v, want the express fallback", got)
+	}
+}

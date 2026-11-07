@@ -49,6 +49,7 @@ type AddressProvider interface {
 type Resolver struct {
 	provider AddressProvider
 	fallback map[string]string
+	aliases  map[string]string
 	ttl      time.Duration
 
 	mu    sync.Mutex
@@ -64,6 +65,16 @@ type cachedResolution struct {
 // address from [services]; it is used only while the service has no
 // registration at all (or while discovery is unreachable).
 func NewResolver(provider AddressProvider, fallback map[string]string) *Resolver {
+	return NewResolverWithAliases(provider, fallback, nil)
+}
+
+// NewResolverWithAliases also declares sibling names for a service. When the
+// requested name has no registration, the alias is resolved first (the alias
+// owns the deployment state), then the requested name's static fallback, then
+// the alias's static fallback. The developer portal uses this: develop and
+// express are the same workload, so an instance registered under one name
+// serves both.
+func NewResolverWithAliases(provider AddressProvider, fallback, aliases map[string]string) *Resolver {
 	normalized := make(map[string]string, len(fallback))
 	for name, endpoint := range fallback {
 		name = normalizeService(name)
@@ -71,9 +82,20 @@ func NewResolver(provider AddressProvider, fallback map[string]string) *Resolver
 			normalized[name] = endpoint
 		}
 	}
+	normalizedAliases := make(map[string]string, len(aliases))
+	for name, alias := range aliases {
+		if name = normalizeService(name); name == "" {
+			continue
+		}
+		if alias = normalizeService(alias); alias == "" {
+			continue
+		}
+		normalizedAliases[name] = alias
+	}
 	return &Resolver{
 		provider: provider,
 		fallback: normalized,
+		aliases:  normalizedAliases,
 		ttl:      resolveCacheTTL,
 		cache:    make(map[string]cachedResolution),
 	}
@@ -161,10 +183,21 @@ func (r *Resolver) Resolve(ctx context.Context, service string) (Resolution, err
 	resolution, err := r.provider.Resolve(callCtx, service)
 
 	// A registered service owns its routing state. Only an unregistered
-	// service (or an unreachable registry) may use the static fallback.
+	// service (or an unreachable registry) may use an alias or the static
+	// fallback.
 	if len(resolution.Endpoints) == 0 && (!resolution.Registered || err != nil) {
-		if fallback := r.fallback[service]; fallback != "" {
-			resolution.Endpoints = []string{fallback}
+		if alias := r.aliases[service]; alias != "" {
+			if altRes, altErr := r.provider.Resolve(callCtx, alias); altErr == nil && altRes.Registered && len(altRes.Endpoints) > 0 {
+				resolution, err = altRes, nil
+			}
+		}
+	}
+	if len(resolution.Endpoints) == 0 && (!resolution.Registered || err != nil) {
+		switch {
+		case r.fallback[service] != "":
+			resolution.Endpoints = []string{r.fallback[service]}
+		case r.aliases[service] != "" && r.fallback[r.aliases[service]] != "":
+			resolution.Endpoints = []string{r.fallback[r.aliases[service]]}
 		}
 	}
 	resolution.Endpoints = dedupeEndpoints(resolution.Endpoints)

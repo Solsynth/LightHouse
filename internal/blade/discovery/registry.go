@@ -487,3 +487,7 @@ func (r *Registry) RenewHealthLeadership(ctx context.Context, holder string, ttl
 	result, err := r.client.Eval(ctx, script, []string{r.leaderKey()}, holder, ttl.Milliseconds()).Int()
 	return result == 1, err
 }
+
+func normalizeService(service string) string {
+	return strings.ToLower(strings.TrimSpace(service))
+}

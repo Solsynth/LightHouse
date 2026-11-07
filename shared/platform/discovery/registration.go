@@ -28,16 +28,37 @@ type Options struct {
 	Weight       int
 }
 
+// Logger is the logging surface the registration loop needs. *slog.Logger
+// satisfies it through New; services on another stack (DysonFS uses zerolog)
+// adapt theirs and call NewWithLogger, so only one registration loop exists.
+type Logger interface {
+	Info(msg string, kv ...any)
+	Warn(msg string, kv ...any)
+}
+
+type slogLogger struct{ log *slog.Logger }
+
+func (l slogLogger) Info(msg string, kv ...any) { l.log.Info(msg, kv...) }
+func (l slogLogger) Warn(msg string, kv ...any) { l.log.Warn(msg, kv...) }
+
 // Registration owns the register -> renew -> deregister lifecycle.
 type Registration struct {
 	client     gen.DyServiceDiscoveryServiceClient
 	opts       Options
-	log        *slog.Logger
+	log        Logger
 	registered bool
 }
 
 // New wires a registration over an established client connection.
 func New(client gen.DyServiceDiscoveryServiceClient, opts Options, log *slog.Logger) *Registration {
+	if log == nil {
+		log = slog.Default()
+	}
+	return NewWithLogger(client, opts, slogLogger{log: log})
+}
+
+// NewWithLogger is New for services whose logger is not log/slog.
+func NewWithLogger(client gen.DyServiceDiscoveryServiceClient, opts Options, log Logger) *Registration {
 	return &Registration{client: client, opts: opts, log: log}
 }
 

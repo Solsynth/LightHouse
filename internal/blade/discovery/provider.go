@@ -2,6 +2,8 @@ package discovery
 
 import (
 	"context"
+
+	shareddiscovery "src.solsynth.dev/sosys/lighthouse/shared/platform/discovery"
 )
 
 // RegistryProvider adapts the in-process registry to the local discovery
@@ -16,21 +18,21 @@ func NewRegistryProvider(registry *Registry) *RegistryProvider {
 	return &RegistryProvider{registry: registry}
 }
 
-// Resolve implements AddressProvider.
-func (p *RegistryProvider) Resolve(ctx context.Context, service string) (Resolution, error) {
+// Resolve implements shareddiscovery.AddressProvider.
+func (p *RegistryProvider) Resolve(ctx context.Context, service string) (shareddiscovery.Resolution, error) {
 	if p == nil || p.registry == nil {
-		return Resolution{}, nil
+		return shareddiscovery.Resolution{}, nil
 	}
 	instances, err := p.registry.List(ctx, service)
 	if err != nil {
-		return Resolution{}, err
+		return shareddiscovery.Resolution{}, err
 	}
-	resolution := Resolution{Registered: len(instances) > 0}
+	resolution := shareddiscovery.Resolution{Registered: len(instances) > 0}
 	for _, instance := range instances {
 		if !instance.GetHealthy() {
 			continue
 		}
-		if endpoint := Endpoint(instance, "grpc"); endpoint != "" {
+		if endpoint := shareddiscovery.Endpoint(instance, "grpc"); endpoint != "" {
 			resolution.Endpoints = append(resolution.Endpoints, endpoint)
 		}
 	}
