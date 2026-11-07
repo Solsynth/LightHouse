@@ -19,7 +19,7 @@ import {
 
 import CopyButton from '@/components/CopyButton.vue'
 import FileGlyph from '@/components/FileGlyph.vue'
-import { driveApi, fetchTextPreview, openUrl, previewUrl } from '@/lib/api/drive'
+import { driveApi, fetchTextPreview, openUrl, previewUrl, publicFileUrl } from '@/lib/api/drive'
 import type { CloudFile } from '@/lib/api/types'
 import { previewMode } from '@/lib/fileKinds'
 import {
@@ -63,7 +63,7 @@ const poolName = computed(() => {
   return vault.pools.find((pool) => pool.id === file.value?.pool_id)?.name ?? t('meta.poolDefault')
 })
 const publicLink = computed(() =>
-  file.value ? `${window.location.origin}${openUrl(file.value.id)}` : '',
+  file.value ? `${window.location.origin}${publicFileUrl(file.value.id)}` : '',
 )
 const parentId = computed(() => file.value?.parent_id ?? null)
 const sourceLines = computed(() => source.value.split('\n'))
@@ -235,7 +235,7 @@ async function toggleVisibility() {
       <!-- The bytes are the tab. Everything else in this route is supporting
            metadata, so the surface keeps the largest share of the space. -->
       <section
-        class="flex min-w-0 flex-1 flex-col overflow-hidden rounded-card bg-base-300/35"
+        class="flex min-w-0 flex-1 flex-col overflow-hidden rounded-card bg-base-200/75"
         :aria-label="t('preview.content')"
       >
         <div v-if="loading" class="grid flex-1 place-items-center">
@@ -322,7 +322,7 @@ async function toggleVisibility() {
             </p>
             <div v-else class="flex text-2xs leading-[1.7]">
               <div
-                class="shrink-0 select-none bg-base-100/30 px-3 py-3 text-right tabular-nums text-faint"
+                class="shrink-0 select-none bg-base-300/30 px-3 py-3 text-right tabular-nums text-faint"
               >
                 <div v-for="(_, index) in sourceLines" :key="index">{{ index + 1 }}</div>
               </div>
@@ -351,16 +351,16 @@ async function toggleVisibility() {
       </section>
 
       <aside
-        class="hidden w-[320px] shrink-0 flex-col gap-2 overflow-y-auto scroll-region rounded-card bg-base-300/35 p-2 lg:flex"
+        class="hidden w-[320px] shrink-0 flex-col gap-2 overflow-y-auto scroll-region rounded-card bg-base-200/75 p-2 lg:flex"
         :aria-label="t('preview.details')"
       >
         <template v-if="file">
-          <div class="rounded-card bg-base-100/30 px-3.5 py-3">
+          <div class="rounded-card bg-base-300/30 px-3.5 py-3">
             <h1 class="title break-words text-sm text-base-content">{{ displayName(file) }}</h1>
             <p class="mt-1.5 text-2xs text-faint">{{ kindLabel(file) }} · {{ poolName }}</p>
           </div>
 
-          <div class="rounded-card bg-base-100/30 px-3.5 py-3">
+          <div class="rounded-card bg-base-300/30 px-3.5 py-3">
             <div class="flex items-start justify-between gap-3">
               <div>
                 <div class="text-2xs font-semibold text-base-content">
@@ -400,35 +400,35 @@ async function toggleVisibility() {
             </div>
           </div>
 
-          <dl class="flex flex-col gap-0.5 rounded-card bg-base-100/30 p-1.5">
+          <dl class="flex flex-col gap-0.5 rounded-card bg-base-300/30 p-1.5">
             <div
-              class="flex items-start justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-300/50"
+              class="flex items-start justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-200/60"
             >
               <dt class="shrink-0 text-2xs text-faint">{{ t('meta.type') }}</dt>
               <dd class="break-all text-right text-2xs text-dim">{{ mimeOf(file) }}</dd>
             </div>
             <div
-              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-300/50"
+              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-200/60"
             >
               <dt class="text-2xs text-faint">{{ t('meta.size') }}</dt>
               <dd class="text-2xs tabular-nums text-dim">{{ formatBytes(file.object?.size) }}</dd>
             </div>
             <div
               v-if="dimensions"
-              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-300/50"
+              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-200/60"
             >
               <dt class="text-2xs text-faint">{{ t('meta.dimensions') }}</dt>
               <dd class="text-2xs tabular-nums text-dim">{{ dimensions }}</dd>
             </div>
             <div
               v-if="duration"
-              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-300/50"
+              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-200/60"
             >
               <dt class="text-2xs text-faint">{{ t('meta.duration') }}</dt>
               <dd class="text-2xs tabular-nums text-dim">{{ duration }}</dd>
             </div>
             <div
-              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-300/50"
+              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-200/60"
             >
               <dt class="text-2xs text-faint">{{ t('meta.modified') }}</dt>
               <dd class="text-2xs tabular-nums text-dim">
@@ -436,7 +436,7 @@ async function toggleVisibility() {
               </dd>
             </div>
             <div
-              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-300/50"
+              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-200/60"
             >
               <dt class="text-2xs text-faint">{{ t('meta.created') }}</dt>
               <dd class="text-2xs tabular-nums text-dim">
@@ -444,7 +444,7 @@ async function toggleVisibility() {
               </dd>
             </div>
             <div
-              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-300/50"
+              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-200/60"
             >
               <dt class="text-2xs text-faint">{{ t('meta.indexed') }}</dt>
               <dd class="flex items-center gap-1.5 text-2xs text-dim">
@@ -453,7 +453,7 @@ async function toggleVisibility() {
               </dd>
             </div>
             <div
-              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-300/50"
+              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-200/60"
             >
               <dt class="text-2xs text-faint">{{ t('meta.hash') }}</dt>
               <dd class="text-2xs tabular-nums text-dim" :title="file.object?.hash">

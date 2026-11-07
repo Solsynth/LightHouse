@@ -107,6 +107,11 @@ export function openUrl(fileId: string, download = false): string {
   return buildUrl(`/files/${fileId}/open`, download ? { download: 1 } : undefined)
 }
 
+/** Clean public address; the server only serves files marked public there. */
+export function publicFileUrl(fileId: string): string {
+  return `/files/${encodeURIComponent(fileId)}`
+}
+
 export function thumbnailUrl(fileId: string): string {
   return buildUrl(`/files/${fileId}`, { thumbnail: 1 })
 }

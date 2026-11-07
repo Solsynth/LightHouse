@@ -70,7 +70,7 @@ function sortState(key: 'name' | 'size' | 'date') {
 <template>
   <div class="min-h-0 flex-1 overflow-auto scroll-region px-2 pb-2">
     <table class="ledger w-full table-fixed">
-      <thead class="sticky top-0 z-10 bg-base-200">
+      <thead class="sticky top-0 z-10 bg-base-100">
         <tr class="text-[11px] font-medium text-faint">
           <th scope="col" class="w-10 pl-3 pr-1 text-left">
             <span class="sr-only">{{ t('drive.selectColumn') }}</span>

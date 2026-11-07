@@ -66,7 +66,7 @@ function selectPool(poolId: string | null) {
   />
 
   <aside
-    class="fixed inset-y-2 left-2 z-50 flex w-[248px] shrink-0 flex-col overflow-hidden rounded-card bg-base-200 transition-transform duration-200 ease-out lg:static lg:inset-auto lg:z-auto lg:h-full lg:translate-x-0"
+    class="fixed inset-y-2 left-2 z-50 flex w-[248px] shrink-0 flex-col overflow-hidden rounded-card bg-base-200 shadow-[0_24px_60px_-28px_rgb(0_0_0/0.5)] transition-transform duration-200 ease-out lg:static lg:inset-auto lg:z-auto lg:h-full lg:translate-x-0 lg:rounded-none lg:bg-transparent lg:shadow-none"
     :class="ui.sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
     :aria-label="t('app.console')"
   >

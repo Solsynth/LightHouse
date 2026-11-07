@@ -295,7 +295,7 @@ function isFocused(index: number, id: string): boolean {
                   ? 'bg-primary/12 font-semibold text-base-content'
                   : vault.selection.includes(child.id)
                     ? 'bg-primary/12 text-base-content'
-                    : 'bg-base-300/50 text-dim hover:bg-base-300/80'
+                    : 'bg-base-200/75 text-dim hover:bg-base-300/70'
               "
               :title="displayName(child)"
               @click="descend(index, child)"

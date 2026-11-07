@@ -78,14 +78,14 @@ function subline(file: CloudFile): string {
         :class="
           vault.selection.includes(file.id)
             ? 'bg-primary/12'
-            : 'bg-base-300/45 hover:bg-base-300/70'
+            : 'bg-base-200/75 hover:bg-base-300/70'
         "
         :style="{ animationDelay: `${Math.min(index, 12) * 18}ms` }"
         :aria-selected="vault.selection.includes(file.id)"
         @click="open(file)"
         @keydown="onKeydown($event, file)"
       >
-        <div class="relative aspect-[4/3] overflow-hidden rounded-chip bg-base-100/35">
+        <div class="relative aspect-[4/3] overflow-hidden rounded-chip bg-base-300/40">
           <img
             v-if="showPreview(file)"
             :src="previewUrl(file.id)"

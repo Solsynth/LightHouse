@@ -331,6 +331,22 @@ func bearerToken(header string) string {
 // @Router /api/files/{id} [get]
 // @Router /api/files/{id}/open [get]
 func openFile(c *gin.Context, cfg *config.Config, files *service.FileService) {
+	serveOpenFile(c, cfg, files, false)
+}
+
+// publicFile serves the clean /files/{id} address for anonymous sharing. It
+// accepts only files that policy marks public, even when the caller is signed
+// in, so a public link can never expose a private object.
+func publicFile(c *gin.Context, cfg *config.Config, files *service.FileService) {
+	serveOpenFile(c, cfg, files, true)
+}
+
+func serveOpenFile(
+	c *gin.Context,
+	cfg *config.Config,
+	files *service.FileService,
+	publicOnly bool,
+) {
 	file, err := getRequestedFile(c, files, c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
@@ -354,17 +370,24 @@ func openFile(c *gin.Context, cfg *config.Config, files *service.FileService) {
 			file = compressed
 		}
 	}
-	result, _, ok := auth.GetAuth(c)
-	if !ok {
-		// Anonymous callers may only open files that policy marks public;
-		// anything else needs a bearer token.
+	if publicOnly {
 		if !files.CanAccessFile(nil, nil, file, "read") {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 			return
 		}
-	} else if !files.CanAccessFile(result.Account, result.Session, file, "read") {
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
-		return
+	} else {
+		result, _, ok := auth.GetAuth(c)
+		if !ok {
+			// Anonymous callers may only open files that policy marks public;
+			// anything else needs a bearer token.
+			if !files.CanAccessFile(nil, nil, file, "read") {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+				return
+			}
+		} else if !files.CanAccessFile(result.Account, result.Session, file, "read") {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
 	}
 	download := c.Query("download") == "1" || strings.EqualFold(c.Query("download"), "true")
 	if hasTransformParams(c) {

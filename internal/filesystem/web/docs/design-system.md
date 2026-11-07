@@ -13,10 +13,10 @@ search line, a browsable object list, and a details column.
 
 ## 1. Principles
 
-1. **Chrome is islands; content is one fill.** The header, rail, and footer are
-   sheets on the page ground, and the content area is a flat `base-200` surface
-   with no card corner. Separation comes from the gap between regions and the
-   tone of a block — never from a border, divider, or rule.
+1. **One shell, one panel.** The app bar, rail, and footer share one `base-200`
+   shell; only the working area is a separate `base-100` panel with a card
+   corner. Separation comes from that one edge and the tone of a block — never
+   from a border, divider, or rule.
 2. **Blocks, not lines.** Lists are bars with their own corner and a 2 px
    gutter. Groups are wells. A selected row is a tinted block. No horizontal
    or vertical hairlines are used to separate content.
@@ -37,32 +37,31 @@ search line, a browsable object list, and a details column.
    - Mark: 8 px
    - Chip / status / well: 12 px
    - Button / segmented control / field: 16 px
-   - Card / island: 20 px
+   - Card / panel: 20 px
    - Sheet / dialog / picker frame: 28 px
 
 ## 2. Layout
 
-The console is chrome islands around a flat working surface:
+The app bar, rail, and footer share one shell; only the working area is a panel:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  header island: lockup · search · actions                       │
+│  shell: app bar (lockup · search · actions)                     │
 ├───────────────────┬─────────────────────────────────────────────┤
-│  rail island      │  content surface (flat base-200 fill)       │
+│  shell: rail      │  content panel (rounded, base-100)          │
 │  locations        │  toolbar (crumbs · sort · filter · view)    │
 │  pools            │  object bars / grid cards / columns         │
-│  ┌─────────────┐  │                                             │
-│  │ quota well  │  │                                             │
-│  └─────────────┘  │                                             │
+│  quota well       │                                             │
 ├───────────────────┴─────────────────────────────────────────────┤
-│  status + language island                                       │
+│  shell: status + language                                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-- The gutter between islands is 8 px on small screens and 10 px above.
-- The header, rail, footer, and content surface are `base-200`. The content
-  surface is one flat fill with no card corner; rows and cards step to
-  `base-300`, and nested wells step to `base-100` or `base-300`.
+- The shell is one `base-200` surface behind the app bar, rail, and footer.
+  Only the content is a `base-100` panel with a card corner, inset by the page
+  gutter.
+- Rows and cards inside the panel are `base-200`; nested wells step to
+  `base-300`.
 - Content is left-aligned. The rail, toolbar, and status line share one
   horizontal rhythm; object names lead, metadata trails.
 - Below `md` the rail becomes a rounded drawer over a dimmed ground, and the
@@ -83,8 +82,8 @@ not warm — with indigo as the single brand signal.
 
 | Role | Token | Dark | Light |
 | --- | --- | --- | --- |
-| Page ground | `--color-base-100` | `#171618` | `#faf7f9` |
-| Chrome and content surface | `--color-base-200` | `#1d1d20` | `#f6f2f6` |
+| Content panel | `--color-base-100` | `#171618` | `#faf7f9` |
+| Shell (app bar, rail, footer) | `--color-base-200` | `#1d1d20` | `#f6f2f6` |
 | Row / card / well step | `--color-base-300` | `#2e2e31` | `#e4e1e5` |
 | Brand-tinted block | `--surface-tint` (`bg-tint`) | `#262833` | `#e8e9f5` |
 | Text content | `--color-base-content` | `#edeaee` | `#1f1f22` |
@@ -123,7 +122,6 @@ this list is spent on files, folders, or regions.
 
 | Class | Meaning |
 | --- | --- |
-| `.island-quiet` | Chrome sheet (header, rail, footer): `rounded-card bg-base-200` |
 | `.ledger` | Row-bar table: 2 px border spacing, tinted cells, no rules |
 | `.seg` / `.seg-item` | Segmented control; the pressed item takes `base-300` |
 | `.menu-trigger` / `.menu-choice` | Toolbar dropdown trigger and its menu rows |
@@ -132,12 +130,11 @@ this list is spent on files, folders, or regions.
 
 Rules of thumb:
 
-- The content area is a `base-200` fill. Rows and cards are `base-300`; nested
-  wells step to `base-100`. Inside `base-200` chrome, controls step to
-  `base-300`.
+- The content panel is `base-100`. Rows and cards are `base-200`; nested wells
+  step to `base-300`.
 - Hover steps one tone up; selection mixes `primary` at 12–18 % into the
   surface, so selection never introduces a second hue.
-- Sticky table headers use the surface fill (`bg-base-200`) so rows scroll
+- Sticky table headers use the panel fill (`bg-base-100`) so rows scroll
   underneath without a shadow or rule.
 
 ## 6. Forms and controls
@@ -171,10 +168,10 @@ corner, no dividers, tonal selection.
 
 | View | Composition |
 | --- | --- |
-| List | `.ledger`; `base-300` row bars with a 2 px gutter; sticky header on the surface fill |
-| Grid | `base-300` cards on the `base-200` surface; media well steps to `base-100` |
+| List | `.ledger`; `base-200` row bars with a 2 px gutter; sticky header on the panel fill |
+| Grid | `base-200` cards on the `base-100` panel; media well steps to `base-300` |
 | Column | Miller columns of row blocks; each column lists both subfolders and files for the folder to its left, with no column-sheet background |
-| Waterfall | Masonry of `base-300` cards, media ratio clamped between 0.35:1 and 4:1 |
+| Waterfall | Masonry of `base-200` cards, media ratio clamped between 0.35:1 and 4:1 |
 
 The Unindexed listing has no column view; its three remaining views share the
 same row and card rules. Row checkboxes stay hidden until a selection starts;

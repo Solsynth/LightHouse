@@ -94,7 +94,7 @@ function quotaWidth(mb: number): string {
         <div class="flex flex-col gap-3">
           <ConsolePanel :title="t('storage.readings')">
             <div class="grid grid-cols-2 gap-2.5">
-              <div class="rounded-card bg-base-100/30 px-3.5 py-3">
+              <div class="rounded-card bg-base-300/30 px-3.5 py-3">
                 <div class="title mt-1 text-[22px] tabular-nums text-base-content">
                   {{ formatBytes(vault.usedBytes) }}
                 </div>
@@ -106,13 +106,13 @@ function quotaWidth(mb: number): string {
                   }}
                 </div>
               </div>
-              <div class="rounded-card bg-base-100/30 px-3.5 py-3">
+              <div class="rounded-card bg-base-300/30 px-3.5 py-3">
                 <div class="title mt-1 text-[22px] tabular-nums text-base-content">
                   {{ formatBytes(vault.remainingBytes) }}
                 </div>
                 <div class="mt-1 text-[11px] text-faint">{{ t('storage.beforeThrottle') }}</div>
               </div>
-              <div class="rounded-card bg-base-100/30 px-3.5 py-3">
+              <div class="rounded-card bg-base-300/30 px-3.5 py-3">
                 <div class="title mt-1 text-[22px] tabular-nums text-base-content">
                   {{ formatCount(vault.fileCount) }}
                 </div>
@@ -120,7 +120,7 @@ function quotaWidth(mb: number): string {
                   {{ t('storage.acrossPools', { n: vault.pools.length }) }}
                 </div>
               </div>
-              <div class="rounded-card bg-base-100/30 px-3.5 py-3">
+              <div class="rounded-card bg-base-300/30 px-3.5 py-3">
                 <div class="title mt-1 text-[22px] tabular-nums text-base-content">
                   {{ formatBytes(averageObject) }}
                 </div>
@@ -159,7 +159,7 @@ function quotaWidth(mb: number): string {
               </div>
 
               <div
-                class="flex items-baseline justify-between gap-3 rounded-card bg-base-100/30 px-3.5 py-2.5 text-[12px]"
+                class="flex items-baseline justify-between gap-3 rounded-card bg-base-300/30 px-3.5 py-2.5 text-[12px]"
               >
                 <span class="text-faint">{{ t('storage.totalQuota') }}</span>
                 <span class="tabular-nums text-base-content">{{

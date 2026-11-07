@@ -1006,6 +1006,24 @@ func TestOpenFileRequiresAuthUnlessFileIsPublic(t *testing.T) {
 	if ownerRec.Code != http.StatusTemporaryRedirect {
 		t.Fatalf("owner status = %d, want %d; body = %s", ownerRec.Code, http.StatusTemporaryRedirect, ownerRec.Body.String())
 	}
+
+	publicRouteRec := httptest.NewRecorder()
+	anon.ServeHTTP(publicRouteRec, httptest.NewRequest(http.MethodGet, "/files/"+publicID, nil))
+	if publicRouteRec.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("public /files status = %d, want %d; body = %s", publicRouteRec.Code, http.StatusTemporaryRedirect, publicRouteRec.Body.String())
+	}
+
+	privateRouteRec := httptest.NewRecorder()
+	anon.ServeHTTP(privateRouteRec, httptest.NewRequest(http.MethodGet, "/files/"+privateID, nil))
+	if privateRouteRec.Code != http.StatusNotFound {
+		t.Fatalf("private /files status = %d, want %d", privateRouteRec.Code, http.StatusNotFound)
+	}
+
+	signedPrivateRec := httptest.NewRecorder()
+	owner.ServeHTTP(signedPrivateRec, httptest.NewRequest(http.MethodGet, "/files/"+privateID, nil))
+	if signedPrivateRec.Code != http.StatusNotFound {
+		t.Fatalf("signed-in private /files status = %d, want %d", signedPrivateRec.Code, http.StatusNotFound)
+	}
 }
 
 // A shared (account-less) pool exposes its files to everyone, including

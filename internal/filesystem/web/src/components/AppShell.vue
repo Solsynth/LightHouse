@@ -102,7 +102,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex h-dvh flex-col gap-2 overflow-hidden bg-base-100 p-2 md:gap-2.5 md:p-2.5">
+  <div class="flex h-dvh flex-col overflow-hidden bg-base-200">
     <a
       href="#main"
       class="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[90] focus:rounded-control focus:bg-base-300 focus:px-3 focus:py-2 focus:text-xs"
@@ -110,15 +110,16 @@ onBeforeUnmount(() => {
       {{ t('app.skipToContent') }}
     </a>
 
-    <!-- The header is one sheet: the lockup, the search line, and the
-         account controls ride the same paper. -->
-    <div class="island-quiet relative z-30 flex shrink-0 flex-col overflow-hidden">
-      <TitleBar />
-    </div>
+    <!-- The app bar, rail, and footer share one shell surface; only the
+         working area is a separate panel. -->
+    <TitleBar />
 
-    <div class="flex min-h-0 flex-1 gap-2 md:gap-2.5">
+    <div class="flex min-h-0 flex-1 gap-2 p-2 pt-1 md:gap-2.5 md:p-2.5 md:pt-1.5">
       <AppSidebar />
-      <main id="main" class="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-base-200">
+      <main
+        id="main"
+        class="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-card bg-base-100"
+      >
         <RouterView v-slot="{ Component }">
           <Transition
             mode="out-in"
@@ -133,7 +134,7 @@ onBeforeUnmount(() => {
       </main>
     </div>
 
-    <div class="island-quiet flex shrink-0 items-center gap-3 px-3 md:px-4">
+    <div class="flex shrink-0 items-center gap-3 px-3 pb-1 md:px-4">
       <StatusBar />
       <ConsoleFooter />
     </div>

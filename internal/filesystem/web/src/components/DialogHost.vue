@@ -6,7 +6,7 @@ import { Close16, WarningAlt16 } from '@carbon/icons-vue'
 import CopyButton from './CopyButton.vue'
 import FolderPicker from './FolderPicker.vue'
 import IconButton from './IconButton.vue'
-import { openUrl } from '@/lib/api/drive'
+import { publicFileUrl } from '@/lib/api/drive'
 import { formatBytes, formatCount } from '@/lib/format'
 import { useUiStore } from '@/stores/ui'
 import { useVaultStore } from '@/stores/vault'
@@ -31,7 +31,7 @@ const confirmFiles = computed(() =>
 const shareFile = computed(() => (dialog.value?.kind === 'share' ? dialog.value.file : null))
 const shareIsPublic = computed(() => shareFile.value?.permission_status?.visibility === 'public')
 const shareLink = computed(() =>
-  shareFile.value ? `${window.location.origin}${openUrl(shareFile.value.id)}` : '',
+  shareFile.value ? `${window.location.origin}${publicFileUrl(shareFile.value.id)}` : '',
 )
 const busy = computed(() => vault.actionBusy !== null)
 const totalBytes = computed(() =>

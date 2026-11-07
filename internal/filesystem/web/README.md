@@ -44,6 +44,19 @@ VITE_AUTH_URL=http://localhost:8080/sign-in bun run dev
 That only works when the page and the drive share the cookie's domain — an
 unshared host signs the person in and then drops them on a signed-out drive.
 
+
+## Public file links
+
+A file marked public has a clean anonymous address:
+
+```
+https://fs.solian.app/files/<file-id>
+```
+
+That route serves only public files; a private file returns 404 even to a
+signed-in caller. The authenticated `/api/files/<id>` surface remains the
+route for private files and studio operations.
+
 ## Scripts
 
 | Script               | Purpose                                            |

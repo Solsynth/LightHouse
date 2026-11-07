@@ -38,6 +38,9 @@ func RegisterRoutes(r *gin.Engine, d Deps) {
 func RegisterFileRoutes(r *gin.Engine, d Deps) {
 	registerBusStash(r, d.Bus)
 	files, quota := d.Files, d.Quota
+	// Clean public address for shared files; the API keeps the authenticated
+	// surface at /api/files/{id}.
+	r.GET("/files/:id", func(c *gin.Context) { publicFile(c, d.Config, files) })
 	f := r.Group("/api/files")
 	{
 		f.GET("/meta", func(c *gin.Context) { listFilesMetadata(c, files) })
