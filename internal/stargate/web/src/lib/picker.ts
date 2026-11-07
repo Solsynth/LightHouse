@@ -12,7 +12,7 @@
  * profile art should not pay for it.
  */
 
-import { SNFS_ORIGIN } from './media'
+import { SNFS_ORIGIN, driveFileUrl } from './media'
 import type { PickerFile } from './picker-types'
 
 export type { PickerFile }
@@ -97,7 +97,7 @@ export interface PickFilesOptions {
  */
 export async function pickFiles(options: PickFilesOptions): Promise<PickerFile[]> {
   const sdk = await loadSdk()
-  return sdk.openSnfsPicker(
+  const picked = await sdk.openSnfsPicker(
     {
       frameUrl: PICKER_FRAME_URL,
       dialogTitle: options.title,
@@ -115,6 +115,14 @@ export async function pickFiles(options: PickFilesOptions): Promise<PickerFile[]
       locale: document.documentElement.lang === 'zh-CN' ? 'zh-CN' : 'en',
     },
   )
+  // The SDK reports paths on its own frame origin (`/api/files/{id}`), which
+  // are not routes on the console. Map them onto the gateway drive path the
+  // rest of the console uses, derived from the id the ticket service stores.
+  return picked.map((file) => ({
+    ...file,
+    url: driveFileUrl(file.id),
+    thumbnail_url: file.thumbnail_url ? driveFileUrl(file.id, 'thumbnail') : null,
+  }))
 }
 
 /**

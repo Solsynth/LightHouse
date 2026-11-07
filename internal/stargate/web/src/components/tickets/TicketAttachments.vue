@@ -23,6 +23,7 @@ const emit = defineEmits<{ remove: [id: string] }>()
 const { t } = useI18n()
 
 const failed = ref<string[]>([])
+const thumbnailFailed = ref<string[]>([])
 
 function isImage(file: AttachmentFile): boolean {
   return (file.mime_type ?? '').startsWith('image/')
@@ -35,6 +36,23 @@ function href(file: AttachmentFile): string {
 function thumbnail(file: AttachmentFile): string {
   if ('thumbnail_url' in file && file.thumbnail_url) return file.thumbnail_url
   return resolveFileUrl(file, 'thumbnail')
+}
+
+/**
+ * The preview falls back to the original file when the drive has no rendered
+ * thumbnail. Asking for `?thumbnail=true` on a file without one answers 404,
+ * so a single failure must not demote the attachment to a generic document.
+ */
+function imageSrc(file: AttachmentFile): string {
+  return thumbnailFailed.value.includes(file.id) ? href(file) : thumbnail(file)
+}
+
+function onImageError(file: AttachmentFile) {
+  if (!thumbnailFailed.value.includes(file.id)) {
+    thumbnailFailed.value.push(file.id)
+    return
+  }
+  markFailed(file.id)
 }
 
 function name(file: AttachmentFile): string {
@@ -62,12 +80,12 @@ function markFailed(id: string) {
       >
         <img
           v-if="isImage(file) && !failed.includes(file.id)"
-          :src="thumbnail(file)"
+          :src="imageSrc(file)"
           alt=""
           class="size-10 rounded-mark bg-base-100 object-cover"
           loading="lazy"
           decoding="async"
-          @error="markFailed(file.id)"
+          @error="onImageError(file)"
         />
         <span v-else class="grid size-10 place-items-center rounded-mark bg-base-100 text-faint">
           <Document16 aria-hidden="true" />
