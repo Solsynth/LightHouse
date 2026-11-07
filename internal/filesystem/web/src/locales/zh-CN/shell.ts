@@ -30,17 +30,6 @@ export default {
     openNavigation: '打开导航',
     closeNavigation: '关闭导航',
   },
-  tabs: {
-    label: '已打开的位置和文件',
-    close: '关闭',
-    closeNamed: '关闭 {name}',
-    closeAll: '全部关闭',
-    closePreviews: '关闭预览',
-    openTabs: '已打开的标签页',
-    noOpenTabs: '没有打开的标签页',
-    folder: '文件夹',
-    preview: '预览',
-  },
   view: {
     label: '视图模式',
     list: '列表',

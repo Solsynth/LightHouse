@@ -1,12 +1,12 @@
 <script setup lang="ts">
 /**
- * Miller-column browser: each column lists the folders held by the entry
- * picked in the column to its left, and the final column describes the folder
- * that is open. The path is read left to right rather than remembered, which
- * is the whole point of the finder-style stack.
+ * Miller-column browser: each column lists every entry held by the folder
+ * picked in the column to its left — subfolders and files together. The open
+ * folder's contents are therefore the last column, not a separate panel, and
+ * a column has no sheet of its own: only its row blocks carry tone.
  *
- * Selection is the checkbox's business; activating an entry only appends a
- * column and moves the route.
+ * Selection is the checkbox's business; activating an entry opens a folder as
+ * the next column or a file as a preview.
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -14,7 +14,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import FileGlyph from './FileGlyph.vue'
 import type { CloudFile } from '@/lib/api/types'
-import { displayName, formatBytes, formatCount, modifiedLabel, totalSize } from '@/lib/format'
+import { displayName, formatBytes, formatCount } from '@/lib/format'
 import { useFileOpener } from '@/lib/opening'
 import { useVaultStore } from '@/stores/vault'
 
@@ -44,23 +44,6 @@ const trail = computed<CloudFile[]>(() => {
   return [...chain.slice(0, target.position), target.file]
 })
 const trailIds = computed(() => trail.value.map((entry) => entry.id))
-const preview = computed(() => (vault.mode === 'drive' ? vault.folder : null))
-const previewName = computed(() => preview.value?.name ?? rootName.value)
-const previewBytes = computed(() => totalSize(vault.items))
-const previewModified = computed(() => {
-  if (preview.value) return modifiedLabel(preview.value.updated_at)
-  const newest = vault.items.reduce<string | null>(
-    (latest, item) => (latest === null || item.updated_at > latest ? item.updated_at : latest),
-    null,
-  )
-  return modifiedLabel(newest)
-})
-const visibility = computed(() => {
-  const raw = preview.value?.permission_status?.visibility
-  if (raw === 'public') return t('preview.public')
-  if (raw === 'private') return t('preview.private')
-  return raw ?? ''
-})
 
 /** Column entries carry a folder's own id, so the trail stays addressable. */
 function asFolder(id: string | null, name: string): CloudFile {
@@ -116,9 +99,9 @@ function failedAt(index: number): boolean {
   return listings.value[index]?.failed === true
 }
 
-/** The entry whose children the next column is already showing. */
+/** The folder whose column is already showing. */
 function isOpenPath(index: number, file: CloudFile): boolean {
-  return trailIds.value[index + 1] === file.id
+  return file.is_folder && trailIds.value[index + 1] === file.id
 }
 
 function focusRow(index: number, row: number) {
@@ -138,7 +121,7 @@ async function loadColumn(index: number) {
   loadSeq[index] = seq
   listings.value = { ...listings.value, [index]: { parent, rows: null, failed: false } }
   try {
-    const rows = await vault.listFolders(parentIdAt(index))
+    const rows = await vault.listChildren(parentIdAt(index))
     if (loadSeq[index] !== seq || parentKeyAt(index) !== parent) return
     listings.value = { ...listings.value, [index]: { parent, rows, failed: false } }
     const held = focused.value[index]
@@ -177,6 +160,10 @@ watch(
 
 /** Descends into a folder: truncates the columns to its right, then opens it. */
 function descend(index: number, file: CloudFile) {
+  if (!file.is_folder) {
+    opener.open(file)
+    return
+  }
   drill.value = { position: index + 1, file }
   drillPath.value = router.resolve({ name: 'folder', params: { id: file.id } }).fullPath
   focused.value = { ...focused.value, [index + 1]: undefined }
@@ -207,6 +194,10 @@ function onKeydown(event: KeyboardEvent, index: number, row: number) {
   if (!entry) return
   if (event.key === 'ArrowRight') {
     event.preventDefault()
+    if (!entry.is_folder) {
+      opener.open(entry)
+      return
+    }
     const next = listings.value[index + 1]
     if (next?.parent === entry.id && (next.rows?.length ?? 0) > 0) {
       focusRow(index + 1, 0)
@@ -257,110 +248,74 @@ function isFocused(index: number, id: string): boolean {
 <template>
   <div class="flex min-h-0 flex-1 flex-col">
     <div class="scroll-region flex min-h-0 flex-1 gap-2 overflow-x-auto p-2">
-      <div
-        v-for="(entry, index) in trail"
-        :key="index"
-        class="flex w-[260px] shrink-0 flex-col overflow-hidden rounded-card bg-base-200/75"
-      >
-        <div class="flex h-10 shrink-0 items-center px-3">
+      <div v-for="(entry, index) in trail" :key="index" class="flex w-[260px] shrink-0 flex-col">
+        <div class="flex h-10 shrink-0 items-center gap-2 px-3">
           <span class="eyebrow truncate" :title="entry.name">{{ entry.name }}</span>
+          <span
+            v-if="!isResolving(index)"
+            class="ml-auto shrink-0 text-2xs tabular-nums text-faint"
+          >
+            {{ rowsAt(index).length }}
+          </span>
         </div>
 
         <div
           :ref="(el) => setColumnEl(index, el)"
-          class="scroll-region min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5"
+          class="scroll-region min-h-0 flex-1 overflow-y-auto px-1 pb-1"
         >
-          <p v-if="isResolving(index)" class="voice px-3 py-2 text-[12px]">
+          <p v-if="isResolving(index)" class="voice px-2.5 py-2 text-[12px]">
             {{ t('status.reading') }}
           </p>
-          <div v-else-if="failedAt(index)" class="px-3 py-2">
+          <div v-else-if="failedAt(index)" class="px-2.5 py-2">
             <p class="voice text-[12px]">{{ t('error.loadFolderBody') }}</p>
             <button class="btn btn-ghost btn-sm mt-1" type="button" @click="loadColumn(index)">
               {{ t('error.tryAgain') }}
             </button>
           </div>
-          <p v-else-if="rowsAt(index).length === 0" class="voice px-3 py-2 text-[12px]">
-            {{ t('empty.noSubfolders') }}
+          <p v-else-if="rowsAt(index).length === 0" class="voice px-2.5 py-2 text-[12px]">
+            {{ t('empty.nothingHere') }}
           </p>
 
           <div
             v-else
             role="listbox"
             class="flex flex-col gap-0.5"
-            :aria-label="t('drive.foldersIn', { name: entry.name })"
+            :aria-label="t('drive.objects')"
           >
             <div
-              v-for="(folder, row) in rowsAt(index)"
-              :key="folder.id"
+              v-for="(child, row) in rowsAt(index)"
+              :key="child.id"
               role="option"
-              :aria-selected="isOpenPath(index, folder)"
-              :tabindex="isFocused(index, folder.id) ? 0 : -1"
+              :aria-selected="vault.selection.includes(child.id)"
+              :aria-current="isOpenPath(index, child) ? 'true' : undefined"
+              :tabindex="isFocused(index, child.id) ? 0 : -1"
               class="flex h-8 cursor-default items-center gap-2 rounded-chip px-2 outline-offset-[-2px]"
               :class="
-                isOpenPath(index, folder)
+                isOpenPath(index, child)
                   ? 'bg-primary/12 font-semibold text-base-content'
-                  : 'bg-base-100/40 text-dim hover:bg-base-100/70'
+                  : vault.selection.includes(child.id)
+                    ? 'bg-primary/12 text-base-content'
+                    : 'bg-base-100/40 text-dim hover:bg-base-100/70'
               "
-              :title="displayName(folder)"
-              @click="descend(index, folder)"
+              :title="displayName(child)"
+              @click="descend(index, child)"
               @keydown="onKeydown($event, index, row)"
             >
-              <FileGlyph :file="folder" />
+              <FileGlyph :file="child" />
               <input
                 type="checkbox"
                 class="checkbox checkbox-xs shrink-0"
-                :checked="vault.selection.includes(folder.id)"
-                :aria-label="t('drive.selectObject', { name: displayName(folder) })"
-                @change="vault.toggle(folder.id)"
+                :checked="vault.selection.includes(child.id)"
+                :aria-label="t('drive.selectObject', { name: displayName(child) })"
+                @change="vault.toggle(child.id)"
                 @click.stop
               />
-              <span class="min-w-0 flex-1 truncate text-[12.5px]">{{ displayName(folder) }}</span>
+              <span class="min-w-0 flex-1 truncate text-[12.5px]">{{ displayName(child) }}</span>
               <span class="shrink-0 text-2xs tabular-nums text-faint">
-                {{ childMeta(folder) }}
+                {{ childMeta(child) }}
               </span>
             </div>
           </div>
-        </div>
-      </div>
-      <!-- Final column: what the folder on show actually holds. -->
-      <div class="flex w-[320px] shrink-0 flex-col overflow-hidden rounded-card bg-base-200/75">
-        <div class="flex h-10 shrink-0 items-center px-3">
-          <span class="eyebrow truncate">{{ t('drive.contents') }}</span>
-        </div>
-
-        <div class="scroll-region min-h-0 flex-1 overflow-y-auto px-3 py-2.5">
-          <h2 class="title truncate text-sm text-base-content" :title="previewName">
-            {{ previewName }}
-          </h2>
-          <div class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-faint">
-            <span class="tabular-nums">{{ formatBytes(previewBytes) }}</span>
-            <span aria-hidden="true">·</span>
-            <span>{{ previewModified }}</span>
-            <span v-if="visibility" class="chip">{{ visibility }}</span>
-          </div>
-
-          <p v-if="vault.loading && vault.items.length === 0" class="voice mt-3 text-[12px]">
-            {{ t('status.reading') }}
-          </p>
-          <p v-else-if="vault.items.length === 0" class="voice mt-3 text-[12px]">
-            {{ t('empty.nothingHere') }}
-          </p>
-          <ul v-else class="mt-3 flex list-none flex-col gap-0.5">
-            <li
-              v-for="child in vault.items"
-              :key="child.id"
-              class="flex items-center gap-2 rounded-chip bg-base-100/40 px-2 py-1.5 transition-colors hover:bg-base-100/70"
-            >
-              <FileGlyph :file="child" />
-              <span
-                class="min-w-0 flex-1 truncate text-[12.5px] text-dim"
-                :title="displayName(child)"
-              >
-                {{ displayName(child) }}
-              </span>
-              <span class="shrink-0 text-2xs tabular-nums text-faint">{{ childMeta(child) }}</span>
-            </li>
-          </ul>
         </div>
       </div>
     </div>

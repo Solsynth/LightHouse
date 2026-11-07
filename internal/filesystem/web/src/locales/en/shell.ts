@@ -30,17 +30,6 @@ export default {
     openNavigation: 'Open navigation',
     closeNavigation: 'Close navigation',
   },
-  tabs: {
-    label: 'Open locations and files',
-    close: 'Close',
-    closeNamed: 'Close {name}',
-    closeAll: 'Close all',
-    closePreviews: 'Close previews',
-    openTabs: 'open tabs',
-    noOpenTabs: 'No open tabs',
-    folder: 'folder',
-    preview: 'preview',
-  },
   view: {
     label: 'View mode',
     list: 'List',

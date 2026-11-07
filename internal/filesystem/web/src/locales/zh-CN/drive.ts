@@ -1,7 +1,5 @@
 export default {
   drive: {
-    searchThisLocation: '搜索此位置',
-    searchRecycled: '搜索已回收的对象',
     clearSearch: '清除搜索',
     filterKind: '按类型筛选',
     kindAll: '全部',
@@ -29,8 +27,6 @@ export default {
     selectAllObjects: '全选对象',
     filteredTo: '已筛选至 {pool}',
     showPoolObjects: '显示 {pool} 中的对象',
-    foldersIn: '{name} 中的文件夹',
-    contents: '内容',
     sortOrder: '排序方式',
     publishedByLink: '通过链接发布',
     oneItem: '1 项',
@@ -63,8 +59,6 @@ export default {
     indexedBody: '此账号中的每个文件都已纳入云盘索引。',
     noFolders: '此位置没有文件夹。',
     noFoldersHint: '你仍然可以把文件移动到此位置。',
-    noSubfolders: '此位置没有子文件夹。',
-    noSubfolderContents: '尚未索引任何内容。',
     moreInListing: '此列表中还有 {n} 项',
     nothingHere: '这里还没有内容。',
   },

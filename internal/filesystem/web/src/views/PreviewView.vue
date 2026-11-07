@@ -34,13 +34,11 @@ import {
   shortHash,
 } from '@/lib/format'
 import { useNoticeStore } from '@/stores/notice'
-import { useTabStore } from '@/stores/tabs'
 import { useUiStore } from '@/stores/ui'
 import { useVaultStore } from '@/stores/vault'
 
 const { t } = useI18n()
 const vault = useVaultStore()
-const tabs = useTabStore()
 const ui = useUiStore()
 const notice = useNoticeStore()
 const route = useRoute()
@@ -118,23 +116,6 @@ watch(
 watch(mode, (next) => {
   if (next === 'text') void loadSource()
 })
-
-// The preview is a tab like any other, so it registers itself rather than
-// waiting for someone else to name it. A rename after the first sync only has
-// to repaint the existing strip entry.
-watch(
-  [fileId, file],
-  ([id, current]) => {
-    if (typeof id !== 'string' || !id) return
-    tabs.sync({
-      id: route.path,
-      kind: 'preview',
-      name: current?.name ?? t('preview.title'),
-      note: current ? kindLabel(current) : undefined,
-    })
-  },
-  { immediate: true },
-)
 
 onBeforeUnmount(() => {
   vault.setPreviewFile(null)

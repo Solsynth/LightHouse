@@ -1,7 +1,5 @@
 export default {
   drive: {
-    searchThisLocation: 'Search this location',
-    searchRecycled: 'Search recycled objects',
     clearSearch: 'Clear search',
     filterKind: 'Filter by kind',
     kindAll: 'All',
@@ -29,8 +27,6 @@ export default {
     selectAllObjects: 'Select all objects',
     filteredTo: 'Filtered to {pool}',
     showPoolObjects: 'Show objects in {pool}',
-    foldersIn: 'Folders in {name}',
-    contents: 'Contents',
     sortOrder: 'Sort order',
     publishedByLink: 'Published by link',
     oneItem: '1 item',
@@ -64,8 +60,6 @@ export default {
     indexedBody: 'Every file in this account has a place in the drive index.',
     noFolders: 'No folders under here.',
     noFoldersHint: 'You can still move files to this location.',
-    noSubfolders: 'No subfolders here.',
-    noSubfolderContents: 'Nothing indexed yet.',
     moreInListing: 'and {n} more in this listing',
     nothingHere: 'Nothing here yet.',
   },

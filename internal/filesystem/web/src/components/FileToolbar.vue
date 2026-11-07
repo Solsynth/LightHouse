@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -12,7 +12,6 @@ import {
   List16,
   Move16,
   Renew16,
-  Search16,
   TableSplit16,
   TrashCan16,
   Undo16,
@@ -31,7 +30,6 @@ const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 
-const search = ref(vault.query)
 const mode = computed(() => route.meta.mode ?? 'drive')
 const onDrive = computed(() => mode.value === 'drive')
 
@@ -64,28 +62,6 @@ function viewLabel(key: ViewMode): string {
 const hasSelection = computed(() => vault.selectedItems.length > 0)
 const selectionCount = computed(() => vault.selectedItems.length)
 
-watch(
-  () => vault.query,
-  (value) => {
-    if (value !== search.value) search.value = value
-  },
-)
-
-function onSearchInput() {
-  vault.setQuery(search.value)
-}
-
-function clearSearch() {
-  search.value = ''
-  vault.setQuery('')
-}
-
-function onSearchKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && search.value) {
-    event.stopPropagation()
-    clearSearch()
-  }
-}
 
 function crumbLabel(crumb: { id: string | null; name: string }): string {
   if (crumb.id !== null) return crumb.name
@@ -183,7 +159,20 @@ function restoreSelection() {
         </button>
       </span>
 
-      <div class="ml-auto flex items-center gap-1">
+      <span v-if="vault.query.trim()" class="chip ml-1 pl-2.5 pr-1">
+        <span class="max-w-[140px] truncate">{{ vault.query.trim() }}</span>
+        <button
+          type="button"
+          class="grid size-4 place-items-center rounded-full text-faint transition-colors hover:bg-base-300 hover:text-base-content"
+          :aria-label="t('drive.clearSearch')"
+          :title="t('drive.clearSearch')"
+          @click="vault.setQuery('')"
+        >
+          <Close16 class="h-3 w-3" />
+        </button>
+      </span>
+
+      <div class="ml-auto flex flex-wrap items-center justify-end gap-1.5">
         <IconButton
           :label="vault.loading ? t('drive.refreshing') : t('drive.refresh')"
           :disabled="vault.loading"
@@ -203,7 +192,42 @@ function restoreSelection() {
           {{ t('drive.selectAll') }}
         </button>
 
-        <div class="seg ml-1" role="group" :aria-label="t('view.label')">
+        <div class="flex items-center gap-0.5" role="group" :aria-label="t('drive.sortOrder')">
+          <span class="mr-1 hidden text-[11px] text-faint lg:inline">{{ t('drive.sort') }}</span>
+          <button
+            v-for="entry in sorts"
+            :key="entry.key"
+            type="button"
+            class="flex h-8 items-center gap-0.5 rounded-[12px] px-2 text-[11.5px] transition-colors duration-150"
+            :class="
+              vault.order === entry.key
+                ? 'bg-base-200/70 font-semibold text-base-content'
+                : 'text-faint hover:bg-base-200/50 hover:text-dim'
+            "
+            :aria-pressed="vault.order === entry.key"
+            @click="sortBy(entry.key)"
+          >
+            {{ t(entry.label) }}
+            <span v-if="vault.order === entry.key" class="text-primary" aria-hidden="true">
+              {{ vault.orderDesc ? '↓' : '↑' }}
+            </span>
+          </button>
+        </div>
+
+        <div class="seg" role="group" :aria-label="t('drive.filterKind')">
+          <button
+            v-for="entry in kinds"
+            :key="entry.key"
+            type="button"
+            class="seg-item h-7 px-2.5"
+            :aria-pressed="vault.kind === entry.key"
+            @click="vault.setKind(entry.key)"
+          >
+            {{ t(entry.label) }}
+          </button>
+        </div>
+
+        <div class="seg" role="group" :aria-label="t('view.label')">
           <button
             v-for="entry in views"
             :key="entry.key"
@@ -262,70 +286,6 @@ function restoreSelection() {
           <IconButton :label="t('drive.clearSelection')" @click="vault.clearSelection()">
             <Close16 />
           </IconButton>
-        </div>
-      </div>
-
-      <div v-else key="search" class="mt-2 flex min-h-[42px] flex-wrap items-center gap-2">
-        <label class="relative flex h-9 w-full max-w-[320px] items-center">
-          <span class="sr-only">{{ t('drive.searchThisLocation') }}</span>
-          <Search16 class="pointer-events-none absolute left-3 text-faint" aria-hidden="true" />
-          <input
-            v-model="search"
-            type="text"
-            class="h-9 w-full rounded-full bg-base-200/60 pl-9 pr-8 text-[12.5px] text-base-content outline-none transition-colors placeholder:text-faint focus:bg-base-300/60"
-            :placeholder="
-              mode === 'recycle' ? t('drive.searchRecycled') : t('drive.searchThisLocation')
-            "
-            autocomplete="off"
-            spellcheck="false"
-            @input="onSearchInput"
-            @keydown="onSearchKeydown"
-          />
-          <button
-            v-if="search"
-            type="button"
-            class="absolute right-1.5 grid size-6 place-items-center rounded-full text-faint transition-colors hover:bg-base-300 hover:text-base-content"
-            :aria-label="t('drive.clearSearch')"
-            :title="t('drive.clearSearch')"
-            @click="clearSearch"
-          >
-            <Close16 class="h-3.5 w-3.5" />
-          </button>
-        </label>
-
-        <div class="seg" role="group" :aria-label="t('drive.filterKind')">
-          <button
-            v-for="entry in kinds"
-            :key="entry.key"
-            type="button"
-            class="seg-item h-7 px-2.5"
-            :aria-pressed="vault.kind === entry.key"
-            @click="vault.setKind(entry.key)"
-          >
-            {{ t(entry.label) }}
-          </button>
-        </div>
-
-        <div class="ml-auto flex items-center gap-0.5" role="group" :aria-label="t('drive.sortOrder')">
-          <span class="mr-1 hidden text-[11px] text-faint md:inline">{{ t('drive.sort') }}</span>
-          <button
-            v-for="entry in sorts"
-            :key="entry.key"
-            type="button"
-            class="flex h-8 items-center gap-0.5 rounded-[12px] px-2 text-[11.5px] transition-colors duration-150"
-            :class="
-              vault.order === entry.key
-                ? 'bg-base-200/70 font-semibold text-base-content'
-                : 'text-faint hover:bg-base-200/50 hover:text-dim'
-            "
-            :aria-pressed="vault.order === entry.key"
-            @click="sortBy(entry.key)"
-          >
-            {{ t(entry.label) }}
-            <span v-if="vault.order === entry.key" class="text-primary" aria-hidden="true">
-              {{ vault.orderDesc ? '↓' : '↑' }}
-            </span>
-          </button>
         </div>
       </div>
     </Transition>

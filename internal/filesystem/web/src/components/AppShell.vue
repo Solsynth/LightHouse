@@ -8,7 +8,6 @@ import CommandPalette from './CommandPalette.vue'
 import ConsoleFooter from './ConsoleFooter.vue'
 import DialogHost from './DialogHost.vue'
 import StatusBar from './StatusBar.vue'
-import TabStrip from './TabStrip.vue'
 import TitleBar from './TitleBar.vue'
 import UploadDock from './UploadDock.vue'
 import { useUiStore } from '@/stores/ui'
@@ -111,12 +110,10 @@ onBeforeUnmount(() => {
       {{ t('app.skipToContent') }}
     </a>
 
-    <!-- The header is one sheet: the lockup, the search line, and the open
-         locations ride the same paper, separated by spacing rather than by a
-         rule. -->
+    <!-- The header is one sheet: the lockup, the search line, and the
+         account controls ride the same paper. -->
     <div class="island-quiet relative z-30 flex shrink-0 flex-col overflow-hidden">
       <TitleBar />
-      <TabStrip />
     </div>
 
     <div class="flex min-h-0 flex-1 gap-2 md:gap-2.5">

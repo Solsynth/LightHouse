@@ -585,6 +585,22 @@ export const useVaultStore = defineStore('vault', () => {
     return page.items
   }
 
+  /** Every entry under a folder, folders and files together, for columns. */
+  async function listChildren(parentId: string | null): Promise<CloudFile[]> {
+    const options = {
+      take: 200,
+      order: 'name' as const,
+      orderDesc: false,
+      recycled: false,
+    }
+    if (parentId) return (await driveApi.children(parentId, options)).items
+    if (mode.value === 'recycle') {
+      return (await driveApi.owned({ ...options, recycled: true })).items
+    }
+    if (mode.value === 'unindexed') return (await driveApi.unindexed(options)).items
+    return (await driveApi.root(options)).items
+  }
+
   function previewFor(file: CloudFile): string {
     return thumbnailUrl(file.id)
   }
@@ -660,6 +676,7 @@ export const useVaultStore = defineStore('vault', () => {
     permissionsFor,
     setVisibility,
     listFolders,
+    listChildren,
     previewFor,
     errorSummary,
     errorMessage,

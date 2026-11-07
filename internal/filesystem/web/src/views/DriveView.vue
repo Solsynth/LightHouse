@@ -17,7 +17,6 @@ import FileGrid from '@/components/FileGrid.vue'
 import FileTable from '@/components/FileTable.vue'
 import FileToolbar from '@/components/FileToolbar.vue'
 import FileWaterfall from '@/components/FileWaterfall.vue'
-import { useTabStore } from '@/stores/tabs'
 import type { BrowsingMode } from '@/stores/vault'
 import { useUiStore } from '@/stores/ui'
 import { useUploadStore } from '@/stores/upload'
@@ -26,7 +25,6 @@ import { useVaultStore } from '@/stores/vault'
 const vault = useVaultStore()
 const uploads = useUploadStore()
 const ui = useUiStore()
-const tabs = useTabStore()
 const route = useRoute()
 const { t } = useI18n()
 
@@ -44,7 +42,7 @@ const onDrive = computed(() => mode.value === 'drive')
 const viewKey = computed(() => `${route.fullPath}:${vault.viewMode}`)
 // Root and mode crumbs carry a symbolic name, so the label is resolved here
 // (inside a computed) rather than stored: `t()` subscribes this to the locale,
-// which keeps the heading and tab strip correct after a language switch.
+// which keeps the heading and breadcrumb correct after a language switch.
 const pageTitle = computed(() => {
   if (mode.value === 'recycle') return t('nav.recycle')
   if (mode.value === 'unindexed') return t('nav.unindexed')
@@ -97,23 +95,6 @@ watch(
   { immediate: true },
 )
 
-// The tab strip is driven by the route, so the tab for this location is
-// recorded once the listing knows the folder's real name.
-watch(
-  () => [route.path, pageTitle.value, mode.value] as const,
-  ([path, name, kind]) => {
-    tabs.sync({
-      id: path,
-      kind: kind === 'drive' ? 'folder' : kind,
-      name:
-        kind === 'drive' && folderParam.value
-          ? name
-          : t(`nav.${kind === 'drive' ? 'drive' : kind}`),
-      note: vault.showingLabel,
-    })
-  },
-  { immediate: true },
-)
 
 function requestUpload() {
   window.dispatchEvent(new Event('snfs:upload'))

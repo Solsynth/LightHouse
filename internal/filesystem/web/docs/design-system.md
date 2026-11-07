@@ -45,11 +45,10 @@ The console is a stack of islands on a padded ground:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  header island: lockup · search · actions                       │
-│                 open-location tabs (tonal chips)                │
-├───────────────────┬─────────────────────────────────────────────┤
-│  rail island      │  content island                             │
-│  locations        │  toolbar (breadcrumb · filters · views)      │
+│  header island: lockup · search · actions                         │
+├───────────────────┬───────────────────────────────────────────────┤
+│  rail island      │  content island                               │
+│  locations        │  toolbar (breadcrumb · sort · kind · views)    │
 │  pools            │  ┌───────────────────────────────────────┐  │
 │  ┌─────────────┐  │  │  object bars / grid cards / columns   │  │
 │  │ quota well  │  │  └───────────────────────────────────────┘  │
@@ -177,7 +176,7 @@ corner, no dividers, tonal selection.
 | --- | --- |
 | List | `.ledger`; row bars with a 2 px gutter; sticky tonal header |
 | Grid | `base-200` cards; rounded media well; name and metadata below |
-| Column | Miller columns as separate tonal islands with a gutter; nested rows are `base-100` |
+| Column | Miller columns of row blocks; each column lists both subfolders and files for the folder to its left, with no column-sheet background |
 | Waterfall | Masonry of tonal cards, media ratio clamped between 0.35:1 and 4:1 |
 
 Folders are set in the same face as files; kind and size are the only metadata
