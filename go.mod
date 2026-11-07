@@ -16,7 +16,7 @@ require (
 	gorm.io/datatypes v1.2.7
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.1
-	src.solsynth.dev/sosys/lighthouse/shared v0.2.4
+	src.solsynth.dev/sosys/lighthouse/shared v0.2.5
 )
 
 require (

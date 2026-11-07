@@ -204,5 +204,5 @@ gorm.io/gorm v1.31.1 h1:7CA8FTFz/gRfgqgpeKIBcervUn3xSyPUmr6B2WXJ7kg=
 gorm.io/gorm v1.31.1/go.mod h1:XyQVbO2k6YkOis7C2437jSit3SsDK72s7n7rsSHd+Gs=
 nullprogram.com/x/optparse v1.0.0/go.mod h1:KdyPE+Igbe0jQUrVfMqDMeJQIJZEuyV7pjYmp6pbG50=
 rsc.io/pdf v0.1.1/go.mod h1:n8OzWcQ6Sp37PL01nO98y4iUCRdTGarVfzxY20ICaU4=
-src.solsynth.dev/sosys/lighthouse/shared v0.2.4 h1:rpb6FvGjxQFsbh512yEZ7y7WolOBWcKwsQ4XYJmXS0k=
-src.solsynth.dev/sosys/lighthouse/shared v0.2.4/go.mod h1:boTqGRdIkm9Sd7exJ0eOSRLSfcsPLAcQv4dMBpasvJI=
+src.solsynth.dev/sosys/lighthouse/shared v0.2.5 h1:oo+2vCNWTSzeIxwjWrcfr6zOUYH2JwzzzYl3hRggkQY=
+src.solsynth.dev/sosys/lighthouse/shared v0.2.5/go.mod h1:boTqGRdIkm9Sd7exJ0eOSRLSfcsPLAcQv4dMBpasvJI=
