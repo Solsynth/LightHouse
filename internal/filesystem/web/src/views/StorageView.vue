@@ -46,8 +46,8 @@ function quotaWidth(mb: number): string {
 </script>
 
 <template>
-  <div class="min-h-0 flex-1 overflow-y-auto scroll-region bg-base-100">
-    <div class="px-5 py-6 sm:px-7 sm:py-8">
+  <div class="min-h-0 flex-1 overflow-y-auto scroll-region">
+    <div class="px-3 pb-3 pt-4 md:px-4 md:pb-4 md:pt-5">
       <PageHeader :title="t('storage.title')" :description="t('storage.description')">
         <template #actions>
           <button
@@ -65,7 +65,7 @@ function quotaWidth(mb: number): string {
 
       <div
         v-if="vault.volumeError"
-        class="mb-4 flex items-start gap-2 rounded-lg bg-error/10 px-3 py-2.5 text-[11px] text-error"
+        class="mb-3 flex items-start gap-2 rounded-chip bg-error/12 px-3.5 py-2.5 text-[11px] text-error"
       >
         <WarningAlt16 class="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <div>
@@ -74,7 +74,7 @@ function quotaWidth(mb: number): string {
         </div>
       </div>
 
-      <div class="grid gap-4 xl:grid-cols-[380px_1fr]">
+      <div class="grid gap-3 xl:grid-cols-[380px_1fr]">
         <ConsolePanel
           :title="t('storage.volume')"
           :note="t('storage.total', { size: formatBytes(vault.quotaBytes) })"
@@ -91,11 +91,10 @@ function quotaWidth(mb: number): string {
           </div>
         </ConsolePanel>
 
-        <div class="flex flex-col gap-4">
+        <div class="flex flex-col gap-3">
           <ConsolePanel :title="t('storage.readings')">
-            <div class="grid grid-cols-2 gap-x-8 gap-y-7">
-              <div>
-                <div class="text-[11px] text-faint">{{ t('storage.consumed') }}</div>
+            <div class="grid grid-cols-2 gap-2.5">
+              <div class="rounded-card bg-base-300/30 px-3.5 py-3">
                 <div class="title mt-1 text-[22px] tabular-nums text-base-content">
                   {{ formatBytes(vault.usedBytes) }}
                 </div>
@@ -107,15 +106,13 @@ function quotaWidth(mb: number): string {
                   }}
                 </div>
               </div>
-              <div>
-                <div class="text-[11px] text-faint">{{ t('storage.remaining') }}</div>
+              <div class="rounded-card bg-base-300/30 px-3.5 py-3">
                 <div class="title mt-1 text-[22px] tabular-nums text-base-content">
                   {{ formatBytes(vault.remainingBytes) }}
                 </div>
                 <div class="mt-1 text-[11px] text-faint">{{ t('storage.beforeThrottle') }}</div>
               </div>
-              <div>
-                <div class="text-[11px] text-faint">{{ t('storage.indexedFiles') }}</div>
+              <div class="rounded-card bg-base-300/30 px-3.5 py-3">
                 <div class="title mt-1 text-[22px] tabular-nums text-base-content">
                   {{ formatCount(vault.fileCount) }}
                 </div>
@@ -123,8 +120,7 @@ function quotaWidth(mb: number): string {
                   {{ t('storage.acrossPools', { n: vault.pools.length }) }}
                 </div>
               </div>
-              <div>
-                <div class="text-[11px] text-faint">{{ t('storage.averageFile') }}</div>
+              <div class="rounded-card bg-base-300/30 px-3.5 py-3">
                 <div class="title mt-1 text-[22px] tabular-nums text-base-content">
                   {{ formatBytes(averageObject) }}
                 </div>
@@ -141,7 +137,7 @@ function quotaWidth(mb: number): string {
             <div v-if="quotaRows.length === 0" class="text-[11px] text-faint">
               {{ t('storage.quotaUnavailable') }}
             </div>
-            <div v-else class="space-y-4">
+            <div v-else class="flex flex-col gap-3">
               <div v-for="row in quotaRows" :key="row.label">
                 <div class="flex items-baseline justify-between gap-3 text-[12px]">
                   <span class="text-dim">{{ row.label }}</span>
@@ -150,7 +146,7 @@ function quotaWidth(mb: number): string {
                   }}</span>
                 </div>
                 <div class="mt-2 flex items-center gap-3">
-                  <div class="h-1 flex-1 overflow-hidden rounded-full bg-line-soft">
+                  <div class="h-1 flex-1 overflow-hidden rounded-full bg-base-100/50">
                     <div
                       class="h-full rounded-full bg-primary/70"
                       :style="{ width: quotaWidth(row.mb) }"
@@ -163,7 +159,7 @@ function quotaWidth(mb: number): string {
               </div>
 
               <div
-                class="flex items-baseline justify-between gap-3 border-t border-line-soft pt-3 text-[12px]"
+                class="flex items-baseline justify-between gap-3 rounded-card bg-base-300/30 px-3.5 py-2.5 text-[12px]"
               >
                 <span class="text-faint">{{ t('storage.totalQuota') }}</span>
                 <span class="tabular-nums text-base-content">{{
@@ -176,7 +172,7 @@ function quotaWidth(mb: number): string {
       </div>
 
       <ConsolePanel
-        class="mt-4"
+        class="mt-3"
         :title="t('storage.pools')"
         :note="t('storage.poolsNote', { n: vault.pools.length, size: formatBytes(poolTotal) })"
       >
@@ -205,7 +201,7 @@ function quotaWidth(mb: number): string {
                 </td>
                 <td>
                   <div class="text-[12px] tabular-nums text-dim">{{ formatBytes(row.bytes) }}</div>
-                  <div class="mt-2 h-1 w-[110px] overflow-hidden rounded-full bg-line-soft">
+                  <div class="mt-2 h-1 w-[110px] overflow-hidden rounded-full bg-base-100/50">
                     <div
                       class="h-full rounded-full bg-primary/50"
                       :style="{ width: poolWidth(row.bytes) }"
@@ -239,7 +235,7 @@ function quotaWidth(mb: number): string {
         </div>
       </ConsolePanel>
 
-      <div class="mt-4">
+      <div class="mt-3">
         <ConsolePanel :title="t('storage.reclaim')">
           <div class="flex items-start gap-3">
             <TrashCan16 class="mt-0.5 h-4 w-4 shrink-0 text-faint" />

@@ -103,24 +103,29 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex h-dvh flex-col overflow-hidden bg-ink text-base-content">
+  <div class="flex h-dvh flex-col gap-2 overflow-hidden bg-base-100 p-2 md:gap-2.5 md:p-2.5">
     <a
       href="#main"
-      class="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[90] focus:border focus:border-line focus:bg-base-300 focus:px-3 focus:py-2 focus:text-xs"
+      class="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[90] focus:rounded-control focus:bg-base-300 focus:px-3 focus:py-2 focus:text-xs"
     >
       {{ t('app.skipToContent') }}
     </a>
 
-    <TitleBar />
-    <TabStrip />
+    <!-- The header is one sheet: the lockup, the search line, and the open
+         locations ride the same paper, separated by spacing rather than by a
+         rule. -->
+    <div class="island-quiet relative z-30 flex shrink-0 flex-col overflow-hidden">
+      <TitleBar />
+      <TabStrip />
+    </div>
 
-    <div class="flex min-h-0 flex-1">
+    <div class="flex min-h-0 flex-1 gap-2 md:gap-2.5">
       <AppSidebar />
-      <main id="main" class="relative flex min-w-0 flex-1 flex-col">
+      <main id="main" class="island relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <RouterView v-slot="{ Component }">
           <Transition
             mode="out-in"
-            enter-active-class="transition duration-[220ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+            enter-active-class="transition duration-[220ms] ease-[cubic-bezier(0.33,1,0.68,1)]"
             enter-from-class="opacity-0 translate-y-[6px]"
             leave-active-class="transition duration-[120ms] ease-in"
             leave-to-class="opacity-0"
@@ -131,8 +136,11 @@ onBeforeUnmount(() => {
       </main>
     </div>
 
-    <StatusBar />
-    <ConsoleFooter />
+    <div class="island-quiet flex shrink-0 items-center gap-3 px-3 md:px-4">
+      <StatusBar />
+      <ConsoleFooter />
+    </div>
+
     <CommandPalette />
     <DialogHost />
     <UploadDock />

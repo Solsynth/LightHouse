@@ -63,7 +63,7 @@ function subline(file: CloudFile): string {
 </script>
 
 <template>
-  <div class="min-h-0 flex-1 overflow-auto scroll-region p-3 md:p-5">
+  <div class="min-h-0 flex-1 overflow-auto scroll-region p-2 md:p-3">
     <div
       class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
       role="list"
@@ -74,14 +74,18 @@ function subline(file: CloudFile): string {
         :key="file.id"
         tabindex="0"
         role="listitem"
-        class="row-in group relative flex cursor-pointer flex-col p-1.5 transition-colors duration-200"
-        :class="vault.selection.includes(file.id) ? 'bg-primary/[0.07]' : 'hover:bg-base-200/60'"
+        class="row-in group relative flex cursor-pointer flex-col rounded-card p-2 transition-colors duration-200"
+        :class="
+          vault.selection.includes(file.id)
+            ? 'bg-primary/12'
+            : 'bg-base-200/75 hover:bg-base-300/70'
+        "
         :style="{ animationDelay: `${Math.min(index, 12) * 18}ms` }"
         :aria-selected="vault.selection.includes(file.id)"
         @click="open(file)"
         @keydown="onKeydown($event, file)"
       >
-        <div class="relative aspect-[4/3] overflow-hidden border border-line bg-base-200/30">
+        <div class="relative aspect-[4/3] overflow-hidden rounded-chip bg-base-300/40">
           <img
             v-if="showPreview(file)"
             :src="previewUrl(file.id)"
@@ -97,11 +101,11 @@ function subline(file: CloudFile): string {
 
           <input
             type="checkbox"
-            class="checkbox checkbox-xs absolute left-2 top-2 rounded-[2px] bg-ink/80 transition-opacity duration-150"
+            class="checkbox checkbox-xs absolute left-2 top-2 bg-base-100/85 transition-opacity duration-150"
             :class="
               vault.selection.includes(file.id)
                 ? 'opacity-100'
-                : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100'
+                : 'opacity-100 md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100'
             "
             :checked="vault.selection.includes(file.id)"
             :aria-label="t('drive.selectObject', { name: displayName(file) })"
@@ -118,7 +122,7 @@ function subline(file: CloudFile): string {
 
         <div class="flex min-w-0 flex-col gap-0.5 px-1 pb-0.5 pt-2.5">
           <span
-            class="truncate text-[12.5px] font-medium text-base-content"
+            class="truncate text-[12.5px] font-semibold text-base-content"
             :title="displayName(file)"
           >
             {{ displayName(file) }}

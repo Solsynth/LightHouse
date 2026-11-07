@@ -63,30 +63,30 @@ function onDrop(index: number, event: DragEvent) {
 <template>
   <div
     v-if="hasTabs"
-    class="flex h-10 shrink-0 items-stretch border-b border-line bg-ink"
+    class="flex h-11 shrink-0 items-center gap-2 px-2 md:px-3"
     role="tablist"
     :aria-label="t('tabs.label')"
   >
-    <div class="flex min-w-0 flex-1 items-stretch overflow-x-auto">
+    <div class="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1.5 scrollbar-none">
       <div
         v-for="(tab, index) in tabs.open"
         :key="tab.id"
-        class="group flex min-w-[132px] max-w-[228px] shrink-0 items-stretch border-r border-line"
+        class="group flex h-8 min-w-[132px] max-w-[228px] shrink-0 items-center rounded-control transition-colors duration-[var(--duration-fast)]"
+        :class="tab.id === activePath ? 'bg-base-300' : 'hover:bg-base-300/45'"
         :draggable="true"
         @dragstart="onDragStart(index, $event)"
         @dragover.prevent
         @drop="onDrop(index, $event)"
       >
-        <!-- The accent is a top rule rather than a fill: the strip stays flat,
-             so a tab's boundary is the tab itself. -->
+        <!-- Tone lifts the tab that is open; there is no rule under it. -->
         <button
           type="button"
           role="tab"
-          class="flex min-w-0 flex-1 items-center gap-1.5 pl-3 pr-1 text-left text-xs transition-colors duration-150"
+          class="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-3 pr-1 text-left text-xs transition-colors duration-150"
           :class="
             tab.id === activePath
-              ? 'border-t-2 border-primary text-base-content'
-              : 'border-t-2 border-transparent text-faint hover:text-dim'
+              ? 'font-semibold text-base-content'
+              : 'text-faint hover:text-dim'
           "
           :aria-selected="tab.id === activePath"
           :aria-current="tab.id === activePath ? 'page' : undefined"
@@ -94,12 +94,17 @@ function onDrop(index: number, event: DragEvent) {
           @click="select(tab)"
           @auxclick.middle.prevent="close(tab, $event)"
         >
-          <component :is="icons[tab.kind]" class="shrink-0" aria-hidden="true" />
+          <component
+            :is="icons[tab.kind]"
+            class="shrink-0"
+            :class="tab.id === activePath ? 'text-primary' : ''"
+            aria-hidden="true"
+          />
           <span class="truncate">{{ tab.name }}</span>
         </button>
         <button
           type="button"
-          class="grid w-6 shrink-0 place-items-center text-faint transition-colors hover:bg-base-300 hover:text-base-content"
+          class="mr-1 grid size-5 shrink-0 place-items-center rounded-full text-faint transition-colors hover:bg-base-100/40 hover:text-base-content"
           :class="tab.id === activePath ? 'opacity-60' : 'opacity-0 group-hover:opacity-100'"
           :aria-label="t('tabs.closeNamed', { name: tab.name })"
           :title="t('tabs.closeNamed', { name: tab.name })"
@@ -110,7 +115,7 @@ function onDrop(index: number, event: DragEvent) {
       </div>
     </div>
 
-    <div class="flex shrink-0 items-center gap-1 border-l border-line px-2">
+    <div class="flex shrink-0 items-center gap-1">
       <button
         v-if="tabs.previewCount > 0"
         type="button"

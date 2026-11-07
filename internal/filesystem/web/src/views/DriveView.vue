@@ -157,7 +157,7 @@ function retry() {
 
 <template>
   <div
-    class="relative flex min-h-0 flex-1 flex-col bg-ink"
+    class="relative flex min-h-0 flex-1 flex-col"
     @dragenter="onDragEnter"
     @dragover="onDragOver"
     @dragleave="onDragLeave"
@@ -172,11 +172,11 @@ function retry() {
         v-if="vault.loading && vault.items.length === 0 && vault.viewMode === 'grid'"
         class="grid flex-1 auto-rows-min grid-cols-2 gap-2.5 overflow-hidden p-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 md:p-5"
       >
-        <div v-for="row in 8" :key="row" class="rounded-[2px] bg-base-200/40 p-1.5">
-          <div class="aspect-[4/3] rounded-[2px] bg-base-300/70 pulse-soft" />
+        <div v-for="row in 8" :key="row" class="rounded-card bg-base-200/75 p-2">
+          <div class="aspect-[4/3] rounded-chip bg-base-300/60 pulse-soft" />
           <div class="space-y-2 px-1 pb-1 pt-2.5">
-            <div class="h-2.5 w-3/4 rounded-[2px] bg-base-300/70" />
-            <div class="h-2 w-1/2 rounded-[2px] bg-base-300/50" />
+            <div class="h-2.5 w-3/4 rounded-[6px] bg-base-300/70" />
+            <div class="h-2 w-1/2 rounded-[6px] bg-base-300/50" />
           </div>
         </div>
       </div>
@@ -197,9 +197,9 @@ function retry() {
 
       <div
         v-if="vault.error && !vault.loading"
-        class="absolute inset-0 grid place-items-center overflow-y-auto bg-ink px-5"
+        class="absolute inset-0 grid place-items-center overflow-y-auto bg-raised px-5"
       >
-        <div class="w-full max-w-[380px] text-center">
+        <div class="w-full max-w-[380px] rounded-sheet bg-base-200/60 px-6 py-8 text-center">
           <WarningAlt16 class="mx-auto h-6 w-6 text-error" />
           <h2 class="title mt-3 text-sm text-base-content">{{ t('error.loadFolder') }}</h2>
           <p class="voice mt-1.5">{{ vault.error }}</p>
@@ -213,8 +213,10 @@ function retry() {
         v-else-if="vault.isEmpty && !vault.loading"
         class="rise flex flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10 text-center"
       >
-        <component :is="emptyState.icon" class="h-6 w-6 text-faint" aria-hidden="true" />
-        <h2 class="title mt-3.5 text-sm text-base-content">{{ emptyState.title }}</h2>
+        <span class="grid size-14 place-items-center rounded-card bg-base-200/60">
+          <component :is="emptyState.icon" class="h-6 w-6 text-faint" aria-hidden="true" />
+        </span>
+        <h2 class="title mt-4 text-sm text-base-content">{{ emptyState.title }}</h2>
         <p class="voice mt-1.5 max-w-[380px] text-balance">{{ emptyState.body }}</p>
 
         <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
@@ -248,7 +250,7 @@ function retry() {
 
     <footer
       v-if="vault.items.length > 0 && vault.hasMore && vault.viewMode !== 'waterfall'"
-      class="flex h-10 shrink-0 items-center justify-center bg-ink px-4"
+      class="flex h-12 shrink-0 items-center justify-center px-4"
     >
       <button
         class="btn btn-ghost btn-sm"
@@ -269,14 +271,14 @@ function retry() {
     >
       <div
         v-if="dragging"
-        class="pointer-events-none absolute inset-0 z-20 grid place-items-center bg-ink/75 p-6 backdrop-blur-sm"
+        class="pointer-events-none absolute inset-0 z-20 grid place-items-center bg-base-100/60 p-6 backdrop-blur-sm"
       >
-        <div
-          class="flex flex-col items-center gap-2.5 rounded-[2px] border border-dashed border-primary/40 bg-base-200/60 px-10 py-8 text-center"
-        >
-          <Upload16 class="h-6 w-6 text-primary" />
-          <div class="title text-sm text-base-content">{{ t('drop.title') }}</div>
-          <div class="voice text-2xs">
+        <div class="rounded-sheet bg-tint px-10 py-9 text-center">
+          <span class="mx-auto grid size-12 place-items-center rounded-card bg-primary/15">
+            <Upload16 class="h-5 w-5 text-primary" />
+          </span>
+          <div class="title mt-3 text-sm text-base-content">{{ t('drop.title') }}</div>
+          <div class="voice mt-1 text-2xs">
             {{ t('drop.body', { location: vault.folder ? vault.folder.name : t('nav.drive') }) }}
           </div>
         </div>

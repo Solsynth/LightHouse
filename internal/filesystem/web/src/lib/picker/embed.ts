@@ -67,28 +67,31 @@ const OVERLAY_STYLE_ID = 'snfs-picker-styles'
 const OVERLAY_CSS = `
 .${OVERLAY_ID}{
   position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;
-  justify-content:center;padding:24px;background:rgba(6,8,14,.55);
-  backdrop-filter:blur(2px);
+  justify-content:center;padding:24px;background:rgba(23,22,24,.55);
+  backdrop-filter:blur(6px);
 }
 .${OVERLAY_ID} .snfs-picker-frame{
   display:flex;flex-direction:column;max-width:100%;max-height:100%;
-  overflow:hidden;border-radius:10px;background:#10141f;
-  box-shadow:0 24px 64px rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.08);
+  overflow:hidden;border-radius:28px;background:#1d1d20;padding:6px;
+  box-shadow:0 30px 80px -40px rgba(0,0,0,.7);
 }
 .${OVERLAY_ID} .snfs-picker-bar{
-  display:flex;align-items:center;gap:8px;padding:8px 12px;
-  font:500 12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
-  color:#9aa3b8;background:#10141f;border-bottom:1px solid rgba(255,255,255,.08);
+  display:flex;align-items:center;gap:8px;padding:8px 10px 8px 12px;
+  font:600 12.5px/1.4 Nunito,ui-sans-serif,system-ui,sans-serif;
+  color:#c8c5ca;background:transparent;
 }
 .${OVERLAY_ID} .snfs-picker-bar .snfs-picker-mark{
-  width:14px;height:14px;flex:none;background-color:currentColor;
+  width:14px;height:14px;flex:none;background-color:#bac3ff;
 }
 .${OVERLAY_ID} .snfs-picker-bar button{
-  margin-left:auto;border:0;background:transparent;color:#9aa3b8;cursor:pointer;
-  font:inherit;padding:2px 6px;border-radius:3px;
+  margin-left:auto;border:0;background:transparent;color:#97959b;cursor:pointer;
+  font:600 12px/1.4 Nunito,ui-sans-serif,system-ui,sans-serif;
+  padding:4px 10px;border-radius:12px;
 }
-.${OVERLAY_ID} .snfs-picker-bar button:hover{background:#1c2233;color:#ccd2e2}
-.${OVERLAY_ID} iframe{border:0;display:block;background:#0a0d16;flex:1;min-height:0}
+.${OVERLAY_ID} .snfs-picker-bar button:hover{background:#2e2e31;color:#edeaee}
+.${OVERLAY_ID} iframe{
+  border:0;display:block;background:#171618;flex:1;min-height:0;border-radius:20px;
+}
 `
 
 function injectStyles() {

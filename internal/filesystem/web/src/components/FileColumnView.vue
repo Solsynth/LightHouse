@@ -255,20 +255,20 @@ function isFocused(index: number, id: string): boolean {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col border-t border-line bg-ink">
-    <div class="scroll-region flex min-h-0 flex-1 overflow-x-auto">
+  <div class="flex min-h-0 flex-1 flex-col">
+    <div class="scroll-region flex min-h-0 flex-1 gap-2 overflow-x-auto p-2">
       <div
         v-for="(entry, index) in trail"
         :key="index"
-        class="flex w-[260px] shrink-0 flex-col border-r border-line"
+        class="flex w-[260px] shrink-0 flex-col overflow-hidden rounded-card bg-base-200/75"
       >
-        <div class="flex h-9 shrink-0 items-center border-b border-line px-3">
+        <div class="flex h-10 shrink-0 items-center px-3">
           <span class="eyebrow truncate" :title="entry.name">{{ entry.name }}</span>
         </div>
 
         <div
           :ref="(el) => setColumnEl(index, el)"
-          class="scroll-region min-h-0 flex-1 overflow-y-auto py-1"
+          class="scroll-region min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5"
         >
           <p v-if="isResolving(index)" class="voice px-3 py-2 text-[12px]">
             {{ t('status.reading') }}
@@ -283,18 +283,23 @@ function isFocused(index: number, id: string): boolean {
             {{ t('empty.noSubfolders') }}
           </p>
 
-          <div v-else role="listbox" :aria-label="t('drive.foldersIn', { name: entry.name })">
+          <div
+            v-else
+            role="listbox"
+            class="flex flex-col gap-0.5"
+            :aria-label="t('drive.foldersIn', { name: entry.name })"
+          >
             <div
               v-for="(folder, row) in rowsAt(index)"
               :key="folder.id"
               role="option"
               :aria-selected="isOpenPath(index, folder)"
               :tabindex="isFocused(index, folder.id) ? 0 : -1"
-              class="flex h-7 cursor-default items-center gap-2 px-3 outline-offset-[-2px]"
+              class="flex h-8 cursor-default items-center gap-2 rounded-chip px-2 outline-offset-[-2px]"
               :class="
                 isOpenPath(index, folder)
-                  ? 'bg-primary/[0.08] text-base-content'
-                  : 'text-dim hover:bg-base-200/60'
+                  ? 'bg-primary/12 font-semibold text-base-content'
+                  : 'bg-base-100/40 text-dim hover:bg-base-100/70'
               "
               :title="displayName(folder)"
               @click="descend(index, folder)"
@@ -303,7 +308,7 @@ function isFocused(index: number, id: string): boolean {
               <FileGlyph :file="folder" />
               <input
                 type="checkbox"
-                class="checkbox checkbox-xs shrink-0 rounded-[2px]"
+                class="checkbox checkbox-xs shrink-0"
                 :checked="vault.selection.includes(folder.id)"
                 :aria-label="t('drive.selectObject', { name: displayName(folder) })"
                 @change="vault.toggle(folder.id)"
@@ -318,12 +323,12 @@ function isFocused(index: number, id: string): boolean {
         </div>
       </div>
       <!-- Final column: what the folder on show actually holds. -->
-      <div class="flex w-[320px] shrink-0 flex-col border-r border-line">
-        <div class="flex h-9 shrink-0 items-center border-b border-line px-3">
+      <div class="flex w-[320px] shrink-0 flex-col overflow-hidden rounded-card bg-base-200/75">
+        <div class="flex h-10 shrink-0 items-center px-3">
           <span class="eyebrow truncate">{{ t('drive.contents') }}</span>
         </div>
 
-        <div class="scroll-region min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        <div class="scroll-region min-h-0 flex-1 overflow-y-auto px-3 py-2.5">
           <h2 class="title truncate text-sm text-base-content" :title="previewName">
             {{ previewName }}
           </h2>
@@ -340,11 +345,11 @@ function isFocused(index: number, id: string): boolean {
           <p v-else-if="vault.items.length === 0" class="voice mt-3 text-[12px]">
             {{ t('empty.nothingHere') }}
           </p>
-          <ul v-else class="mt-3 list-none">
+          <ul v-else class="mt-3 flex list-none flex-col gap-0.5">
             <li
               v-for="child in vault.items"
               :key="child.id"
-              class="flex items-center gap-2 border-b border-line-soft py-1.5 last:border-b-0"
+              class="flex items-center gap-2 rounded-chip bg-base-100/40 px-2 py-1.5 transition-colors hover:bg-base-100/70"
             >
               <FileGlyph :file="child" />
               <span

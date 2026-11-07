@@ -312,8 +312,10 @@ defineExpose({ confirm, cancel, clearSelection })
     @dragleave="onDragLeave"
     @drop="onDrop"
   >
-    <header class="flex shrink-0 items-start gap-2.5 border-b border-line px-4 py-3">
-      <BrandMark :size="18" class="mt-0.5 text-dim" />
+    <header class="flex shrink-0 items-start gap-2.5 px-4 pb-2 pt-3.5">
+      <span class="mt-0.5 grid size-8 place-items-center rounded-chip bg-base-200">
+        <BrandMark :size="18" class="text-primary" />
+      </span>
       <div class="min-w-0 flex-1">
         <h1 class="title truncate text-[16px] leading-tight">{{ heading }}</h1>
         <p class="voice mt-0.5 truncate text-[12px]">{{ guidance }}</p>
@@ -321,7 +323,7 @@ defineExpose({ confirm, cancel, clearSelection })
       <button
         v-if="dismissible"
         type="button"
-        class="btn btn-ghost btn-xs px-1 text-dim"
+        class="btn btn-ghost btn-xs px-1.5 text-dim"
         :aria-label="t('picker.cancel')"
         :title="t('picker.cancel')"
         @click="cancel"
@@ -331,10 +333,12 @@ defineExpose({ confirm, cancel, clearSelection })
     </header>
 
     <!-- Breadcrumb: the trail is the only way back up without guessing. -->
-    <div class="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-line px-3 py-1.5">
+    <div
+      class="mx-3 flex shrink-0 items-center gap-1 overflow-x-auto rounded-control bg-base-200/60 px-1.5 py-1"
+    >
       <button
         type="button"
-        class="btn btn-ghost btn-xs shrink-0 px-1"
+        class="btn btn-ghost btn-xs size-7 shrink-0 px-0"
         :aria-label="t('picker.up')"
         :title="t('picker.up')"
         :disabled="browser.crumbs.value.length <= 1"
@@ -344,13 +348,13 @@ defineExpose({ confirm, cancel, clearSelection })
       </button>
       <nav class="flex min-w-0 items-center gap-1 text-2xs" :aria-label="t('picker.breadcrumb')">
         <template v-for="(crumb, index) in browser.crumbs.value" :key="crumb.id ?? 'root'">
-          <span v-if="index > 0" class="text-line" aria-hidden="true">/</span>
+          <span v-if="index > 0" class="text-faint/60" aria-hidden="true">/</span>
           <button
             type="button"
-            class="max-w-[160px] truncate px-0.5 transition-colors"
+            class="max-w-[160px] truncate rounded-[10px] px-1.5 py-0.5 transition-colors hover:bg-base-300/50"
             :class="
               index === browser.crumbs.value.length - 1
-                ? 'text-base-content'
+                ? 'font-semibold text-base-content'
                 : 'text-dim hover:text-base-content'
             "
             @click="browser.jumpTo(index)"
@@ -361,10 +365,12 @@ defineExpose({ confirm, cancel, clearSelection })
       </nav>
     </div>
 
-    <div class="flex shrink-0 items-center gap-2 border-b border-line px-3 py-1.5">
+    <div
+      class="mx-3 mt-1.5 flex shrink-0 items-center gap-2 rounded-control bg-base-200/60 px-3 py-1"
+    >
       <Search16 class="h-3.5 w-3.5 shrink-0 text-faint" aria-hidden="true" />
       <input
-        class="input h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-[12px] focus:outline-none"
+        class="h-8 min-w-0 flex-1 bg-transparent text-[12px] text-base-content outline-none placeholder:text-faint"
         type="search"
         :value="browser.query.value"
         :placeholder="t('picker.searchPlaceholder')"
@@ -392,9 +398,9 @@ defineExpose({ confirm, cancel, clearSelection })
       </template>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-y-auto scroll-region" @keydown="onKeydown">
-      <div v-if="browser.loading.value" class="space-y-2 p-3">
-        <div v-for="row in 6" :key="row" class="h-8 rounded bg-base-300/60 pulse-soft" />
+    <div class="min-h-0 flex-1 overflow-y-auto scroll-region px-2 pb-2 pt-1.5" @keydown="onKeydown">
+      <div v-if="browser.loading.value" class="flex flex-col gap-1">
+        <div v-for="row in 6" :key="row" class="h-10 rounded-chip bg-base-200/50 pulse-soft" />
       </div>
 
       <div v-else-if="browser.error.value" class="px-4 py-8 text-center">
@@ -406,12 +412,14 @@ defineExpose({ confirm, cancel, clearSelection })
       </div>
 
       <div v-else-if="browser.isEmpty.value && chosenCount === 0" class="px-4 py-10 text-center">
-        <Folder16 class="mx-auto h-5 w-5 text-faint" aria-hidden="true" />
-        <p class="voice mt-2 text-[12px]">{{ emptyMessage }}</p>
+        <span class="mx-auto grid size-12 place-items-center rounded-card bg-base-200/60">
+          <Folder16 class="h-5 w-5 text-faint" aria-hidden="true" />
+        </span>
+        <p class="voice mt-3 text-[12px]">{{ emptyMessage }}</p>
         <button
           v-if="canUpload"
           type="button"
-          class="btn btn-ghost btn-xs mt-3"
+          class="btn btn-outline btn-xs mt-3"
           @click="requestUpload"
         >
           <Upload16 class="h-3 w-3" aria-hidden="true" />
@@ -420,7 +428,7 @@ defineExpose({ confirm, cancel, clearSelection })
       </div>
 
       <template v-else>
-        <ul class="divide-y divide-line-soft" role="listbox" :aria-multiselectable="multiple">
+        <ul class="flex flex-col gap-0.5" role="listbox" :aria-multiselectable="multiple">
           <li
             v-for="file in rows"
             :id="`picker-row-${file.id}`"
@@ -429,20 +437,22 @@ defineExpose({ confirm, cancel, clearSelection })
             role="option"
             :aria-selected="isChosen(file)"
             :aria-disabled="!isSelectable(file, options)"
-            class="group flex h-[42px] cursor-default items-center gap-2.5 px-3 text-[12.5px] transition-colors duration-100 focus-visible:bg-primary/[0.06]"
+            class="group flex h-10 cursor-default items-center gap-2.5 rounded-chip px-2.5 text-[12.5px] transition-colors duration-100 focus-visible:bg-base-300/60"
             :class="[
-              isChosen(file) ? 'bg-primary/[0.06]' : 'hover:bg-base-200/50',
+              isChosen(file)
+                ? 'bg-primary/12'
+                : 'bg-base-200 hover:bg-base-300',
               isSelectable(file, options) ? '' : 'opacity-45',
             ]"
             @click="activate(file)"
             @focus="activeId = file.id"
           >
             <span
-              class="flex h-4 w-4 shrink-0 items-center justify-center rounded-[2px] border"
+              class="flex size-[18px] shrink-0 items-center justify-center rounded-full transition-colors"
               :class="
                 isChosen(file)
-                  ? 'border-primary bg-primary text-primary-content'
-                  : 'border-line text-transparent'
+                  ? 'bg-primary text-primary-content'
+                  : 'bg-base-300 text-transparent'
               "
               aria-hidden="true"
             >
@@ -452,10 +462,7 @@ defineExpose({ confirm, cancel, clearSelection })
             <span class="min-w-0 flex-1 truncate" :title="displayName(file)">
               {{ displayName(file) }}
             </span>
-            <span
-              v-if="isUpload(file)"
-              class="shrink-0 rounded-[2px] border border-primary/40 px-1 text-2xs text-primary"
-            >
+            <span v-if="isUpload(file)" class="chip chip-active shrink-0">
               {{ t('picker.new') }}
             </span>
             <span
@@ -483,7 +490,7 @@ defineExpose({ confirm, cancel, clearSelection })
           </li>
         </ul>
 
-        <div v-if="browser.hasMore.value" class="border-t border-line-soft p-2 text-center">
+        <div v-if="browser.hasMore.value" class="p-2 text-center">
           <button
             type="button"
             class="btn btn-ghost btn-xs"
@@ -499,23 +506,23 @@ defineExpose({ confirm, cancel, clearSelection })
     <!-- A drop target the whole panel, with the progress of what is landing. -->
     <div
       v-if="dragging || uploading"
-      class="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 border-2 border-dashed border-primary bg-base-100/85 text-center"
+      class="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-base-100/80 text-center backdrop-blur-sm"
       role="status"
       aria-live="polite"
     >
-      <Upload16 class="h-6 w-6 text-primary" aria-hidden="true" />
+      <span class="grid size-14 place-items-center rounded-card bg-primary/15">
+        <Upload16 class="h-6 w-6 text-primary" aria-hidden="true" />
+      </span>
       <p class="voice text-[12px]">
         {{ uploading ? t('picker.uploadingFile', { name: uploadName }) : t('picker.drop') }}
       </p>
-      <div v-if="uploading" class="h-[2px] w-40 overflow-hidden bg-line-soft">
+      <div v-if="uploading" class="h-1 w-40 overflow-hidden rounded-full bg-base-300/60">
         <div class="h-full bg-primary transition-[width]" :style="{ width: `${uploadPercent}%` }" />
       </div>
       <p v-else class="text-2xs text-faint">{{ t('picker.dropHint') }}</p>
     </div>
 
-    <footer
-      class="flex shrink-0 items-center justify-between gap-3 border-t border-line px-4 py-2.5"
-    >
+    <footer class="m-2 mt-0 flex shrink-0 items-center justify-between gap-3 rounded-card bg-base-200 px-3 py-2">
       <span
         class="min-w-0 flex-1 truncate text-2xs"
         :class="uploadError ? 'text-error' : 'text-faint'"

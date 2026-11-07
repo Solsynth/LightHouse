@@ -196,9 +196,9 @@ async function toggleVisibility() {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col bg-ink">
+  <div class="flex min-h-0 flex-1 flex-col">
     <div
-      class="flex min-h-[44px] shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-3 py-1.5 md:px-4"
+      class="flex min-h-[48px] shrink-0 flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 md:px-4"
     >
       <button class="btn btn-ghost btn-xs" type="button" @click="backToFolder">
         <ArrowLeft16 />
@@ -250,16 +250,16 @@ async function toggleVisibility() {
       </div>
     </div>
 
-    <div class="flex min-h-0 flex-1">
+    <div class="flex min-h-0 flex-1 gap-2 p-2 pt-0">
       <!-- The bytes are the tab. Everything else in this route is supporting
            metadata, so the surface keeps the largest share of the space. -->
       <section
-        class="flex min-w-0 flex-1 flex-col border-r border-line"
+        class="flex min-w-0 flex-1 flex-col overflow-hidden rounded-card bg-base-200/75"
         :aria-label="t('preview.content')"
       >
         <div v-if="loading" class="grid flex-1 place-items-center">
           <div class="w-full max-w-[320px] px-5">
-            <div class="loading-scan h-[2px] w-full bg-line-soft" />
+            <div class="loading-scan h-[2px] w-full bg-base-300/50" />
             <p class="voice mt-3 text-center">{{ t('preview.reading') }}</p>
           </div>
         </div>
@@ -292,7 +292,7 @@ async function toggleVisibility() {
         </template>
 
         <template v-else-if="file && mode === 'video'">
-          <div class="grid flex-1 place-items-center overflow-auto bg-ink p-4">
+          <div class="grid flex-1 place-items-center overflow-auto bg-base-100/40 p-4">
             <video :src="openUrl(file.id)" controls class="max-h-full max-w-full" />
           </div>
         </template>
@@ -311,12 +311,12 @@ async function toggleVisibility() {
           <iframe
             :src="openUrl(file.id)"
             :title="displayName(file)"
-            class="min-h-0 flex-1 border-0 bg-base-200"
+            class="min-h-0 w-full flex-1 border-0 bg-base-100/40"
           />
         </template>
 
         <template v-else-if="file && mode === 'text'">
-          <div class="flex shrink-0 items-center gap-2 border-b border-line px-4 py-1.5">
+          <div class="flex shrink-0 items-center gap-2 px-4 py-2">
             <TextAlignLeft16 class="shrink-0 text-faint" aria-hidden="true" />
             <span class="text-2xs text-faint">
               {{
@@ -332,7 +332,7 @@ async function toggleVisibility() {
               class="ml-auto"
             />
           </div>
-          <div class="min-h-0 flex-1 overflow-auto scroll-region bg-ink/60">
+          <div class="min-h-0 flex-1 overflow-auto scroll-region bg-base-100/25">
             <p v-if="sourceState === 'loading'" class="voice px-4 py-4">
               {{ t('preview.reading') }}
             </p>
@@ -341,7 +341,7 @@ async function toggleVisibility() {
             </p>
             <div v-else class="flex text-2xs leading-[1.7]">
               <div
-                class="shrink-0 select-none border-r border-line-soft px-3 py-3 text-right tabular-nums text-faint"
+                class="shrink-0 select-none bg-base-300/30 px-3 py-3 text-right tabular-nums text-faint"
               >
                 <div v-for="(_, index) in sourceLines" :key="index">{{ index + 1 }}</div>
               </div>
@@ -370,19 +370,21 @@ async function toggleVisibility() {
       </section>
 
       <aside
-        class="hidden w-[312px] shrink-0 flex-col overflow-y-auto scroll-region lg:flex"
+        class="hidden w-[320px] shrink-0 flex-col gap-2 overflow-y-auto scroll-region rounded-card bg-base-200/75 p-2 lg:flex"
         :aria-label="t('preview.details')"
       >
         <template v-if="file">
-          <div class="border-b border-line px-4 py-4">
+          <div class="rounded-card bg-base-300/30 px-3.5 py-3">
             <h1 class="title break-words text-sm text-base-content">{{ displayName(file) }}</h1>
             <p class="mt-1.5 text-2xs text-faint">{{ kindLabel(file) }} · {{ poolName }}</p>
           </div>
 
-          <div class="border-b border-line px-4 py-3.5">
+          <div class="rounded-card bg-base-300/30 px-3.5 py-3">
             <div class="flex items-start justify-between gap-3">
               <div>
-                <div class="text-2xs text-base-content">{{ t('preview.publicLink') }}</div>
+                <div class="text-2xs font-semibold text-base-content">
+                  {{ t('preview.publicLink') }}
+                </div>
                 <div class="mt-0.5 text-2xs text-faint">
                   {{ isPublic ? t('preview.publicLinkBody') : t('preview.privateLinkBody') }}
                 </div>
@@ -392,14 +394,16 @@ async function toggleVisibility() {
                 role="switch"
                 :aria-checked="isPublic"
                 :aria-label="isPublic ? t('preview.unpublish') : t('preview.publish')"
-                class="relative mt-0.5 h-5 w-[34px] shrink-0 rounded-[2px] border border-line transition-colors disabled:opacity-50"
-                :class="isPublic ? 'bg-primary' : 'bg-base-300'"
+                class="relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50"
+                :class="isPublic ? 'bg-primary' : 'bg-base-100/70'"
                 :disabled="vault.actionBusy !== null"
                 @click="toggleVisibility"
               >
                 <span
-                  class="absolute top-[2px] size-[14px] transition-[left] duration-150"
-                  :class="isPublic ? 'left-[16px] bg-primary-content' : 'left-[2px] bg-faint'"
+                  class="absolute top-[3px] size-[18px] rounded-full transition-[left] duration-150"
+                  :class="
+                    isPublic ? 'left-[23px] bg-primary-content' : 'left-[3px] bg-faint'
+                  "
                 />
               </button>
             </div>
@@ -407,7 +411,7 @@ async function toggleVisibility() {
               <input
                 :value="publicLink"
                 readonly
-                class="input h-8 min-w-0 flex-1 px-2.5 text-2xs text-dim"
+                class="input h-9 min-w-0 flex-1 px-3 font-mono text-2xs text-dim"
                 :aria-label="t('preview.publicLink')"
                 @focus="($event.target as HTMLInputElement).select()"
               />
@@ -415,43 +419,61 @@ async function toggleVisibility() {
             </div>
           </div>
 
-          <dl class="divide-y divide-line-soft">
-            <div class="flex items-start justify-between gap-3 px-4 py-2">
+          <dl class="flex flex-col gap-0.5 rounded-card bg-base-300/30 p-1.5">
+            <div
+              class="flex items-start justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-200/60"
+            >
               <dt class="shrink-0 text-2xs text-faint">{{ t('meta.type') }}</dt>
               <dd class="break-all text-right text-2xs text-dim">{{ mimeOf(file) }}</dd>
             </div>
-            <div class="flex items-center justify-between gap-3 px-4 py-2">
+            <div
+              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-200/60"
+            >
               <dt class="text-2xs text-faint">{{ t('meta.size') }}</dt>
               <dd class="text-2xs tabular-nums text-dim">{{ formatBytes(file.object?.size) }}</dd>
             </div>
-            <div v-if="dimensions" class="flex items-center justify-between gap-3 px-4 py-2">
+            <div
+              v-if="dimensions"
+              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-200/60"
+            >
               <dt class="text-2xs text-faint">{{ t('meta.dimensions') }}</dt>
               <dd class="text-2xs tabular-nums text-dim">{{ dimensions }}</dd>
             </div>
-            <div v-if="duration" class="flex items-center justify-between gap-3 px-4 py-2">
+            <div
+              v-if="duration"
+              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-200/60"
+            >
               <dt class="text-2xs text-faint">{{ t('meta.duration') }}</dt>
               <dd class="text-2xs tabular-nums text-dim">{{ duration }}</dd>
             </div>
-            <div class="flex items-center justify-between gap-3 px-4 py-2">
+            <div
+              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-200/60"
+            >
               <dt class="text-2xs text-faint">{{ t('meta.modified') }}</dt>
               <dd class="text-2xs tabular-nums text-dim">
                 {{ formatDateTime(file.updated_at) }}
               </dd>
             </div>
-            <div class="flex items-center justify-between gap-3 px-4 py-2">
+            <div
+              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-200/60"
+            >
               <dt class="text-2xs text-faint">{{ t('meta.created') }}</dt>
               <dd class="text-2xs tabular-nums text-dim">
                 {{ formatDateTime(file.created_at) }}
               </dd>
             </div>
-            <div class="flex items-center justify-between gap-3 px-4 py-2">
+            <div
+              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-200/60"
+            >
               <dt class="text-2xs text-faint">{{ t('meta.indexed') }}</dt>
               <dd class="flex items-center gap-1.5 text-2xs text-dim">
                 <Checkmark16 v-if="file.indexed" class="h-3 w-3 text-success" />
                 {{ file.indexed ? t('meta.yes') : t('meta.no') }}
               </dd>
             </div>
-            <div class="flex items-center justify-between gap-3 px-4 py-2">
+            <div
+              class="flex items-center justify-between gap-3 rounded-chip px-2.5 py-1.5 transition-colors hover:bg-base-200/60"
+            >
               <dt class="text-2xs text-faint">{{ t('meta.hash') }}</dt>
               <dd class="text-2xs tabular-nums text-dim" :title="file.object?.hash">
                 {{ shortHash(file.object?.hash) }}
@@ -459,13 +481,11 @@ async function toggleVisibility() {
             </div>
           </dl>
 
-          <div class="border-t border-line px-4 py-3">
-            <button class="btn btn-outline btn-xs w-full" type="button" @click="backToFolder">
-              <OpenPanelLeft16 />
-              <Folder16 />
-              {{ t('preview.showInFolder') }}
-            </button>
-          </div>
+          <button class="btn btn-outline btn-xs w-full" type="button" @click="backToFolder">
+            <OpenPanelLeft16 />
+            <Folder16 />
+            {{ t('preview.showInFolder') }}
+          </button>
         </template>
       </aside>
     </div>

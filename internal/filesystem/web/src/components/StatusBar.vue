@@ -43,15 +43,18 @@ const usedPercent = computed(() =>
 </script>
 
 <template>
-  <footer
-    class="z-30 flex h-8 shrink-0 items-center gap-3 border-t border-line bg-ink px-3 text-2xs md:px-4"
+  <div
+    class="flex min-w-0 flex-1 items-center gap-3 py-2 text-2xs"
     role="status"
     aria-live="polite"
   >
-    <!-- The status marker is never lowercased: it is the console's one
-         machine-printed verdict about what just happened. -->
+    <!-- The status marker stays a machine-printed verdict, but carries its
+         tone as a tinted chip rather than a coloured word on the bar. -->
     <span v-if="latest" class="flex min-w-0 items-center gap-2">
-      <span :class="latest.tone === 'error' ? 'text-error' : 'text-success'">
+      <span
+        class="chip"
+        :class="latest.tone === 'error' ? 'text-error' : 'text-success'"
+      >
         {{ latest.tone === 'error' ? t('status.error') : t('status.ok') }}
       </span>
       <span :key="latest.id" class="notice-in truncate text-dim">{{ latest.message }}</span>
@@ -70,7 +73,7 @@ const usedPercent = computed(() =>
         <span class="dot bg-primary" aria-hidden="true" />
         {{ t('status.transferring', { n: uploads.activeCount, percent: uploads.overallProgress }) }}
       </span>
-      <span class="tabular-nums">
+      <span class="hidden tabular-nums sm:inline">
         {{
           t('status.usedOfQuota', {
             used: formatBytes(vault.usedBytes),
@@ -80,5 +83,5 @@ const usedPercent = computed(() =>
         <span class="text-faint/70">· {{ usedPercent }}</span>
       </span>
     </span>
-  </footer>
+  </div>
 </template>

@@ -5,129 +5,197 @@
 }
 
 /* SnFS — the Solar Network file system console, drawn with the Solar Network
-   console design system (see docs/design-system.md).
-   Ink-blue ground, cool paper text, periwinkle as the one signal color the
-   interface spends by default. Semantic color appears only when state needs
-   it; brass marks privilege and secondary emphasis. */
+   console vocabulary (see docs/design-system.md).
+
+   The surface is a set of islands: the page ground, a raised sheet, and one
+   brand-tinted sheet, separated by space rather than by lines. There is no
+   border between regions and no rule between rows; a change of tone and a gap
+   are the only separations the interface uses.
+
+   The palette is Solian's neutral ramp — a near-neutral lavender-gray, not
+   blue-gray and not warm — plus one brand signal (indigo). No second hue is
+   spent on decoration: semantic tones appear only where state demands them. */
 @plugin 'daisyui/theme' {
   name: 'snfs';
   default: true;
   color-scheme: dark;
 
-  --color-base-100: #0a0d16;
-  --color-base-200: #10141f;
-  --color-base-300: #171c2b;
-  --color-base-content: #ccd2e2;
+  --color-base-100: #171618;
+  --color-base-200: #1d1d20;
+  --color-base-300: #2e2e31;
+  --color-base-content: #edeaee;
 
-  --console-line: #232a3c;
-  --console-line-soft: #1a2030;
-  --console-faint: #7d86a0;
-  --console-dim: #9aa3b8;
+  --console-line: #4b4b4f;
+  --console-line-soft: #2a2a2d;
+  --console-faint: #97959b;
+  --console-dim: #c8c5ca;
 
-  --color-primary: #7577ba;
-  --color-primary-content: #0a0d16;
-  --color-secondary: #8f97b5;
-  --color-secondary-content: #0a0d16;
-  --color-accent: #c7b08a;
-  --color-accent-content: #0a0d16;
-  --color-neutral: #1c2233;
-  --color-neutral-content: #a8b0c7;
+  --color-primary: #bac3ff;
+  --color-primary-content: #222c61;
+  --color-secondary: #c3c5dd;
+  --color-secondary-content: #2d2f42;
+  --color-accent: #d9bfcf;
+  --color-accent-content: #3a2b35;
+  --color-neutral: #242326;
+  --color-neutral-content: #c8c5ca;
 
-  --color-info: #8fa6c9;
-  --color-info-content: #0a0d16;
-  --color-success: #8db39a;
-  --color-success-content: #0a0d16;
-  --color-warning: #c7b08a;
-  --color-warning-content: #0a0d16;
-  --color-error: #c08579;
-  --color-error-content: #0a0d16;
+  --color-info: #a1cce8;
+  --color-info-content: #171618;
+  --color-success: #a8d1a8;
+  --color-success-content: #171618;
+  --color-warning: #fdba55;
+  --color-warning-content: #171618;
+  --color-error: #ffb4ab;
+  --color-error-content: #171618;
 
-  --radius-selector: 0.125rem;
-  --radius-field: 10px;
-  --radius-box: 0.25rem;
+  --radius-selector: 12px;
+  --radius-field: 16px;
+  --radius-box: 20px;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
-  --border: 1px;
+  --border: 0;
   --depth: 0;
   --noise: 0;
 
-  --field-fill: #10141f;
-  --field-fill-hover: #171c2b;
-  --field-fill-focus: #1c2233;
-  --field-line: #232a3c;
+  /* A field is a tonal well: the fill alone defines it at rest, the tone steps
+     up under the pointer, and focus is an inset ring rather than a line. */
+  --field-fill: #232326;
+  --field-fill-hover: #28282c;
+  --field-fill-focus: #2d2d32;
+  --field-line: #3c3c40;
+
+  /* ── Islands ────────────────────────────────────────────────────────────
+     Three tones of the same paper. `raised` is the sheet a region sits on,
+     `raised-hover` the step under the pointer, `tint` the brand hue mixed
+     into that sheet for the rare thing asking to be noticed. */
+  --surface-raised: #232326;
+  --surface-raised-hover: #2a2a2e;
+  --surface-tint: #262833;
 }
 
-/* Daylight console: cool paper, ink-blue text, the same periwinkle signal.
-   The palette is re-derived for a light field rather than inverted, so the
-   brass accent and semantic colors keep their contrast against paper. */
+/* Daylight drive: the same ramp read at the light end, derived from the same
+   indigo seed rather than inverted from the dark theme. A card is a step
+   down in tone here, because tinted stock on near-white paper reads as an
+   object while a lighter fill reads as a hole. */
 @plugin 'daisyui/theme' {
   name: 'snfs-light';
   default: false;
   color-scheme: light;
 
-  --color-base-100: #f3f5fa;
-  --color-base-200: #eaeef6;
-  --color-base-300: #dee3ee;
-  --color-base-content: #1c2334;
+  --color-base-100: #faf7f9;
+  --color-base-200: #f6f2f6;
+  --color-base-300: #e4e1e5;
+  --color-base-content: #1f1f22;
 
-  --console-line: #ccd3e1;
-  --console-line-soft: #dee3ed;
-  --console-faint: #646e86;
-  --console-dim: #4d5770;
+  --console-line: #d3d1d5;
+  --console-line-soft: #e9e6ea;
+  --console-faint: #636367;
+  --console-dim: #4b4b4f;
 
-  --color-primary: #54589f;
-  --color-primary-content: #f7f8fd;
-  --color-secondary: #5a6378;
-  --color-secondary-content: #f7f8fd;
-  --color-accent: #8a6a3b;
-  --color-accent-content: #fdfbf6;
-  --color-neutral: #dbe0ea;
-  --color-neutral-content: #2a3145;
+  --color-primary: #515b92;
+  --color-primary-content: #ffffff;
+  --color-secondary: #5b5d72;
+  --color-secondary-content: #ffffff;
+  --color-accent: #6d5966;
+  --color-accent-content: #ffffff;
+  --color-neutral: #e4e1e5;
+  --color-neutral-content: #2a2a2d;
 
-  --color-info: #3f678c;
-  --color-info-content: #f7fafd;
-  --color-success: #3d6d4f;
-  --color-success-content: #f6fbf7;
-  --color-warning: #8a6a3b;
-  --color-warning-content: #fdfbf6;
-  --color-error: #a4554a;
-  --color-error-content: #fdf8f7;
+  --color-info: #2d5f79;
+  --color-info-content: #ffffff;
+  --color-success: #315936;
+  --color-success-content: #ffffff;
+  --color-warning: #6f4800;
+  --color-warning-content: #ffffff;
+  --color-error: #9f352d;
+  --color-error-content: #ffffff;
 
-  --radius-selector: 0.125rem;
-  --radius-field: 10px;
-  --radius-box: 0.25rem;
+  --radius-selector: 12px;
+  --radius-field: 16px;
+  --radius-box: 20px;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
-  --border: 1px;
+  --border: 0;
   --depth: 0;
   --noise: 0;
 
-  --field-fill: #eaeef6;
-  --field-fill-hover: #dee3ee;
-  --field-fill-focus: #dbe0ea;
-  --field-line: #ccd3e1;
+  --surface-raised: #efebf0;
+  --surface-raised-hover: #e9e4eb;
+  --surface-tint: #e8e9f5;
+
+  --field-fill: #efeaf0;
+  --field-fill-hover: #eae4eb;
+  --field-fill-focus: #e4dee6;
+  --field-line: #cbc5cc;
 }
 
 @theme {
-  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  /* Nunito is the voice of the fleet; mono is kept for machine-printed data
+     only — paths, hashes, MIME types, storage keys, one-time codes. File names
+     are read by people, so they are set in the sans face like the rest. */
+  --font-sans: 'Nunito', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --radius-mark: 4px;
-  --radius-chip: 6px;
-  --radius-input: 10px;
-  --radius-control: 6px;
-  --radius-card: 12px;
-  --radius-sheet: 16px;
+  /* One shape family at every size: sheet, card, control, chip, mark. A card
+     is the primary object of the interface, so its corner is the dominant
+     visual signal. Controls keep a rounded rectangle rather than a capsule. */
+  --radius-mark: 8px;
+  --radius-chip: 12px;
+  --radius-input: 16px;
+  --radius-control: 16px;
+  --radius-card: 20px;
+  --radius-sheet: 28px;
 
-  /* Console chrome colors resolve through the active daisyUI theme, so a
-     theme swap repaints borders and secondary text without duplicating
-     utilities. */
+  /* Chrome colours resolve through the active theme, so a theme swap repaints
+     secondary text without duplicating utilities. */
   --color-line: var(--console-line);
   --color-line-soft: var(--console-line-soft);
   --color-faint: var(--console-faint);
   --color-dim: var(--console-dim);
+  --color-raised: var(--surface-raised);
+  --color-raised-hover: var(--surface-raised-hover);
+  --color-tint: var(--surface-tint);
   --color-ink: var(--color-base-100);
   --text-2xs: 0.6875rem;
+
+  /* Motion. One curve, three durations; a control borrows the base step
+     unless it has a reason to be slower. */
+  --ease-out: cubic-bezier(0.33, 1, 0.68, 1);
+  --ease-in: cubic-bezier(0.32, 0, 0.67, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 260ms;
+
+  /* Spacing: one 4 px unit, with the named steps the layout uses. */
+  --spacing-page: 1.25rem;
+  --spacing-page-wide: 2rem;
+  --spacing-section: 1.5rem;
+  --spacing-card: 1.25rem;
+  --spacing-field: 0.75rem;
+}
+
+/* ── Safe areas ─────────────────────────────────────────────────────────
+   On a phone the ground runs to the physical edge while the chrome starts
+   past the notch and the home indicator. A gutter is the larger of the page
+   step and the inset, never the inset alone. */
+@utility px-shell {
+  padding-inline: max(var(--spacing-page), env(safe-area-inset-left, 0px))
+    max(var(--spacing-page), env(safe-area-inset-right, 0px));
+}
+
+@utility px-shell-wide {
+  padding-inline: max(var(--spacing-page-wide), env(safe-area-inset-left, 0px))
+    max(var(--spacing-page-wide), env(safe-area-inset-right, 0px));
+}
+
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+@utility pb-safe {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
 }
 
 @layer base {
@@ -140,11 +208,8 @@
     color-scheme: light;
   }
 
-  /* Machine data and chrome are set in mono; sans is reserved for the voice
-     (guidance, descriptions, empty states) and for display headings. */
   body {
-    @apply bg-base-100 font-mono text-[13px] leading-relaxed text-base-content antialiased;
-    font-feature-settings: 'tnum' 1;
+    @apply bg-base-100 font-sans text-[13.5px] leading-[1.55] text-base-content antialiased;
     overflow: hidden;
   }
 
@@ -154,7 +219,7 @@
   }
 
   :focus-visible {
-    outline: 1px solid var(--color-primary);
+    outline: 2px solid var(--color-primary);
     outline-offset: 2px;
   }
 
@@ -162,6 +227,7 @@
     text-underline-offset: 3px;
   }
 
+  /* A scrollbar is a hint, not a rule: no track, no edge. */
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
@@ -170,12 +236,11 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: var(--color-line);
-    border: 3px solid var(--color-base-100);
+    background: color-mix(in oklab, var(--color-base-content) 16%, transparent);
     border-radius: 99px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-faint);
+    background: color-mix(in oklab, var(--color-base-content) 28%, transparent);
   }
 
   dialog::backdrop {
@@ -184,32 +249,177 @@
 }
 
 @layer components {
+  /* ── Voice and type ─────────────────────────────────────────────────── */
+
   .eyebrow {
-    @apply text-2xs uppercase tracking-[0.18em] text-faint;
+    @apply text-2xs font-bold uppercase tracking-[0.1em] text-faint;
   }
 
-  /* Human voice: guidance and empty states are set in the sans face, so
-     machine-printed data (mono) and explanation (sans) stay distinguishable. */
+  /* Human voice: guidance and empty states, one step dimmer than the
+     interface text around it. */
   .voice {
     @apply font-sans text-[13.5px] leading-relaxed text-dim;
   }
 
-  .hairline {
-    @apply border-line;
+  /* Display face: page titles and sheet headings. Nunito's bold carries a
+     headline without a second family, and the negative tracking keeps a
+     rounded face from looking soft at 24 px. */
+  .title {
+    @apply font-sans font-bold tracking-[-0.01em];
   }
 
-  /* Display face: page titles only, so the grotesque reads as a headline
-     rather than as body copy. */
-  .title {
-    @apply font-sans font-medium tracking-[-0.015em];
+  .numeric {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Islands ────────────────────────────────────────────────────────── */
+
+  /* The page itself is the ground; everything the person works with is a
+     sheet floating on it. Two sheets never touch: the gutter between them is
+     the separation. */
+  .island {
+    @apply rounded-card bg-raised;
+  }
+
+  /* A quieter sheet for chrome that should recede: the sidebar, the header,
+     the footer. */
+  .island-quiet {
+    @apply rounded-card bg-base-200;
+  }
+
+  /* A brand-tinted sheet for the one region that should be noticed. */
+  .island-tint {
+    @apply rounded-card bg-tint;
+  }
+
+  /* A nested tonal well: search lines, segmented controls, media beds, block
+     quotes, and rows nested inside an island. Never outlined. */
+  .well {
+    @apply rounded-chip bg-base-200/60;
+  }
+
+  .well-hover {
+    @apply rounded-chip bg-base-200/60 transition-colors duration-[var(--duration-fast)] ease-[var(--ease-out)];
+  }
+  .well-hover:hover {
+    @apply bg-base-300/70;
+  }
+
+  /* ── Rows ───────────────────────────────────────────────────────────── */
+
+  /* A listing row is a tonal bar with its own corner, separated from its
+     neighbours by a 2 px gutter of ground. No rule, no zebra. */
+  .row-bar {
+    @apply rounded-chip bg-base-200/80 transition-colors duration-[var(--duration-fast)] ease-[var(--ease-out)];
+  }
+
+  .row-bar:hover {
+    @apply bg-base-300/65;
+  }
+
+  .row-bar[aria-selected='true'],
+  .row-bar.is-selected {
+    @apply bg-primary/12;
+  }
+
+  /* Terminal-style ledger built on the same bar: border-spacing opens the
+     gutter, and each cell inherits the row's tone. */
+  .ledger {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 2px;
+    text-align: left;
+  }
+
+  .ledger th {
+    padding: 0 14px 8px;
+    color: var(--color-faint);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .ledger tbody tr.is-selected td {
+    background-color: color-mix(in oklab, var(--color-primary) 12%, transparent);
+  }
+
+  .ledger tbody tr.is-selected:hover td {
+    background-color: color-mix(in oklab, var(--color-primary) 18%, transparent);
+  }
+
+  .ledger td {
+    padding: 11px 14px;
+    vertical-align: middle;
+    background-color: color-mix(in oklab, var(--color-base-200) 85%, transparent);
+    font-variant-numeric: tabular-nums;
+    border: 0;
+    transition: background-color var(--duration-fast) var(--ease-out);
+  }
+
+  .ledger td:first-child {
+    border-radius: var(--radius-chip) 0 0 var(--radius-chip);
+  }
+
+  .ledger td:last-child {
+    border-radius: 0 var(--radius-chip) var(--radius-chip) 0;
+  }
+
+  .ledger td:only-child {
+    border-radius: var(--radius-chip);
+  }
+
+  .ledger tbody tr:hover td {
+    background-color: color-mix(in oklab, var(--color-base-300) 65%, transparent);
+  }
+
+  /* Full-bleed ledger: cancels the sheet's padding so the bars meet its edge
+     while the cell text keeps the sheet rhythm. */
+  .table-bleed {
+    margin-inline: -1.25rem;
+  }
+
+  .table-bleed .ledger th:first-child {
+    padding-left: 1.25rem;
+  }
+  .table-bleed .ledger th:last-child {
+    padding-right: 1.25rem;
+  }
+  .table-bleed .ledger td:first-child {
+    padding-left: 1.25rem;
+    border-radius: 0;
+  }
+  .table-bleed .ledger td:last-child {
+    padding-right: 1.25rem;
+    border-radius: 0;
+  }
+
+  /* ── Chips ──────────────────────────────────────────────────────────── */
+
+  .chip {
+    @apply inline-flex items-center gap-1 whitespace-nowrap rounded-chip bg-base-200/70 px-2 py-0.5 text-2xs text-dim;
+    transition:
+      background-color var(--duration-base) var(--ease-out),
+      color var(--duration-base) var(--ease-out);
+  }
+
+  a.chip:hover,
+  button.chip:hover {
+    @apply bg-base-300 text-base-content;
+  }
+
+  .chip-active {
+    @apply bg-primary/15 font-semibold text-primary;
+  }
+
+  .chip-count {
+    @apply font-mono text-[10px] text-faint;
   }
 
   .kbd {
-    @apply inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-[2px] bg-base-300 px-1 text-2xs leading-none text-faint;
-  }
-
-  .chip {
-    @apply inline-flex items-center gap-1.5 rounded-[2px] border border-line px-1.5 py-0.5 text-2xs tracking-wide text-dim;
+    @apply inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-[6px] bg-base-300/70 px-1 font-mono text-[10px] leading-none text-faint;
   }
 
   .dot {
@@ -223,101 +433,35 @@
     @apply text-base-content decoration-faint;
   }
 
-  /* Terminal listing: no zebra, hairline rows, hover only tints the row. */
-  .ledger {
-    width: 100%;
-    border-collapse: collapse;
-    text-align: left;
+  /* ── Status notes ───────────────────────────────────────────────────── */
+
+  /* The one shape for an inline error, confirmation, or warning: a tinted
+     block, never a line beside a sentence. */
+  .note {
+    @apply rounded-chip px-3.5 py-2.5 text-xs leading-relaxed;
   }
 
-  .ledger th {
-    padding: 0 14px 8px 0;
-    border-bottom: 1px solid var(--color-line);
-    color: var(--color-faint);
-    font-size: 10px;
-    font-weight: 500;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    white-space: nowrap;
+  .note-error {
+    @apply bg-error/12 text-error;
   }
 
-  .ledger td {
-    padding: 11px 14px 11px 0;
-    border-bottom: 1px solid var(--color-line-soft);
-    vertical-align: middle;
+  .note-success {
+    @apply bg-success/12 text-success;
   }
 
-  .ledger tbody tr:last-child td {
-    border-bottom: 0;
+  .note-warning {
+    @apply bg-warning/12 text-warning;
   }
 
-  .ledger tbody tr:hover td {
-    background: color-mix(in oklab, var(--color-base-200) 55%, transparent);
+  .alert {
+    border-radius: var(--radius-chip);
+    border-width: 0;
+    font-size: 12px;
+    line-height: 1.6;
   }
 
-  /* Full-bleed ledger: cancels the panel body's horizontal padding so row
-     hairlines meet the panel edge, while cell text keeps the panel rhythm. */
-  .table-bleed {
-    margin-inline: -1rem;
-  }
+  /* ── Fields ─────────────────────────────────────────────────────────── */
 
-  .table-bleed .ledger th:first-child,
-  .table-bleed .ledger td:first-child {
-    padding-left: 1rem;
-  }
-
-  .table-bleed .ledger th:last-child,
-  .table-bleed .ledger td:last-child {
-    padding-right: 1rem;
-  }
-
-  .ledger td:first-child,
-  .ledger th:first-child {
-    padding-left: 8px;
-  }
-
-  .ledger td:last-child,
-  .ledger th:last-child {
-    padding-right: 8px;
-    text-align: right;
-  }
-
-  .field-label {
-    @apply mb-1.5 block text-2xs uppercase tracking-[0.14em] text-faint;
-  }
-
-  /* daisyUI ships its own field colors at equal specificity, so the console's
-     field skin is element-qualified to win without !important. */
-  input.input,
-  select.select,
-  textarea.textarea {
-    width: 100%;
-    height: 2.5rem;
-    border-radius: var(--radius-input);
-    border-color: var(--color-line);
-    background-color: var(--color-base-200);
-    color: var(--color-base-content);
-    font-family: var(--font-mono);
-    font-size: 13px;
-    box-shadow: none;
-  }
-
-  input.input:focus,
-  select.select:focus,
-  textarea.textarea:focus {
-    outline: 1px solid var(--color-primary);
-    outline-offset: 0;
-    border-color: var(--color-primary);
-  }
-
-  input.input::placeholder,
-  textarea.textarea::placeholder {
-    color: color-mix(in oklab, var(--color-faint) 75%, transparent);
-  }
-
-  /* =========================================================================
-     Forms: TextField
-     ========================================================================= */
   .field {
     display: block;
     min-inline-size: 0;
@@ -325,37 +469,33 @@
 
   .field-box {
     position: relative;
-    border: 1px solid var(--field-line);
+    border: 0;
     border-radius: var(--radius-input);
     background-color: var(--field-fill);
     transition:
-      background-color 150ms ease,
-      border-color 150ms ease,
-      box-shadow 150ms ease;
+      background-color var(--duration-base) var(--ease-out),
+      box-shadow var(--duration-base) var(--ease-out);
   }
 
   .field-box:hover:not(.is-disabled) {
     background-color: var(--field-fill-hover);
-    border-color: color-mix(in oklab, var(--field-line) 65%, var(--color-base-content));
   }
 
   .field-box:focus-within:not(.is-disabled) {
-    border-color: var(--color-primary);
-    box-shadow: inset 0 0 0 1px var(--color-primary);
+    box-shadow: inset 0 0 0 2px var(--color-primary);
     background-color: var(--field-fill-focus);
   }
 
   .field.is-invalid .field-box {
-    border-color: var(--color-error);
+    box-shadow: inset 0 0 0 1.5px var(--color-error);
   }
 
   .field.is-invalid .field-box:focus-within {
-    box-shadow: inset 0 0 0 1px var(--color-error);
+    box-shadow: inset 0 0 0 2px var(--color-error);
   }
 
   .field.is-disabled .field-box {
     cursor: not-allowed;
-    border-color: color-mix(in oklab, var(--field-line) 50%, transparent);
     background-color: color-mix(in oklab, var(--field-fill) 60%, var(--color-base-100));
   }
 
@@ -373,8 +513,8 @@
     outline: none;
     background: transparent;
     color: var(--color-base-content);
-    font-family: var(--font-mono);
-    font-size: 13px;
+    font-family: var(--font-sans);
+    font-size: 13.5px;
     line-height: 1.4;
     caret-color: var(--color-primary);
     transition: color 150ms ease;
@@ -513,7 +653,6 @@
   .field-hint-error {
     color: var(--color-error);
   }
-
   .field-hint-warning {
     color: var(--color-warning);
   }
@@ -559,18 +698,32 @@
     background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
   }
 
-  /* The brand mark is masked rather than drawn, so it takes the theme's text
-     color: a white glyph would vanish on the light field. */
-  .brand-mark {
-    display: block;
-    background-color: currentColor;
-    -webkit-mask: url('/icon-outline.svg') center / contain no-repeat;
-    mask: url('/icon-outline.svg') center / contain no-repeat;
+  .field-label {
+    @apply mb-2.5 block text-2xs font-bold uppercase tracking-[0.1em] text-faint;
   }
 
+  /* ── Buttons ────────────────────────────────────────────────────────── */
+
+  /* A button is a tonal rectangle: fill defines it, the corner is the only
+     edge, and nothing is outlined at rest. */
   .btn {
-    @apply rounded-[2px] border-line font-mono text-xs font-medium tracking-[0.02em];
+    @apply font-sans text-[13px] font-semibold tracking-[0.005em];
+    border-width: 0;
+    border-radius: var(--radius-control);
     box-shadow: none;
+    transition:
+      background-color var(--duration-base) var(--ease-out),
+      transform var(--duration-base) var(--ease-out),
+      color var(--duration-base) var(--ease-out);
+  }
+
+  .btn:not(:disabled):active {
+    transform: translateY(1px) scale(0.985);
+  }
+
+  .btn-square,
+  .btn-circle {
+    border-radius: var(--radius-control);
   }
 
   .btn-ghost {
@@ -582,12 +735,166 @@
   }
 
   .btn-primary {
-    @apply border-primary;
+    @apply bg-primary text-primary-content;
   }
 
   .btn-error {
-    @apply border-error/60;
+    @apply bg-error/15 text-error;
   }
+  .btn-error:hover {
+    @apply bg-error/25 text-error;
+  }
+
+  /* daisyUI surfaces realigned to the island ramp. Separation comes from
+     surface tone and space, never from a border or a drop shadow. */
+  .card {
+    border-radius: var(--radius-card);
+    background-color: color-mix(in oklab, var(--color-base-200) 50%, transparent);
+    border: 0;
+    box-shadow: none;
+  }
+
+  .modal-box {
+    border-radius: var(--radius-sheet);
+    border: 0;
+    background-color: var(--color-base-200);
+    box-shadow: 0 30px 80px -40px rgb(0 0 0 / 0.7);
+  }
+
+  .dropdown-content,
+  .menu {
+    border-radius: var(--radius-card);
+    background-color: var(--color-base-200);
+    border: 0;
+  }
+
+  .badge {
+    border-radius: var(--radius-chip);
+    border-width: 0;
+    background-color: color-mix(in oklab, var(--color-base-300) 70%, transparent);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  /* Checks and switches are tonal, not outlined boxes. */
+  .checkbox,
+  .radio {
+    border: 0;
+    background-color: var(--color-base-300);
+  }
+
+  .checkbox:checked,
+  .radio:checked {
+    background-color: var(--color-primary);
+    color: var(--color-primary-content);
+  }
+
+  .toggle {
+    border: 0;
+    background-color: var(--color-base-300);
+  }
+
+  .toggle:checked {
+    background-color: var(--color-primary);
+    color: var(--color-primary-content);
+  }
+
+  /* The brand mark is masked rather than drawn, so it takes the theme's text
+     colour: a white glyph would vanish on the light field. */
+  .brand-mark {
+    display: block;
+    background-color: currentColor;
+    -webkit-mask: url('/icon-outline.svg') center / contain no-repeat;
+    mask: url('/icon-outline.svg') center / contain no-repeat;
+  }
+
+  .brand-mark-live {
+    transition: transform 700ms var(--ease-out);
+  }
+
+  .group:hover .brand-mark-live {
+    transform: rotate(180deg);
+  }
+
+  /* ── Navigation ─────────────────────────────────────────────────────── */
+
+  /* A location is a rounded tonal row. The active one is lifted by tone and
+     the brand glyph, not by a bar or a border. */
+  .nav-row {
+    @apply flex items-center gap-2.5 rounded-control px-3 text-[12.5px] text-dim;
+    transition:
+      background-color var(--duration-base) var(--ease-out),
+      color var(--duration-base) var(--ease-out);
+  }
+
+  .nav-row:hover {
+    @apply bg-base-300/60 text-base-content;
+  }
+
+  .nav-row-active {
+    @apply bg-tint font-semibold text-base-content;
+  }
+
+  .nav-row-active .nav-glyph {
+    @apply text-primary;
+  }
+
+  /* ── Segmented control ──────────────────────────────────────────────── */
+
+  .seg {
+    @apply inline-flex items-center gap-0.5 rounded-control bg-base-200/60 p-0.5;
+  }
+
+  .seg-item {
+    @apply grid h-7 place-items-center rounded-[12px] px-2 text-[11.5px] text-faint;
+    transition:
+      background-color var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out);
+  }
+
+  .seg-item:hover {
+    @apply text-dim;
+  }
+
+  .seg-item[aria-pressed='true'],
+  .seg-item[aria-selected='true'] {
+    @apply bg-base-300 font-semibold text-base-content;
+  }
+
+  /* ── Menus and sheets ───────────────────────────────────────────────── */
+
+  .menu-plate {
+    border-radius: var(--radius-card);
+    background-color: var(--color-base-200);
+    box-shadow: 0 24px 50px -28px rgb(0 0 0 / 0.55);
+    transform-origin: top right;
+    animation: menu-pop var(--duration-base) var(--ease-back) both;
+  }
+
+  @keyframes menu-pop {
+    from {
+      opacity: 0;
+      transform: scale(0.94) translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+}
+
+/* ── Utilities ────────────────────────────────────────────────────────────
+   daisyUI registers its component rules in a sublayer of `utilities`, so a
+   rule in `@layer components` loses to them. These declarations restate a
+   daisyUI class's shape, so they live in `utilities` — or unlayered when they
+   must outrank the sublayer without `!important`. */
+
+/* The soft button: `btn-outline` in the old skin was a hairline rectangle.
+   In the island language the same variant is a tonal fill that steps up under
+   the pointer, so existing call sites keep their meaning without a line. */
+@utility btn-outline {
+  background-color: color-mix(in oklab, var(--color-base-200) 70%, transparent);
+  color: var(--color-dim);
 }
 
 @layer utilities {
@@ -598,9 +905,72 @@
   .text-balance {
     text-wrap: balance;
   }
+
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
 }
 
-/* Motion explains a change: a page arriving, a row settling, a transfer
+/* daisyUI's `.input` width clamp would make a full-width field 320 px wide;
+   unlayered rules outrank every layer, which is the only way to win without
+   `!important`. The field itself is a tonal well with no outline. */
+input.input,
+select.select,
+textarea.textarea {
+  inline-size: 100%;
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius-input);
+  background-color: var(--field-fill);
+  color: var(--color-base-content);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  box-shadow: none;
+  transition: background-color var(--duration-base) var(--ease-out);
+}
+
+input.input:hover,
+select.select:hover,
+textarea.textarea:hover {
+  background-color: var(--field-fill-hover);
+}
+
+input.input:focus,
+select.select:focus,
+textarea.textarea:focus {
+  outline: 0;
+  border: 0;
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+  background-color: var(--field-fill-focus);
+}
+
+input.input::placeholder,
+textarea.textarea::placeholder {
+  color: color-mix(in oklab, var(--color-faint) 80%, transparent);
+}
+
+.btn.btn-outline:hover {
+  background-color: var(--color-base-300);
+  color: var(--color-base-content);
+}
+
+.btn.btn-primary:hover {
+  background-color: color-mix(in oklab, var(--color-primary) 88%, white);
+}
+
+.btn.btn-error {
+  background-color: color-mix(in oklab, var(--color-error) 15%, transparent);
+  color: var(--color-error);
+}
+.btn.btn-error:hover {
+  background-color: color-mix(in oklab, var(--color-error) 25%, transparent);
+}
+
+/* ── Motion ───────────────────────────────────────────────────────────────
+   Motion explains a change: a page arriving, a row settling, a transfer
    advancing. Nothing loops for decoration. */
 @keyframes rise {
   from {
@@ -660,24 +1030,11 @@
 }
 
 .rise {
-  animation: rise 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: rise 320ms var(--ease-out) both;
 }
 
 .palette-in {
-  animation: panel-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-/* A single marker travels between locations: structure, not decoration. */
-.nav-glider {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 2px;
-  height: 16px;
-  margin-top: 10px;
-  border-radius: 999px;
-  background: var(--color-primary);
-  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: panel-in 200ms var(--ease-out) both;
 }
 
 .notice-in {
@@ -689,11 +1046,9 @@
 }
 
 .row-in {
-  animation: rise 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: rise 280ms var(--ease-out) both;
 }
 
-/* Tab strip: the tab body's arrival, and the height the strip settles to when
-   a tab is opened or closed. */
 .tab-enter-active,
 .tab-leave-active {
   transition:
@@ -716,16 +1071,4 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
-}
-
-/* daisyUI registers its component styles in a layer that comes after
-   `components`, so the console's field skin loses to `.input`'s
-   `width: clamp(3rem, 20rem, 100%)` (320px) and fields end up narrower than a
-   `w-full` button. Unlayered rules outrank every layer, which is the only way
-   to win without `!important`. */
-input.input,
-select.select,
-textarea.textarea {
-  inline-size: 100%;
-  width: 100%;
 }

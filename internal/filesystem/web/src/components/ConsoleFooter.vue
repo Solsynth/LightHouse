@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { ChevronDown16, Moon16, Sun16 } from '@carbon/icons-vue'
+import { ChevronDown16 } from '@carbon/icons-vue'
 
 import { useUiStore } from '@/stores/ui'
 import type { Locale } from '@/lib/prefs'
@@ -14,23 +14,12 @@ function onChangeLocale(event: Event) {
 </script>
 
 <template>
-  <footer
-    class="flex h-9 shrink-0 items-center gap-3 border-t border-line bg-ink px-4 text-2xs text-faint"
-  >
-    <span>{{ t('app.copyright', { year: new Date().getFullYear() }) }}</span>
+  <div class="flex shrink-0 items-center gap-3 py-2 text-2xs text-faint">
+    <span class="hidden lg:inline">{{
+      t('app.copyright', { year: new Date().getFullYear() })
+    }}</span>
 
     <div class="ml-auto flex items-center gap-3">
-      <button
-        type="button"
-        class="btn btn-ghost btn-xs grid size-6 place-items-center px-0"
-        :aria-label="t('app.switchToLight')"
-        :title="t('app.switchToLight')"
-        @click="ui.setTheme(ui.isDark ? 'light' : 'dark')"
-      >
-        <Sun16 v-if="ui.isDark" aria-hidden="true" />
-        <Moon16 v-else aria-hidden="true" />
-      </button>
-
       <label class="relative flex items-center">
         <span class="sr-only">{{ t('app.language') }}</span>
         <select
@@ -48,14 +37,14 @@ function onChangeLocale(event: Event) {
         />
       </label>
     </div>
-  </footer>
+  </div>
 </template>
 
 <style scoped>
 /* The language picker is a footer control, not a form field: it drops the
-   field border, fill, and shadow so it reads as one more piece of footer
-   text. `appearance: none` needs a chevron, drawn as a mask so it inherits
-   the footer's color in both themes. */
+   field fill and shadow so it reads as one more piece of footer text.
+   `appearance: none` needs a chevron, drawn as a mask so it inherits the
+   footer's color in both themes. */
 select.footer-locale {
   appearance: none;
   inline-size: auto;

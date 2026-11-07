@@ -52,11 +52,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <header
-    class="relative z-30 flex h-[52px] shrink-0 items-center gap-2 border-b border-line bg-ink px-3 md:px-4"
-  >
+  <header class="relative z-30 flex h-12 shrink-0 items-center gap-2 px-3 md:px-4">
     <button
-      class="btn btn-ghost btn-xs grid size-7 place-items-center px-0 lg:hidden"
+      class="btn btn-ghost btn-xs grid size-8 place-items-center px-0 lg:hidden"
       type="button"
       :aria-label="t('nav.openNavigation')"
       :title="t('nav.openNavigation')"
@@ -69,28 +67,28 @@ onBeforeUnmount(() => {
          so the two surfaces read as one product. -->
     <RouterLink
       to="/drive"
-      class="flex shrink-0 items-center gap-2"
+      class="group flex shrink-0 items-center gap-2"
       :aria-label="t('app.home')"
       :title="`${t('app.product')} — ${t('app.fullName')}`"
     >
-      <BrandMark :size="21" />
-      <span class="text-[13px] font-semibold tracking-[0.14em] text-base-content">{{
+      <BrandMark :size="22" class="brand-mark-live text-primary" />
+      <span class="text-[13px] font-bold tracking-[0.12em] text-base-content">{{
         t('app.product')
       }}</span>
-      <span class="hidden text-2xs tracking-[0.04em] text-faint sm:inline">{{
+      <span class="hidden text-2xs tracking-[0.03em] text-faint sm:inline">{{
         t('app.network')
       }}</span>
     </RouterLink>
 
-    <div class="ml-2 hidden flex-1 md:flex">
+    <div class="ml-2 hidden flex-1 justify-center md:flex">
       <button
-        class="group flex h-8 w-full max-w-[360px] items-center gap-2 border border-line bg-base-200/60 px-2.5 text-left transition-colors duration-150 hover:border-line hover:text-base-content"
+        class="group flex h-9 w-full max-w-[440px] items-center gap-2.5 rounded-full bg-base-300/45 pl-4 pr-2 text-left transition-colors duration-[var(--duration-base)] hover:bg-base-300/75"
         type="button"
         :aria-label="t('app.searchFilesOrCommand')"
         @click="ui.paletteOpen = true"
       >
-        <Search16 class="shrink-0 text-faint" aria-hidden="true" />
-        <span class="truncate text-2xs text-faint group-hover:text-dim">
+        <Search16 class="shrink-0 text-faint transition-colors group-hover:text-dim" aria-hidden="true" />
+        <span class="truncate text-xs text-faint transition-colors group-hover:text-dim">
           {{ t('app.searchFilesOrCommand') }}
         </span>
         <span class="ml-auto hidden shrink-0 items-center gap-1 sm:flex">
@@ -102,7 +100,7 @@ onBeforeUnmount(() => {
 
     <div class="ml-auto flex shrink-0 items-center gap-1">
       <button
-        class="btn btn-ghost btn-xs grid size-7 place-items-center px-0 md:hidden"
+        class="btn btn-ghost btn-xs grid size-8 place-items-center px-0 md:hidden"
         type="button"
         :aria-label="t('app.searchFiles')"
         :title="t('app.searchFiles')"
@@ -112,7 +110,7 @@ onBeforeUnmount(() => {
       </button>
 
       <button
-        class="btn btn-ghost btn-xs grid size-7 place-items-center px-0"
+        class="btn btn-ghost btn-xs grid size-8 place-items-center px-0"
         type="button"
         :aria-label="ui.isDark ? t('app.switchToLight') : t('app.switchToDark')"
         :title="ui.isDark ? t('app.switchToLight') : t('app.switchToDark')"
@@ -137,7 +135,7 @@ onBeforeUnmount(() => {
       </button>
 
       <span
-        class="ml-1 grid size-6 shrink-0 place-items-center border border-line bg-base-300 text-2xs text-dim"
+        class="ml-1.5 grid size-7 shrink-0 place-items-center rounded-full bg-base-300/70 text-2xs font-semibold text-dim"
         :title="`${identityName} · ${t('app.network')}`"
         :aria-label="t('app.signedInAs', { name: identityName })"
       >

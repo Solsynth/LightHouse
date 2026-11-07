@@ -273,16 +273,16 @@ function onKeydown(event: KeyboardEvent) {
     >
       <div
         v-if="ui.paletteOpen"
-        class="fixed inset-0 z-[80] flex justify-center bg-black/50 px-3 pt-[10vh] backdrop-blur-sm"
+        class="fixed inset-0 z-[80] flex justify-center bg-black/45 px-3 pt-[10vh] backdrop-blur-sm"
         @mousedown.self="close"
       >
         <div
-          class="palette-in h-fit w-full max-w-[600px] rounded-xl bg-base-200 shadow-2xl"
+          class="palette-in h-fit w-full max-w-[600px] rounded-sheet bg-base-200 p-1.5 shadow-[0_30px_80px_-40px_rgb(0_0_0/0.7)]"
           role="dialog"
           aria-modal="true"
           :aria-label="t('palette.aria')"
         >
-          <div class="flex items-center gap-2.5 border-b border-line px-4">
+          <div class="flex items-center gap-2.5 rounded-card bg-base-300/45 px-3.5">
             <Search16 class="shrink-0 text-faint" />
             <input
               ref="input"
@@ -298,24 +298,24 @@ function onKeydown(event: KeyboardEvent) {
             <span class="kbd">esc</span>
           </div>
 
-          <div class="max-h-[52vh] overflow-y-auto px-2 py-2">
+          <div class="max-h-[52vh] overflow-y-auto px-1 py-1.5">
             <div v-if="commands.length === 0" class="px-4 py-8 text-center">
               <p class="voice">{{ t('palette.empty') }}</p>
             </div>
 
             <template v-for="group in grouped" :key="group.name">
-              <div class="px-2 pb-1 pt-2">
-                <span class="text-[11px] font-medium text-faint">{{ group.name }}</span>
+              <div class="px-3 pb-1 pt-2.5">
+                <span class="eyebrow">{{ group.name }}</span>
               </div>
               <button
                 v-for="entry in group.items"
                 :id="`palette-item-${entry.index}`"
                 :key="entry.command.id"
                 type="button"
-                class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-100"
+                class="flex w-full items-center gap-2.5 rounded-control px-3 py-2.5 text-left transition-colors duration-100"
                 :class="
                   selected === entry.index
-                    ? 'bg-primary/[0.08] text-base-content'
+                    ? 'bg-primary/12 text-base-content'
                     : 'text-dim hover:bg-base-300/60'
                 "
                 @mousemove="selected = entry.index"
@@ -337,7 +337,7 @@ function onKeydown(event: KeyboardEvent) {
           </div>
 
           <div
-            class="flex items-center gap-3 border-t border-line px-4 py-2 text-[11px] text-faint"
+            class="flex items-center gap-3 rounded-card bg-base-300/30 px-3.5 py-2 text-[11px] text-faint"
           >
             <span class="flex items-center gap-1"
               ><span class="kbd">↑</span><span class="kbd">↓</span>

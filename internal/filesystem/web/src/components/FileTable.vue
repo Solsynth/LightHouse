@@ -68,15 +68,15 @@ function sortState(key: 'name' | 'size' | 'date') {
 </script>
 
 <template>
-  <div class="min-h-0 flex-1 overflow-auto scroll-region">
-    <table class="w-full table-fixed border-collapse">
-      <thead class="sticky top-0 z-10 bg-ink">
+  <div class="min-h-0 flex-1 overflow-auto scroll-region px-2 pb-2">
+    <table class="ledger w-full table-fixed">
+      <thead class="sticky top-0 z-10 bg-raised">
         <tr class="text-[11px] font-medium text-faint">
-          <th scope="col" class="w-10 pl-4 pr-1 text-left">
+          <th scope="col" class="w-10 pl-3 pr-1 text-left">
             <span class="sr-only">{{ t('drive.selectColumn') }}</span>
             <input
               type="checkbox"
-              class="checkbox checkbox-xs rounded-[4px]"
+              class="checkbox checkbox-xs"
               :checked="allSelected"
               :indeterminate.prop="someSelected"
               :disabled="vault.items.length === 0"
@@ -87,7 +87,7 @@ function sortState(key: 'name' | 'size' | 'date') {
           <th scope="col" class="min-w-0 text-left" :aria-sort="sortState('name')">
             <button
               type="button"
-              class="flex h-10 w-full items-center gap-1 font-medium transition-colors hover:text-dim"
+              class="flex h-9 w-full items-center gap-1 font-bold transition-colors hover:text-dim"
               :class="vault.order === 'name' ? 'text-base-content' : ''"
               @click="sortBy('name')"
             >
@@ -103,7 +103,7 @@ function sortState(key: 'name' | 'size' | 'date') {
           >
             <button
               type="button"
-              class="flex h-10 w-full items-center justify-end gap-1 font-medium transition-colors hover:text-dim"
+              class="flex h-9 w-full items-center justify-end gap-1 font-bold transition-colors hover:text-dim"
               :class="vault.order === 'size' ? 'text-base-content' : ''"
               @click="sortBy('size')"
             >
@@ -113,12 +113,12 @@ function sortState(key: 'name' | 'size' | 'date') {
           </th>
           <th
             scope="col"
-            class="hidden w-[132px] pr-4 text-right lg:table-cell"
+            class="hidden w-[132px] pr-3 text-right lg:table-cell"
             :aria-sort="sortState('date')"
           >
             <button
               type="button"
-              class="flex h-10 w-full items-center justify-end gap-1 font-medium transition-colors hover:text-dim"
+              class="flex h-9 w-full items-center justify-end gap-1 font-bold transition-colors hover:text-dim"
               :class="vault.order === 'date' ? 'text-base-content' : ''"
               @click="sortBy('date')"
             >
@@ -130,22 +130,22 @@ function sortState(key: 'name' | 'size' | 'date') {
       </thead>
 
       <tbody v-if="vault.loading && vault.items.length === 0">
-        <tr v-for="row in 7" :key="`skeleton-${row}`" class="border-b border-line-soft">
-          <td class="py-3.5 pl-4"><span class="block h-3 w-3 rounded-[3px] bg-base-300" /></td>
-          <td class="py-3.5">
+        <tr v-for="row in 7" :key="`skeleton-${row}`">
+          <td class="pl-3 pr-1"><span class="block h-3 w-3 rounded-[6px] bg-base-300" /></td>
+          <td>
             <div class="flex items-center gap-2.5">
-              <span class="size-4 rounded bg-base-300 pulse-soft" />
-              <span class="h-3 w-40 rounded bg-base-300 pulse-soft" />
+              <span class="size-4 rounded-[6px] bg-base-300 pulse-soft" />
+              <span class="h-3 w-40 rounded-[6px] bg-base-300 pulse-soft" />
             </div>
           </td>
           <td class="hidden md:table-cell">
-            <span class="block h-3 w-12 rounded bg-base-300/70" />
+            <span class="block h-3 w-12 rounded-[6px] bg-base-300/70" />
           </td>
           <td class="hidden sm:table-cell">
-            <span class="ml-auto block h-3 w-10 rounded bg-base-300/70" />
+            <span class="ml-auto block h-3 w-10 rounded-[6px] bg-base-300/70" />
           </td>
           <td class="hidden lg:table-cell">
-            <span class="ml-auto block h-3 w-14 rounded bg-base-300/70" />
+            <span class="ml-auto block h-3 w-14 rounded-[6px] bg-base-300/70" />
           </td>
         </tr>
       </tbody>
@@ -155,21 +155,21 @@ function sortState(key: 'name' | 'size' | 'date') {
           v-for="(file, index) in vault.items"
           :key="file.id"
           tabindex="0"
-          class="row-in group h-[46px] cursor-default border-b border-line-soft transition-colors duration-150 focus-visible:bg-primary/[0.06]"
-          :class="vault.selection.includes(file.id) ? 'bg-primary/[0.06]' : 'hover:bg-base-200/40'"
+          class="row-in group h-[46px] cursor-default"
+          :class="vault.selection.includes(file.id) ? 'is-selected' : ''"
           :style="{ animationDelay: `${Math.min(index, 12) * 16}ms` }"
           :aria-selected="vault.selection.includes(file.id)"
           @click="open(file)"
           @keydown="onKeydown($event, file)"
         >
-          <td class="pl-4 pr-1">
+          <td class="pl-3 pr-1">
             <input
               type="checkbox"
-              class="checkbox checkbox-xs rounded-[2px] transition-opacity duration-150"
+              class="checkbox checkbox-xs transition-opacity duration-150"
               :class="
                 vault.selection.includes(file.id)
                   ? 'opacity-100'
-                  : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100'
+                  : 'opacity-100 md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100'
               "
               :checked="vault.selection.includes(file.id)"
               :aria-label="t('drive.selectObject', { name: displayName(file) })"
@@ -181,7 +181,7 @@ function sortState(key: 'name' | 'size' | 'date') {
             <div class="flex min-w-0 items-center gap-2.5">
               <FileGlyph :file="file" />
               <div class="flex min-w-0 items-center gap-1.5">
-                <span class="truncate text-[13px]" :title="displayName(file)">
+                <span class="truncate text-[13px] font-medium" :title="displayName(file)">
                   {{ displayName(file) }}
                 </span>
                 <Link16
@@ -197,7 +197,7 @@ function sortState(key: 'name' | 'size' | 'date') {
             {{ file.is_folder ? '—' : formatBytes(file.object?.size) }}
           </td>
           <td
-            class="hidden whitespace-nowrap pr-4 text-right text-[12px] tabular-nums text-faint lg:table-cell"
+            class="hidden whitespace-nowrap pr-3 text-right text-[12px] tabular-nums text-faint lg:table-cell"
           >
             {{ modifiedLabel(file.updated_at) }}
           </td>

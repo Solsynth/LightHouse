@@ -169,11 +169,11 @@ async function toggleShare() {
     >
       <div
         v-if="dialog"
-        class="fixed inset-0 z-[75] flex items-center justify-center overflow-y-auto bg-black/50 px-4 py-8 backdrop-blur-sm"
+        class="fixed inset-0 z-[75] flex items-center justify-center overflow-y-auto bg-black/45 px-4 py-8 backdrop-blur-sm"
         @mousedown.self="close"
       >
         <div
-          class="palette-in relative w-full rounded-xl bg-base-200 shadow-2xl"
+          class="palette-in relative w-full rounded-sheet bg-base-200 shadow-[0_30px_80px_-40px_rgb(0_0_0/0.7)]"
           :class="dialog.kind === 'shortcuts' ? 'max-w-[540px]' : 'max-w-[440px]'"
           role="dialog"
           aria-modal="true"
@@ -201,7 +201,7 @@ async function toggleShare() {
                   maxlength="160"
                 />
               </div>
-              <div class="flex justify-end gap-2 border-t border-line px-5 py-3">
+              <div class="flex justify-end gap-2 px-5 pb-5 pt-0">
                 <button class="btn btn-ghost btn-sm" type="button" @click="close">
                   {{ t('dialog.cancel') }}
                 </button>
@@ -233,7 +233,7 @@ async function toggleShare() {
                   maxlength="255"
                 />
               </div>
-              <div class="flex justify-end gap-2 border-t border-line px-5 py-3">
+              <div class="flex justify-end gap-2 px-5 pb-5 pt-0">
                 <button class="btn btn-ghost btn-sm" type="button" @click="close">
                   {{ t('dialog.cancel') }}
                 </button>
@@ -262,7 +262,7 @@ async function toggleShare() {
                 @change="onDestination"
               />
             </div>
-            <div class="flex justify-end gap-2 border-t border-line px-5 py-3">
+            <div class="flex justify-end gap-2 px-5 pb-5 pt-0">
               <button class="btn btn-ghost btn-sm" type="button" @click="close">
                 {{ t('dialog.cancel') }}
               </button>
@@ -285,12 +285,12 @@ async function toggleShare() {
               <p class="voice mt-1.5">
                 {{ t('dialog.recycleBody', { noun: confirmNoun, size: sizeClause }) }}
               </p>
-              <div class="mt-3 rounded-lg bg-base-300/50 px-3 py-2 text-[11px] text-dim">
+              <div class="mt-3 rounded-chip bg-base-300/50 px-3 py-2 text-[11px] text-dim">
                 <span class="text-faint">{{ t('dialog.recoveryLabel') }}</span> ·
                 {{ t('dialog.recoveryNote') }}
               </div>
             </div>
-            <div class="flex justify-end gap-2 border-t border-line px-5 py-3">
+            <div class="flex justify-end gap-2 px-5 pb-5 pt-0">
               <button class="btn btn-ghost btn-sm" type="button" @click="close">
                 {{ t('dialog.cancel') }}
               </button>
@@ -314,13 +314,13 @@ async function toggleShare() {
                 {{ t('dialog.purgeBody', { noun: confirmNoun, size: sizeClause }) }}
               </p>
               <div
-                class="mt-3 flex items-center gap-2 rounded-lg bg-error/10 px-3 py-2 text-[11px] text-error"
+                class="mt-3 flex items-center gap-2 rounded-chip bg-error/12 px-3 py-2 text-[11px] text-error"
               >
                 <WarningAlt16 class="h-3.5 w-3.5 shrink-0" />
                 {{ t('dialog.purgeWarning') }}
               </div>
             </div>
-            <div class="flex justify-end gap-2 border-t border-line px-5 py-3">
+            <div class="flex justify-end gap-2 px-5 pb-5 pt-0">
               <button class="btn btn-ghost btn-sm" type="button" @click="close">
                 {{ t('dialog.cancel') }}
               </button>
@@ -345,7 +345,7 @@ async function toggleShare() {
               </p>
 
               <div
-                class="mt-4 flex items-center justify-between gap-3 rounded-lg bg-base-300/40 px-3.5 py-3"
+                class="mt-4 flex items-center justify-between gap-3 rounded-card bg-base-300/30 px-3.5 py-3"
               >
                 <div>
                   <div class="text-[12px] text-base-content">{{ t('preview.publicLink') }}</div>
@@ -360,15 +360,15 @@ async function toggleShare() {
                   type="button"
                   role="switch"
                   :aria-checked="shareIsPublic"
-                  class="relative h-5 w-[34px] shrink-0 rounded-full transition-colors duration-150 disabled:opacity-50"
+                  class="relative h-6 w-11 shrink-0 rounded-full transition-colors duration-150 disabled:opacity-50"
                   :class="shareIsPublic ? 'bg-primary' : 'bg-base-300'"
                   :disabled="busy"
                   @click="toggleShare"
                 >
                   <span
-                    class="absolute top-[3px] size-3.5 rounded-full transition-[left] duration-150"
+                    class="absolute top-[3px] size-[18px] rounded-full transition-[left] duration-150"
                     :class="
-                      shareIsPublic ? 'left-[17px] bg-primary-content' : 'left-[3px] bg-faint'
+                      shareIsPublic ? 'left-[23px] bg-primary-content' : 'left-[3px] bg-faint'
                     "
                   />
                 </button>
@@ -378,14 +378,14 @@ async function toggleShare() {
                 <input
                   :value="shareLink"
                   readonly
-                  class="input h-8 min-w-0 flex-1 px-2.5 font-mono text-[11px] text-dim"
+                  class="input h-9 min-w-0 flex-1 px-3 font-mono text-2xs text-dim"
                   :aria-label="t('preview.publicLink')"
                   @focus="($event.target as HTMLInputElement).select()"
                 />
                 <CopyButton :value="shareLink" label="publicLink" />
               </div>
             </div>
-            <div class="flex justify-end gap-2 border-t border-line px-5 py-3">
+            <div class="flex justify-end gap-2 px-5 pb-5 pt-0">
               <button class="btn btn-primary btn-sm" type="button" @click="close">
                 {{ t('dialog.done') }}
               </button>
@@ -398,11 +398,11 @@ async function toggleShare() {
                 {{ t('shortcuts.title') }}
               </h2>
               <p class="voice mt-1">{{ t('shortcuts.note') }}</p>
-              <dl class="mt-4 divide-y divide-line-soft text-[11px]">
+              <dl class="mt-4 flex flex-col gap-0.5 rounded-card bg-base-300/30 p-1.5 text-[11px]">
                 <div
                   v-for="row in shortcutRows"
                   :key="row[0]"
-                  class="flex items-center justify-between gap-4 py-2"
+                  class="flex items-center justify-between gap-4 rounded-chip px-2.5 py-2 transition-colors hover:bg-base-200/60"
                 >
                   <dt class="text-dim">{{ row[0] }}</dt>
                   <dd class="flex shrink-0 gap-1">
@@ -411,7 +411,7 @@ async function toggleShare() {
                 </div>
               </dl>
             </div>
-            <div class="flex justify-end border-t border-line px-5 py-3">
+            <div class="flex justify-end px-5 pb-5 pt-0">
               <button class="btn btn-primary btn-sm" type="button" @click="close">
                 {{ t('dialog.close') }}
               </button>

@@ -1,127 +1,218 @@
 # SnFS console design system
 
 The console in `web/` is the web client for the Solar Network File System:
-file explorer, storage node inspector, file previewer, command palette, and the
+file explorer, storage inspector, file previewer, command palette, and the
 embeddable file picker.
 
 This is the working reference for anyone adding or styling screens in SnFS. It
 documents the design decisions encoded in `web/src/assets/main.css`,
-`web/src/locales/`, and the shared components, aligned with the Solar Network
-console design system.
+`web/src/locales/`, and the shared components. It follows the Solar Network
+console (`internal/stargate/web`) so the two surfaces read as one product, and
+borrows the information architecture of Google Drive: a location rail, a
+search line, a browsable object list, and a details column.
 
 ## 1. Principles
 
-1. **A calm, precise workspace.** The interface reports file systems, storage
+1. **Islands, not frames.** Every region is a sheet of paper floating on the
+   page ground. Separation comes from the gap between sheets and the tone of a
+   sheet — never from a border, divider, or rule.
+2. **Blocks, not lines.** Lists are bars with their own corner and a 2 px
+   gutter. Groups are wells. A selected row is a tinted block. No horizontal
+   or vertical hairlines are used to separate content.
+3. **One brand signal.** Periwinkle-indigo (`primary`) is the only decorative
+   colour. It marks the active location, the selected object, focus, and the
+   primary action. Surface variants (`base-100`, `base-200`, `base-300`,
+   `raised`, `tint`) carry all structure. Semantic tones appear only where
+   state demands them: an error, a completed transfer, a warning.
+4. **A calm, precise workspace.** The interface reports file systems, storage
    metrics, and transfers with instrument-level clarity. No hero metrics or
    decorative chrome that does not convey data.
-2. **One signal color.** Periwinkle (`primary`) marks the active action,
-   selected file row, or current filter. Semantic colors appear only when state
-   demands them; brass (`accent`) marks privilege and quotas.
-3. **Machine data and human explanation are typeset differently.** IBM Plex Mono
-   is used for file names, paths, hashes, sizes, and machine coordinates. IBM
-   Plex Sans is reserved for the human voice — guidance, titles, hints, and
-   dialog descriptions.
-4. **Blocks, not rules.** Content areas are grouped by subtle surface tone and
-   spacing. Thin hairlines exist only where structure is encoded: table headers,
-   ledger rows, and modal dialog sections.
-5. **Shared geometry with the fleet.** Corner radii follow the tightened
-   desktop scale:
-   - Mark: 4 px
-   - Chip / status / skeleton: 6 px
-   - Button / segmented control: 6 px
-   - Field / input: 10 px
-   - Card / panel / well: 12 px
-   - Sheet / modal / dialog: 16 px
-6. **A field is one rounded outline with an inset caption.** Every control is
-   a filled, fully rounded shape drawn by a 1 px border on all four sides with
-   an 8–10 px radius (`--radius-input`). The caption rises into a compact label
-   inside the top of the box on focus or value, keeping the outer border clean
-   and unbroken. Focus thickens that outline to 2 px in the signal colour, and
-   an error tints it in the error tone. Suffix icons or actions can sit on the
-   trailing edge.
+5. **People read names, machines print data.** Nunito is the interface and
+   voice. IBM Plex Mono is reserved for machine-printed strings: paths, hashes,
+   MIME types, storage keys, share links, and source text. Figures are set with
+   tabular numerals where they are compared in a column.
+6. **Shared geometry with the fleet.** Corner radii follow the Solar Network
+   scale:
+   - Mark: 8 px
+   - Chip / status / well: 12 px
+   - Button / segmented control / field: 16 px
+   - Card / island: 20 px
+   - Sheet / dialog / picker frame: 28 px
 
-## 2. Color
+## 2. Layout
 
-daisyUI themes are declared in `web/src/assets/main.css`:
+The console is a stack of islands on a padded ground:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  header island: lockup · search · actions                       │
+│                 open-location tabs (tonal chips)                │
+├───────────────────┬─────────────────────────────────────────────┤
+│  rail island      │  content island                             │
+│  locations        │  toolbar (breadcrumb · filters · views)      │
+│  pools            │  ┌───────────────────────────────────────┐  │
+│  ┌─────────────┐  │  │  object bars / grid cards / columns   │  │
+│  │ quota well  │  │  └───────────────────────────────────────┘  │
+│  └─────────────┘  │                                             │
+├───────────────────┴─────────────────────────────────────────────┤
+│  status + language island                                       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+- The gutter between islands is 8 px on small screens and 10 px above.
+- The rail is 248 px and uses `base-200`; the content is `raised`; nested
+  lists and wells step to `base-200` or `base-300`.
+- Content is left-aligned. The rail, toolbar, and status line share one
+  horizontal rhythm; object names lead, metadata trails.
+- Below `md` the rail becomes a rounded drawer over a dimmed ground, and the
+  header collapses to controls only.
+
+## 3. Color
+
+daisyUI themes are declared in `web/src/assets/main.css`. The ramp is the
+Solar Network neutral ramp — a near-neutral lavender-gray, not blue-gray and
+not warm — with indigo as the single brand signal.
 
 | Theme | Selector | Scheme | Ground |
 | --- | --- | --- | --- |
-| `snfs` (default) | `data-theme="snfs"` | dark | Ink-blue |
-| `snfs-light` | `data-theme="snfs-light"` | light | Cool paper |
+| `snfs` (default) | `data-theme="snfs"` | dark | `#171618` |
+| `snfs-light` | `data-theme="snfs-light"` | light | `#faf7f9` |
 
 ### Surfaces and text
 
 | Role | Token | Dark | Light |
 | --- | --- | --- | --- |
-| Page ground | `--color-base-100` | `#0a0d16` | `#f3f5fa` |
-| Panel / container | `--color-base-200` | `#10141f` | `#eaeef6` |
-| Raised surface | `--color-base-300` | `#171c2b` | `#dee3ee` |
-| Text content | `--color-base-content` | `#ccd2e2` | `#1c2334` |
-| Hairline | `--console-line` | `#232a3c` | `#ccd3e1` |
-| Soft hairline | `--console-line-soft` | `#1a2030` | `#dee3ed` |
-| Secondary text | `--console-dim` | `#9aa3b8` | `#4d5770` |
-| Faint text | `--console-faint` | `#7d86a0` | `#646e86` |
+| Page ground | `--color-base-100` | `#171618` | `#faf7f9` |
+| Quiet island / rail | `--color-base-200` | `#1d1d20` | `#f6f2f6` |
+| Nested well / step | `--color-base-300` | `#2e2e31` | `#e4e1e5` |
+| Content island | `--surface-raised` (`bg-raised`) | `#232326` | `#efebf0` |
+| Raised hover | `--surface-raised-hover` | `#2a2a2e` | `#e9e4eb` |
+| Brand-tinted island | `--surface-tint` (`bg-tint`) | `#262833` | `#e8e9f5` |
+| Text content | `--color-base-content` | `#edeaee` | `#1f1f22` |
+| Soft line (focus, scrollbar) | `--console-line` | `#4b4b4f` | `#d3d1d5` |
+| Secondary text | `--console-dim` | `#c8c5ca` | `#4b4b4f` |
+| Faint text | `--console-faint` | `#97959b` | `#636367` |
 
 ### Signal and state
 
 | Role | Dark | Light | Use |
 | --- | --- | --- | --- |
-| `primary` | `#7577ba` | `#54589f` | Primary action, focus ring, active row |
-| `accent` | `#c7b08a` | `#8a6a3b` | Quota allocation, elevated session |
-| `success` | `#8db39a` | `#3d6d4f` | Upload complete, healthy node |
-| `warning` | `#c7b08a` | `#8a6a3b` | Storage warning, expiring token |
-| `error` | `#c08579` | `#a4554a` | Transfer failure, offline node |
-| `info` | `#8fa6c9` | `#3f678c` | Informational status |
+| `primary` | `#bac3ff` | `#515b92` | Active location, selection, focus, primary action |
+| `success` | `#a8d1a8` | `#315936` | Upload complete, healthy node |
+| `warning` | `#fdba55` | `#6f4800` | Quota pressure, expiring token |
+| `error` | `#ffb4ab` | `#9f352d` | Transfer failure, offline node, destructive action |
+| `info` | `#a1cce8` | `#2d5f79` | Informational status |
 
-## 3. Typography
+Semantic colours are used as tints (`bg-error/12`, `bg-success/12`) or as text
+inside a tinted chip — never as a second decorative palette. No hue outside
+this list is spent on files, folders, or regions.
+
+## 4. Typography
 
 | Face | Weights | Role |
 | --- | --- | --- |
-| IBM Plex Mono | 400, 500, 600 | File listings, sizes, hashes, machine paths, metadata |
-| IBM Plex Sans | 400, 500, 600 | Titles, descriptions, dialogs, guidance, empty states |
+| Nunito | 400, 600, 700 | Interface, object names, headings, guidance |
+| IBM Plex Mono | 400, 500, 600 | Paths, hashes, MIME, storage keys, share links, source |
 
-- Default body is IBM Plex Mono at 13 px with tabular numerals (`tnum`).
-- Guidance, dialog descriptions, and empty state notes use the `.voice` utility (IBM Plex Sans 13.5 px).
-- Page headings use `.title` (IBM Plex Sans medium tracking).
-- Section labels use `.eyebrow` (uppercase 11 px, tracking 0.18em, faint text).
+- Body is Nunito at 13.5 px with 1.55 leading.
+- Guidance, dialog descriptions, and empty state notes use `.voice`.
+- Page headings use `.title` (Nunito bold, −0.01em tracking).
+- Section labels use `.eyebrow` (uppercase 11 px, tracking 0.1em, faint).
+- Machine strings opt in with `font-mono`; they are never the body default.
 
-## 4. Geometry and Corner Radii
+## 5. Surfaces and utility classes
 
-| Token | Value | Tailwind Class | Use |
-| --- | --- | --- | --- |
-| `--radius-mark` | 4 px | `rounded-mark` | Brand marks, file glyph icons |
-| `--radius-chip` | 6 px | `rounded-chip` | Status badges, mime tags, skeletons |
-| `--radius-control` | 6 px | `rounded-control` | Buttons, segmented views, toolbar toggles |
-| `--radius-input` | 10 px | `rounded-input` / `--radius-field` | Inputs, selects, textareas |
-| `--radius-card` | 12 px | `rounded-card` / `--radius-box` | Panels, menus, inspector drawers |
-| `--radius-sheet` | 16 px | `rounded-sheet` | Modal dialogs, picker frame host |
-
-## 5. Forms and Inputs
-
-All text input fields share the `TextField` component (`src/components/TextField.vue`):
-
-- **Clean Full Outline**: 1 px border with 10 px corner radius (`--radius-input`) on all four sides.
-- **Inset Floating Label**: At rest, the label sits vertically centered on the value line. When focused or holding a value, it rises inside the top of the box.
-- **Generous Height**: Comfortable heights (48 px default `sm`, 52 px `md`, 36 px `xs`) ensuring value text is never cramped beneath the risen label.
-- **Signal Focus**: Focus thickens the outline to 2 px in the signal color via an inset ring so layout never jumps.
-- **Suffix Icons & Actions**: Optional trailing icon component (`suffixIcon` prop) or trailing slots (`#suffix`, `#action`) for passkeys, password reveal, copy buttons, or clear actions. Fields without a suffix icon maintain balanced padding.
-- **Validation**: `invalid` turns the outline and caption to the error tone with helper text in `hint`.
-
-### Props
-
-| Prop | Meaning |
+| Class | Meaning |
 | --- | --- |
-| `label` | Visible caption; omit for bare controls |
-| `as` | `'input'` (default), `'textarea'`, `'select'` |
-| `size` | `'md'` (52 px), `'sm'` (48 px, default), `'xs'` (36 px) |
-| `bare` | Drops caption and reserved caption line; name with `aria-label` |
-| `invalid` | Error outline and caption tint |
-| `hint` | Optional helper text below the field |
-| `hintTone` | `'warning'` tints helper text without setting invalid |
-| `suffixIcon` | Optional trailing icon component |
-| `controlClass` | Classes for inner control element (e.g. `font-mono`) |
-| `rootClass` | Classes for root wrapper (e.g. layout margins) |
+| `.island` | A content sheet: `rounded-card bg-raised` |
+| `.island-quiet` | Quiet chrome sheet: `rounded-card bg-base-200` |
+| `.island-tint` | The one brand-tinted sheet |
+| `.well` | A nested tonal block for search lines, media beds, notes |
+| `.row-bar` | A list row: rounded chip with hover/selected tone |
+| `.ledger` | Row-bar table: 2 px border spacing, tinted cells, no rules |
+| `.seg` / `.seg-item` | Segmented control; the pressed item takes `base-300` |
+| `.chip` | Inline token for tags, filters, counts |
+| `.note` | Tinted status block (`note-error`, `note-success`, `note-warning`) |
 
-## 6. Embeddable Picker Frame
+Rules of thumb:
 
-The SnFS file picker (`/picker`) adheres to the same dark/light themes and geometry. When embedded across origins, it handles tokens via the `snfs-picker` window message protocol and adapts seamlessly to `auto`, `dark`, or `light` theme options.
+- A nested block is always a different tone from its parent. On a `raised`
+  island, nested rows are `base-200`; inside a `base-200` column, rows are
+  `base-100` or `base-300`.
+- Hover steps one tone up; selection mixes `primary` at 12–18 % into the
+  surface, so selection never introduces a second hue.
+- Sticky table headers use the island's solid fill (`bg-raised`) so rows scroll
+  underneath without a shadow or rule.
+
+## 6. Forms and controls
+
+All text fields share the `TextField` component (`src/components/TextField.vue`)
+and the raw `.input` skin for one-off chrome:
+
+- **Tonal well, not an outline.** The fill defines the field at rest; hover
+  steps it up; focus is an inset 2 px ring in the signal colour so the layout
+  never moves.
+- **Inset floating label.** At rest the caption sits on the value line. On
+  focus or with a value it rises inside the top of the box.
+- **Generous height.** 52 px (`md`), 48 px (`sm`, default), 36 px (`xs`).
+- **Suffix icons and actions** sit on the trailing edge without adding a border.
+- **Validation** tints the inset ring and caption in the error tone; helper
+  text sits below the well.
+
+Buttons are tonal rectangles with no border at rest. A press sinks 1 px and
+shrinks a hair. `btn-outline` is the soft variant: a tonal fill that steps up
+under the pointer, not a hairline rectangle. Destructive actions use a tinted
+error fill, not a red outline.
+
+Checkboxes and switches are tonal controls: unchecked is `--field-fill`,
+checked is the brand colour. Toggles are capsules (`rounded-full`), never
+squared.
+
+## 7. Object views
+
+Four browsing surfaces share the same rules: bars or cards with their own
+corner, no dividers, tonal selection.
+
+| View | Composition |
+| --- | --- |
+| List | `.ledger`; row bars with a 2 px gutter; sticky tonal header |
+| Grid | `base-200` cards; rounded media well; name and metadata below |
+| Column | Miller columns as separate tonal islands with a gutter; nested rows are `base-100` |
+| Waterfall | Masonry of tonal cards, media ratio clamped between 0.35:1 and 4:1 |
+
+Folders are set in the same face as files; kind and size are the only metadata
+that appear by default. A public-by-link object gets a small brand glyph, not a
+badge block.
+
+## 8. Embeddable picker
+
+The SnFS file picker (`/picker`) uses the same island vocabulary in a compact
+frame:
+
+- Header with brand mark, title, guidance, and a quiet close control.
+- Breadcrumb and search as separate rounded tonal bands.
+- Rows as tonal bars with a circular selection control on the leading edge.
+- Footer as an island holding the selection summary and the two actions.
+- Drop-to-upload is a tinted veil over the whole frame, not a dashed outline.
+- The SDK overlay (`src/lib/picker/embed.ts`) draws a 28 px sheet on a dimmed,
+  blurred ground, with the frame inset 6 px and a 20 px document corner. It
+  handles `auto`, `dark`, and `light` theme options over the `snfs-picker`
+  message protocol.
+
+## 9. Motion
+
+- One curve family: `ease-out` `cubic-bezier(0.33, 1, 0.68, 1)`; 180 ms is the
+  default, 120 ms for tonal hover, 260 ms for arrivals.
+- Motion only explains a change: a page arriving, a row settling, a transfer
+  advancing, a menu opening. Nothing loops for decoration.
+- All animation collapses under `prefers-reduced-motion: reduce`.
+
+## 10. Accessibility
+
+- Visible keyboard focus is a 2 px brand outline with a 2 px offset, or an
+  inset ring inside fields.
+- Selection is conveyed by `aria-selected` as well as tint; the tint is never
+  the only signal.
+- Text contrast follows the surface tables above; semantic text is placed on a
+  tint of its own hue.
+- Scroll regions keep the scrollbar gutter stable so rows do not shift.

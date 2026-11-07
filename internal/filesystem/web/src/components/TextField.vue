@@ -12,7 +12,7 @@ defineOptions({ inheritAttrs: false })
  *
  * At rest the label sits centered on the value line. On focus, or once there is a
  * value, it floats up into a compact caption inside the top of the box. Focus
- * highlights the border in the signal colour, and an invalid field keeps the
+ * draws an inset ring in the signal colour, and an invalid field keeps the
  * error tone.
  *
  * A field whose name lives in the surrounding chrome — a search box in a

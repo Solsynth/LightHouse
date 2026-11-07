@@ -100,15 +100,15 @@ function onKeydown(event: KeyboardEvent, file: CloudFile) {
 </script>
 
 <template>
-  <div class="min-h-0 flex-1 overflow-auto scroll-region p-3 md:p-5">
-    <section v-if="folders.length > 0" class="mb-4" :aria-label="t('drive.kindFolders')">
-      <h2 class="eyebrow">{{ t('drive.kindFolders') }}</h2>
+  <div class="min-h-0 flex-1 overflow-auto scroll-region p-2 md:p-3">
+    <section v-if="folders.length > 0" class="mb-3" :aria-label="t('drive.kindFolders')">
+      <h2 class="eyebrow px-1">{{ t('drive.kindFolders') }}</h2>
       <div class="mt-2 flex flex-wrap gap-1.5">
         <button
           v-for="folder in folders"
           :key="folder.id"
           type="button"
-          class="chip max-w-full transition-colors hover:bg-base-200/60 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          class="chip max-w-full bg-base-200/60 px-2.5 py-1 hover:bg-base-300 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           :title="displayName(folder)"
           @click="open(folder)"
         >
@@ -129,13 +129,16 @@ function onKeydown(event: KeyboardEvent, file: CloudFile) {
         :key="tile.file.id"
         tabindex="0"
         role="listitem"
-        class="group relative mb-2.5 cursor-default break-inside-avoid rounded-[2px] border border-line bg-base-200/30 transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        :class="isSelected(tile.file) ? 'border-primary/40' : 'hover:bg-base-200/60'"
+        class="group relative mb-2.5 cursor-default break-inside-avoid rounded-card p-1.5 transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        :class="isSelected(tile.file) ? 'bg-primary/12' : 'bg-base-200/75 hover:bg-base-300/70'"
         :aria-selected="isSelected(tile.file)"
         @click="open(tile.file)"
         @keydown="onKeydown($event, tile.file)"
       >
-        <div class="relative overflow-hidden bg-base-300/40" :style="{ aspectRatio: tile.ratio }">
+        <div
+          class="relative overflow-hidden rounded-chip bg-base-300/40"
+          :style="{ aspectRatio: tile.ratio }"
+        >
           <img
             v-if="tile.url"
             :src="tile.url"
@@ -151,11 +154,11 @@ function onKeydown(event: KeyboardEvent, file: CloudFile) {
 
           <input
             type="checkbox"
-            class="checkbox checkbox-xs absolute left-2 top-2 rounded-[2px] bg-ink/80 transition-opacity duration-150"
+            class="checkbox checkbox-xs absolute left-2 top-2 bg-base-100/85 transition-opacity duration-150"
             :class="
               isSelected(tile.file)
                 ? 'opacity-100'
-                : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100'
+                : 'opacity-100 md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100'
             "
             :checked="isSelected(tile.file)"
             :aria-label="t('drive.selectObject', { name: displayName(tile.file) })"
@@ -164,8 +167,8 @@ function onKeydown(event: KeyboardEvent, file: CloudFile) {
           />
         </div>
 
-        <div class="flex min-w-0 flex-col gap-0.5 px-2 py-1.5">
-          <span class="truncate text-2xs text-base-content" :title="displayName(tile.file)">
+        <div class="flex min-w-0 flex-col gap-0.5 px-1.5 py-1.5">
+          <span class="truncate text-2xs font-semibold text-base-content" :title="displayName(tile.file)">
             {{ displayName(tile.file) }}
           </span>
           <span class="truncate text-2xs text-faint tabular-nums">

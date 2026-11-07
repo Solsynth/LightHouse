@@ -57,32 +57,41 @@ watch(
 <template>
   <slot v-if="state === 'ready'" />
 
-  <div v-else class="flex h-dvh flex-col items-center justify-center gap-3 px-6 text-center">
-    <template v-if="state === 'loading'">
-      <div class="loading-scan h-[2px] w-32 bg-line-soft" />
-      <p class="text-2xs text-faint">{{ t('session.connecting') }}</p>
-    </template>
+  <div class="flex h-dvh flex-col items-center justify-center bg-base-100 p-3 text-center">
+    <div class="w-full max-w-[340px] rounded-sheet bg-base-200 px-7 py-8">
+      <template v-if="state === 'loading'">
+        <div class="loading-scan mx-auto h-[2px] w-32 bg-base-300/50" />
+        <p class="mt-4 text-2xs text-faint">{{ t('session.connecting') }}</p>
+      </template>
 
-    <template v-else-if="state === 'signed-out'">
-      <Login16 class="h-5 w-5 text-faint" aria-hidden="true" />
-      <h1 class="title text-[16px]">{{ t('session.signInRequired') }}</h1>
-      <p class="voice max-w-[320px] text-[12px]">{{ t('session.signInBody') }}</p>
-      <button type="button" class="btn btn-primary btn-sm" @click="signIn">
-        {{ t('session.signIn') }}
-      </button>
-      <p v-if="props.embedded" class="text-2xs text-faint">Opens in a popup window.</p>
-    </template>
+      <template v-else-if="state === 'signed-out'">
+        <span class="mx-auto grid size-11 place-items-center rounded-card bg-base-300/50">
+          <Login16 class="h-5 w-5 text-primary" aria-hidden="true" />
+        </span>
+        <h1 class="title mt-4 text-[17px]">{{ t('session.signInRequired') }}</h1>
+        <p class="voice mt-2 text-[12px]">{{ t('session.signInBody') }}</p>
+        <button type="button" class="btn btn-primary btn-sm mt-4" @click="signIn">
+          {{ t('session.signIn') }}
+        </button>
+        <p v-if="props.embedded" class="mt-3 text-2xs text-faint">Opens in a popup window.</p>
+      </template>
 
-    <template v-else>
-      <CloudOffline16 class="h-5 w-5 text-error" aria-hidden="true" />
-      <h1 class="title text-[16px]">{{ t('error.storageUnreachable') }}</h1>
-      <p v-if="session.error" class="max-w-[320px] font-mono text-2xs text-error">
-        {{ session.error }}
-      </p>
-      <button type="button" class="btn btn-ghost btn-sm" @click="session.retry()">
-        <Renew16 />
-        {{ t('session.tryAgain') }}
-      </button>
-    </template>
+      <template v-else>
+        <span class="mx-auto grid size-11 place-items-center rounded-card bg-error/12">
+          <CloudOffline16 class="h-5 w-5 text-error" aria-hidden="true" />
+        </span>
+        <h1 class="title mt-4 text-[17px]">{{ t('error.storageUnreachable') }}</h1>
+        <p
+          v-if="session.error"
+          class="mt-2 break-all rounded-chip bg-base-300/40 px-3 py-2 font-mono text-2xs text-error"
+        >
+          {{ session.error }}
+        </p>
+        <button type="button" class="btn btn-outline btn-sm mt-4" @click="session.retry()">
+          <Renew16 />
+          {{ t('session.tryAgain') }}
+        </button>
+      </template>
+    </div>
   </div>
 </template>

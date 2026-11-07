@@ -53,12 +53,12 @@ function statusLabel(status: string, progress: number): string {
   >
     <section
       v-if="visible"
-      class="fixed bottom-11 right-3 z-50 w-[340px] max-w-[calc(100vw-24px)] rounded-xl bg-base-200 shadow-2xl"
+      class="fixed bottom-16 right-3 z-50 w-[360px] max-w-[calc(100vw-24px)] rounded-sheet bg-base-200 p-1.5 shadow-[0_24px_60px_-28px_rgb(0_0_0/0.6)] md:right-4"
       :aria-label="t('transfers.aria')"
     >
       <button
         type="button"
-        class="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+        class="flex w-full items-center gap-2 rounded-card px-2.5 py-2 text-left transition-colors hover:bg-base-300/45"
         :aria-expanded="!uploads.collapsed"
         @click="toggle"
       >
@@ -72,8 +72,8 @@ function statusLabel(status: string, progress: number): string {
         <ChevronDown16 v-else class="h-3.5 w-3.5 text-faint" />
       </button>
 
-      <div v-if="uploads.collapsed" class="px-3 pb-2.5">
-        <div class="h-[2px] overflow-hidden rounded-full bg-base-300">
+      <div v-if="uploads.collapsed" class="px-2.5 pb-2">
+        <div class="h-1 overflow-hidden rounded-full bg-base-100/50">
           <div
             class="h-full rounded-full bg-primary transition-[width] duration-300"
             :style="{ width: `${uploads.overallProgress}%` }"
@@ -82,8 +82,12 @@ function statusLabel(status: string, progress: number): string {
       </div>
 
       <template v-else>
-        <ul class="max-h-[260px] divide-y divide-line-soft overflow-y-auto border-t border-line">
-          <li v-for="task in uploads.tasks" :key="task.id" class="px-3 py-2">
+        <ul class="flex max-h-[260px] flex-col gap-0.5 overflow-y-auto p-0.5">
+          <li
+            v-for="task in uploads.tasks"
+            :key="task.id"
+            class="rounded-chip px-2.5 py-2 transition-colors hover:bg-base-300/40"
+          >
             <div class="flex items-center gap-2">
               <Checkmark16
                 v-if="task.status === 'done'"
@@ -126,7 +130,7 @@ function statusLabel(status: string, progress: number): string {
             </div>
 
             <div class="mt-1.5 flex items-center gap-2">
-              <div class="h-[2px] flex-1 overflow-hidden rounded-full bg-base-300">
+              <div class="h-1 flex-1 overflow-hidden rounded-full bg-base-100/50">
                 <div
                   class="h-full rounded-full transition-[width] duration-200"
                   :class="
@@ -145,7 +149,7 @@ function statusLabel(status: string, progress: number): string {
           </li>
         </ul>
 
-        <div class="flex items-center justify-between border-t border-line px-3 py-2">
+        <div class="mt-0.5 flex items-center justify-between rounded-card bg-base-300/30 px-3 py-2">
           <span class="text-[11px] text-faint">{{ t('transfers.target') }}</span>
           <button
             type="button"

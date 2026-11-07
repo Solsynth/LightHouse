@@ -80,16 +80,16 @@ function jump(index: number) {
 </script>
 
 <template>
-  <div class="rounded-lg bg-base-200/60">
+  <div class="rounded-card bg-base-300/30">
     <div
-      class="flex flex-wrap items-center gap-1 border-b border-line px-3 py-2 text-[11px]"
+      class="flex flex-wrap items-center gap-1 px-3 py-2 text-[11px]"
       :aria-label="t('folderPicker.aria')"
     >
       <template v-for="(crumb, index) in path" :key="crumb.id ?? 'root'">
         <span v-if="index > 0" class="text-line" aria-hidden="true">/</span>
         <button
           type="button"
-          class="max-w-[140px] truncate rounded px-0.5 transition-colors"
+          class="max-w-[140px] truncate rounded-[10px] px-1.5 py-0.5 transition-colors hover:bg-base-200/60"
           :class="
             index === path.length - 1 ? 'text-base-content' : 'text-dim hover:text-base-content'
           "
@@ -100,9 +100,9 @@ function jump(index: number) {
       </template>
     </div>
 
-    <div class="h-[190px] overflow-y-auto scroll-region">
-      <div v-if="loading" class="space-y-2 p-3">
-        <div v-for="row in 3" :key="row" class="h-6 rounded bg-base-300/60 pulse-soft" />
+    <div class="h-[190px] overflow-y-auto scroll-region p-1.5">
+      <div v-if="loading" class="flex flex-col gap-1">
+        <div v-for="row in 3" :key="row" class="h-8 rounded-chip bg-base-200/60 pulse-soft" />
       </div>
 
       <p v-else-if="error" class="px-3 py-5 text-[11px] text-error">{{ error }}</p>
@@ -118,7 +118,7 @@ function jump(index: number) {
           v-for="folder in folders"
           :key="folder.id"
           type="button"
-          class="flex w-full items-center gap-2 border-b border-line-soft px-3 py-2 text-left text-[12px] text-dim transition-colors last:border-0 hover:bg-base-300/50 hover:text-base-content"
+          class="flex w-full items-center gap-2 rounded-chip px-2.5 py-2 text-left text-[12px] text-dim transition-colors hover:bg-base-200/60 hover:text-base-content"
           @click="enter(folder)"
         >
           <Folder16 class="h-3.5 w-3.5 shrink-0 text-faint" />
@@ -130,7 +130,7 @@ function jump(index: number) {
     </div>
 
     <div
-      class="flex items-center justify-between gap-2 border-t border-line px-3 py-1.5 text-[11px]"
+      class="flex items-center justify-between gap-2 rounded-b-card bg-base-200/40 px-3 py-2 text-[11px]"
     >
       <span class="truncate text-faint">{{
         t('folderPicker.destination', { path: pathLabel })

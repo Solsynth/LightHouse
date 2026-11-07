@@ -206,7 +206,7 @@ defineExpose({ panel })
 
 <template>
   <PickerSessionGate :embedded="embedded" @signed-out="onSignedOut">
-    <div class="flex h-dvh min-h-0 flex-col">
+    <div class="flex h-dvh min-h-0 flex-col bg-base-100 p-1.5">
       <PickerPanel
         v-if="!done"
         ref="panel"
@@ -218,7 +218,7 @@ defineExpose({ panel })
       />
 
       <div v-else class="flex min-h-0 flex-1 flex-col">
-        <header class="border-b border-line px-4 py-3">
+        <header class="px-3 pb-2 pt-2.5">
           <h1 class="title text-[16px]">{{ options.title || 'Selected' }}</h1>
           <p class="voice mt-0.5 text-[12px]">
             The answer went back to the page that opened this frame.
@@ -226,19 +226,19 @@ defineExpose({ panel })
         </header>
         <ul
           v-if="result && result.length"
-          class="min-h-0 flex-1 divide-y divide-line-soft overflow-y-auto"
+          class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2"
         >
           <li
             v-for="file in result"
             :key="file.id"
-            class="flex items-center gap-2 px-4 py-2 text-[12px]"
+            class="flex items-center gap-2 rounded-chip bg-base-200/45 px-3 py-2 text-[12px]"
           >
             <span class="min-w-0 flex-1 truncate">{{ file.name }}</span>
             <code class="text-2xs text-faint">{{ file.id }}</code>
           </li>
         </ul>
         <p v-else class="voice flex-1 px-4 py-10 text-center text-[12px]">Nothing was selected.</p>
-        <footer v-if="standalone" class="border-t border-line px-4 py-2.5">
+        <footer v-if="standalone" class="mt-2 rounded-card bg-base-200 px-3 py-2">
           <button type="button" class="btn btn-ghost btn-sm" @click="reset">Choose again</button>
         </footer>
       </div>
