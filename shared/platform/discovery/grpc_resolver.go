@@ -3,6 +3,7 @@ package discovery
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -112,15 +113,31 @@ func (r *bladeResolver) refresh() {
 		return
 	}
 
-	addresses := make([]resolver.Address, 0, len(resolution.Endpoints))
-	for _, endpoint := range resolution.Endpoints {
-		if address := EndpointAddress(endpoint); address != "" {
-			addresses = append(addresses, resolver.Address{Addr: address})
-		}
-	}
+	addresses := endpointAddresses(resolution.Endpoints)
 	state := resolver.State{Addresses: addresses}
 	if len(addresses) > 0 {
 		state.ServiceConfig = r.cc.ParseServiceConfig(roundRobinServiceConfig)
 	}
 	r.cc.UpdateState(state)
+}
+
+// endpointAddresses converts registry endpoints into resolver addresses.
+// ServerName is the endpoint host so TLS-verifying clients check the server
+// certificate against the instance the registry returned. Without it the
+// handshake would use the blade:///<service> authority, which is empty, and
+// verification would fail for every discovery-resolved fleet dial.
+func endpointAddresses(endpoints []string) []resolver.Address {
+	addresses := make([]resolver.Address, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		address := EndpointAddress(endpoint)
+		if address == "" {
+			continue
+		}
+		entry := resolver.Address{Addr: address}
+		if host, _, err := net.SplitHostPort(address); err == nil {
+			entry.ServerName = host
+		}
+		addresses = append(addresses, entry)
+	}
+	return addresses
 }

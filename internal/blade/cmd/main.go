@@ -192,6 +192,9 @@ func main() {
 			UseTLS:        cfg.WebSocket.AuthUseTLS,
 			TLSSkipVerify: cfg.WebSocket.AuthTLSSkipVerify,
 			TLSServerName: cfg.WebSocket.AuthTLSServerName,
+			CAFile:        cfg.GRPC.CAFile,
+			CertFile:      cfg.GRPC.ClientCertFile,
+			KeyFile:       cfg.GRPC.ClientKeyFile,
 		})
 		if err != nil {
 			logging.Log.Fatal().
