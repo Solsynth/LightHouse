@@ -13,10 +13,10 @@ search line, a browsable object list, and a details column.
 
 ## 1. Principles
 
-1. **Chrome is islands.** The header, rail, footer, and dialogs are sheets of
-   paper on the page ground; the working surface between them is the ground
-   itself. Separation comes from the gap between sheets and the tone of a
-   block — never from a border, divider, or rule.
+1. **Chrome is islands; content is one fill.** The header, rail, and footer are
+   sheets on the page ground, and the content area is a flat `base-200` surface
+   with no card corner. Separation comes from the gap between regions and the
+   tone of a block — never from a border, divider, or rule.
 2. **Blocks, not lines.** Lists are bars with their own corner and a 2 px
    gutter. Groups are wells. A selected row is a tinted block. No horizontal
    or vertical hairlines are used to separate content.
@@ -48,7 +48,7 @@ The console is chrome islands around a flat working surface:
 ┌─────────────────────────────────────────────────────────────────┐
 │  header island: lockup · search · actions                       │
 ├───────────────────┬─────────────────────────────────────────────┤
-│  rail island      │  content surface (the page ground)          │
+│  rail island      │  content surface (flat base-200 fill)       │
 │  locations        │  toolbar (crumbs · sort · filter · view)    │
 │  pools            │  object bars / grid cards / columns         │
 │  ┌─────────────┐  │                                             │
@@ -60,9 +60,9 @@ The console is chrome islands around a flat working surface:
 ```
 
 - The gutter between islands is 8 px on small screens and 10 px above.
-- The header, rail, and footer are `base-200` sheets. The content area is the
-  page ground: toolbars and object views sit directly on it, and rows, cards,
-  and wells carry the tonal blocks.
+- The header, rail, footer, and content surface are `base-200`. The content
+  surface is one flat fill with no card corner; rows and cards step to
+  `base-300`, and nested wells step to `base-100` or `base-300`.
 - Content is left-aligned. The rail, toolbar, and status line share one
   horizontal rhythm; object names lead, metadata trails.
 - Below `md` the rail becomes a rounded drawer over a dimmed ground, and the
@@ -84,8 +84,8 @@ not warm — with indigo as the single brand signal.
 | Role | Token | Dark | Light |
 | --- | --- | --- | --- |
 | Page ground | `--color-base-100` | `#171618` | `#faf7f9` |
-| Chrome sheet (header, rail, footer) | `--color-base-200` | `#1d1d20` | `#f6f2f6` |
-| Row / well step | `--color-base-300` | `#2e2e31` | `#e4e1e5` |
+| Chrome and content surface | `--color-base-200` | `#1d1d20` | `#f6f2f6` |
+| Row / card / well step | `--color-base-300` | `#2e2e31` | `#e4e1e5` |
 | Brand-tinted block | `--surface-tint` (`bg-tint`) | `#262833` | `#e8e9f5` |
 | Text content | `--color-base-content` | `#edeaee` | `#1f1f22` |
 | Soft line (focus, scrollbar) | `--console-line` | `#4b4b4f` | `#d3d1d5` |
@@ -132,13 +132,13 @@ this list is spent on files, folders, or regions.
 
 Rules of thumb:
 
-- On the page ground, rows and cards are `base-200`; nested wells step to
-  `base-300` or `base-100`. Inside a `base-200` chrome sheet, nested rows step
-  to `base-300`.
+- The content area is a `base-200` fill. Rows and cards are `base-300`; nested
+  wells step to `base-100`. Inside `base-200` chrome, controls step to
+  `base-300`.
 - Hover steps one tone up; selection mixes `primary` at 12–18 % into the
   surface, so selection never introduces a second hue.
-- Sticky table headers use the ground's solid fill (`bg-base-100`) so rows
-  scroll underneath without a shadow or rule.
+- Sticky table headers use the surface fill (`bg-base-200`) so rows scroll
+  underneath without a shadow or rule.
 
 ## 6. Forms and controls
 
@@ -171,10 +171,15 @@ corner, no dividers, tonal selection.
 
 | View | Composition |
 | --- | --- |
-| List | `.ledger`; row bars with a 2 px gutter; sticky tonal header |
-| Grid | `base-200` cards; rounded media well; name and metadata below |
+| List | `.ledger`; `base-300` row bars with a 2 px gutter; sticky header on the surface fill |
+| Grid | `base-300` cards on the `base-200` surface; media well steps to `base-100` |
 | Column | Miller columns of row blocks; each column lists both subfolders and files for the folder to its left, with no column-sheet background |
-| Waterfall | Masonry of tonal cards, media ratio clamped between 0.35:1 and 4:1 |
+| Waterfall | Masonry of `base-300` cards, media ratio clamped between 0.35:1 and 4:1 |
+
+The Unindexed listing has no column view; its three remaining views share the
+same row and card rules. Row checkboxes stay hidden until a selection starts;
+the header select-all control is the entry point, and once one object is
+selected every row shows its checkbox.
 
 Folders are set in the same face as files; kind and size are the only metadata
 that appear by default. A public-by-link object gets a small brand glyph, not a

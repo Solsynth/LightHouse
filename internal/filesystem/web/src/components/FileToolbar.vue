@@ -42,6 +42,10 @@ const views: { key: ViewMode; icon: Component }[] = [
   { key: 'waterfall', icon: Catalog16 },
 ]
 
+const availableViews = computed(() =>
+  mode.value === 'unindexed' ? views.filter((entry) => entry.key !== 'column') : views,
+)
+
 /** Kind and sort chips carry catalog keys; view chips are titled separately. */
 const kinds: { key: KindFilter; label: string }[] = [
   { key: 'all', label: 'drive.kindAll' },
@@ -287,7 +291,7 @@ function restoreSelection() {
 
         <div class="seg" role="group" :aria-label="t('view.label')">
           <button
-            v-for="entry in views"
+            v-for="entry in availableViews"
             :key="entry.key"
             type="button"
             class="seg-item size-7 p-0"

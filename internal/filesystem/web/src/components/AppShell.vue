@@ -118,7 +118,7 @@ onBeforeUnmount(() => {
 
     <div class="flex min-h-0 flex-1 gap-2 md:gap-2.5">
       <AppSidebar />
-      <main id="main" class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+      <main id="main" class="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-base-200">
         <RouterView v-slot="{ Component }">
           <Transition
             mode="out-in"

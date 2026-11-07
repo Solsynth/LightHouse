@@ -289,13 +289,13 @@ function isFocused(index: number, id: string): boolean {
               :aria-selected="vault.selection.includes(child.id)"
               :aria-current="isOpenPath(index, child) ? 'true' : undefined"
               :tabindex="isFocused(index, child.id) ? 0 : -1"
-              class="flex h-8 cursor-default items-center gap-2 rounded-chip px-2 outline-offset-[-2px]"
+              class="group flex h-8 cursor-default items-center gap-2 rounded-chip px-2 outline-offset-[-2px]"
               :class="
                 isOpenPath(index, child)
                   ? 'bg-primary/12 font-semibold text-base-content'
                   : vault.selection.includes(child.id)
                     ? 'bg-primary/12 text-base-content'
-                    : 'bg-base-200/75 text-dim hover:bg-base-300/70'
+                    : 'bg-base-300/50 text-dim hover:bg-base-300/80'
               "
               :title="displayName(child)"
               @click="descend(index, child)"
@@ -304,7 +304,12 @@ function isFocused(index: number, id: string): boolean {
               <FileGlyph :file="child" />
               <input
                 type="checkbox"
-                class="checkbox checkbox-xs shrink-0"
+                class="checkbox checkbox-xs shrink-0 transition-opacity duration-150"
+                :class="
+                  vault.selectionMode
+                    ? 'opacity-100'
+                    : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100'
+                "
                 :checked="vault.selection.includes(child.id)"
                 :aria-label="t('drive.selectObject', { name: displayName(child) })"
                 @change="vault.toggle(child.id)"

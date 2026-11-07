@@ -303,7 +303,7 @@
   .ledger td {
     padding: 11px 14px;
     vertical-align: middle;
-    background-color: color-mix(in oklab, var(--color-base-200) 85%, transparent);
+    background-color: color-mix(in oklab, var(--color-base-300) 60%, transparent);
     font-variant-numeric: tabular-nums;
     border: 0;
     transition: background-color var(--duration-fast) var(--ease-out);
@@ -322,7 +322,7 @@
   }
 
   .ledger tbody tr:hover td {
-    background-color: color-mix(in oklab, var(--color-base-300) 65%, transparent);
+    background-color: color-mix(in oklab, var(--color-base-300) 80%, transparent);
   }
 
   /* Full-bleed ledger: cancels the sheet's padding so the bars meet its edge
@@ -349,7 +349,7 @@
   /* ── Chips ──────────────────────────────────────────────────────────── */
 
   .chip {
-    @apply inline-flex items-center gap-1 whitespace-nowrap rounded-chip bg-base-200/70 px-2 py-0.5 text-2xs text-dim;
+    @apply inline-flex items-center gap-1 whitespace-nowrap rounded-chip bg-base-300/50 px-2 py-0.5 text-2xs text-dim;
     transition:
       background-color var(--duration-base) var(--ease-out),
       color var(--duration-base) var(--ease-out);
@@ -792,7 +792,7 @@
   /* ── Segmented control ──────────────────────────────────────────────── */
 
   .seg {
-    @apply inline-flex items-center gap-0.5 rounded-control bg-base-200/60 p-0.5;
+    @apply inline-flex items-center gap-0.5 rounded-control bg-base-300/45 p-0.5;
   }
 
   .seg-item {
@@ -815,7 +815,7 @@
 
   .menu-plate {
     border-radius: var(--radius-card);
-    background-color: var(--color-base-200);
+    background-color: var(--color-base-300);
     box-shadow: 0 24px 50px -28px rgb(0 0 0 / 0.55);
     transform-origin: top right;
     animation: menu-pop var(--duration-base) var(--ease-back) both;
@@ -823,7 +823,7 @@
   /* A toolbar menu is a compact tonal trigger: the current value is the
      label, so the control reads as one line instead of a row of chips. */
   .menu-trigger {
-    @apply flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-[12px] bg-base-200/60 px-2.5 text-[11.5px] text-dim;
+    @apply flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-[12px] bg-base-300/45 px-2.5 text-[11.5px] text-dim;
     transition:
       background-color var(--duration-fast) var(--ease-out),
       color var(--duration-fast) var(--ease-out);

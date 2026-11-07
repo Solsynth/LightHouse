@@ -138,6 +138,8 @@ export const useVaultStore = defineStore('vault', () => {
     return items.value.filter((item) => ids.has(item.id))
   })
   const selectionCount = computed(() => selection.value.length)
+  /** True once at least one object is ticked; row checkboxes appear then. */
+  const selectionMode = computed(() => selection.value.length > 0)
 
   const selectedBytes = computed(() =>
     selectedItems.value.reduce((sum, item) => sum + (item.object?.size ?? 0), 0),
@@ -174,8 +176,12 @@ export const useVaultStore = defineStore('vault', () => {
   const VIEW_CYCLE: ViewMode[] = ['list', 'grid', 'column', 'waterfall']
 
   function cycleView() {
-    const index = VIEW_CYCLE.indexOf(viewMode.value)
-    storeView(VIEW_CYCLE[(index + 1) % VIEW_CYCLE.length] ?? 'list')
+    const available =
+      mode.value === 'unindexed'
+        ? VIEW_CYCLE.filter((entry) => entry !== 'column')
+        : VIEW_CYCLE
+    const index = available.indexOf(viewMode.value)
+    storeView(available[(index + 1) % available.length] ?? 'list')
   }
 
   function clearSelection() {
@@ -650,6 +656,7 @@ export const useVaultStore = defineStore('vault', () => {
     fileCount,
     selectedItems,
     selectionCount,
+    selectionMode,
     selectedBytes,
     activePool,
     canGoUp,

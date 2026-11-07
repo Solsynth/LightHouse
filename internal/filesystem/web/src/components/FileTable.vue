@@ -70,7 +70,7 @@ function sortState(key: 'name' | 'size' | 'date') {
 <template>
   <div class="min-h-0 flex-1 overflow-auto scroll-region px-2 pb-2">
     <table class="ledger w-full table-fixed">
-      <thead class="sticky top-0 z-10 bg-base-100">
+      <thead class="sticky top-0 z-10 bg-base-200">
         <tr class="text-[11px] font-medium text-faint">
           <th scope="col" class="w-10 pl-3 pr-1 text-left">
             <span class="sr-only">{{ t('drive.selectColumn') }}</span>
@@ -169,7 +169,9 @@ function sortState(key: 'name' | 'size' | 'date') {
               :class="
                 vault.selection.includes(file.id)
                   ? 'opacity-100'
-                  : 'opacity-100 md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100'
+                  : vault.selectionMode
+                    ? 'opacity-100'
+                    : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100'
               "
               :checked="vault.selection.includes(file.id)"
               :aria-label="t('drive.selectObject', { name: displayName(file) })"

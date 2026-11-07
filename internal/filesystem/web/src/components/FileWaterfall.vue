@@ -108,7 +108,7 @@ function onKeydown(event: KeyboardEvent, file: CloudFile) {
           v-for="folder in folders"
           :key="folder.id"
           type="button"
-          class="chip max-w-full bg-base-200/60 px-2.5 py-1 hover:bg-base-300 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          class="chip max-w-full bg-base-300/45 px-2.5 py-1 hover:bg-base-300 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           :title="displayName(folder)"
           @click="open(folder)"
         >
@@ -130,13 +130,13 @@ function onKeydown(event: KeyboardEvent, file: CloudFile) {
         tabindex="0"
         role="listitem"
         class="group relative mb-2.5 cursor-default break-inside-avoid rounded-card p-1.5 transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        :class="isSelected(tile.file) ? 'bg-primary/12' : 'bg-base-200/75 hover:bg-base-300/70'"
+        :class="isSelected(tile.file) ? 'bg-primary/12' : 'bg-base-300/45 hover:bg-base-300/70'"
         :aria-selected="isSelected(tile.file)"
         @click="open(tile.file)"
         @keydown="onKeydown($event, tile.file)"
       >
         <div
-          class="relative overflow-hidden rounded-chip bg-base-300/40"
+          class="relative overflow-hidden rounded-chip bg-base-100/35"
           :style="{ aspectRatio: tile.ratio }"
         >
           <img
@@ -158,7 +158,9 @@ function onKeydown(event: KeyboardEvent, file: CloudFile) {
             :class="
               isSelected(tile.file)
                 ? 'opacity-100'
-                : 'opacity-100 md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100'
+                : vault.selectionMode
+                  ? 'opacity-100'
+                  : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100'
             "
             :checked="isSelected(tile.file)"
             :aria-label="t('drive.selectObject', { name: displayName(tile.file) })"

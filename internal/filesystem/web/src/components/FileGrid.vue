@@ -78,14 +78,14 @@ function subline(file: CloudFile): string {
         :class="
           vault.selection.includes(file.id)
             ? 'bg-primary/12'
-            : 'bg-base-200/75 hover:bg-base-300/70'
+            : 'bg-base-300/45 hover:bg-base-300/70'
         "
         :style="{ animationDelay: `${Math.min(index, 12) * 18}ms` }"
         :aria-selected="vault.selection.includes(file.id)"
         @click="open(file)"
         @keydown="onKeydown($event, file)"
       >
-        <div class="relative aspect-[4/3] overflow-hidden rounded-chip bg-base-300/40">
+        <div class="relative aspect-[4/3] overflow-hidden rounded-chip bg-base-100/35">
           <img
             v-if="showPreview(file)"
             :src="previewUrl(file.id)"
@@ -105,7 +105,9 @@ function subline(file: CloudFile): string {
             :class="
               vault.selection.includes(file.id)
                 ? 'opacity-100'
-                : 'opacity-100 md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100'
+                : vault.selectionMode
+                  ? 'opacity-100'
+                  : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100'
             "
             :checked="vault.selection.includes(file.id)"
             :aria-label="t('drive.selectObject', { name: displayName(file) })"
