@@ -50,8 +50,11 @@ func Register(api *gin.RouterGroup, d Deps) {
 	open.GET("/userinfo", svc.handleUserInfo)
 	open.POST("/device/code", svc.handleDeviceCode)
 	open.GET("/device/code/:userCode", svc.handleDeviceCodeStatus)
-	open.POST("/device/code/:userCode/approve", middleware.RequireAuth(), middleware.RequireInteractive(), svc.handleDeviceCodeApprove)
-	open.POST("/device/code/:userCode/decline", middleware.RequireAuth(), middleware.RequireInteractive(), svc.handleDeviceCodeDecline)
+	// Approval binds the code to the signed-in session, so it is an
+	// auth-critical mutation like challenge approval: the session must be
+	// elevated first (403 AUTH_SUDO_REQUIRED otherwise).
+	open.POST("/device/code/:userCode/approve", middleware.RequireAuth(), middleware.RequireInteractive(), middleware.RequireSudo(), svc.handleDeviceCodeApprove)
+	open.POST("/device/code/:userCode/decline", middleware.RequireAuth(), middleware.RequireInteractive(), middleware.RequireSudo(), svc.handleDeviceCodeDecline)
 }
 
 // RegisterTop mounts the root-level /.well-known routes (the C# uses absolute

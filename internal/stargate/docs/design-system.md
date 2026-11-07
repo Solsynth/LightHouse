@@ -543,6 +543,13 @@ declined, expired — with a countdown beside it. Approval is the only state tha
 redeems the challenge, and the watcher stops before the exchange so a second
 poll can never spend the same code twice.
 
+Approving is a gated action on the *approving* session, not just the scanned
+one: `POST /api/auth/qr/{id}/approve` and `/decline` carry `RequireSudo`, so a
+session that has not elevated answers `403 AUTH_SUDO_REQUIRED` and the console
+raises its elevation sheet before replaying the request. Elevating is still the
+caller's job — granting a QR or device approval never lifts the approving
+session by itself.
+
 ### OAuth consent
 
 `/auth/authorize` is the provider's consent screen. It reads the request from
@@ -577,6 +584,11 @@ approve/deny, the terminal state, or nothing found — and never offers a button
 for a code that is no longer pending, because the server would refuse it.
 Approval binds the code to the signed-in session, so the page requires a
 session while the status lookup does not.
+
+Approve and decline are elevation-gated (`RequireSudo`): a session without a
+live grant answers `403 AUTH_SUDO_REQUIRED`, so the page must run the elevation
+flow before it can decide. The grant is what authorizes the decision; granting
+the approval does not create or extend one.
 
 ### OAuth apps
 
