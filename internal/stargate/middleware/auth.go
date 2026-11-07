@@ -409,6 +409,17 @@ func ClientIP(r *http.Request) string {
 	return host
 }
 
+// RequestHostname returns the hostname of an HTTP Host header without the
+// port. WebAuthn RP IDs are bare hosts (the old Padlock login used
+// Request.Host.Host), so a fallback RP ID must not become "localhost:8080".
+func RequestHostname(host string) string {
+	host = strings.TrimSpace(host)
+	if name, _, err := net.SplitHostPort(host); err == nil {
+		return name
+	}
+	return host
+}
+
 // AccountIDOf parses an account UUID from a string.
 func AccountIDOf(s string) uuid.UUID {
 	id, _ := uuid.Parse(s)

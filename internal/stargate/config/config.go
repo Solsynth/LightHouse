@@ -5,6 +5,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -514,7 +515,14 @@ func Default() *Config {
 	cfg.Captcha.Skip = true
 	cfg.WebAuthn.RpId = "localhost"
 	cfg.WebAuthn.RpName = "Solar Network"
-	cfg.WebAuthn.RelatedOrigins = []string{"http://localhost:3000"}
+	// The WebAuthn origins the shipped setup serves: the Vite dev server
+	// (:5173, see README), the legacy SiteUrl dev port, and the SPA Stargate
+	// hosts itself on HTTP.Port.
+	cfg.WebAuthn.RelatedOrigins = []string{
+		"http://localhost:3000",
+		"http://localhost:5173",
+		"http://localhost:8080",
+	}
 	cfg.NATS.SessionEventsStream = "auth_session_events"
 	cfg.NATS.SessionEventsSubject = "auth.session.revoked"
 	cfg.NATS.WebsocketPushStream = "websocket_push"
@@ -629,6 +637,9 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("STARGATE_SECURITY_RECENTLOGINGRACE", &cfg.Security.RecentLoginGrace)
 	setStr("STARGATE_SECURITY_SUDOMODELIFETIME", &cfg.Security.SudoModeLifetime)
 	setStr("STARGATE_SECURITY_SUDOCHALLENGELIFETIME", &cfg.Security.SudoChallengeLifetime)
+	setStr("STARGATE_WEBAUTHN_RPID", &cfg.WebAuthn.RpId)
+	setStr("STARGATE_WEBAUTHN_RPNAME", &cfg.WebAuthn.RpName)
+	setList("STARGATE_WEBAUTHN_RELATEDORIGINS", &cfg.WebAuthn.RelatedOrigins)
 	setList("STARGATE_MODULES_ENABLED", &cfg.Modules.Enabled)
 	setList("STARGATE_MODULES_DISABLED", &cfg.Modules.Disabled)
 }
@@ -778,6 +789,68 @@ func (c *Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+// WebAuthnOrigins returns the exact origins a WebAuthn ceremony may come from:
+// the browser reports one of these as ClientData.origin, and both registration
+// and assertion verification compare against the same list.
+//
+// relatedOrigins is the primary setting. siteUrl and baseUrl are unioned in
+// because they name this deployment's own web and API origins, and either may
+// host the console running the ceremony. Entries are normalized to
+// scheme://host[:port] with default ports removed (the browser strips them),
+// and duplicates are dropped.
+func (c *Config) WebAuthnOrigins() []string {
+	if c == nil {
+		return nil
+	}
+	candidates := make([]string, 0, len(c.WebAuthn.RelatedOrigins)+2)
+	candidates = append(candidates, c.WebAuthn.RelatedOrigins...)
+	candidates = append(candidates, c.SiteUrl, c.BaseUrl)
+	origins := make([]string, 0, len(candidates))
+	seen := make(map[string]bool, len(candidates))
+	for _, candidate := range candidates {
+		origin, ok := normalizeWebAuthnOrigin(candidate)
+		if !ok {
+			continue
+		}
+		if seen[origin] {
+			continue
+		}
+		seen[origin] = true
+		origins = append(origins, origin)
+	}
+	return origins
+}
+
+// normalizeWebAuthnOrigin reduces a URL to the origin shape browsers put in
+// ClientData: lowercased scheme and host, no path, no default port.
+func normalizeWebAuthnOrigin(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" {
+		return "", false
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return "", false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	port := parsed.Port()
+	if (scheme == "http" && port == "80") || (scheme == "https" && port == "443") {
+		port = ""
+	}
+	origin := scheme + "://" + host
+	if port != "" {
+		origin += ":" + port
+	}
+	return origin, true
 }
 
 // TrustedProxyHopCount is the number of trusted reverse proxies in front of

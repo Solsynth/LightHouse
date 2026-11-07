@@ -235,8 +235,22 @@ skip = true
 allow_disabled = true
 
 [webauthn]
+# The registrable domain passkeys bind to. It MUST match the host the browser
+# runs the ceremony on (or a parent of it), and the API host alone is wrong:
+# production uses the public web domain ("solian.app"), local development
+# "localhost". Overridable with STARGATE_WEBAUTHN_RPID.
 rpId = "localhost"
 rpName = "Solar Network"
+
+# Exact browser origins allowed to run passkey ceremonies, normalized to
+# scheme://host[:port]. Registration and assertion verification compare the
+# client's ClientData.origin against siteUrl + baseUrl + this list, and
+# GET /.well-known/webauthn publishes the same union for related-origin
+# discovery. The default covers the Vite dev server (:5173), the legacy dev
+# port (:3000), and the SPA Stargate serves itself (:8080). A deployment whose
+# console is on another origin (for example https://web.solian.app) adds it
+# here, or sets STARGATE_WEBAUTHN_RELATEDORIGINS to a comma-separated list.
+relatedOrigins = ["http://localhost:3000", "http://localhost:5173", "http://localhost:8080"]
 
 # Account activation (mirrors Passport's AccountActivation). Entry-test (exam)
 # logic stays in Passport: when testsEnabled is true and requiredTestKeys is

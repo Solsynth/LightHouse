@@ -2985,24 +2985,16 @@ func (h *handler) passkeyRpId(c *gin.Context) string {
 	if h.d.Cfg.WebAuthn.RpId != "" {
 		return h.d.Cfg.WebAuthn.RpId
 	}
-	return c.Request.Host
+	return middleware.RequestHostname(c.Request.Host)
 }
 
 // passkeyAllowedOrigins returns the origins the deployment accepts for
-// WebAuthn assertions: the same list registration advertises. When neither
-// [webauthn] relatedOrigins nor baseUrl is configured, origin matching is
-// skipped (the rpIdHash check still binds the credential to the RP ID).
+// WebAuthn assertions: the same list registration advertises (see
+// config.Config.WebAuthnOrigins). Empty means origin matching is skipped by
+// the assertion verifier, but the rpIdHash check still binds the credential to
+// the RP ID.
 func (h *handler) passkeyAllowedOrigins() []string {
-	if h.d.Cfg == nil {
-		return nil
-	}
-	if len(h.d.Cfg.WebAuthn.RelatedOrigins) > 0 {
-		return h.d.Cfg.WebAuthn.RelatedOrigins
-	}
-	if strings.TrimSpace(h.d.Cfg.BaseUrl) != "" {
-		return []string{h.d.Cfg.BaseUrl}
-	}
-	return nil
+	return h.d.Cfg.WebAuthnOrigins()
 }
 
 // publishChallengePending pushes a login attempt to the account's devices

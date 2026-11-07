@@ -67,3 +67,20 @@ func TestRequireAuthRejectsAnonymous(t *testing.T) {
 		t.Fatalf("401 body: got %s, want %s", got, want)
 	}
 }
+
+// TestRequestHostname pins the WebAuthn RP-ID fallback: Request.Host carries
+// the port, but an RP ID is a bare host.
+func TestRequestHostname(t *testing.T) {
+	cases := map[string]string{
+		"localhost:8080":       "localhost",
+		"api.solian.app":       "api.solian.app",
+		" api.solian.app:443 ": "api.solian.app",
+		"":                     "",
+		"[::1]:8080":           "::1",
+	}
+	for in, want := range cases {
+		if got := RequestHostname(in); got != want {
+			t.Fatalf("RequestHostname(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

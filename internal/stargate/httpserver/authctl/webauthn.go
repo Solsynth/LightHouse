@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"src.solsynth.dev/sosys/stargate/config"
+	"src.solsynth.dev/sosys/stargate/middleware"
 )
 
 // WebAuthnDiscoveryController port. GET /api/auth/webauthn/config registers
@@ -15,7 +16,7 @@ import (
 func (h *handler) webauthnConfig(c *gin.Context) {
 	rpId := h.d.Cfg.WebAuthn.RpId
 	if rpId == "" {
-		rpId = c.Request.Host
+		rpId = middleware.RequestHostname(c.Request.Host)
 	}
 	rpName := h.d.Cfg.WebAuthn.RpName
 	if rpName == "" {
@@ -32,6 +33,6 @@ func (h *handler) webauthnConfig(c *gin.Context) {
 // alongside the other /.well-known routes.
 func RegisterWellKnown(engine *gin.Engine, cfg *config.Config) {
 	engine.GET("/.well-known/webauthn", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"origins": cfg.WebAuthn.RelatedOrigins})
+		c.JSON(http.StatusOK, gin.H{"origins": cfg.WebAuthnOrigins()})
 	})
 }

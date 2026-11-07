@@ -234,3 +234,74 @@ func TestPushSubjectMatchesGatewaySubscription(t *testing.T) {
 			cfg.NATS.WebsocketPushSubject, bladeSubject)
 	}
 }
+
+// TestWebAuthnOrigins pins the set both registration verification and
+// GET /.well-known/webauthn publish. The regression: the defaults named only
+// the legacy dev port (3000), so a passkey ceremony on the Vite dev server
+// (5173) or the SPA Stargate serves (8080) failed go-webauthn's origin check
+// with PADLOCK_PASSKEY_REGISTRATION_FAILED.
+func TestWebAuthnOrigins(t *testing.T) {
+	cfg := Default()
+	for _, want := range []string{
+		"http://localhost:3000",
+		"http://localhost:5173",
+		"http://localhost:8080",
+		"http://localhost:5011", // baseUrl
+	} {
+		if !originIn(cfg.WebAuthnOrigins(), want) {
+			t.Fatalf("default WebAuthnOrigins() lacks %q: %v", want, cfg.WebAuthnOrigins())
+		}
+	}
+
+	cfg.SiteUrl = "https://web.solian.app/"
+	cfg.BaseUrl = "https://api.solian.app"
+	cfg.WebAuthn.RelatedOrigins = []string{
+		"HTTPS://SOLIAN.APP:443",
+		"https://solian.app",
+		"not a url",
+	}
+	origins := cfg.WebAuthnOrigins()
+	for _, want := range []string{
+		"https://web.solian.app",
+		"https://api.solian.app",
+		"https://solian.app",
+	} {
+		if !originIn(origins, want) {
+			t.Fatalf("WebAuthnOrigins() lacks %q: %v", want, origins)
+		}
+	}
+	if countOrigin(origins, "https://solian.app") != 1 {
+		t.Fatalf("duplicate normalized origin: %v", origins)
+	}
+	if originIn(origins, "not a url") {
+		t.Fatalf("invalid origin accepted: %v", origins)
+	}
+}
+
+func TestWebAuthnEnvOverrides(t *testing.T) {
+	t.Setenv("STARGATE_WEBAUTHN_RPID", "solian.app")
+	t.Setenv("STARGATE_WEBAUTHN_RPNAME", "Solar Network")
+	t.Setenv("STARGATE_WEBAUTHN_RELATEDORIGINS", "https://web.solian.app, https://solian.app")
+	cfg := Default()
+	applyEnvOverrides(cfg)
+	if cfg.WebAuthn.RpId != "solian.app" {
+		t.Fatalf("rpId = %q", cfg.WebAuthn.RpId)
+	}
+	if len(cfg.WebAuthn.RelatedOrigins) != 2 || cfg.WebAuthn.RelatedOrigins[0] != "https://web.solian.app" {
+		t.Fatalf("relatedOrigins = %v", cfg.WebAuthn.RelatedOrigins)
+	}
+}
+
+func originIn(origins []string, want string) bool {
+	return countOrigin(origins, want) > 0
+}
+
+func countOrigin(origins []string, want string) int {
+	count := 0
+	for _, origin := range origins {
+		if origin == want {
+			count++
+		}
+	}
+	return count
+}

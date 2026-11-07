@@ -692,9 +692,12 @@ func TestSudoPasskeyOnlyElevatesInOneCeremony(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assertion challenge: %v", err)
 	}
-	authData := make([]byte, 37)
-	authData[32] = 0x01 // UserPresent
-	clientDataJSON := fmt.Sprintf(`{"type":"webauthn.get","challenge":"%s","origin":"http://localhost"}`, assertionChallenge)
+	// The verifier checks the RP-ID hash and demands user verification (UV);
+	// build the authenticator data the same way the passkey assertion tests do
+	// and report the first configured origin, or the origin check rejects it.
+	authData := passkeyAuthData(passkeyTestRpID, flagUP|flagUV)
+	origin := sh.h.d.Cfg.WebAuthnOrigins()[0]
+	clientDataJSON := fmt.Sprintf(`{"type":"webauthn.get","challenge":"%s","origin":"%s"}`, assertionChallenge, origin)
 	cd, ad, sig := signAssertion(t, priv, authData, clientDataJSON, false)
 
 	rec := sh.request(t, http.MethodPost, "/auth/challenge/"+ch.Id+"/passkey/complete", map[string]any{

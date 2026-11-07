@@ -321,11 +321,19 @@ func rawJSONString(ctx *gin.Context) (string, bool) {
 	return value, true
 }
 
+// decodeBase64OrURL accepts standard base64 and URL-safe base64 with or
+// without padding. Clients disagree: the browser and the Darwin passkey
+// plugin send unpadded base64url, while other platform plugins keep the
+// padding, and the C# clients sent standard base64.
 func decodeBase64OrURL(value string) ([]byte, error) {
 	if decoded, err := base64.StdEncoding.DecodeString(value); err == nil {
 		return decoded, nil
 	}
-	return base64.RawURLEncoding.DecodeString(value)
+	normalized := strings.NewReplacer("-", "+", "_", "/").Replace(value)
+	if pad := len(normalized) % 4; pad != 0 {
+		normalized += strings.Repeat("=", 4-pad)
+	}
+	return base64.StdEncoding.DecodeString(normalized)
 }
 
 // ---------------------------------------------------------------------------
@@ -854,21 +862,33 @@ func (u webauthnUser) WebAuthnCredentials() []webauthn.Credential {
 func (c *controller) newWebAuthn(r *http.Request) (*webauthn.WebAuthn, error) {
 	rpID := c.d.Cfg.WebAuthn.RpId
 	if rpID == "" {
-		rpID = r.Host
+		// Request.Host carries a port; a WebAuthn RP ID is a bare host.
+		rpID = middleware.RequestHostname(r.Host)
 	}
 	rpName := c.d.Cfg.WebAuthn.RpName
 	if rpName == "" {
 		rpName = "Solar Network"
 	}
-	origins := c.d.Cfg.WebAuthn.RelatedOrigins
-	if len(origins) == 0 {
-		origins = []string{c.d.Cfg.BaseUrl}
-	}
+	origins := c.d.Cfg.WebAuthnOrigins()
 	return webauthn.New(&webauthn.Config{
 		RPID:          rpID,
 		RPDisplayName: rpName,
 		RPOrigins:     origins,
 	})
+}
+
+// passkeyRegistrationFailed answers the single registration-failure contract
+// (PADLOCK_PASSKEY_REGISTRATION_FAILED) and carries the cause in `detail`.
+// Without it every failure looks alike to the client, and the common cause —
+// a ClientData.origin that is not in config.WebAuthnOrigins, or an RP-ID
+// mismatch — is invisible from the browser's side too.
+func (c *controller) passkeyRegistrationFailed(ctx *gin.Context, cause string) {
+	if c.d.Log != nil {
+		c.d.Log.WarnContext(ctx.Request.Context(), "passkey registration failed", "cause", cause)
+	}
+	apiErr := errs.New("PADLOCK_PASSKEY_REGISTRATION_FAILED", "Passkey registration failed.", http.StatusBadRequest)
+	apiErr.Detail = &cause
+	ctx.JSON(http.StatusBadRequest, apiErr)
 }
 
 type passkeyRegistrationStartRequest struct {
@@ -1000,7 +1020,7 @@ func (c *controller) completePasskeyRegistration(ctx *gin.Context) {
 	}
 	var request passkeyRegistrationCompleteRequest
 	if err := ctx.ShouldBindJSON(&request); err != nil || request.DeviceId == "" {
-		ctx.JSON(http.StatusBadRequest, errs.New("PADLOCK_PASSKEY_REGISTRATION_FAILED", "Passkey registration failed.", http.StatusBadRequest))
+		c.passkeyRegistrationFailed(ctx, "The request body is invalid or device_id is missing.")
 		return
 	}
 	passkeyEnabled, err := c.d.Store.HasEnabledFactor(reqCtx, user.Id, model.AuthFactorTypePasskey)
@@ -1019,19 +1039,23 @@ func (c *controller) completePasskeyRegistration(ctx *gin.Context) {
 	key := passkeyChallengePrefix + user.Id + ":" + request.DeviceId
 	var sessionData webauthn.SessionData
 	found, err := c.d.Redis.Cache.Get(reqCtx, key, &sessionData)
-	if err != nil || !found {
-		ctx.JSON(http.StatusBadRequest, errs.New("PADLOCK_PASSKEY_REGISTRATION_FAILED", "Passkey registration failed.", http.StatusBadRequest))
+	if err != nil {
+		c.passkeyRegistrationFailed(ctx, "The registration challenge could not be read: "+err.Error())
+		return
+	}
+	if !found {
+		c.passkeyRegistrationFailed(ctx, "The registration challenge is missing or expired.")
 		return
 	}
 
 	attestationBytes, err := decodeBase64OrURL(request.AttestationObject)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, errs.New("PADLOCK_PASSKEY_REGISTRATION_FAILED", "Passkey registration failed.", http.StatusBadRequest))
+		c.passkeyRegistrationFailed(ctx, "The attestation object is not valid base64url.")
 		return
 	}
 	clientData, err := decodeBase64OrURL(request.ClientDataJson)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, errs.New("PADLOCK_PASSKEY_REGISTRATION_FAILED", "Passkey registration failed.", http.StatusBadRequest))
+		c.passkeyRegistrationFailed(ctx, "The client data is not valid base64url.")
 		return
 	}
 
@@ -1039,16 +1063,16 @@ func (c *controller) completePasskeyRegistration(ctx *gin.Context) {
 	// (the C# client does not send a credential id in the request).
 	var attObj protocol.AttestationObject
 	if err := webauthncbor.Unmarshal(attestationBytes, &attObj); err != nil {
-		ctx.JSON(http.StatusBadRequest, errs.New("PADLOCK_PASSKEY_REGISTRATION_FAILED", "Passkey registration failed.", http.StatusBadRequest))
+		c.passkeyRegistrationFailed(ctx, "The attestation object could not be decoded: "+err.Error())
 		return
 	}
 	if err := attObj.AuthData.Unmarshal(attObj.RawAuthData); err != nil {
-		ctx.JSON(http.StatusBadRequest, errs.New("PADLOCK_PASSKEY_REGISTRATION_FAILED", "Passkey registration failed.", http.StatusBadRequest))
+		c.passkeyRegistrationFailed(ctx, "The authenticator data could not be decoded: "+err.Error())
 		return
 	}
 	credentialID := attObj.AuthData.AttData.CredentialID
 	if len(credentialID) == 0 {
-		ctx.JSON(http.StatusBadRequest, errs.New("PADLOCK_PASSKEY_REGISTRATION_FAILED", "Passkey registration failed.", http.StatusBadRequest))
+		c.passkeyRegistrationFailed(ctx, "The attestation does not contain a credential id.")
 		return
 	}
 
@@ -1064,12 +1088,12 @@ func (c *controller) completePasskeyRegistration(ctx *gin.Context) {
 		},
 	})
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, errs.New("PADLOCK_PASSKEY_REGISTRATION_FAILED", "Passkey registration failed.", http.StatusBadRequest))
+		c.passkeyRegistrationFailed(ctx, "The credential response could not be encoded: "+err.Error())
 		return
 	}
 	parsed, err := protocol.ParseCredentialCreationResponseBytes(body)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, errs.New("PADLOCK_PASSKEY_REGISTRATION_FAILED", "Passkey registration failed.", http.StatusBadRequest))
+		c.passkeyRegistrationFailed(ctx, "The credential response could not be parsed: "+err.Error())
 		return
 	}
 	wa, err := c.newWebAuthn(ctx.Request)
@@ -1079,7 +1103,11 @@ func (c *controller) completePasskeyRegistration(ctx *gin.Context) {
 	}
 	credential, err := wa.CreateCredential(webauthnUser{account: user}, sessionData, parsed)
 	if err != nil || credential == nil {
-		ctx.JSON(http.StatusBadRequest, errs.New("PADLOCK_PASSKEY_REGISTRATION_FAILED", "Passkey registration failed.", http.StatusBadRequest))
+		cause := "Passkey verification failed."
+		if err != nil {
+			cause = "Passkey verification failed: " + err.Error()
+		}
+		c.passkeyRegistrationFailed(ctx, cause)
 		return
 	}
 
