@@ -45,10 +45,10 @@ The console is a stack of islands on a padded ground:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  header island: lockup · search · actions                         │
-├───────────────────┬───────────────────────────────────────────────┤
-│  rail island      │  content island                               │
-│  locations        │  toolbar (breadcrumb · sort · kind · views)    │
+│  header island: lockup · search · actions                       │
+├───────────────────┬─────────────────────────────────────────────┤
+│  rail island      │  content island                             │
+│  locations        │  toolbar (breadcrumb · sort · kind · views) │
 │  pools            │  ┌───────────────────────────────────────┐  │
 │  ┌─────────────┐  │  │  object bars / grid cards / columns   │  │
 │  │ quota well  │  │  └───────────────────────────────────────┘  │
