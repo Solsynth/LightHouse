@@ -795,18 +795,24 @@ func (c *Config) Validate() error {
 // the browser reports one of these as ClientData.origin, and both registration
 // and assertion verification compare against the same list.
 //
-// relatedOrigins is the primary setting. siteUrl and baseUrl are unioned in
-// because they name this deployment's own web and API origins, and either may
-// host the console running the ceremony. Entries are normalized to
-// scheme://host[:port] with default ports removed (the browser strips them),
-// and duplicates are dropped.
+// relatedOrigins is the primary setting. siteUrl, baseUrl and the RP ID's own
+// HTTPS origin are unioned in because they name this deployment's own web and
+// API origins: the console may be served from either, and native iOS asserts
+// from https://<rpId>. Entries are normalized to scheme://host[:port] with
+// default ports removed (the browser strips them), and duplicates are dropped.
+//
+// Native Android apps report an android:apk-key-hash: origin instead, which
+// cannot be inferred and must be listed explicitly in relatedOrigins.
 func (c *Config) WebAuthnOrigins() []string {
 	if c == nil {
 		return nil
 	}
-	candidates := make([]string, 0, len(c.WebAuthn.RelatedOrigins)+2)
+	candidates := make([]string, 0, len(c.WebAuthn.RelatedOrigins)+3)
 	candidates = append(candidates, c.WebAuthn.RelatedOrigins...)
 	candidates = append(candidates, c.SiteUrl, c.BaseUrl)
+	if rpID := strings.TrimSpace(c.WebAuthn.RpId); rpID != "" {
+		candidates = append(candidates, "https://"+rpID)
+	}
 	origins := make([]string, 0, len(candidates))
 	seen := make(map[string]bool, len(candidates))
 	for _, candidate := range candidates {

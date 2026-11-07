@@ -247,6 +247,7 @@ func TestWebAuthnOrigins(t *testing.T) {
 		"http://localhost:5173",
 		"http://localhost:8080",
 		"http://localhost:5011", // baseUrl
+		"https://localhost",     // the RP ID's own origin (native iOS asserts from it)
 	} {
 		if !originIn(cfg.WebAuthnOrigins(), want) {
 			t.Fatalf("default WebAuthnOrigins() lacks %q: %v", want, cfg.WebAuthnOrigins())
@@ -260,6 +261,7 @@ func TestWebAuthnOrigins(t *testing.T) {
 		"https://solian.app",
 		"not a url",
 	}
+	cfg.WebAuthn.RpId = "solian.app"
 	origins := cfg.WebAuthnOrigins()
 	for _, want := range []string{
 		"https://web.solian.app",

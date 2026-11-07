@@ -244,12 +244,17 @@ rpName = "Solar Network"
 
 # Exact browser origins allowed to run passkey ceremonies, normalized to
 # scheme://host[:port]. Registration and assertion verification compare the
-# client's ClientData.origin against siteUrl + baseUrl + this list, and
-# GET /.well-known/webauthn publishes the same union for related-origin
-# discovery. The default covers the Vite dev server (:5173), the legacy dev
-# port (:3000), and the SPA Stargate serves itself (:8080). A deployment whose
-# console is on another origin (for example https://web.solian.app) adds it
-# here, or sets STARGATE_WEBAUTHN_RELATEDORIGINS to a comma-separated list.
+# client's ClientData.origin against siteUrl + baseUrl + https://<rpId> + this
+# list, and GET /.well-known/webauthn publishes the same union for
+# related-origin discovery. The default covers the Vite dev server (:5173), the
+# legacy dev port (:3000), and the SPA Stargate serves itself (:8080). A
+# deployment whose console is on another origin (for example
+# https://web.solian.app) adds it here, or sets
+# STARGATE_WEBAUTHN_RELATEDORIGINS to a comma-separated list.
+#
+# Native Android apps report "android:apk-key-hash:<base64url SHA-256 of the
+# signing certificate>" instead, which cannot be inferred: add the hash of every
+# signing key (release and debug) that may create passkeys.
 relatedOrigins = ["http://localhost:3000", "http://localhost:5173", "http://localhost:8080"]
 
 # Account activation (mirrors Passport's AccountActivation). Entry-test (exam)
