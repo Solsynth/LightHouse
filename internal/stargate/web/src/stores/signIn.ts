@@ -24,11 +24,15 @@ export const useSignInStore = defineStore('signIn', () => {
   const account = ref('')
   const password = ref('')
 
+  // Bumped whenever the attempt is started, replaced or reset. A read that
+  // lands after one of those belongs to a screen that is no longer shown.
+  let generation = 0
   const complete = computed(() => challenge.value !== null && challenge.value.step_remain === 0)
   const remainingSteps = computed(() => challenge.value?.step_remain ?? 0)
 
   async function start(accountName: string) {
     const device = deviceIdentity()
+    generation += 1
     challenge.value = await request<AuthChallenge>('/auth/challenge', {
       method: 'POST',
       body: {
@@ -48,6 +52,7 @@ export const useSignInStore = defineStore('signIn', () => {
    * server judged risky hands over the remaining steps this way.
    */
   async function resume(challengeId: string) {
+    generation += 1
     usedFactorIds.value = []
     challenge.value = await request<AuthChallenge>(`/auth/challenge/${challengeId}`)
     await loadFactors()
@@ -55,9 +60,12 @@ export const useSignInStore = defineStore('signIn', () => {
 
   /** Loads the factors this challenge accepts, skipping the ones already used. */
   async function loadFactors() {
-    if (!challenge.value) return
-    const list = await request<AuthFactor[]>(`/auth/challenge/${challenge.value.id}/factors`)
-    const blacklist = new Set(challenge.value.blacklist_factors)
+    const current = challenge.value
+    if (!current) return
+    const mark = generation
+    const list = await request<AuthFactor[]>(`/auth/challenge/${current.id}/factors`)
+    if (mark !== generation || challenge.value?.id !== current.id) return
+    const blacklist = new Set(current.blacklist_factors)
     factors.value = list.filter(
       (factor) => !blacklist.has(factor.id) && !usedFactorIds.value.includes(factor.id),
     )
@@ -95,22 +103,31 @@ export const useSignInStore = defineStore('signIn', () => {
 
   /** Redeems the finished challenge; the server sets the session cookies. */
   async function exchange() {
-    if (!challenge.value) return null
+    const current = challenge.value
+    if (!current) return null
     const pair = await request<TokenPair>('/auth/token', {
       method: 'POST',
-      body: { grant_type: 'authorization_code', code: challenge.value.id },
+      body: { grant_type: 'authorization_code', code: current.id },
     })
+    // The code is single-use: once redeemed, a poll still in flight must not
+    // bring the consumed challenge back and trigger a second redemption.
+    generation += 1
     return pair
   }
 
   /** Polls the challenge so a cross-device approval lands without a reload. */
   async function poll() {
-    if (!challenge.value) return
-    challenge.value = await request<AuthChallenge>(`/auth/challenge/${challenge.value.id}`)
-    if (challenge.value.step_remain > 0) await loadFactors()
+    const current = challenge.value
+    if (!current || complete.value) return
+    const mark = generation
+    const next = await request<AuthChallenge>(`/auth/challenge/${current.id}`)
+    if (mark !== generation || challenge.value?.id !== current.id) return
+    challenge.value = next
+    if (next.step_remain > 0) await loadFactors()
   }
 
   function reset() {
+    generation += 1
     challenge.value = null
     factors.value = []
     usedFactorIds.value = []

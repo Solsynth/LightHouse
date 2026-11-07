@@ -131,8 +131,14 @@ const cardWidth = computed(() => {
   return 'max-w-[880px]'
 })
 
+// Public flow pages are single-purpose. A sign-in that just succeeded must not
+// flash the console's navigation into its card on the way out.
 const showNav = computed(
-  () => session.signedIn && !route.path.startsWith('/auth/') && route.name !== 'public-profile',
+  () =>
+    session.signedIn &&
+    !route.meta.public &&
+    !route.path.startsWith('/auth/') &&
+    route.name !== 'public-profile',
 )
 
 // Vue Router renders nothing until its first navigation resolves, and that

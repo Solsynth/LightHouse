@@ -75,6 +75,15 @@ const socialServed = computed(() => modules.hasAll([MODULES.social]))
 
 let pollTimer: number | undefined
 
+/** True while the challenge is being redeemed; also shown to the person. */
+const finishing = ref(false)
+
+/** True once the challenge's approval window has closed unfinished. */
+const expired = computed(() => {
+  const at = signIn.challenge?.expired_at
+  return Boolean(at && new Date(at).getTime() <= Date.now())
+})
+
 /**
  * Full-page navigation: the server stores the state and redirects onward. The
  * device id rides along so the session the provider creates is bound to this
@@ -348,11 +357,22 @@ function notifyOpener(token: string | undefined, origin: string) {
 }
 
 async function finish() {
+  // A poll that settles at the same moment must not redeem the single-use
+  // code twice: the server answers the second attempt with "expired".
+  if (finishing.value) return
+  finishing.value = true
+  stopPolling()
   busy.value = true
   try {
     const pair = await signIn.exchange()
     await session.load()
     signIn.reset()
+    // The attempt is over, so the view must not keep rendering its challenge
+    // while the landing navigation is still on its way.
+    started.value = false
+    selectedFactorId.value = null
+    codeSentIds.value = []
+    error.value = ''
     notice.ok(t('signIn.noticeSignedIn'))
     if (window.opener && window.location.search.includes('popup=1')) {
       const origin = await allowedOpenerOrigin()
@@ -367,26 +387,43 @@ async function finish() {
     error.value = messageOf(caught)
   } finally {
     busy.value = false
+    finishing.value = false
   }
+}
+
+function stopPolling() {
+  if (pollTimer !== undefined) window.clearInterval(pollTimer)
+  pollTimer = undefined
 }
 
 /** Cross-device approval completes the challenge server-side; poll for it. */
 function startPolling() {
+  stopPolling()
   pollTimer = window.setInterval(async () => {
-    if (!signIn.challenge || signIn.complete) return
+    if (finishing.value || !signIn.challenge || signIn.complete) return
     try {
       await signIn.poll()
-      if (signIn.complete) {
-        await finish()
-      }
     } catch {
       // Transient poll failures should not interrupt the sign-in.
+      return
+    }
+    // The answer may be for an attempt that was reset while it was in flight.
+    if (finishing.value || !signIn.challenge) return
+    if (signIn.complete) {
+      await finish()
+      return
+    }
+    // The server still serves a challenge whose window has closed. Stop
+    // watching it instead of repeating an expired read until the person acts.
+    if (expired.value) {
+      stopPolling()
+      error.value = t('signIn.errorChallengeExpired')
     }
   }, 4000)
 }
 
 function restart() {
-  if (pollTimer !== undefined) window.clearInterval(pollTimer)
+  stopPolling()
   signIn.reset()
   mode.value = 'identify'
   started.value = false
@@ -410,7 +447,10 @@ onMounted(async () => {
       started.value = true
       passkeyFactor.value = signIn.factors.find((factor) => factor.type === 7) ?? null
       if (signIn.complete) await finish()
-      else await autoSelect()
+      else if (expired.value) {
+        stopPolling()
+        error.value = t('signIn.errorChallengeExpired')
+      } else await autoSelect()
     } catch (caught) {
       error.value = messageOf(caught)
     } finally {
@@ -438,9 +478,7 @@ onMounted(async () => {
     if (landingRequested) void leave()
   }
 })
-onBeforeUnmount(() => {
-  if (pollTimer !== undefined) window.clearInterval(pollTimer)
-})
+onBeforeUnmount(stopPolling)
 </script>
 
 <template>
@@ -454,7 +492,12 @@ onBeforeUnmount(() => {
       </p>
     </div>
 
-    <Transition name="step" mode="out-in">
+    <div v-if="finishing" class="flex flex-col items-center py-12 text-center" role="status">
+      <span class="dot animate-pulse bg-primary" aria-hidden="true" />
+      <p class="voice mt-3">{{ t('signIn.completing') }}</p>
+    </div>
+
+    <Transition v-else name="step" mode="out-in">
       <QrLoginPanel
         v-if="mode === 'qr'"
         key="qr"
@@ -547,7 +590,7 @@ onBeforeUnmount(() => {
           </button>
         </header>
 
-        <div class="pt-4">
+        <div v-if="!expired" class="pt-4">
           <button
             v-if="canUsePasskey"
             type="button"
@@ -615,7 +658,10 @@ onBeforeUnmount(() => {
       </div>
     </Transition>
 
-    <div v-if="started && !selectedFactor" class="mt-4 flex items-center gap-2 text-2xs text-faint">
+    <div
+      v-if="started && !selectedFactor && !finishing && !expired"
+      class="mt-4 flex items-center gap-2 text-2xs text-faint"
+    >
       <span class="dot animate-pulse bg-primary" aria-hidden="true" />
       <span>{{ t('signIn.watching') }}</span>
     </div>

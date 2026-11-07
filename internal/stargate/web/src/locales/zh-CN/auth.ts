@@ -14,6 +14,7 @@ export default {
     stepsRemaining: '还剩 {remain}/{total} 步',
     timeLeft: '剩余 {time}',
     changeAccount: '更换账号',
+    completing: '正在登录…',
     passkeyVerify: '使用通行密钥验证',
     chooseMethod: '选择验证方式',
     useAnother: '换一种方式',
@@ -32,6 +33,7 @@ export default {
     errorUntrusted: '只有受信任的会话才能批准登录。',
     errorRequestFailed: '请求失败。',
     errorRedirectRefused: '该登录链接指向本服务无法登录的地址。已改为继续前往你的账号页面。',
+    errorChallengeExpired: '本次登录请求在批准前已过期，请重新开始。',
   },
   loginPrompt: {
     title: '确认这次登录',

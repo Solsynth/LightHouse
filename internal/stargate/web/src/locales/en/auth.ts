@@ -14,6 +14,7 @@ export default {
     stepsRemaining: '{remain} of {total} steps remaining',
     timeLeft: '{time} left',
     changeAccount: 'Change Account',
+    completing: 'Signing you in…',
     passkeyVerify: 'Verify with a Passkey',
     chooseMethod: 'Choose how to verify',
     useAnother: 'Use another method',
@@ -33,6 +34,7 @@ export default {
     errorRequestFailed: 'The request failed.',
     errorRedirectRefused:
       'That sign-in link points somewhere this service cannot sign you in. Continue on your account page.',
+    errorChallengeExpired: 'This sign-in request expired before it was approved. Start again.',
   },
   loginPrompt: {
     title: 'Confirm this sign-in',
