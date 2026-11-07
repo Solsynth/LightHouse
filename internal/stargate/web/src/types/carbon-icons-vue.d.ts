@@ -15,6 +15,8 @@ declare module '@carbon/icons-vue' {
   export const ChevronDown16: DefineComponent
   export const ArrowLeft16: DefineComponent
   export const Document16: DefineComponent
+  export const Attachment16: DefineComponent
+  export const DocumentAdd16: DefineComponent
   export const HelpDesk16: DefineComponent
   export const ChevronLeft16: DefineComponent
   export const ChevronRight16: DefineComponent

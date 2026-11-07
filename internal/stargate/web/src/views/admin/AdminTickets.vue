@@ -5,9 +5,9 @@ import { Renew16 } from '@carbon/icons-vue'
 import { RouterLink } from 'vue-router'
 
 import { useNoticeStore } from '@/stores/notice'
-import { accountApi, adminApi, ticketApi } from '@/lib/api'
+import { adminApi, ticketApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
-import type { OnCallAdmin, Ticket } from '@/lib/api/types'
+import type { Account, OnCallAdmin, Ticket } from '@/lib/api/types'
 import { relative, shortId } from '@/lib/format'
 import { ticketPriorityLabel, ticketStatusLabel, ticketTypeLabel } from '@/lib/enums'
 import { TICKET_PRIORITIES, TICKET_STATUSES, TICKET_TYPES } from '@/lib/tickets'
@@ -16,6 +16,7 @@ import AdminNav from '@/components/AdminNav.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import IconButton from '@/components/IconButton.vue'
+import AccountPicker from '@/components/AccountPicker.vue'
 import TextField from '@/components/TextField.vue'
 import TabBox from '@/components/TabBox.vue'
 import TicketPriority from '@/components/tickets/TicketPriority.vue'
@@ -88,7 +89,7 @@ const roster = ref<OnCallAdmin[]>([])
 const rosterLoading = ref(true)
 const busy = ref(false)
 const rosterError = ref('')
-const accountName = ref('')
+const onCallAccount = ref<Account | null>(null)
 
 async function loadRoster() {
   rosterLoading.value = true
@@ -104,14 +105,13 @@ async function loadRoster() {
 }
 
 async function add() {
-  const name = accountName.value.trim()
-  if (!name) return
+  const account = onCallAccount.value
+  if (!account) return
   busy.value = true
   try {
-    const account = await accountApi.byName(name)
     await adminApi.addOnCall(account.id)
     notice.ok(t('admin.tickets.noticeAdded', { account: account.nick || account.name }))
-    accountName.value = ''
+    onCallAccount.value = null
     await loadRoster()
   } catch (caught) {
     notice.fail(caught instanceof Error ? caught.message : t('admin.tickets.actionFailed'))
@@ -279,20 +279,15 @@ onMounted(() => {
       <p v-if="rosterError" class="note note-error mb-4">{{ rosterError }}</p>
 
       <form class="mb-5 flex flex-wrap items-end gap-3" @submit.prevent="add">
-        <TextField
-          id="oncall-account"
-          v-model="accountName"
-          root-class="min-w-[220px] flex-1"
-          :label="t('admin.tickets.accountName')"
-          :hint="t('admin.tickets.accountHint')"
-          placeholder="alice"
-          autocapitalize="off"
-        />
-        <button
-          type="submit"
-          class="btn btn-primary btn-field"
-          :disabled="busy || !accountName.trim()"
-        >
+        <div class="min-w-[220px] flex-1">
+          <p class="field-label">{{ t('admin.tickets.accountName') }}</p>
+          <AccountPicker
+            v-model="onCallAccount"
+            :hint="t('admin.tickets.accountHint')"
+            :disabled="busy"
+          />
+        </div>
+        <button type="submit" class="btn btn-primary btn-field" :disabled="busy || !onCallAccount">
           {{ t('admin.tickets.add') }}
         </button>
       </form>

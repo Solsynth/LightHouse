@@ -59,6 +59,13 @@ export default {
     somethingWrong: '出了点问题。',
     previousPage: '上一页',
     nextPage: '下一页',
+    accountPicker: {
+      searchPlaceholder: '账号名称或昵称',
+      searching: '搜索中…',
+      noResults: '没有匹配的账号。',
+      error: '账号搜索失败。',
+      change: '更换',
+    },
   },
   time: {
     pending: '等待中',

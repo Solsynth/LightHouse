@@ -80,24 +80,34 @@ export interface PickImageOptions {
   height?: number
 }
 
+export interface PickFilesOptions {
+  title: string
+  description?: string
+  mimeTypes?: string[]
+  multiple?: boolean
+  width?: number
+  height?: number
+}
+
 /**
- * Opens the drive picker for one image and resolves with what was chosen, or
- * `null` when the person cancelled. `upload` is on: an account that has no
- * picture yet is exactly the account that wants to add one.
+ * Opens the drive picker for one or more files. The picker keeps the drive
+ * session in its own frame and returns Drive references, so callers only ever
+ * need the ids; the ticket service resolves the rest server-side. `upload` is
+ * on because the common case is attaching a file that is not in the drive yet.
  */
-export async function pickImage(options: PickImageOptions): Promise<PickerFile | null> {
+export async function pickFiles(options: PickFilesOptions): Promise<PickerFile[]> {
   const sdk = await loadSdk()
-  const files = await sdk.openSnfsPicker(
+  return sdk.openSnfsPicker(
     {
       frameUrl: PICKER_FRAME_URL,
       dialogTitle: options.title,
-      width: options.width ?? 720,
-      height: options.height ?? 560,
+      width: options.width ?? 760,
+      height: options.height ?? 620,
     },
     {
       view: 'files',
-      multiple: false,
-      mimeTypes: ['image/*'],
+      multiple: options.multiple ?? true,
+      mimeTypes: options.mimeTypes,
       upload: true,
       title: options.title,
       description: options.description,
@@ -105,5 +115,17 @@ export async function pickImage(options: PickImageOptions): Promise<PickerFile |
       locale: document.documentElement.lang === 'zh-CN' ? 'zh-CN' : 'en',
     },
   )
+}
+
+/**
+ * The image-only picker used by profile art. It shares the generic picker so
+ * the frame, theme and locale rules stay in one place.
+ */
+export async function pickImage(options: PickImageOptions): Promise<PickerFile | null> {
+  const files = await pickFiles({
+    ...options,
+    mimeTypes: ['image/*'],
+    multiple: false,
+  })
   return files[0] ?? null
 }

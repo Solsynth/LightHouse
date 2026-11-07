@@ -59,6 +59,13 @@ export default {
     somethingWrong: 'Something went wrong.',
     previousPage: 'Previous page',
     nextPage: 'Next page',
+    accountPicker: {
+      searchPlaceholder: 'Name or nickname',
+      searching: 'Searching…',
+      noResults: 'No accounts match.',
+      error: 'The account search failed.',
+      change: 'Change',
+    },
   },
   time: {
     pending: 'pending',

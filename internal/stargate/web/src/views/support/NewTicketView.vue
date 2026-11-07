@@ -2,13 +2,15 @@
 import { inject, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
-import { ArrowLeft16 } from '@carbon/icons-vue'
+import { ArrowLeft16, Attachment16 } from '@carbon/icons-vue'
 
 import { ticketApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
 import { useNoticeStore } from '@/stores/notice'
 import { ticketPriorityLabel, ticketTypeLabel } from '@/lib/enums'
 import { shortId } from '@/lib/format'
+import { pickFiles } from '@/lib/picker'
+import type { PickerFile } from '@/lib/picker-types'
 import {
   TICKET_PRIORITIES,
   TICKET_PRIORITY,
@@ -17,6 +19,7 @@ import {
   TICKET_TYPE,
 } from '@/lib/tickets'
 import TextField from '@/components/TextField.vue'
+import TicketAttachments from '@/components/tickets/TicketAttachments.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -33,8 +36,36 @@ const title = ref('')
 const content = ref('')
 const type = ref(initialType())
 const priority = ref<number>(TICKET_PRIORITY.medium)
+const pendingFiles = ref<PickerFile[]>([])
+const filesBusy = ref(false)
 const busy = ref(false)
 const error = ref('')
+
+async function addFiles() {
+  if (filesBusy.value) return
+  filesBusy.value = true
+  try {
+    const picked = await pickFiles({
+      title: t('support.new.attachFiles'),
+      description: t('support.new.attachmentHint'),
+    })
+    const known = new Set(pendingFiles.value.map((file) => file.id))
+    for (const file of picked) {
+      if (!known.has(file.id)) {
+        pendingFiles.value.push(file)
+        known.add(file.id)
+      }
+    }
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : t('support.error.attach')
+  } finally {
+    filesBusy.value = false
+  }
+}
+
+function removeFile(id: string) {
+  pendingFiles.value = pendingFiles.value.filter((file) => file.id !== id)
+}
 
 async function submit() {
   const trimmedTitle = title.value.trim()
@@ -55,6 +86,7 @@ async function submit() {
       content: trimmedContent,
       type: type.value,
       priority: priority.value,
+      file_ids: pendingFiles.value.map((file) => file.id),
     })
     notice.ok(t('support.notice.created', { id: shortId(ticket.id) }))
     await refresh()
@@ -125,6 +157,26 @@ async function submit() {
         maxlength="16384"
         required
       />
+
+      <TicketAttachments
+        v-if="pendingFiles.length"
+        :files="pendingFiles"
+        removable
+        class="mt-4"
+        @remove="removeFile"
+      />
+
+      <div class="mt-4">
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm"
+          :disabled="busy || filesBusy"
+          @click="addFiles"
+        >
+          <Attachment16 aria-hidden="true" />
+          {{ filesBusy ? t('support.new.attaching') : t('support.new.attachFiles') }}
+        </button>
+      </div>
 
       <div class="mt-5 flex flex-wrap items-center justify-end gap-2">
         <RouterLink :to="{ name: 'support' }" class="btn btn-ghost btn-sm">
