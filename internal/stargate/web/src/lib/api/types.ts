@@ -750,6 +750,44 @@ export interface RealmMember {
   account?: Account
 }
 
+// ── Tickets ──
+
+/**
+ * A support ticket with its full message thread. `type`, `status` and
+ * `priority` are the server's numeric enums; labels live in the locale
+ * catalogs. `resources` is a list of free-form links the ticket references.
+ */
+export interface Ticket {
+  id: string
+  title: string
+  type: number
+  status: number
+  priority: number
+  creator_id: string
+  creator?: Account
+  assignee_id?: string
+  assignee?: Account
+  resolved_at?: string
+  messages: TicketMessage[]
+  metadata: Record<string, unknown>
+  resources?: (string | null)[]
+  created_at?: string
+  updated_at?: string
+  deleted_at?: string
+}
+
+export interface TicketMessage {
+  id: string
+  ticket_id: string
+  sender_id: string
+  sender?: Account
+  content: string
+  files: CloudFileRef[]
+  created_at?: string
+  updated_at?: string
+  deleted_at?: string
+}
+
 // ── Admin tickets ──
 
 export interface OnCallAdmin {

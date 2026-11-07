@@ -48,6 +48,8 @@ import type {
   AdminRealm,
   AdminRealmDetail,
   NameHistoryEntry,
+  Ticket,
+  TicketMessage,
   OnCallAdmin,
   ProgressionDefinition,
   ProgressionUpsert,
@@ -386,6 +388,51 @@ export const activityApi = {
     requestPage<ActionLog>('/actions', query),
   summary: (query: { days?: number } = {}) =>
     request<ActionLogSummary>('/actions/summary', { query }),
+}
+
+// ── Tickets ──
+
+export type TicketQuery = {
+  status?: number
+  type?: number
+  priority?: number
+  offset?: number
+  take?: number
+}
+
+/**
+ * Support tickets. `mine` is the account's own queue and every signed-in
+ * account may read it; `list` reads the admin queue and is refused for
+ * everyone else. Writes answer with the changed ticket so callers can replace
+ * their copy instead of guessing what the server did.
+ */
+export const ticketApi = {
+  mine: (query: TicketQuery = {}) => request<Ticket[]>('/tickets/me', { query }),
+  list: (query: TicketQuery = {}) => request<Ticket[]>('/tickets', { query }),
+  get: (id: string) => request<Ticket>(`/tickets/${encodeURIComponent(id)}`),
+  create: (body: {
+    title: string
+    content: string
+    type: number
+    priority?: number
+    file_ids?: string[]
+    resources?: (string | null)[]
+  }) => request<Ticket>('/tickets', { method: 'POST', body }),
+  reply: (id: string, body: { content: string; file_ids?: string[] }) =>
+    request<TicketMessage>(`/tickets/${encodeURIComponent(id)}/messages`, {
+      method: 'POST',
+      body,
+    }),
+  setStatus: (id: string, status: number) =>
+    request<Ticket>(`/tickets/${encodeURIComponent(id)}/status`, {
+      method: 'POST',
+      body: { status },
+    }),
+  assign: (id: string, assigneeId: string | null) =>
+    request<Ticket>(`/tickets/${encodeURIComponent(id)}/assign`, {
+      method: 'POST',
+      body: { assignee_id: assigneeId },
+    }),
 }
 
 // ── Admin ──

@@ -15,6 +15,9 @@ export const contactTypeLabel = (type: number) => enumLabel('contactType', type)
 export const punishmentTypeLabel = (type: number) => enumLabel('punishmentType', type)
 export const oauthAppStatusLabel = (status: number) => enumLabel('oauthAppStatus', status)
 export const actorTypeLabel = (type: number) => enumLabel('actorType', type)
+export const ticketTypeLabel = (type: number) => enumLabel('ticketType', type)
+export const ticketStatusLabel = (status: number) => enumLabel('ticketStatus', status)
+export const ticketPriorityLabel = (priority: number) => enumLabel('ticketPriority', priority)
 
 export function securityModeCopy(mode: string): string {
   const key = `enums.securityMode.${mode}`

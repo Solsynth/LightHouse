@@ -64,5 +64,26 @@ export default {
       lockdown: 'Always ask for every enabled factor.',
       lockoff: 'Ask for a single factor, even when the sign-in looks unfamiliar.',
     },
+    ticketType: {
+      0: 'Support',
+      1: 'Bug report',
+      2: 'Feature request',
+      3: 'Billing',
+      4: 'Other',
+    },
+    ticketStatus: {
+      0: 'Open',
+      1: 'In progress',
+      2: 'Resolved',
+      3: 'Closed',
+      4: 'Waiting on you',
+      5: 'More info needed',
+    },
+    ticketPriority: {
+      0: 'Low',
+      1: 'Medium',
+      2: 'High',
+      3: 'Critical',
+    },
   },
 }

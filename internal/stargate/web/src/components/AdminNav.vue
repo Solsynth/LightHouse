@@ -31,6 +31,7 @@ const active = computed(() => {
   if (route.path.startsWith('/admin/accounts')) return '/admin/accounts'
   if (route.path.startsWith('/admin/permissions')) return '/admin/permissions'
   if (route.path.startsWith('/admin/realms')) return '/admin/realms'
+  if (route.path.startsWith('/admin/tickets')) return '/admin/tickets'
   return route.path
 })
 </script>

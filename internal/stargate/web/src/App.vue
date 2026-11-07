@@ -4,6 +4,7 @@ import type { Component } from 'vue'
 import {
   Activity16,
   Friendship16,
+  HelpDesk16,
   Moon16,
   SettingsAdjust16,
   Sun16,
@@ -79,6 +80,14 @@ const nav: NavItem[] = [
     modules: [MODULES.accounts],
   },
   {
+    to: '/support',
+    labelKey: 'app.nav.support',
+    icon: HelpDesk16,
+    scope: 'account',
+    match: '/support',
+    modules: [MODULES.tickets],
+  },
+  {
     to: '/admin',
     labelKey: 'app.nav.admin',
     icon: Tools16,
@@ -103,6 +112,7 @@ const activeSection = computed(() => {
   const path = route.path
   if (path.startsWith('/account/relationships')) return '/account/relationships'
   if (path.startsWith('/admin')) return '/admin'
+  if (path.startsWith('/support')) return '/support'
   if (path.startsWith('/activity')) return '/activity'
   if (path.startsWith('/security')) return '/security'
   return '/account'

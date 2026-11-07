@@ -182,6 +182,31 @@ const router = createRouter({
       meta: { titleKey: 'app.titles.activity', wide: true, modules: [MODULES.accounts] },
     },
     {
+      // The support desk: a request index beside the correspondence it opens.
+      // Both panes live under one layout so a queue change does not remount
+      // the thread, and a deep link still resolves to one ticket.
+      path: '/support',
+      component: () => import('@/views/support/SupportLayout.vue'),
+      meta: { titleKey: 'app.titles.support', wide: true, modules: [MODULES.tickets] },
+      children: [
+        {
+          path: '',
+          name: 'support',
+          component: () => import('@/views/support/SupportHome.vue'),
+        },
+        {
+          path: 'new',
+          name: 'support-new',
+          component: () => import('@/views/support/NewTicketView.vue'),
+        },
+        {
+          path: ':id',
+          name: 'support-ticket',
+          component: () => import('@/views/support/SupportTicketView.vue'),
+        },
+      ],
+    },
+    {
       path: '/admin',
       name: 'admin',
       component: () => import('@/views/admin/AdminOverview.vue'),
@@ -322,7 +347,19 @@ const router = createRouter({
         admin: true,
         full: true,
         fullBleed: true,
-        modules: [MODULES.admin],
+        modules: [MODULES.admin, MODULES.tickets],
+      },
+    },
+    {
+      path: '/admin/tickets/:id',
+      name: 'admin-ticket',
+      component: () => import('@/views/admin/AdminTicketDetail.vue'),
+      meta: {
+        titleKey: 'app.titles.tickets',
+        admin: true,
+        full: true,
+        fullBleed: true,
+        modules: [MODULES.admin, MODULES.tickets],
       },
     },
     {
