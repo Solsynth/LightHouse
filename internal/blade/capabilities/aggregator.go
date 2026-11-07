@@ -2,7 +2,6 @@ package capabilities
 
 import (
 	"context"
-	"crypto/tls"
 	"net/url"
 	"sort"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 	discovery "srv.solsynth.dev/sosys/blade/discovery"
+	"srv.solsynth.dev/sosys/blade/grpctls"
 )
 
 const (
@@ -64,12 +64,15 @@ type Aggregator struct {
 }
 
 func New(source ServiceSource) *Aggregator {
-	return NewWithTLSConfig(source, false)
+	return NewWithTLSConfig(source, grpctls.Files{})
 }
 
-func NewWithTLSConfig(source ServiceSource, tlsSkipVerify bool, coreServices ...string) *Aggregator {
+// NewWithTLSConfig scrapes capabilities over TLS with the given certificate
+// material: files.CAFile verifies the peer, files.CertFile and files.KeyFile
+// satisfy a service that enforces mTLS.
+func NewWithTLSConfig(source ServiceSource, files grpctls.Files, coreServices ...string) *Aggregator {
 	return NewWithFetch(source, func(ctx context.Context, endpoint string) (*gen.DyCapabilitiesResponse, error) {
-		return fetchCapabilities(ctx, endpoint, tlsSkipVerify)
+		return fetchCapabilities(ctx, endpoint, files)
 	}, coreServices...)
 }
 
@@ -169,17 +172,21 @@ func (a *Aggregator) Document() Document {
 	return cloneDocument(a.document)
 }
 
-func fetchCapabilities(ctx context.Context, endpoint string, tlsSkipVerify bool) (*gen.DyCapabilitiesResponse, error) {
+func fetchCapabilities(ctx context.Context, endpoint string, files grpctls.Files) (*gen.DyCapabilitiesResponse, error) {
 	target := endpoint
-	transportCredentials := credentials.NewTLS(&tls.Config{
-		MinVersion:         tls.VersionTLS12,
-		InsecureSkipVerify: tlsSkipVerify,
-	})
+	var transportCredentials credentials.TransportCredentials
 	if parsed, err := url.Parse(endpoint); err == nil && parsed.Host != "" {
 		target = parsed.Host
 		if parsed.Scheme == "http" {
 			transportCredentials = insecure.NewCredentials()
 		}
+	}
+	if transportCredentials == nil {
+		tlsCredentials, err := grpctls.Client(files)
+		if err != nil {
+			return nil, err
+		}
+		transportCredentials = tlsCredentials
 	}
 	callCtx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()

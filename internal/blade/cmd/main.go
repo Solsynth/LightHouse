@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -28,6 +27,7 @@ import (
 	"srv.solsynth.dev/sosys/blade/capabilities"
 	"srv.solsynth.dev/sosys/blade/config"
 	discovery "srv.solsynth.dev/sosys/blade/discovery"
+	"srv.solsynth.dev/sosys/blade/grpctls"
 	"srv.solsynth.dev/sosys/blade/health"
 	"srv.solsynth.dev/sosys/blade/logging"
 	"srv.solsynth.dev/sosys/blade/proxy"
@@ -103,7 +103,11 @@ func main() {
 				coreServiceNames = append(coreServiceNames, canonical)
 			}
 		}
-		capabilityAggregator = capabilities.NewWithTLSConfig(registry, cfg.GRPC.ClientTLSSkipVerify, coreServiceNames...)
+		capabilityAggregator = capabilities.NewWithTLSConfig(registry, grpctls.Files{
+			CAFile:   cfg.GRPC.CAFile,
+			CertFile: cfg.GRPC.ClientCertFile,
+			KeyFile:  cfg.GRPC.ClientKeyFile,
+		}, coreServiceNames...)
 		fallback := make(map[string]string, len(cfg.Services))
 		for name, endpoint := range cfg.Services {
 			fallback[name] = endpoint.Grpc
@@ -223,14 +227,21 @@ func main() {
 		}
 
 		profileTarget, profileUseTLS := dyauth.NormalizeAuthGRPCTarget(profileGrpcTarget, cfg.WebSocket.ProfileUseTLS)
-		profileGrpcConn, err := grpc.Dial(profileTarget, grpc.WithTransportCredentials(
-			func() credentials.TransportCredentials {
-				if profileUseTLS {
-					return credentials.NewTLS(&tls.Config{InsecureSkipVerify: cfg.WebSocket.ProfileTLSSkipVerify})
-				}
-				return insecure.NewCredentials()
-			}(),
-		))
+		var profileCredentials credentials.TransportCredentials
+		if profileUseTLS {
+			profileCredentials, err = grpctls.Client(grpctls.Files{
+				CAFile:     cfg.GRPC.CAFile,
+				CertFile:   cfg.GRPC.ClientCertFile,
+				KeyFile:    cfg.GRPC.ClientKeyFile,
+				ServerName: cfg.WebSocket.ProfileTLSServerName,
+			})
+			if err != nil {
+				logging.Log.Fatal().Err(err).Str("target", profileGrpcTarget).Msg("Failed to load profile service TLS credentials")
+			}
+		} else {
+			profileCredentials = insecure.NewCredentials()
+		}
+		profileGrpcConn, err := grpc.Dial(profileTarget, grpc.WithTransportCredentials(profileCredentials))
 		if err != nil {
 			logging.Log.Fatal().Err(err).Str("target", profileGrpcTarget).Msg("Failed to dial profile service")
 		}
@@ -410,14 +421,16 @@ func main() {
 
 		grpcOpts := []grpc.ServerOption{}
 		if cfg.GRPC.UseTLS {
-			if cfg.GRPC.CertFile == "" || cfg.GRPC.KeyFile == "" {
-				logging.Log.Fatal().Msg("gRPC TLS requires grpc.certFile and grpc.keyFile")
-			}
-			creds, err := credentials.NewServerTLSFromFile(cfg.GRPC.CertFile, cfg.GRPC.KeyFile)
+			serverCredentials, err := grpctls.Server(cfg.GRPC.CertFile, cfg.GRPC.KeyFile, cfg.GRPC.ClientCAFile)
 			if err != nil {
-				logging.Log.Fatal().Err(err).Msg("Failed to load gRPC TLS credentials")
+				logging.Log.Fatal().
+					Err(err).
+					Str("certFile", cfg.GRPC.CertFile).
+					Str("keyFile", cfg.GRPC.KeyFile).
+					Str("clientCAFile", cfg.GRPC.ClientCAFile).
+					Msg("Failed to load gRPC TLS credentials")
 			}
-			grpcOpts = append(grpcOpts, grpc.Creds(creds))
+			grpcOpts = append(grpcOpts, grpc.Creds(serverCredentials))
 		}
 
 		grpcSrv = grpc.NewServer(grpcOpts...)
@@ -432,7 +445,11 @@ func main() {
 		reflection.Register(grpcSrv)
 
 		go func() {
-			logging.Log.Info().Str("port", cfg.GRPC.Port).Bool("tls", cfg.GRPC.UseTLS).Msg("Starting gRPC server")
+			logging.Log.Info().
+				Str("port", cfg.GRPC.Port).
+				Bool("tls", cfg.GRPC.UseTLS).
+				Bool("mtls", cfg.GRPC.UseTLS && cfg.GRPC.ClientCAFile != "").
+				Msg("Starting gRPC server")
 			if err := grpcSrv.Serve(lis); err != nil {
 				logging.Log.Fatal().Err(err).Msg("Failed to start gRPC server")
 			}

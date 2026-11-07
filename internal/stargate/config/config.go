@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
+
+	"src.solsynth.dev/sosys/stargate/grpctls"
 )
 
 // Config is the root configuration for Stargate.
@@ -32,6 +34,16 @@ type Config struct {
 		UseTLS   bool   `toml:"useTLS"`
 		CertFile string `toml:"certFile"`
 		KeyFile  string `toml:"keyFile"`
+		// ClientCAFile requires outbound fleet gRPC clients to present a
+		// certificate signed by this CA. Empty disables client certificates.
+		ClientCAFile string `toml:"clientCAFile"`
+		// CAFile verifies outbound fleet gRPC servers. Empty keeps skipping
+		// validation because fleet certificates are self-signed.
+		CAFile string `toml:"caFile"`
+		// ClientCertFile and ClientKeyFile identify this service to fleet gRPC
+		// servers that enforce mTLS. Both must be set or both left empty.
+		ClientCertFile string `toml:"clientCertFile"`
+		ClientKeyFile  string `toml:"clientKeyFile"`
 	} `toml:"grpc"`
 
 	Database struct {
@@ -175,6 +187,20 @@ type Config struct {
 	// module provides the same port. Example:
 	//   nfcTokens = "app.solian.id.nfc"
 	Ports map[string]string `toml:"ports"`
+}
+
+// ClientFiles returns the outbound gRPC TLS material from the [grpc] section:
+// CAFile as the server trust anchor, ClientCertFile and ClientKeyFile as the
+// identity presented to fleet servers that enforce mTLS.
+func (c *Config) ClientFiles() grpctls.Files {
+	if c == nil {
+		return grpctls.Files{}
+	}
+	return grpctls.Files{
+		CAFile:   c.GRPC.CAFile,
+		CertFile: c.GRPC.ClientCertFile,
+		KeyFile:  c.GRPC.ClientKeyFile,
+	}
 }
 
 // HandoffClient is a first-party app this deployment will hand a session to.

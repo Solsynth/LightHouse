@@ -20,7 +20,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
@@ -33,6 +32,7 @@ import (
 	"src.solsynth.dev/sosys/metoer/events"
 	"src.solsynth.dev/sosys/metoer/grpcclient"
 	"src.solsynth.dev/sosys/metoer/grpcserver"
+	"src.solsynth.dev/sosys/metoer/grpctls"
 	"src.solsynth.dev/sosys/metoer/httpserver"
 	"src.solsynth.dev/sosys/metoer/httpserver/adminctl"
 	"src.solsynth.dev/sosys/metoer/httpserver/notificationctl"
@@ -119,7 +119,12 @@ func run(log *slog.Logger) error {
 
 	st := store.New(database)
 
-	discoveryResolver, closeDiscovery := newDiscoveryResolver(cfg, log)
+	clientFiles := grpctls.Files{
+		CAFile:   cfg.GRPC.CAFile,
+		CertFile: cfg.GRPC.ClientCertFile,
+		KeyFile:  cfg.GRPC.ClientKeyFile,
+	}
+	discoveryResolver, closeDiscovery := newDiscoveryResolver(cfg, clientFiles, log)
 	if closeDiscovery != nil {
 		defer closeDiscovery()
 	}
@@ -204,8 +209,8 @@ func run(log *slog.Logger) error {
 	srv.Engine.GET("/swagger", adminctl.ServeSwaggerUI)
 
 	// gRPC server. TLS mirrors DysonFS: when grpc.useTLS is set,
-	// certFile/keyFile are required (self-signed fleet certs; clients skip
-	// CA validation).
+	// certFile/keyFile are required. Setting grpc.clientCAFile also requires
+	// every client to present a certificate signed by that CA.
 	grpcOpts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(16 * 1024 * 1024),
 		grpc.MaxSendMsgSize(16 * 1024 * 1024),
@@ -214,7 +219,7 @@ func run(log *slog.Logger) error {
 		if cfg.GRPC.CertFile == "" || cfg.GRPC.KeyFile == "" {
 			return fmt.Errorf("grpc tls requires grpc.certFile and grpc.keyFile")
 		}
-		creds, err := credentials.NewServerTLSFromFile(cfg.GRPC.CertFile, cfg.GRPC.KeyFile)
+		creds, err := grpctls.Server(cfg.GRPC.CertFile, cfg.GRPC.KeyFile, cfg.GRPC.ClientCAFile)
 		if err != nil {
 			return fmt.Errorf("load grpc tls credentials: %w", err)
 		}
@@ -253,7 +258,7 @@ func run(log *slog.Logger) error {
 		if err := discovery.Validate(opts); err != nil {
 			return fmt.Errorf("discovery: %w", err)
 		}
-		conn, err := discovery.Dial(cfg.Discovery.Target)
+		conn, err := discovery.Dial(cfg.Discovery.Target, clientFiles)
 		if err != nil {
 			return fmt.Errorf("dial blade discovery %s: %w", cfg.Discovery.Target, err)
 		}
@@ -334,11 +339,11 @@ func run(log *slog.Logger) error {
 // newDiscoveryResolver wires Metoer's outbound gRPC clients to Blade's
 // registry. The static [services] targets remain fallbacks so enabling
 // discovery does not disable an integration before the sibling registers.
-func newDiscoveryResolver(cfg *config.Config, log *slog.Logger) (*discovery.Resolver, func()) {
+func newDiscoveryResolver(cfg *config.Config, files grpctls.Files, log *slog.Logger) (*discovery.Resolver, func()) {
 	if cfg == nil || !cfg.Discovery.Enabled || strings.TrimSpace(cfg.Discovery.Target) == "" {
 		return nil, nil
 	}
-	provider, err := discovery.NewRemoteProvider(cfg.Discovery.Target)
+	provider, err := discovery.NewRemoteProvider(cfg.Discovery.Target, files)
 	if err != nil {
 		log.Warn("blade discovery resolver unavailable; using static [services] targets", "error", err)
 		return nil, nil

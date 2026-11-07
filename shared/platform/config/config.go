@@ -37,6 +37,15 @@ type Base struct {
 		UseTLS   bool   `toml:"useTLS"`
 		CertFile string `toml:"certFile"`
 		KeyFile  string `toml:"keyFile"`
+		// ClientCAFile makes the listener mTLS: when set, every client must
+		// present a certificate signed by this CA.
+		ClientCAFile string `toml:"clientCAFile"`
+		// CAFile, ClientCertFile and ClientKeyFile identify this service to
+		// outbound fleet gRPC peers. CAFile verifies the peer; empty keeps
+		// skipping validation for self-signed certificates.
+		CAFile         string `toml:"caFile"`
+		ClientCertFile string `toml:"clientCertFile"`
+		ClientKeyFile  string `toml:"clientKeyFile"`
 	} `toml:"grpc"`
 
 	Database struct {

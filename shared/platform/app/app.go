@@ -21,7 +21,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 
 	"gorm.io/gorm"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
@@ -33,6 +32,7 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/eventbus"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpcclient"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpccore"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpctls"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/httpx"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/jobs"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
@@ -139,10 +139,16 @@ func Run[C any](parent context.Context, log *slog.Logger, opts Options[C]) error
 	}
 	defer nc.Close()
 
+	grpcTLS := grpctls.Files{
+		CAFile:   base.GRPC.CAFile,
+		CertFile: base.GRPC.ClientCertFile,
+		KeyFile:  base.GRPC.ClientKeyFile,
+	}
+
 	var discoveryProvider *discovery.RemoteProvider
 	var discoveryResolver *discovery.Resolver
 	if base.Discovery.Enabled && strings.TrimSpace(base.Discovery.Target) != "" {
-		provider, err := discovery.NewRemoteProvider(base.Discovery.Target)
+		provider, err := discovery.NewRemoteProvider(base.Discovery.Target, grpcTLS)
 		if err != nil {
 			log.Warn("blade discovery resolver unavailable; using static [services] targets", "error", err)
 		} else {
@@ -163,6 +169,7 @@ func Run[C any](parent context.Context, log *slog.Logger, opts Options[C]) error
 		Wallet:   base.Services.Wallet.GRPC,
 		Develop:  base.Services.Develop.GRPC,
 		Blade:    base.Services.Blade.GRPC,
+		TLS:      grpcTLS,
 	}, discoveryResolver)
 	if err != nil {
 		return err
@@ -178,6 +185,7 @@ func Run[C any](parent context.Context, log *slog.Logger, opts Options[C]) error
 	authenticator, err := authn.New(authn.Options{
 		Target: authTarget,
 		UseTLS: authUseTLS,
+		TLS:    grpcTLS,
 		Cache:  rc,
 		Log:    log,
 	})
@@ -211,10 +219,7 @@ func Run[C any](parent context.Context, log *slog.Logger, opts Options[C]) error
 		grpc.MaxSendMsgSize(100 * 1024 * 1024),
 	}
 	if base.GRPC.UseTLS {
-		if base.GRPC.CertFile == "" || base.GRPC.KeyFile == "" {
-			return fmt.Errorf("grpc tls requires grpc.certFile and grpc.keyFile")
-		}
-		creds, err := credentials.NewServerTLSFromFile(base.GRPC.CertFile, base.GRPC.KeyFile)
+		creds, err := grpctls.Server(base.GRPC.CertFile, base.GRPC.KeyFile, base.GRPC.ClientCAFile)
 		if err != nil {
 			return fmt.Errorf("load grpc tls credentials: %w", err)
 		}
@@ -304,7 +309,7 @@ func Run[C any](parent context.Context, log *slog.Logger, opts Options[C]) error
 		if err := discovery.Validate(discoveryOpts); err != nil {
 			return fmt.Errorf("discovery: %w", err)
 		}
-		conn, err := discovery.Dial(base.Discovery.Target)
+		conn, err := discovery.Dial(base.Discovery.Target, grpcTLS)
 		if err != nil {
 			log.Warn("blade discovery unavailable; registration disabled", "target", base.Discovery.Target, "error", err)
 		} else {

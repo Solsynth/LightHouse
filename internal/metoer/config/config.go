@@ -30,6 +30,16 @@ type Config struct {
 		UseTLS   bool   `toml:"useTLS"`
 		CertFile string `toml:"certFile"`
 		KeyFile  string `toml:"keyFile"`
+		// CAFile verifies outbound fleet gRPC servers. Empty keeps skipping
+		// validation because fleet certificates are self-signed.
+		CAFile string `toml:"caFile"`
+		// ClientCAFile makes inbound clients present a certificate signed by
+		// this CA (mTLS). Empty keeps the server TLS-only.
+		ClientCAFile string `toml:"clientCAFile"`
+		// ClientCertFile and ClientKeyFile identify this service to fleet
+		// servers enforcing mTLS. Empty dials without a client certificate.
+		ClientCertFile string `toml:"clientCertFile"`
+		ClientKeyFile  string `toml:"clientKeyFile"`
 	} `toml:"grpc"`
 
 	Database struct {

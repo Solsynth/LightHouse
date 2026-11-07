@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -23,6 +22,7 @@ import (
 	"src.solsynth.dev/sosys/filesystem/config"
 	"src.solsynth.dev/sosys/filesystem/database"
 	"src.solsynth.dev/sosys/filesystem/eventbus"
+	"src.solsynth.dev/sosys/filesystem/grpctls"
 	"src.solsynth.dev/sosys/filesystem/logging"
 	"src.solsynth.dev/sosys/filesystem/media"
 	"src.solsynth.dev/sosys/filesystem/storage"
@@ -3785,15 +3785,20 @@ func (s *QuotaService) EnrichedAccount(ctx context.Context, account *gen.DyAccou
 }
 
 // NewAccountClient dials the account service (DyAccountService, hosted by
-// Stargate alongside the auth surface) using the [auth] config.
-func NewAccountClient(cfg config.AuthConfig) (gen.DyAccountServiceClient, *grpc.ClientConn, error) {
+// Stargate alongside the auth surface) using the [auth] config. files is the
+// fleet gRPC client material, so Stargate sees this instance's certificate
+// when it enforces mutual TLS.
+func NewAccountClient(cfg config.AuthConfig, files grpctls.Files) (gen.DyAccountServiceClient, *grpc.ClientConn, error) {
 	target, useTLS := dyauth.NormalizeAuthGRPCTarget(cfg.Target, cfg.UseTLS)
 	if strings.TrimSpace(target) == "" {
 		return nil, nil, errors.New("account gRPC target is empty")
 	}
 	var transportCredentials credentials.TransportCredentials
 	if useTLS {
-		transportCredentials = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: cfg.TLSSkipVerify})
+		var err error
+		if transportCredentials, err = grpctls.Client(files); err != nil {
+			return nil, nil, fmt.Errorf("load account gRPC credentials: %w", err)
+		}
 	} else {
 		transportCredentials = insecure.NewCredentials()
 	}
@@ -3804,14 +3809,17 @@ func NewAccountClient(cfg config.AuthConfig) (gen.DyAccountServiceClient, *grpc.
 	return gen.NewDyAccountServiceClient(conn), conn, nil
 }
 
-func NewWorkspaceClient(cfg config.WorkspaceConfig) (gen.DyWorkspaceServiceClient, *grpc.ClientConn, error) {
+func NewWorkspaceClient(cfg config.WorkspaceConfig, files grpctls.Files) (gen.DyWorkspaceServiceClient, *grpc.ClientConn, error) {
 	target, useTLS := dyauth.NormalizeAuthGRPCTarget(cfg.Target, cfg.UseTLS)
 	if strings.TrimSpace(target) == "" {
 		return nil, nil, errors.New("workspace gRPC target is empty")
 	}
 	var transportCredentials credentials.TransportCredentials
 	if useTLS {
-		transportCredentials = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: cfg.TLSSkipVerify})
+		var err error
+		if transportCredentials, err = grpctls.Client(files); err != nil {
+			return nil, nil, fmt.Errorf("load workspace gRPC credentials: %w", err)
+		}
 	} else {
 		transportCredentials = insecure.NewCredentials()
 	}
@@ -3822,14 +3830,17 @@ func NewWorkspaceClient(cfg config.WorkspaceConfig) (gen.DyWorkspaceServiceClien
 	return gen.NewDyWorkspaceServiceClient(conn), conn, nil
 }
 
-func NewPermissionClient(cfg config.AuthConfig) (gen.DyPermissionServiceClient, *grpc.ClientConn, error) {
+func NewPermissionClient(cfg config.AuthConfig, files grpctls.Files) (gen.DyPermissionServiceClient, *grpc.ClientConn, error) {
 	target, useTLS := dyauth.NormalizeAuthGRPCTarget(cfg.Target, cfg.UseTLS)
 	if strings.TrimSpace(target) == "" {
 		return nil, nil, errors.New("permission gRPC target is empty")
 	}
 	var transportCredentials credentials.TransportCredentials
 	if useTLS {
-		transportCredentials = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: cfg.TLSSkipVerify})
+		var err error
+		if transportCredentials, err = grpctls.Client(files); err != nil {
+			return nil, nil, fmt.Errorf("load permission gRPC credentials: %w", err)
+		}
 	} else {
 		transportCredentials = insecure.NewCredentials()
 	}

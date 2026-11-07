@@ -9,6 +9,7 @@ import (
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/stargate/grpcclient"
+	"src.solsynth.dev/sosys/stargate/grpctls"
 )
 
 // Sources holds the optional downstream DyRewindService clients. Passport
@@ -24,9 +25,10 @@ type rewindClient struct {
 	client gen.DyRewindServiceClient
 }
 
-// NewSources dials every configured target. Empty targets are skipped, which
+// NewSources dials every configured target with files as the TLS material
+// (trust anchor plus client certificate). Empty targets are skipped, which
 // makes those service keys absent from the stored document (documented gap).
-func NewSources(settings Settings) (*Sources, error) {
+func NewSources(settings Settings, files grpctls.Files) (*Sources, error) {
 	sources := &Sources{}
 	for _, target := range []struct {
 		name string
@@ -38,7 +40,7 @@ func NewSources(settings Settings) (*Sources, error) {
 		if target.addr == "" {
 			continue
 		}
-		conn, err := grpcclient.Dial(target.addr)
+		conn, err := grpcclient.Dial(target.addr, files)
 		if err != nil {
 			sources.Close()
 			return nil, err

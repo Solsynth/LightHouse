@@ -55,7 +55,7 @@ func (i *instance) Configure(ctx context.Context, host *module.Host[core.Service
 		log.Info("rewind: messagerGrpc is not configured; messager rewind data is omitted",
 			"module", rewind.ModuleID)
 	}
-	sources, err := rewind.NewSources(settings)
+	sources, err := rewind.NewSources(settings, host.Core.Config.ClientFiles())
 	if err != nil {
 		return err
 	}

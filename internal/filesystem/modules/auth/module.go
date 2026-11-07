@@ -11,6 +11,7 @@ import (
 
 	"src.solsynth.dev/sosys/filesystem/config"
 	"src.solsynth.dev/sosys/filesystem/core"
+	"src.solsynth.dev/sosys/filesystem/grpctls"
 	"src.solsynth.dev/sosys/filesystem/logging"
 	"src.solsynth.dev/sosys/filesystem/module"
 	"src.solsynth.dev/sosys/filesystem/service"
@@ -101,7 +102,7 @@ func (i *instance) Prepare(_ context.Context, services *core.Services) ([]gin.Ha
 		// Stargate hosts the account, auth and permission surfaces; one target
 		// drives all three clients. They belong to this module because they
 		// only exist when an auth provider does.
-		conns, err := dialClients(cfg.Auth, services)
+		conns, err := dialClients(cfg.Auth, cfg.GRPC, services)
 		if err != nil {
 			conns.close()
 			return nil, err
@@ -129,18 +130,24 @@ func (i *instance) Stop(context.Context) error {
 }
 
 // dialClients opens the account and permission channels and installs them on
-// the services that consume them.
-func dialClients(cfg config.AuthConfig, services *core.Services) (*clientConns, error) {
+// the services that consume them. grpcCfg supplies the fleet client material,
+// so Stargate sees this instance's certificate when it enforces mutual TLS.
+func dialClients(cfg config.AuthConfig, grpcCfg config.GRPCConfig, services *core.Services) (*clientConns, error) {
 	conns := &clientConns{}
+	files := grpctls.Files{
+		CAFile:   grpcCfg.CAFile,
+		CertFile: grpcCfg.ClientCertFile,
+		KeyFile:  grpcCfg.ClientKeyFile,
+	}
 
-	accountClient, accountConn, err := service.NewAccountClient(cfg)
+	accountClient, accountConn, err := service.NewAccountClient(cfg, files)
 	if err != nil {
 		return conns, err
 	}
 	conns.account = accountConn
 	services.Quota.SetAccountClient(accountClient)
 
-	permissionClient, permissionConn, err := service.NewPermissionClient(cfg)
+	permissionClient, permissionConn, err := service.NewPermissionClient(cfg, files)
 	if err != nil {
 		return conns, err
 	}

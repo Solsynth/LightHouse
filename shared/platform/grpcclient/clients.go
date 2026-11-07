@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/discovery"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpctls"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
@@ -99,6 +100,9 @@ type Targets struct {
 	Wallet   string
 	Develop  string
 	Blade    string
+	// TLS is this service's fleet gRPC certificate material. An empty CA file
+	// keeps the fleet convention of skipping server validation.
+	TLS grpctls.Files
 }
 
 // New creates clients only for configured targets. Empty targets leave the
@@ -131,7 +135,11 @@ func NewWithResolver(targets Targets, resolver *discovery.Resolver) (*Clients, e
 		}
 		var creds credentials.TransportCredentials
 		if useTLS {
-			creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true})
+			var err error
+			creds, err = grpctls.Client(targets.TLS)
+			if err != nil {
+				return nil, fmt.Errorf("dial %s: %w", service, err)
+			}
 		} else {
 			creds = insecure.NewCredentials()
 		}

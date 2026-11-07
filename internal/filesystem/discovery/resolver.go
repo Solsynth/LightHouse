@@ -2,7 +2,6 @@ package discovery
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net/url"
 	"strings"
@@ -13,6 +12,8 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
+
+	"src.solsynth.dev/sosys/filesystem/grpctls"
 )
 
 // ResolverScheme routes a logical service name through Blade's registry.
@@ -46,14 +47,16 @@ type cachedResolution struct {
 	expiresAt  time.Time
 }
 
-// NewResolver dials Blade's discovery RPC. fallback maps a service name to the
+// NewResolver dials Blade's discovery RPC. files carries the fleet gRPC client
+// material: the CA bundle that verifies Blade and the certificate this service
+// presents when Blade enforces mutual TLS. fallback maps a service name to the
 // static address used only while that service has no registration.
-func NewResolver(target string, fallback map[string]string) (*Resolver, error) {
+func NewResolver(target string, files grpctls.Files, fallback map[string]string) (*Resolver, error) {
 	target = strings.TrimSpace(target)
 	if target == "" {
 		return nil, fmt.Errorf("service discovery: target is empty")
 	}
-	conn, err := Dial(target)
+	conn, err := Dial(target, files)
 	if err != nil {
 		return nil, fmt.Errorf("service discovery: dial %s: %w", target, err)
 	}
@@ -99,18 +102,25 @@ func DialTarget(raw string) string {
 
 // Dial opens a client connection to Blade's discovery endpoint. The target
 // scheme selects the transport, matching the fleet's grpcclient convention:
-// grpc:// and http:// are plaintext, grpcs:// and https:// are TLS with CA
-// validation skipped because fleet certificates are self-signed. A bare
+// grpc:// and http:// are plaintext, https:// and grpcs:// are TLS. A bare
 // host:port defaults to TLS, like every other fleet target; plaintext is the
 // explicit http:// or grpc:// choice.
-func Dial(target string) (*grpc.ClientConn, error) {
+//
+// files carries the fleet gRPC client material. An empty CAFile keeps the fleet
+// convention of skipping server validation, as fleet certificates are
+// self-signed; a configured certificate identifies this service to a peer that
+// requires mutual TLS.
+func Dial(target string, files grpctls.Files) (*grpc.ClientConn, error) {
 	address, useTLS := SplitTarget(target)
 	if address == "" {
 		return nil, fmt.Errorf("discovery target is empty")
 	}
 	creds := credentials.TransportCredentials(insecure.NewCredentials())
 	if useTLS {
-		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true})
+		var err error
+		if creds, err = grpctls.Client(files); err != nil {
+			return nil, err
+		}
 	}
 	return grpc.NewClient(DialTarget(address), grpc.WithTransportCredentials(creds))
 }

@@ -17,8 +17,6 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-
 	"google.golang.org/grpc/reflection"
 
 	sharedcache "src.solsynth.dev/sosys/lighthouse/shared/pkg/cache"
@@ -31,6 +29,7 @@ import (
 	"src.solsynth.dev/sosys/filesystem/dispatch"
 	"src.solsynth.dev/sosys/filesystem/eventbus"
 	"src.solsynth.dev/sosys/filesystem/grpcsvc"
+	"src.solsynth.dev/sosys/filesystem/grpctls"
 	"src.solsynth.dev/sosys/filesystem/logging"
 	"src.solsynth.dev/sosys/filesystem/module"
 	"src.solsynth.dev/sosys/filesystem/server"
@@ -121,7 +120,7 @@ func New(ctx context.Context, cfg *config.Config, mode string, factories []modul
 	tasks := service.NewTaskService(db)
 
 	if cfg.Workspace.Target != "" {
-		workspaceClient, conn, err := service.NewWorkspaceClient(cfg.Workspace)
+		workspaceClient, conn, err := service.NewWorkspaceClient(cfg.Workspace, grpcClientFiles(cfg))
 		if err != nil {
 			return nil, err
 		}
@@ -225,7 +224,7 @@ func (r *Runtime) setupDiscovery() error {
 		cfg.Auth.Target = discovery.Target("stargate")
 	}
 
-	resolver, err := discovery.NewResolver(cfg.Discovery.Target, fallback)
+	resolver, err := discovery.NewResolver(cfg.Discovery.Target, grpcClientFiles(cfg), fallback)
 	if err != nil {
 		return err
 	}
@@ -257,7 +256,7 @@ func (r *Runtime) setupDiscovery() error {
 		r.discoveryResolver = nil
 		return err
 	}
-	conn, err := discovery.Dial(cfg.Discovery.Target)
+	conn, err := discovery.Dial(cfg.Discovery.Target, grpcClientFiles(cfg))
 	if err != nil {
 		_ = resolver.Close()
 		r.discoveryResolver = nil
@@ -275,6 +274,18 @@ func (r *Runtime) setupDiscovery() error {
 		Str("instance_id", options.InstanceID).
 		Msg("blade service discovery enabled")
 	return nil
+}
+
+// grpcClientFiles is the outbound fleet gRPC material from [grpc]: the CA
+// bundle that verifies a peer and the certificate this instance presents when
+// that peer enforces mutual TLS. Every outbound fleet dial uses it, so one
+// config stanza secures discovery, Stargate and the workspace service alike.
+func grpcClientFiles(cfg *config.Config) grpctls.Files {
+	return grpctls.Files{
+		CAFile:   cfg.GRPC.CAFile,
+		CertFile: cfg.GRPC.ClientCertFile,
+		KeyFile:  cfg.GRPC.ClientKeyFile,
+	}
 }
 
 func normalizeMode(cfg *config.Config, mode string) string {
@@ -401,7 +412,7 @@ func (r *Runtime) host(resolution *module.Resolution, middleware []gin.HandlerFu
 			if r.Config.GRPC.CertFile == "" || r.Config.GRPC.KeyFile == "" {
 				return nil, fmt.Errorf("grpc tls requires grpc.certFile and grpc.keyFile")
 			}
-			creds, err := credentials.NewServerTLSFromFile(r.Config.GRPC.CertFile, r.Config.GRPC.KeyFile)
+			creds, err := grpctls.Server(r.Config.GRPC.CertFile, r.Config.GRPC.KeyFile, r.Config.GRPC.ClientCAFile)
 			if err != nil {
 				return nil, fmt.Errorf("load grpc tls credentials: %w", err)
 			}

@@ -81,17 +81,26 @@ type ServerConfig struct {
 }
 
 // GrpcServerConfig is the in-network listener that serves the websocket
-// gateway and service discovery. UseTLS wraps it with the same self-signed
-// certificate pair the rest of the fleet uses; clients skip CA validation.
+// gateway and service discovery, plus the certificate material its outbound
+// clients present. UseTLS wraps the listener with the fleet's certificate
+// pair; clientCAFile additionally makes it mutual.
 type GrpcServerConfig struct {
 	Enabled  bool   `mapstructure:"enabled"`
 	Port     string `mapstructure:"port"`
 	UseTLS   bool   `mapstructure:"useTLS"`
 	CertFile string `mapstructure:"certFile"`
 	KeyFile  string `mapstructure:"keyFile"`
-	// ClientTLSSkipVerify applies to outbound capability scrapes, not to this
-	// listener.
-	ClientTLSSkipVerify bool `mapstructure:"clientTlsSkipVerify"`
+	// ClientCAFile turns the listener into mTLS: when set, every client must
+	// present a certificate signed by this CA. Empty keeps one-way TLS.
+	ClientCAFile string `mapstructure:"clientCAFile"`
+	// CAFile is the bundle outbound clients (capability scrapes, the profile
+	// service dial) verify servers against. Empty skips verification, which is
+	// how the fleet's self-signed certificates work without a shared root.
+	CAFile string `mapstructure:"caFile"`
+	// ClientCertFile and ClientKeyFile identify this service to peers that
+	// enforce mTLS (their clientCAFile).
+	ClientCertFile string `mapstructure:"clientCertFile"`
+	ClientKeyFile  string `mapstructure:"clientKeyFile"`
 }
 
 type WebSocketConfig struct {
@@ -103,7 +112,6 @@ type WebSocketConfig struct {
 	AuthTLSServerName    string `mapstructure:"authTlsServerName"`
 	ProfileService       string `mapstructure:"profileService"`
 	ProfileUseTLS        bool   `mapstructure:"profileUseTLS"`
-	ProfileTLSSkipVerify bool   `mapstructure:"profileTlsSkipVerify"`
 	ProfileTLSServerName string `mapstructure:"profileTlsServerName"`
 	KeepAliveSeconds     int    `mapstructure:"keepAliveSeconds"`
 	MaxMessageBytes      int64  `mapstructure:"maxMessageBytes"`
@@ -146,7 +154,6 @@ func Load(configPath string) (*Config, error) {
 	viper.SetDefault("proxy.trustedProxyHops", 0)
 	viper.SetDefault("grpc.enabled", true)
 	viper.SetDefault("grpc.port", "7001")
-	viper.SetDefault("grpc.clientTlsSkipVerify", false)
 	viper.SetDefault("siteUrl", "http://localhost:3000")
 
 	viper.SetDefault("cache.serializer", "JSON")
@@ -166,7 +173,6 @@ func Load(configPath string) (*Config, error) {
 	viper.SetDefault("websocket.authTlsServerName", "")
 	viper.SetDefault("websocket.profileService", "pass")
 	viper.SetDefault("websocket.profileUseTLS", false)
-	viper.SetDefault("websocket.profileTlsSkipVerify", false)
 	viper.SetDefault("websocket.profileTlsServerName", "")
 	viper.SetDefault("websocket.keepAliveSeconds", 60)
 	viper.SetDefault("websocket.maxMessageBytes", 4096)

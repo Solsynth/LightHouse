@@ -7,7 +7,6 @@ package authn
 
 import (
 	"context"
-	"crypto/tls"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -20,6 +19,7 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/cache"
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpctls"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
@@ -36,9 +36,11 @@ const (
 type Options struct {
 	// Target is the auth service's gRPC endpoint (Stargate's DyAuthService).
 	Target string
-	// UseTLS dials with TLS. Fleet certificates are self-signed, so CA
-	// validation is skipped like every other service in the fleet.
+	// UseTLS dials with TLS.
 	UseTLS bool
+	// TLS carries the CA bundle and this service's client certificate. An
+	// empty CA skips server validation, as fleet certificates are self-signed.
+	TLS grpctls.Files
 	// Cache is the validated-session cache. Nil disables caching.
 	Cache cache.CacheService
 	// CacheTTL is how long a validated session is reused. Zero means one hour,
@@ -75,10 +77,16 @@ func New(opts Options) (*Service, error) {
 		return service, nil
 	}
 	creds := credentials.TransportCredentials(insecure.NewCredentials())
+	tlsFiles := opts.TLS
+	if tlsFiles.CAFile == "" && tlsFiles.CertFile == "" && tlsFiles.KeyFile == "" {
+		tlsFiles = grpctls.FromEnv()
+	}
 	if opts.UseTLS {
-		// Fleet certificates are self-signed, so CA validation is skipped like
-		// every other service in the fleet.
-		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true})
+		var err error
+		creds, err = grpctls.Client(tlsFiles)
+		if err != nil {
+			return nil, err
+		}
 	}
 	conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(creds))
 	if err != nil {
@@ -91,6 +99,9 @@ func New(opts Options) (*Service, error) {
 		Target:        target,
 		UseTLS:        opts.UseTLS,
 		TLSSkipVerify: true,
+		CAFile:        tlsFiles.CAFile,
+		CertFile:      tlsFiles.CertFile,
+		KeyFile:       tlsFiles.KeyFile,
 	})
 	if err != nil {
 		_ = conn.Close()

@@ -83,6 +83,16 @@ type GRPCConfig struct {
 	UseTLS   bool   `mapstructure:"useTLS"`
 	CertFile string `mapstructure:"certFile"`
 	KeyFile  string `mapstructure:"keyFile"`
+	// CAFile verifies outbound fleet gRPC servers. Empty keeps skipping
+	// validation because fleet certificates are self-signed.
+	CAFile string `mapstructure:"caFile"`
+	// ClientCAFile makes the server require mutual TLS: every client must
+	// present a certificate signed by this CA.
+	ClientCAFile string `mapstructure:"clientCAFile"`
+	// ClientCertFile and ClientKeyFile identify this service to fleet gRPC
+	// servers that enforce mutual TLS.
+	ClientCertFile string `mapstructure:"clientCertFile"`
+	ClientKeyFile  string `mapstructure:"clientKeyFile"`
 }
 
 type DatabaseConfig struct {

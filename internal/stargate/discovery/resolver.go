@@ -2,7 +2,6 @@ package discovery
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net/url"
 	"strings"
@@ -13,6 +12,8 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
+
+	"src.solsynth.dev/sosys/stargate/grpctls"
 )
 
 // ResolverScheme is the gRPC target scheme that routes a logical service name
@@ -98,18 +99,25 @@ func DialTarget(raw string) string {
 
 // Dial opens a client connection to Blade's discovery endpoint. The target
 // scheme selects the transport, matching the fleet's grpcclient convention:
-// grpc:// and http:// are plaintext, grpcs:// and https:// are TLS with CA
-// validation skipped because fleet certificates are self-signed. A bare
+// grpc:// and http:// are plaintext, https:// and grpcs:// are TLS. A bare
 // host:port defaults to TLS, like every other fleet target; plaintext is the
 // explicit http:// or grpc:// choice.
-func Dial(target string) (*grpc.ClientConn, error) {
+//
+// files carries the TLS material: CAFile is the trust anchor for the server
+// certificate and, when it is empty, the fleet convention applies and
+// validation is skipped because fleet certificates are self-signed. CertFile
+// and KeyFile are presented to a server that enforces mTLS.
+func Dial(target string, files grpctls.Files) (*grpc.ClientConn, error) {
 	address, useTLS := SplitTarget(target)
 	if address == "" {
 		return nil, fmt.Errorf("discovery target is empty")
 	}
 	creds := credentials.TransportCredentials(insecure.NewCredentials())
 	if useTLS {
-		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true})
+		var err error
+		if creds, err = grpctls.Client(files); err != nil {
+			return nil, err
+		}
 	}
 	return grpc.NewClient(DialTarget(address), grpc.WithTransportCredentials(creds))
 }
@@ -211,12 +219,12 @@ type RemoteProvider struct {
 
 // NewRemoteProvider dials Blade's discovery endpoint. The connection is lazy:
 // calling this function does not require Blade to be up yet.
-func NewRemoteProvider(target string) (*RemoteProvider, error) {
+func NewRemoteProvider(target string, files grpctls.Files) (*RemoteProvider, error) {
 	target = strings.TrimSpace(target)
 	if target == "" {
 		return nil, fmt.Errorf("discovery target is empty")
 	}
-	conn, err := Dial(target)
+	conn, err := Dial(target, files)
 	if err != nil {
 		return nil, fmt.Errorf("dial discovery target %s: %w", target, err)
 	}

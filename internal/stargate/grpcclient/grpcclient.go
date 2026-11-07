@@ -10,7 +10,6 @@ package grpcclient
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -18,26 +17,31 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 	"src.solsynth.dev/sosys/stargate/discovery"
 
 	"src.solsynth.dev/sosys/stargate/config"
+	"src.solsynth.dev/sosys/stargate/grpctls"
 	"src.solsynth.dev/sosys/stargate/model"
 )
 
-// Dial creates a TLS gRPC connection with CA validation skipped. The fleet
-// uses self-signed certs issued by the DysonNetwork CA; per the Golaunch
-// README, CA validation is off.
-func Dial(target string) (*grpc.ClientConn, error) {
+// Dial creates a TLS gRPC connection. files carries the trust anchor and the
+// client certificate: CAFile verifies the server and, when empty, validation
+// is skipped because the fleet uses self-signed certificates. CertFile and
+// KeyFile are presented to a server that enforces mTLS.
+func Dial(target string, files grpctls.Files) (*grpc.ClientConn, error) {
 	target = strings.TrimSpace(target)
 	if target == "" {
 		return nil, nil
 	}
+	creds, err := grpctls.Client(files)
+	if err != nil {
+		return nil, err
+	}
 	return grpc.NewClient(target,
-		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})),
+		grpc.WithTransportCredentials(creds),
 		grpc.WithDefaultCallOptions(grpc.WaitForReady(false)),
 	)
 }
@@ -144,8 +148,13 @@ func NewClientsWithResolver(cfg *config.Config, resolver *discovery.Resolver) (*
 	if cfg == nil {
 		return c, nil
 	}
+	files := grpctls.Files{
+		CAFile:   cfg.GRPC.CAFile,
+		CertFile: cfg.GRPC.ClientCertFile,
+		KeyFile:  cfg.GRPC.ClientKeyFile,
+	}
 	dial := func(service, target string, plaintext bool) *grpc.ClientConn {
-		conn, err := dialService(service, target, plaintext, resolver)
+		conn, err := dialService(service, target, plaintext, resolver, files)
 		if err != nil || conn == nil {
 			return nil
 		}
@@ -181,7 +190,7 @@ func NewClientsWithResolver(cfg *config.Config, resolver *discovery.Resolver) (*
 	return c, nil
 }
 
-func dialService(service, target string, plaintext bool, resolver *discovery.Resolver) (*grpc.ClientConn, error) {
+func dialService(service, target string, plaintext bool, resolver *discovery.Resolver, files grpctls.Files) (*grpc.ClientConn, error) {
 	address, useTLS := splitTarget(target, !plaintext)
 	if resolver != nil {
 		address = discovery.Target(service)
@@ -193,7 +202,7 @@ func dialService(service, target string, plaintext bool, resolver *discovery.Res
 		return nil, fmt.Errorf("dial %s: service discovery is not configured", service)
 	}
 	if useTLS {
-		return Dial(address)
+		return Dial(address, files)
 	}
 	return DialInsecure(address)
 }

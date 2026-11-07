@@ -19,7 +19,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
@@ -34,6 +33,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/geo"
 	"src.solsynth.dev/sosys/stargate/grpcclient"
 	"src.solsynth.dev/sosys/stargate/grpcserver"
+	"src.solsynth.dev/sosys/stargate/grpctls"
 	"src.solsynth.dev/sosys/stargate/httpserver"
 	"src.solsynth.dev/sosys/stargate/middleware"
 	"src.solsynth.dev/sosys/stargate/migrate"
@@ -235,13 +235,14 @@ func Run(parent context.Context, log *slog.Logger, factories []module.Factory[co
 		go consumeWebSocketPassportPackets(ctx, nc, services, log)
 	}
 	// gRPC server. TLS mirrors DysonFS: when grpc.useTLS is set, certFile and
-	// keyFile are required (self-signed fleet certs; clients skip CA checks).
+	// keyFile are required (self-signed fleet certs). When grpc.clientCAFile is
+	// set the server additionally requires and verifies client certificates.
 	grpcOpts := []grpc.ServerOption{}
 	if cfg.GRPC.UseTLS {
 		if cfg.GRPC.CertFile == "" || cfg.GRPC.KeyFile == "" {
 			return fmt.Errorf("grpc tls requires grpc.certFile and grpc.keyFile")
 		}
-		creds, err := credentials.NewServerTLSFromFile(cfg.GRPC.CertFile, cfg.GRPC.KeyFile)
+		creds, err := grpctls.Server(cfg.GRPC.CertFile, cfg.GRPC.KeyFile, cfg.GRPC.ClientCAFile)
 		if err != nil {
 			return fmt.Errorf("load grpc tls credentials: %w", err)
 		}
@@ -315,6 +316,7 @@ func Run(parent context.Context, log *slog.Logger, factories []module.Factory[co
 	// Blade service discovery is an integration; without the module there is
 	// no registration and no dependency on Blade.
 	var discoveryReg *discovery.Registration
+	files := cfg.ClientFiles()
 	if resolution.Enabled["app.solian.blade"] && cfg.Discovery.Enabled && strings.TrimSpace(cfg.Discovery.Target) != "" {
 		opts := discovery.Options{
 			Service:      cfg.Discovery.Service,
@@ -336,7 +338,7 @@ func Run(parent context.Context, log *slog.Logger, factories []module.Factory[co
 		if err := discovery.Validate(opts); err != nil {
 			return fmt.Errorf("discovery: %w", err)
 		}
-		conn, err := discovery.Dial(cfg.Discovery.Target)
+		conn, err := discovery.Dial(cfg.Discovery.Target, files)
 		if err != nil {
 			log.Warn("blade discovery unavailable; registration disabled", "target", cfg.Discovery.Target, "error", err)
 		} else {
@@ -409,7 +411,7 @@ func newDiscoveryResolver(cfg *config.Config, log *slog.Logger) (*discovery.Reso
 	if cfg == nil || !cfg.Discovery.Enabled || strings.TrimSpace(cfg.Discovery.Target) == "" {
 		return nil, nil
 	}
-	provider, err := discovery.NewRemoteProvider(cfg.Discovery.Target)
+	provider, err := discovery.NewRemoteProvider(cfg.Discovery.Target, cfg.ClientFiles())
 	if err != nil {
 		log.Warn("blade discovery resolver unavailable; using static [services] targets", "error", err)
 		return nil, nil

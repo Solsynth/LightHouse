@@ -10,11 +10,12 @@ import (
 	"strings"
 	"time"
 
-	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpctls"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 // TokenAuthenticator is the interface for validating tokens against an auth service.
@@ -29,6 +30,11 @@ type GrpcAuthDialConfig struct {
 	UseTLS        bool
 	TLSSkipVerify bool
 	TLSServerName string
+	// CAFile, CertFile and KeyFile identify this service to an auth peer
+	// enforcing mTLS and, when CAFile is set, verify that peer.
+	CAFile   string
+	CertFile string
+	KeyFile  string
 }
 
 // GrpcTokenAuthenticator validates tokens by calling the DyAuthService gRPC endpoint.
@@ -45,14 +51,32 @@ func NewGrpcTokenAuthenticator(cfg GrpcAuthDialConfig) (*GrpcTokenAuthenticator,
 
 	var transportCredentials credentials.TransportCredentials
 	if useTLS {
-		tlsCfg := &tls.Config{
-			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: cfg.TLSSkipVerify,
+		files := grpctls.Files{
+			CAFile:     cfg.CAFile,
+			CertFile:   cfg.CertFile,
+			KeyFile:    cfg.KeyFile,
+			ServerName: cfg.TLSServerName,
 		}
-		if cfg.TLSServerName != "" {
-			tlsCfg.ServerName = cfg.TLSServerName
+		if files.CAFile == "" && files.CertFile == "" && files.KeyFile == "" {
+			files = grpctls.FromEnv()
+			files.ServerName = cfg.TLSServerName
 		}
-		transportCredentials = credentials.NewTLS(tlsCfg)
+		if files.CAFile != "" || files.CertFile != "" || files.KeyFile != "" {
+			creds, err := grpctls.Client(files)
+			if err != nil {
+				return nil, fmt.Errorf("load auth gRPC credentials: %w", err)
+			}
+			transportCredentials = creds
+		} else {
+			tlsCfg := &tls.Config{
+				MinVersion:         tls.VersionTLS12,
+				InsecureSkipVerify: cfg.TLSSkipVerify,
+			}
+			if cfg.TLSServerName != "" {
+				tlsCfg.ServerName = cfg.TLSServerName
+			}
+			transportCredentials = credentials.NewTLS(tlsCfg)
+		}
 	} else {
 		transportCredentials = insecure.NewCredentials()
 	}
