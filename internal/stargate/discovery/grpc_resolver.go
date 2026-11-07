@@ -3,6 +3,7 @@ package discovery
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -112,11 +113,20 @@ func (r *bladeResolver) refresh() {
 		return
 	}
 
+	// ServerName is the endpoint host, not the blade:///<service> authority:
+	// the develop/express alias resolves to the sibling's endpoint, so CA
+	// verification must check the certificate of the instance that answers.
 	addresses := make([]resolver.Address, 0, len(resolution.Endpoints))
 	for _, endpoint := range resolution.Endpoints {
-		if address := EndpointAddress(endpoint); address != "" {
-			addresses = append(addresses, resolver.Address{Addr: address})
+		address := EndpointAddress(endpoint)
+		if address == "" {
+			continue
 		}
+		entry := resolver.Address{Addr: address}
+		if host, _, err := net.SplitHostPort(address); err == nil {
+			entry.ServerName = host
+		}
+		addresses = append(addresses, entry)
 	}
 	state := resolver.State{Addresses: addresses}
 	if len(addresses) > 0 {
