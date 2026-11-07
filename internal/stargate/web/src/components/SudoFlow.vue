@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { FingerprintRecognition16 } from '@carbon/icons-vue'
 
 import { useSessionStore } from '@/stores/session'
 import { useElevationStore } from '@/stores/elevation'
 import { useNoticeStore } from '@/stores/notice'
-import { request } from '@/lib/api/client'
+import { StargateError, request } from '@/lib/api/client'
+import { securityApi, signInApi } from '@/lib/api'
 import type { AuthChallenge, AuthFactor } from '@/lib/api/types'
 import { codeRequestFactorTypes, factorTypeLabel, pickableFactorTypes } from '@/lib/enums'
 import { remaining } from '@/lib/format'
+import { getAssertion, passkeyFailure, passkeysSupported } from '@/lib/webauthn'
 import TextField from '@/components/TextField.vue'
 
 const emit = defineEmits<{ done: [challenge: AuthChallenge] }>()
@@ -25,6 +28,10 @@ const codeSentFor = ref<string | null>(null)
 const error = ref('')
 const busy = ref(false)
 const challenge = ref<AuthChallenge | null>(null)
+// Passkeys assert through their own endpoint, so the challenge picker never
+// lists them; an enabled account factor tells us the ceremony is available.
+const passkeySupported = passkeysSupported()
+const passkeyFactor = ref(false)
 
 async function begin() {
   busy.value = true
@@ -40,9 +47,16 @@ async function begin() {
 }
 
 async function loadFactors() {
-  if (!challenge.value) return
-  const list = await request<AuthFactor[]>(`/auth/challenge/${challenge.value.id}/factors`)
-  const blacklist = new Set(challenge.value.blacklist_factors)
+  const current = challenge.value
+  if (!current) return
+  const [list, accountFactors] = await Promise.all([
+    request<AuthFactor[]>(`/auth/challenge/${current.id}/factors`),
+    securityApi.factors().catch(() => [] as AuthFactor[]),
+  ])
+  passkeyFactor.value = (accountFactors ?? []).some(
+    (factor) => factor.type === 7 && Boolean(factor.enabled_at),
+  )
+  const blacklist = new Set(current.blacklist_factors)
   factors.value = list.filter(
     (factor) =>
       pickableFactorTypes[factor.type] === true &&
@@ -94,9 +108,44 @@ async function submit(factor: AuthFactor) {
   }
 }
 
+/** Settles the elevation with a registered passkey instead of a typed secret. */
+async function submitPasskey() {
+  const current = challenge.value
+  if (!current) return
+  busy.value = true
+  error.value = ''
+  try {
+    const start = await signInApi.passkeyStart(current.id)
+    const assertion = await getAssertion({
+      challenge: start.challenge,
+      rpId: start.rp_id,
+      allowCredentials: start.allow_credentials,
+      timeout: start.timeout,
+      userVerification: start.user_verification,
+    })
+    const updated = await signInApi.passkeyComplete(current.id, assertion)
+    challenge.value = updated
+    // The assertion consumed the passkey factor for this challenge.
+    passkeyFactor.value = false
+    if (updated.step_remain === 0) {
+      session.noteElevation(updated)
+      notice.ok(t('elevation.noticeGranted'))
+      emit('done', updated)
+      reset()
+    } else {
+      await loadFactors()
+    }
+  } catch (caught) {
+    error.value = caught instanceof StargateError ? caught.message : passkeyFailure(caught)
+  } finally {
+    busy.value = false
+  }
+}
+
 function reset() {
   factors.value = []
   used.value = []
+  passkeyFactor.value = false
   secrets.value = {}
   codeSentFor.value = null
   error.value = ''
@@ -120,15 +169,26 @@ onMounted(begin)
       <span>{{ t('elevation.timeLeft', { time: remaining(challenge.expired_at) }) }}</span>
     </div>
 
-    <p v-if="busy && !factors.length" class="py-6 text-xs text-faint">
+    <p v-if="busy && !factors.length && !passkeyFactor" class="py-6 text-xs text-faint">
       {{ t('elevation.starting') }}
     </p>
 
-    <p v-else-if="!factors.length" class="voice py-6">
+    <p v-else-if="!factors.length && !passkeyFactor" class="voice py-6">
       {{ t('elevation.empty') }}
     </p>
 
-    <ul v-else class="space-y-5">
+    <button
+      v-if="passkeySupported && passkeyFactor"
+      type="button"
+      class="btn btn-outline mb-4 w-full"
+      :disabled="busy"
+      @click="submitPasskey"
+    >
+      <FingerprintRecognition16 aria-hidden="true" />
+      {{ t('elevation.usePasskey') }}
+    </button>
+
+    <ul v-if="factors.length" class="space-y-5">
       <li v-for="factor in factors" :key="factor.id">
         <div class="flex items-baseline justify-between gap-3">
           <label :for="`factor-${factor.id}`" class="text-xs text-base-content">

@@ -412,6 +412,7 @@ export default {
     sendCode: '发送验证码',
     codePlaceholder: '6 位验证码',
     credentialPlaceholder: '密码',
+    usePasskey: '使用通行密钥验证',
     footer: '只在此浏览器中生效。',
     cancelElevation: '取消提权',
     noticeCodeSent: '已发送验证码：{factor}。',

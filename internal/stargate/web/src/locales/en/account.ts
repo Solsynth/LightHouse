@@ -429,6 +429,7 @@ export default {
     resendCode: 'resend code',
     sendCode: 'send code',
     codePlaceholder: '6-digit code',
+    usePasskey: 'Verify with a passkey',
     credentialPlaceholder: 'password',
     footer: 'This stays in effect for this browser.',
     cancelElevation: 'Cancel elevation',
