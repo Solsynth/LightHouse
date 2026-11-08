@@ -10,27 +10,28 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"src.solsynth.dev/sosys/lighthouse/shared/platform/accountjson"
-	"src.solsynth.dev/sosys/lighthouse/shared/platform/filejson"
-	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/ports"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/accountjson"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/filejson"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 )
 
 // postRelations is the batch-loaded relation set used to hydrate posts.
 type postRelations struct {
-	publishers     map[uuid.UUID]*store.PublisherEntity
-	tags           map[uuid.UUID][]model.PostTag
-	categories     map[uuid.UUID][]model.PostCategory
-	featured       map[uuid.UUID][]model.PostFeaturedRecord
-	reactionCounts map[uuid.UUID]map[string]int
-	reactionsMade  map[uuid.UUID]map[string]bool
-	bookmarked     map[uuid.UUID]bool
-	replies        map[uuid.UUID]int
-	threadReplies  map[uuid.UUID]int
-	collections    map[uuid.UUID][]model.PostCollection
-	realms         map[uuid.UUID]*model.RealmRef
+	publishers        map[uuid.UUID]*store.PublisherEntity
+	publisherAccounts map[uuid.UUID]any
+	tags              map[uuid.UUID][]model.PostTag
+	categories        map[uuid.UUID][]model.PostCategory
+	featured          map[uuid.UUID][]model.PostFeaturedRecord
+	reactionCounts    map[uuid.UUID]map[string]int
+	reactionsMade     map[uuid.UUID]map[string]bool
+	bookmarked        map[uuid.UUID]bool
+	replies           map[uuid.UUID]int
+	threadReplies     map[uuid.UUID]int
+	collections       map[uuid.UUID][]model.PostCollection
+	realms            map[uuid.UUID]*model.RealmRef
 }
 
 // hydrate converts post rows into wire posts with every relation the C#
@@ -211,22 +212,24 @@ func (h *handler) loadChainedChildren(ctx context.Context, ents []store.PostEnti
 
 func (h *handler) loadRelations(ctx context.Context, postIDs, publisherIDs []uuid.UUID, v *viewer) (*postRelations, error) {
 	rel := &postRelations{
-		publishers:     map[uuid.UUID]*store.PublisherEntity{},
-		tags:           map[uuid.UUID][]model.PostTag{},
-		categories:     map[uuid.UUID][]model.PostCategory{},
-		featured:       map[uuid.UUID][]model.PostFeaturedRecord{},
-		reactionCounts: map[uuid.UUID]map[string]int{},
-		reactionsMade:  map[uuid.UUID]map[string]bool{},
-		bookmarked:     map[uuid.UUID]bool{},
-		replies:        map[uuid.UUID]int{},
-		threadReplies:  map[uuid.UUID]int{},
-		collections:    map[uuid.UUID][]model.PostCollection{},
+		publishers:        map[uuid.UUID]*store.PublisherEntity{},
+		publisherAccounts: map[uuid.UUID]any{},
+		tags:              map[uuid.UUID][]model.PostTag{},
+		categories:        map[uuid.UUID][]model.PostCategory{},
+		featured:          map[uuid.UUID][]model.PostFeaturedRecord{},
+		reactionCounts:    map[uuid.UUID]map[string]int{},
+		reactionsMade:     map[uuid.UUID]map[string]bool{},
+		bookmarked:        map[uuid.UUID]bool{},
+		replies:           map[uuid.UUID]int{},
+		threadReplies:     map[uuid.UUID]int{},
+		collections:       map[uuid.UUID][]model.PostCollection{},
 	}
 	publishers, err := h.loadPublishers(ctx, dedupeUUID(publisherIDs))
 	if err != nil {
 		return nil, err
 	}
 	rel.publishers = publishers
+	rel.publisherAccounts = h.loadPublisherAccounts(ctx, publishers)
 
 	if err := h.loadTags(ctx, postIDs, rel); err != nil {
 		return nil, err
@@ -426,6 +429,9 @@ func (h *handler) buildPost(ent *store.PostEntity, rel *postRelations) model.Pos
 	post := store.PostToModel(ent)
 	if publisher, ok := rel.publishers[ent.PublisherID]; ok {
 		mapped := store.PublisherToModel(publisher)
+		if account, ok := rel.publisherAccounts[ent.PublisherID]; ok {
+			mapped.Account = account
+		}
 		post.Publisher = &mapped
 	}
 	if tags, ok := rel.tags[ent.ID]; ok {
@@ -459,6 +465,51 @@ func accountIDOf(publisher *store.PublisherEntity) uuid.UUID {
 		return uuid.Nil
 	}
 	return *publisher.AccountID
+}
+
+// loadPublisherAccounts embeds the account snapshot on individual publishers,
+// matching LoadIndividualPublisherAccounts. Timeline listings hydrate through
+// their own loader; every other post listing goes through loadRelations, so
+// the snapshot has to be attached here or the client renders a bare account_id.
+func (h *handler) loadPublisherAccounts(ctx context.Context, publishers map[uuid.UUID]*store.PublisherEntity) map[uuid.UUID]any {
+	accountsByPublisher := map[uuid.UUID]any{}
+	if len(publishers) == 0 || h.ports == nil {
+		return accountsByPublisher
+	}
+	accountIDs := make([]string, 0, len(publishers))
+	for _, publisher := range publishers {
+		if publisher.AccountID != nil && publisher.Type == int(model.PublisherIndividual) {
+			accountIDs = append(accountIDs, publisher.AccountID.String())
+		}
+	}
+	if len(accountIDs) == 0 {
+		return accountsByPublisher
+	}
+	accounts, ok := module.Get[ports.Accounts](h.ports, ports.PortAccounts)
+	if !ok {
+		return accountsByPublisher
+	}
+	list, err := accounts.GetAccounts(ctx, accountIDs)
+	if err != nil {
+		h.log.Warn("posts: load publisher accounts", "error", err)
+		return accountsByPublisher
+	}
+	byID := make(map[string]any, len(list))
+	for _, account := range list {
+		if account == nil {
+			continue
+		}
+		byID[account.GetId()] = accountjson.FromProto(account)
+	}
+	for id, publisher := range publishers {
+		if publisher.AccountID == nil {
+			continue
+		}
+		if account, ok := byID[publisher.AccountID.String()]; ok {
+			accountsByPublisher[id] = account
+		}
+	}
+	return accountsByPublisher
 }
 
 func dedupeUUID(ids []uuid.UUID) []uuid.UUID {
