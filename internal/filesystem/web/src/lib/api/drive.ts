@@ -128,13 +128,24 @@ export function previewUrl(fileId: string): string {
 /**
  * Reads the head of a text-like file for the in-tab source preview.
  *
- * The open endpoint answers with a redirect to the storage backend, so this
- * only succeeds when that backend is same-origin or sends CORS headers. A
- * failure is reported to the caller rather than papered over: the preview
- * falls back to the file's metadata and an Open action.
+ * The API hands back a short-lived signed storage URL, which is then fetched
+ * without credentials. Following `/open` with a credentialed fetch would fail
+ * the CORS check the moment storage answers with `Access-Control-Allow-Origin:
+ * *`; the signature already authorizes the read, so the cookie stays on the
+ * API origin.
  */
 export async function fetchTextPreview(fileId: string, limit = 256 * 1024): Promise<string> {
-  const response = await fetch(buildUrl(`/files/${fileId}/open`), { credentials: 'include' })
+  const link = await request<{ url: string }>(`/files/${fileId}/url`)
+  if (!link?.url) {
+    throw new DriveError(502, translate('apiError.readFailed'))
+  }
+
+  let response: Response
+  try {
+    response = await fetch(link.url, { credentials: 'omit', mode: 'cors' })
+  } catch {
+    throw new DriveError(0, translate('apiError.readFailed'))
+  }
   if (!response.ok) {
     throw new DriveError(
       response.status,

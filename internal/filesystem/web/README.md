@@ -60,6 +60,15 @@ missing file, so the route never confirms a private object exists. The
 authenticated `/api/files/<id>` surface stays the API route for private files
 and studio operations.
 
+## Reading file bytes in the browser
+
+`GET /api/files/<id>/url` returns a short-lived signed storage URL (and its
+expiry) to a caller that may read the file. Text previews ask for that link and
+then fetch it with `credentials: 'omit'`: storage answers CORS with
+`Access-Control-Allow-Origin: *`, which browsers reject for a credentialed
+request. Never follow `/open`'s cross-origin redirect with `credentials:
+'include'`; use the link endpoint instead.
+
 ## Scripts
 
 | Script               | Purpose                                            |

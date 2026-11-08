@@ -430,28 +430,74 @@ func serveOpenFile(
 		serveMediaTransform(c, cfg, files, file, download)
 		return
 	}
+	url, err := signedObjectURL(c.Request.Context(), files, file, download)
+	if err != nil {
+		if errors.Is(err, errFileStorageKeyMissing) {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
+		return
+	}
+	c.Redirect(http.StatusTemporaryRedirect, url)
+}
+
+// @Summary Get a short-lived file URL
+// @Tags files
+// @Produce json
+// @Param id path string true "File ID"
+// @Success 200 {object} map[string]any
+// @Failure 404 {object} map[string]any
+// @Router /api/files/{id}/url [get]
+//
+// fileLink hands the signed backend URL to the page as JSON. A credentialed
+// fetch cannot follow /open's cross-origin redirect: storage answers CORS with
+// `*`, which browsers reject for requests carrying cookies. Reading the link
+// first and then fetching it without credentials keeps the cookie on the API
+// origin only.
+func fileLink(c *gin.Context, files *service.FileService, quota *service.QuotaService) {
+	file, err := getRequestedFile(c, files, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	result, _, authenticated := auth.GetAuth(c)
+	if authenticated {
+		if !canReadFile(c, files, quota, result.Account, result.Session, file) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
+	} else if !canReadFile(c, files, quota, nil, nil, file) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	url, err := signedObjectURL(c.Request.Context(), files, file, false)
+	if err != nil {
+		if errors.Is(err, errFileStorageKeyMissing) {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"url": url, "expires_in": int((15 * time.Minute).Seconds())})
+}
+
+var errFileStorageKeyMissing = errors.New("file storage key missing")
+
+// signedObjectURL resolves the storage backend and presigns the file's object.
+func signedObjectURL(ctx context.Context, files *service.FileService, file *database.CloudFile, download bool) (string, error) {
 	if file.StorageKey == nil && file.Object != nil && file.Object.StorageKey != nil {
 		file.StorageKey = file.Object.StorageKey
 	}
 	if file.StorageKey == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "file storage key missing"})
-		return
-	}
-	name := file.Name
-	if file.Object != nil && file.Object.MimeType != "" {
-		_ = file.Object.MimeType
+		return "", errFileStorageKeyMissing
 	}
 	backend, err := files.BackendForFile(file)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		return "", err
 	}
-	url, err := backend.SignedURL(c.Request.Context(), *file.StorageKey, 15*time.Minute, name, download)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.Redirect(http.StatusTemporaryRedirect, url)
+	return backend.SignedURL(ctx, *file.StorageKey, 15*time.Minute, file.Name, download)
 }
 
 func isDerivedVariant(file *database.CloudFile) bool {

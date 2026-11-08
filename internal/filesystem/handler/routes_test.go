@@ -1112,6 +1112,64 @@ func TestWorkspaceMembersCanReadWorkspaceFiles(t *testing.T) {
 	}
 }
 
+// The text preview needs the storage URL as data: following a 307 to storage
+// with a credentialed fetch fails CORS when storage answers with `*`.
+func TestFileLinkReturnsSignedURLForReaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := openHandlerTestDB(t, &database.CloudFile{}, &database.FileObject{}, &database.FilePool{}, &database.FilePermission{})
+	files := service.NewFileService(&database.DB{DB: db}, storage.NewLocalBackend(t.TempDir()))
+	ownerID := uuid.New()
+
+	objectID := database.NewID()
+	if err := db.Create(&database.FileObject{ID: objectID, Size: 12, MimeType: "text/plain", Hash: "hash", StorageKey: &objectID, Meta: datatypes.JSON([]byte(`{}`))}).Error; err != nil {
+		t.Fatalf("create object: %v", err)
+	}
+	fileID := database.NewID()
+	if err := db.Create(&database.CloudFile{ID: fileID, Name: "notes.txt", AccountID: ownerID, ObjectID: &objectID, StorageKey: &objectID, Indexed: true}).Error; err != nil {
+		t.Fatalf("create file: %v", err)
+	}
+
+	deps := Deps{Config: &config.Config{}, Files: files, Tasks: service.NewTaskService(&database.DB{DB: db}), Quota: service.NewQuotaService(&database.DB{DB: db})}
+	routerFor := func(accountID uuid.UUID) *gin.Engine {
+		r := gin.New()
+		r.Use(testAuthMiddleware(accountID))
+		RegisterRoutes(r, deps)
+		return r
+	}
+
+	owner := routerFor(ownerID)
+	rec := httptest.NewRecorder()
+	owner.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/files/"+fileID+"/url", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("owner link status = %d; body = %s", rec.Code, rec.Body.String())
+	}
+	var link struct {
+		URL       string `json:"url"`
+		ExpiresIn int    `json:"expires_in"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &link); err != nil {
+		t.Fatalf("decode link: %v", err)
+	}
+	if link.URL == "" || link.ExpiresIn <= 0 {
+		t.Fatalf("link = %+v, want a signed url and expiry", link)
+	}
+
+	other := routerFor(uuid.New())
+	otherRec := httptest.NewRecorder()
+	other.ServeHTTP(otherRec, httptest.NewRequest(http.MethodGet, "/api/files/"+fileID+"/url", nil))
+	if otherRec.Code != http.StatusForbidden {
+		t.Fatalf("other account link status = %d, want %d", otherRec.Code, http.StatusForbidden)
+	}
+
+	anon := gin.New()
+	RegisterRoutes(anon, deps)
+	anonRec := httptest.NewRecorder()
+	anon.ServeHTTP(anonRec, httptest.NewRequest(http.MethodGet, "/api/files/"+fileID+"/url", nil))
+	if anonRec.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous link status = %d, want %d", anonRec.Code, http.StatusUnauthorized)
+	}
+}
+
 // A shared (account-less) pool exposes its files to everyone, including
 // callers without a token.
 func TestOpenFileServesSharedPoolFilesToAnonymousCallers(t *testing.T) {

@@ -48,6 +48,7 @@ func RegisterFileRoutes(r *gin.Engine, d Deps) {
 		f.GET("/:id/info", func(c *gin.Context) { fileInfo(c, files, quota) })
 		f.GET("/:id/breadcrumb", func(c *gin.Context) { fileBreadcrumb(c, files, quota) })
 		f.GET("/:id/open", func(c *gin.Context) { openFile(c, d.Config, files, quota) })
+		f.GET("/:id/url", func(c *gin.Context) { fileLink(c, files, quota) })
 		f.GET("/:id/references", func(c *gin.Context) { c.JSON(http.StatusOK, []any{}) })
 		f.GET("/root/children", func(c *gin.Context) { listRootIndexed(c, files, quota) })
 		f.GET("/:id/children", func(c *gin.Context) { listChildren(c, files, quota) })
