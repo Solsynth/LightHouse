@@ -22,6 +22,9 @@ var (
 	ErrNotFound = errors.New("accountkeys: not found")
 	// ErrDuplicate reports an account that already has this fingerprint.
 	ErrDuplicate = errors.New("accountkeys: key already exists")
+	// ErrAmbiguous reports a fingerprint live on more than one account. A
+	// hosted login must never pick an owner arbitrarily.
+	ErrAmbiguous = errors.New("accountkeys: fingerprint belongs to multiple accounts")
 	// ErrLimit reports an account at the per-kind cap.
 	ErrLimit = errors.New("accountkeys: key limit reached")
 )
@@ -53,39 +56,49 @@ func (s *Store) ListSSHKeys(ctx context.Context, accountID uuid.UUID) ([]model.S
 
 // FindSSHKeyByFingerprint resolves a fingerprint to one account's live key.
 // accountID nil searches every account, which is what a git gateway needs
-// before it knows the owner. It returns ErrNotFound when no live row matches.
+// before it knows the owner. It returns ErrNotFound when no live row matches,
+// and ErrAmbiguous when several accounts registered the same fingerprint.
 func (s *Store) FindSSHKeyByFingerprint(ctx context.Context, fingerprint string, accountID *uuid.UUID) (*model.SSHKey, error) {
 	query := s.DB.WithContext(ctx).Where("fingerprint = ?", fingerprint)
 	if accountID != nil {
 		query = query.Where("account_id = ?", *accountID)
 	}
-	var entity SSHKeyEntity
-	if err := query.First(&entity).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
-		}
+	var entities []SSHKeyEntity
+	if err := query.Limit(2).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	key := SSHKeyFromEntity(&entity)
-	return &key, nil
+	switch len(entities) {
+	case 0:
+		return nil, ErrNotFound
+	case 1:
+		key := SSHKeyFromEntity(&entities[0])
+		return &key, nil
+	default:
+		return nil, ErrAmbiguous
+	}
 }
 
 // FindPGPKeyByFingerprint resolves a primary-key fingerprint to one account's
-// live key. accountID nil searches every account.
+// live key. accountID nil searches every account. Multiple owners are
+// rejected for the same reason as SSH keys.
 func (s *Store) FindPGPKeyByFingerprint(ctx context.Context, fingerprint string, accountID *uuid.UUID) (*model.PGPKey, error) {
 	query := s.DB.WithContext(ctx).Where("fingerprint = ?", fingerprint)
 	if accountID != nil {
 		query = query.Where("account_id = ?", *accountID)
 	}
-	var entity PGPKeyEntity
-	if err := query.First(&entity).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
-		}
+	var entities []PGPKeyEntity
+	if err := query.Limit(2).Find(&entities).Error; err != nil {
 		return nil, err
 	}
-	key := PGPKeyFromEntity(&entity)
-	return &key, nil
+	switch len(entities) {
+	case 0:
+		return nil, ErrNotFound
+	case 1:
+		key := PGPKeyFromEntity(&entities[0])
+		return &key, nil
+	default:
+		return nil, ErrAmbiguous
+	}
 }
 
 // CreateSSHKey inserts a normalized SSH key. It reports ErrDuplicate when the

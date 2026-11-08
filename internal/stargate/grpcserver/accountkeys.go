@@ -87,9 +87,13 @@ func (s *dyAccountKeyService) ValidateSSHPublicKey(ctx context.Context, req *gen
 	response := &gen.DyValidateSSHPublicKeyResponse{Purpose: req.GetPurpose()}
 	key, fingerprint, err := s.resolveSSHKey(ctx, req.GetPublicKey(), req.GetFingerprint(), req.GetAccountId())
 	if err != nil {
-		if errors.Is(err, accountkeys.ErrNotFound) {
+		if errors.Is(err, accountkeys.ErrNotFound) || errors.Is(err, accountkeys.ErrAmbiguous) {
 			response.Valid = false
-			response.Reason = "KEY_NOT_FOUND"
+			if errors.Is(err, accountkeys.ErrAmbiguous) {
+				response.Reason = "KEY_AMBIGUOUS"
+			} else {
+				response.Reason = "KEY_NOT_FOUND"
+			}
 			response.Fingerprint = fingerprint
 			return response, nil
 		}
@@ -119,8 +123,12 @@ func (s *dyAccountKeyService) ExchangeSSHPublicKeyForSession(ctx context.Context
 	response := &gen.DyExchangeSSHPublicKeyForSessionResponse{Purpose: req.GetPurpose()}
 	key, fingerprint, err := s.resolveSSHKey(ctx, req.GetPublicKey(), req.GetFingerprint(), "")
 	if err != nil {
-		if errors.Is(err, accountkeys.ErrNotFound) {
-			response.Reason = "KEY_NOT_FOUND"
+		if errors.Is(err, accountkeys.ErrNotFound) || errors.Is(err, accountkeys.ErrAmbiguous) {
+			if errors.Is(err, accountkeys.ErrAmbiguous) {
+				response.Reason = "KEY_AMBIGUOUS"
+			} else {
+				response.Reason = "KEY_NOT_FOUND"
+			}
 			response.Fingerprint = fingerprint
 			return response, nil
 		}
@@ -202,8 +210,8 @@ func (s *dyAccountKeyService) resolveSSHKey(ctx context.Context, publicKey, fing
 	}
 	key, err := s.deps.Keys.FindSSHKeyByFingerprint(ctx, fingerprint, accountFilter)
 	if err != nil {
-		if errors.Is(err, accountkeys.ErrNotFound) {
-			return nil, fingerprint, accountkeys.ErrNotFound
+		if errors.Is(err, accountkeys.ErrNotFound) || errors.Is(err, accountkeys.ErrAmbiguous) {
+			return nil, fingerprint, err
 		}
 		return nil, "", status.Error(codes.Internal, "Failed to look up SSH key")
 	}
@@ -234,9 +242,13 @@ func (s *dyAccountKeyService) ValidatePGPPublicKey(ctx context.Context, req *gen
 	}
 	key, err := s.deps.Keys.FindPGPKeyByFingerprint(ctx, fingerprint, accountFilter)
 	if err != nil {
-		if errors.Is(err, accountkeys.ErrNotFound) {
+		if errors.Is(err, accountkeys.ErrNotFound) || errors.Is(err, accountkeys.ErrAmbiguous) {
 			response.Valid = false
-			response.Reason = "KEY_NOT_FOUND"
+			if errors.Is(err, accountkeys.ErrAmbiguous) {
+				response.Reason = "KEY_AMBIGUOUS"
+			} else {
+				response.Reason = "KEY_NOT_FOUND"
+			}
 			response.Fingerprint = fingerprint
 			return response, nil
 		}
