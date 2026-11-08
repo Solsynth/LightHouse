@@ -744,6 +744,196 @@ var DyAccountService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
+	DyAccountKeyService_ListPublicKeys_FullMethodName       = "/proto.DyAccountKeyService/ListPublicKeys"
+	DyAccountKeyService_ValidateSSHPublicKey_FullMethodName = "/proto.DyAccountKeyService/ValidateSSHPublicKey"
+	DyAccountKeyService_ValidatePGPPublicKey_FullMethodName = "/proto.DyAccountKeyService/ValidatePGPPublicKey"
+)
+
+// DyAccountKeyServiceClient is the client API for DyAccountKeyService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// DyAccountKeyService exposes an account's SSH and PGP public keys. It is the
+// connection-validation surface for services that accept an SSH key (git, for
+// example) and the lookup surface for services that verify or encrypt with a
+// PGP key. It is owned by the optional app.solian.id.keys module; when that
+// module is disabled the service is not registered.
+type DyAccountKeyServiceClient interface {
+	ListPublicKeys(ctx context.Context, in *DyListPublicKeysRequest, opts ...grpc.CallOption) (*DyListPublicKeysResponse, error)
+	ValidateSSHPublicKey(ctx context.Context, in *DyValidateSSHPublicKeyRequest, opts ...grpc.CallOption) (*DyValidateSSHPublicKeyResponse, error)
+	ValidatePGPPublicKey(ctx context.Context, in *DyValidatePGPPublicKeyRequest, opts ...grpc.CallOption) (*DyValidatePGPPublicKeyResponse, error)
+}
+
+type dyAccountKeyServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewDyAccountKeyServiceClient(cc grpc.ClientConnInterface) DyAccountKeyServiceClient {
+	return &dyAccountKeyServiceClient{cc}
+}
+
+func (c *dyAccountKeyServiceClient) ListPublicKeys(ctx context.Context, in *DyListPublicKeysRequest, opts ...grpc.CallOption) (*DyListPublicKeysResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DyListPublicKeysResponse)
+	err := c.cc.Invoke(ctx, DyAccountKeyService_ListPublicKeys_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dyAccountKeyServiceClient) ValidateSSHPublicKey(ctx context.Context, in *DyValidateSSHPublicKeyRequest, opts ...grpc.CallOption) (*DyValidateSSHPublicKeyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DyValidateSSHPublicKeyResponse)
+	err := c.cc.Invoke(ctx, DyAccountKeyService_ValidateSSHPublicKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dyAccountKeyServiceClient) ValidatePGPPublicKey(ctx context.Context, in *DyValidatePGPPublicKeyRequest, opts ...grpc.CallOption) (*DyValidatePGPPublicKeyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DyValidatePGPPublicKeyResponse)
+	err := c.cc.Invoke(ctx, DyAccountKeyService_ValidatePGPPublicKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// DyAccountKeyServiceServer is the server API for DyAccountKeyService service.
+// All implementations must embed UnimplementedDyAccountKeyServiceServer
+// for forward compatibility.
+//
+// DyAccountKeyService exposes an account's SSH and PGP public keys. It is the
+// connection-validation surface for services that accept an SSH key (git, for
+// example) and the lookup surface for services that verify or encrypt with a
+// PGP key. It is owned by the optional app.solian.id.keys module; when that
+// module is disabled the service is not registered.
+type DyAccountKeyServiceServer interface {
+	ListPublicKeys(context.Context, *DyListPublicKeysRequest) (*DyListPublicKeysResponse, error)
+	ValidateSSHPublicKey(context.Context, *DyValidateSSHPublicKeyRequest) (*DyValidateSSHPublicKeyResponse, error)
+	ValidatePGPPublicKey(context.Context, *DyValidatePGPPublicKeyRequest) (*DyValidatePGPPublicKeyResponse, error)
+	mustEmbedUnimplementedDyAccountKeyServiceServer()
+}
+
+// UnimplementedDyAccountKeyServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedDyAccountKeyServiceServer struct{}
+
+func (UnimplementedDyAccountKeyServiceServer) ListPublicKeys(context.Context, *DyListPublicKeysRequest) (*DyListPublicKeysResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListPublicKeys not implemented")
+}
+func (UnimplementedDyAccountKeyServiceServer) ValidateSSHPublicKey(context.Context, *DyValidateSSHPublicKeyRequest) (*DyValidateSSHPublicKeyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ValidateSSHPublicKey not implemented")
+}
+func (UnimplementedDyAccountKeyServiceServer) ValidatePGPPublicKey(context.Context, *DyValidatePGPPublicKeyRequest) (*DyValidatePGPPublicKeyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ValidatePGPPublicKey not implemented")
+}
+func (UnimplementedDyAccountKeyServiceServer) mustEmbedUnimplementedDyAccountKeyServiceServer() {}
+func (UnimplementedDyAccountKeyServiceServer) testEmbeddedByValue()                             {}
+
+// UnsafeDyAccountKeyServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to DyAccountKeyServiceServer will
+// result in compilation errors.
+type UnsafeDyAccountKeyServiceServer interface {
+	mustEmbedUnimplementedDyAccountKeyServiceServer()
+}
+
+func RegisterDyAccountKeyServiceServer(s grpc.ServiceRegistrar, srv DyAccountKeyServiceServer) {
+	// If the following call panics, it indicates UnimplementedDyAccountKeyServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&DyAccountKeyService_ServiceDesc, srv)
+}
+
+func _DyAccountKeyService_ListPublicKeys_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DyListPublicKeysRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DyAccountKeyServiceServer).ListPublicKeys(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DyAccountKeyService_ListPublicKeys_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DyAccountKeyServiceServer).ListPublicKeys(ctx, req.(*DyListPublicKeysRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DyAccountKeyService_ValidateSSHPublicKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DyValidateSSHPublicKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DyAccountKeyServiceServer).ValidateSSHPublicKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DyAccountKeyService_ValidateSSHPublicKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DyAccountKeyServiceServer).ValidateSSHPublicKey(ctx, req.(*DyValidateSSHPublicKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DyAccountKeyService_ValidatePGPPublicKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DyValidatePGPPublicKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DyAccountKeyServiceServer).ValidatePGPPublicKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DyAccountKeyService_ValidatePGPPublicKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DyAccountKeyServiceServer).ValidatePGPPublicKey(ctx, req.(*DyValidatePGPPublicKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// DyAccountKeyService_ServiceDesc is the grpc.ServiceDesc for DyAccountKeyService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var DyAccountKeyService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "proto.DyAccountKeyService",
+	HandlerType: (*DyAccountKeyServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ListPublicKeys",
+			Handler:    _DyAccountKeyService_ListPublicKeys_Handler,
+		},
+		{
+			MethodName: "ValidateSSHPublicKey",
+			Handler:    _DyAccountKeyService_ValidateSSHPublicKey_Handler,
+		},
+		{
+			MethodName: "ValidatePGPPublicKey",
+			Handler:    _DyAccountKeyService_ValidatePGPPublicKey_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "account.proto",
+}
+
+const (
 	DyMagicSpellService_CreateMagicSpell_FullMethodName = "/proto.DyMagicSpellService/CreateMagicSpell"
 	DyMagicSpellService_NotifyMagicSpell_FullMethodName = "/proto.DyMagicSpellService/NotifyMagicSpell"
 	DyMagicSpellService_GetMagicSpell_FullMethodName    = "/proto.DyMagicSpellService/GetMagicSpell"

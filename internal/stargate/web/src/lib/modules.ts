@@ -6,6 +6,7 @@ export const MODULES = {
   auth: 'app.solian.id.auth',
   accounts: 'app.solian.id.accounts',
   profiles: 'app.solian.id.profiles',
+  keys: 'app.solian.id.keys',
   social: 'app.solian.id.social',
   relationships: 'app.solian.id.relationships',
   tickets: 'app.solian.id.tickets',

@@ -102,6 +102,22 @@ Modules own their schema:
   `badges`, the account board and the `DyExperienceService` /
   `DySocialCreditService` gRPC receivers. It provides the local `badges` and
   `verification`/`boards` ports, so badge, verification and board hydration no longer dial Passport.
+- `app.solian.id.keys` owns `account_ssh_keys` and `account_pgp_keys`:
+  `/api/keys/{ssh,pgp}` management, the anonymous
+  `/api/accounts/{name}/keys` listing, and the `DyAccountKeyService` gRPC
+  validators (`ListPublicKeys`, `ValidateSSHPublicKey`,
+  `ValidatePGPPublicKey`) a git/SSH gateway calls to resolve an offered key to
+  its account. Writes are parsed before they are stored: an SSH key becomes its
+  canonical `authorized_keys` line with a `SHA256:` fingerprint, a PGP key
+  keeps its armored block with the primary-key fingerprint and key id.
+  Fingerprints are unique per account among live rows; private key material is
+  refused.
+  The upstream proto change that generates `DyAccountKeyService` is
+  [`../../shared/spec-account-keys.patch`](../../shared/spec-account-keys.patch);
+  apply it in the Spec checkout before running `buf generate`.
+  Publish the regenerated shared code as `shared/v0.2.6` (and bump this
+  module's `require` line) before building the Docker image: the image
+  fetches the tagged module, while workspace builds use the local copy.
 - `app.solian.id.accountevents` owns `account_check_in_results`,
   `user_calendar_events`, calendar subscriptions and `notable_days`:
   check-in/rewards, calendar/merged/countdown/search, the CN holiday seed,

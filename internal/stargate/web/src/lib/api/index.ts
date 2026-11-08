@@ -2,6 +2,7 @@ import { request, requestBlob, requestForm, requestPage, sendString } from './cl
 import type { Page } from './client'
 import type {
   Account,
+  AccountKeys,
   ActionLog,
   ActionLogSummary,
   ActorPermissions,
@@ -26,6 +27,7 @@ import type {
   HandoffIssue,
   MagicSpell,
   Passkey,
+  PGPKey,
   PasskeyLoginStart,
   PasskeyRegistrationStart,
   PermissionGroup,
@@ -40,6 +42,7 @@ import type {
   FriendOverview,
   ModulesState,
   Relationship,
+  SSHKey,
   RelationshipSummary,
   AdminBadge,
   AdminBoardItem,
@@ -336,6 +339,29 @@ export const securityApi = {
   preferences: () => request<{ mode: string }>('/security/preferences'),
   updatePreferences: (mode: string) =>
     request<{ mode: string }>('/security/preferences', { method: 'PATCH', body: { mode } }),
+}
+
+// ── Public keys ──
+
+/**
+ * SSH and PGP keys for the signed-in account. The write calls answer with the
+ * row they changed; the anonymous `publicFor` listing serves other services.
+ */
+export const keysApi = {
+  ssh: () => request<SSHKey[]>('/keys/ssh'),
+  addSSH: (body: { label?: string; public_key: string }) =>
+    request<SSHKey>('/keys/ssh', { method: 'POST', body }),
+  renameSSH: (id: string, label: string) =>
+    request<SSHKey>(`/keys/ssh/${id}`, { method: 'PATCH', body: { label } }),
+  deleteSSH: (id: string) => request<void>(`/keys/ssh/${id}`, { method: 'DELETE' }),
+  pgp: () => request<PGPKey[]>('/keys/pgp'),
+  addPGP: (body: { label?: string; public_key: string }) =>
+    request<PGPKey>('/keys/pgp', { method: 'POST', body }),
+  renamePGP: (id: string, label: string) =>
+    request<PGPKey>(`/keys/pgp/${id}`, { method: 'PATCH', body: { label } }),
+  deletePGP: (id: string) => request<void>(`/keys/pgp/${id}`, { method: 'DELETE' }),
+  publicFor: (name: string) =>
+    request<AccountKeys>(`/accounts/${encodeURIComponent(name)}/keys`),
 }
 
 // ── Sessions and devices ──

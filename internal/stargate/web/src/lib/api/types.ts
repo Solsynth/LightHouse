@@ -877,3 +877,37 @@ export interface WalletOrder {
   created_at?: string
   updated_at?: string
 }
+
+// ── Account public keys (app.solian.id.keys) ──
+
+/** An SSH key registered on the signed-in account. */
+export interface SSHKey {
+  id: string
+  account_id: string
+  label: string
+  algorithm: string
+  public_key: string
+  fingerprint: string
+  created_at?: string
+  updated_at?: string
+}
+
+/** A PGP key registered on the signed-in account. */
+export interface PGPKey {
+  id: string
+  account_id: string
+  label: string
+  algorithm: string
+  public_key: string
+  fingerprint: string
+  key_id: string
+  user_ids: string[]
+  created_at?: string
+  updated_at?: string
+}
+
+/** The anonymous listing returned by GET /api/accounts/{name}/keys. */
+export interface AccountKeys {
+  ssh: SSHKey[]
+  pgp: PGPKey[]
+}

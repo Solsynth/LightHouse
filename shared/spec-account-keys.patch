@@ -1,0 +1,109 @@
+--- a/proto/account.proto
++++ b/proto/account.proto
+@@ -292,6 +292,17 @@
+     rpc ListSuperusers(google.protobuf.Empty) returns (DyListSuperusersResponse) {}
+ }
+ 
++// DyAccountKeyService exposes an account's SSH and PGP public keys. It is the
++// connection-validation surface for services that accept an SSH key (git, for
++// example) and the lookup surface for services that verify or encrypt with a
++// PGP key. It is owned by the optional app.solian.id.keys module; when that
++// module is disabled the service is not registered.
++service DyAccountKeyService {
++    rpc ListPublicKeys(DyListPublicKeysRequest) returns (DyListPublicKeysResponse) {}
++    rpc ValidateSSHPublicKey(DyValidateSSHPublicKeyRequest) returns (DyValidateSSHPublicKeyResponse) {}
++    rpc ValidatePGPPublicKey(DyValidatePGPPublicKeyRequest) returns (DyValidatePGPPublicKeyResponse) {}
++}
++
+ // MagicSpellService is owned by Passport and exposes spell issuance, delivery,
+ // lookup, and application for other services such as Padlock.
+ service DyMagicSpellService {
+@@ -375,6 +386,88 @@
+     string account_id = 1;
+ }
+ 
++// Public Key Requests/Responses
++
++// DyAccountPublicKeyKind distinguishes the two public key families an account
++// may publish. Both are public material; no private key ever crosses the wire.
++enum DyAccountPublicKeyKind {
++    DY_ACCOUNT_PUBLIC_KEY_KIND_UNSPECIFIED = 0;
++    DY_ACCOUNT_PUBLIC_KEY_KIND_SSH = 1;
++    DY_ACCOUNT_PUBLIC_KEY_KIND_PGP = 2;
++}
++
++message DyAccountPublicKey {
++    string id = 1;
++    string account_id = 2;
++    DyAccountPublicKeyKind kind = 3;
++    string label = 4;
++    string algorithm = 5;
++    // public_key is the canonical authorized_keys line for SSH keys and the
++    // armored block for PGP keys.
++    string public_key = 6;
++    string fingerprint = 7;
++    // pgp_key_id is the primary key's 8-byte id in uppercase hex. Empty for SSH.
++    string pgp_key_id = 8;
++    repeated string user_ids = 9;
++    google.protobuf.Timestamp created_at = 10;
++    google.protobuf.Timestamp updated_at = 11;
++}
++
++message DyListPublicKeysRequest {
++    string account_id = 1;
++    // UNSPECIFIED lists both kinds.
++    DyAccountPublicKeyKind kind = 2;
++}
++
++message DyListPublicKeysResponse {
++    repeated DyAccountPublicKey keys = 1;
++}
++
++// ValidateSSHPublicKey resolves an offered SSH key to its account. A git or
++// SSH gateway calls it before accepting a connection. The caller supplies the
++// authorized_keys line or its SHA-256 fingerprint; account_id optionally
++// restricts the lookup to one account. purpose is reserved for per-purpose
++// authorization (for example git-upload-pack or git-receive-pack): it is
++// echoed for audit and future policy, and today every registered key of the
++// resolved account is valid.
++message DyValidateSSHPublicKeyRequest {
++    string account_id = 1;
++    string public_key = 2;
++    string fingerprint = 3;
++    string purpose = 4;
++}
++
++message DyValidateSSHPublicKeyResponse {
++    bool valid = 1;
++    string account_id = 2;
++    string key_id = 3;
++    string key_label = 4;
++    string fingerprint = 5;
++    string purpose = 6;
++    // reason is a stable machine-readable rejection code when valid is false
++    // (KEY_NOT_FOUND, KEY_INVALID).
++    string reason = 7;
++}
++
++// ValidatePGPPublicKey is the same connection-validation contract for PGP
++// keys, keyed by the primary key fingerprint.
++message DyValidatePGPPublicKeyRequest {
++    string account_id = 1;
++    string public_key = 2;
++    string fingerprint = 3;
++    string purpose = 4;
++}
++
++message DyValidatePGPPublicKeyResponse {
++    bool valid = 1;
++    string account_id = 2;
++    string key_id = 3;
++    string key_label = 4;
++    string fingerprint = 5;
++    string purpose = 6;
++    string reason = 7;
++}
++
+ // Auth Factor Requests/Responses
+ message DyListAuthFactorsRequest {
+     string account_id = 1;

@@ -111,6 +111,7 @@ export default {
       devices: 'Devices',
       signInFactors: 'Sign-In Factors',
       passkeys: 'Passkeys',
+      keys: 'Public Keys',
       contacts: 'Contacts',
       connections: 'Linked Identities',
       securityMode: 'Security Mode',

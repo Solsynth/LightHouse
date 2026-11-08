@@ -236,6 +236,15 @@ var padlockSwagger = buildDoc(
 		{path: "/api/factors/passkey/{id}", method: "PATCH", tag: "Security", summary: "Rename a passkey", params: []string{"id"}, notFound: true},
 		{path: "/api/factors/passkey/{id}", method: "DELETE", tag: "Security", summary: "Delete a passkey", params: []string{"id"}, notFound: true},
 
+		{path: "/api/keys/ssh", method: "GET", tag: "Public Keys", summary: "List the current account's SSH keys"},
+		{path: "/api/keys/ssh", method: "POST", tag: "Public Keys", summary: "Add an SSH public key", forbidden: true},
+		{path: "/api/keys/ssh/{id}", method: "PATCH", tag: "Public Keys", summary: "Rename an SSH key", params: []string{"id"}, notFound: true},
+		{path: "/api/keys/ssh/{id}", method: "DELETE", tag: "Public Keys", summary: "Remove an SSH key", params: []string{"id"}, notFound: true},
+		{path: "/api/keys/pgp", method: "GET", tag: "Public Keys", summary: "List the current account's PGP keys"},
+		{path: "/api/keys/pgp", method: "POST", tag: "Public Keys", summary: "Add an armored PGP public key", forbidden: true},
+		{path: "/api/keys/pgp/{id}", method: "PATCH", tag: "Public Keys", summary: "Rename a PGP key", params: []string{"id"}, notFound: true},
+		{path: "/api/keys/pgp/{id}", method: "DELETE", tag: "Public Keys", summary: "Remove a PGP key", params: []string{"id"}, notFound: true},
+
 		{path: "/api/sessions", method: "GET", tag: "Sessions", summary: "List the current account's sessions"},
 		{path: "/api/sessions/{id}/children", method: "GET", tag: "Sessions", summary: "List a session's child sessions", params: []string{"id"}, notFound: true},
 		{path: "/api/sessions/{id}", method: "DELETE", tag: "Sessions", summary: "Revoke a session", params: []string{"id"}, notFound: true},
@@ -302,6 +311,7 @@ var passportSwagger = buildDoc(
 		{path: "/api/accounts/{name}/picture", method: "GET", tag: "Public Accounts", summary: "Redirect to the account's picture file", params: []string{"name"}, notFound: true},
 		{path: "/api/accounts/{name}/background", method: "GET", tag: "Public Accounts", summary: "Redirect to the account's background file", params: []string{"name"}, notFound: true},
 		{path: "/api/accounts/{name}/connections", method: "GET", tag: "Public Accounts", summary: "Get a public account's public connections", params: []string{"name"}, notFound: true},
+		{path: "/api/accounts/{name}/keys", method: "GET", tag: "Public Accounts", summary: "Get an account's SSH and PGP public keys", params: []string{"name"}, notFound: true},
 		{path: "/api/accounts/{name}/followers", method: "GET", tag: "Public Accounts", summary: "List an account's followers", params: []string{"name"}, notFound: true},
 		{path: "/api/accounts/{name}/following", method: "GET", tag: "Public Accounts", summary: "List the accounts an account follows", params: []string{"name"}, notFound: true},
 

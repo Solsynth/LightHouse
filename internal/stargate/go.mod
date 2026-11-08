@@ -3,6 +3,7 @@ module src.solsynth.dev/sosys/stargate
 go 1.27
 
 require (
+	github.com/ProtonMail/go-crypto v1.5.2
 	github.com/digitorus/pkcs7 v0.0.0-20260914070511-d678ea5ea03f
 	github.com/fxamacker/cbor/v2 v2.7.0
 	github.com/gin-gonic/gin v1.10.1
@@ -32,6 +33,7 @@ require (
 	github.com/bytedance/sonic v1.11.6 // indirect
 	github.com/bytedance/sonic/loader v0.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/cloudwego/base64x v0.1.4 // indirect
 	github.com/cloudwego/iasm v0.2.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect

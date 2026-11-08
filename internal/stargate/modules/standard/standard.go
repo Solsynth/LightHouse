@@ -7,6 +7,7 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/stargate/core"
 	accounteventsmod "src.solsynth.dev/sosys/stargate/modules/accountevents"
+	accountkeysmod "src.solsynth.dev/sosys/stargate/modules/accountkeys"
 	accountrecordsmod "src.solsynth.dev/sosys/stargate/modules/accountrecords"
 	"src.solsynth.dev/sosys/stargate/modules/accounts"
 	"src.solsynth.dev/sosys/stargate/modules/admin"
@@ -42,6 +43,7 @@ func Modules() []module.Factory[core.Services] {
 		auth.Factory(),
 		accounts.Factory(),
 		profiles.Factory(),
+		accountkeysmod.Factory(),
 		accountrecordsmod.Factory(),
 		accounteventsmod.Factory(),
 		presences.Factory(),

@@ -158,6 +158,12 @@ const router = createRouter({
       meta: { titleKey: 'app.titles.passkeys', modules: [MODULES.accounts] },
     },
     {
+      path: '/security/keys',
+      name: 'keys',
+      component: () => import('@/views/security/KeysView.vue'),
+      meta: { titleKey: 'app.titles.keys', modules: [MODULES.keys] },
+    },
+    {
       path: '/security/contacts',
       name: 'contacts',
       component: () => import('@/views/security/ContactsView.vue'),

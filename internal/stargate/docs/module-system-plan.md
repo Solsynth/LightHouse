@@ -276,6 +276,7 @@ startup.
 |---|---|---|---|---|
 | `app.solian.id.auth` | feature | `/api/auth/**`, auth gRPC, registration routes | — | core tables |
 | `app.solian.id.accounts` | feature | `/api/{identity,factors,sessions,devices,contacts,api-keys,connections}`, account/bot/authorized-app gRPC | auth | core tables |
+| `app.solian.id.keys` | feature | `/api/keys/{ssh,pgp}`, `GET /api/accounts/{name}/keys`, `DyAccountKeyService` validators | accounts | `account_ssh_keys`, `account_pgp_keys` |
 | `app.solian.id.profiles` | feature | `/api/accounts/**` profile/public routes, profile gRPC | accounts | core tables |
 | `app.solian.id.relationships` | feature | `/api/relationships/**`, `/api/friends/overview`, followers/following, `GET /api/accounts/{name}/relationships` (anonymous totals; `mutual_friends` with a session), the six `DyProfileService` relationship RPCs | profiles | `account_relationships` |
 | `app.solian.id.spells` | feature | `/api/spells/**` | accounts | `magic_spells` |
