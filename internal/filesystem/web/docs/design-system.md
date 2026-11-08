@@ -183,6 +183,13 @@ Folders are set in the same face as files; kind and size are the only metadata
 that appear by default. A public-by-link object gets a small brand glyph, not a
 badge block.
 
+Right-clicking a row opens the shared file menu: a 264 px `menu-plate` with a
+header glyph, name, kind, and size, then grouped actions. It acts on that row,
+or on the whole ticked selection when the row is part of it. Inspect shows the
+index record; Permissions stages the link toggle and account grants and saves
+them in one request. The menu is keyboard-driven (↑ ↓, ↵, Esc) and flips
+before it leaves the viewport.
+
 ## 8. Embeddable picker
 
 The SnFS file picker (`/picker`) uses the same island vocabulary in a compact
@@ -191,6 +198,8 @@ frame:
 - Header with brand mark, title, guidance, and a quiet close control.
 - Breadcrumb and search as separate rounded tonal bands.
 - Rows as tonal bars with a circular selection control on the leading edge.
+- Source tabs as a compact segmented control: Drive (indexed tree) and
+  Unindexed (the account's unfiled uploads).
 - Footer as an island holding the selection summary and the two actions.
 - Drop-to-upload is a tinted veil over the whole frame, not a dashed outline.
 - The SDK overlay (`src/lib/picker/embed.ts`) draws a 28 px sheet on a dimmed,

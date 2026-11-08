@@ -35,6 +35,18 @@ export default {
     oneItem: '1 item',
     manyItems: '{n} items',
   },
+
+  menu: {
+    actions: 'File actions',
+    open: 'Open',
+    openFolder: 'Open folder',
+    inspect: 'Inspect',
+    permissions: 'Permissions…',
+    many: '{n} selected',
+    totalSize: '{size} total',
+    folder: 'Folder',
+  },
+
   status: {
     ok: 'OK',
     error: 'ERROR',
@@ -154,6 +166,7 @@ export default {
     manyPurged: '{n} objects deleted permanently.',
     published: 'Published. Anyone with the link can read this file.',
     unpublished: 'Unpublished. The file is private again.',
+    permissionsUpdated: 'Access updated.',
     oneQueued: '{name} queued to upload.',
     manyQueued: '{n} files queued to upload.',
     oneUploaded: '{name} uploaded.',

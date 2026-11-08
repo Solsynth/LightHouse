@@ -7,6 +7,7 @@ import FileGlyph from './FileGlyph.vue'
 import type { CloudFile } from '@/lib/api/types'
 import { previewUrl } from '@/lib/api/drive'
 import { displayName, formatBytes, formatCount, kindLabel } from '@/lib/format'
+import { openFileMenu } from '@/lib/fileMenu'
 import { hasPreview } from '@/lib/fileKinds'
 import { useFileOpener } from '@/lib/opening'
 import { useVaultStore } from '@/stores/vault'
@@ -87,6 +88,7 @@ function subline(file: CloudFile): string {
         :style="{ animationDelay: `${Math.min(index, 12) * 18}ms` }"
         :aria-selected="vault.selection.includes(file.id)"
         @click="open(file)"
+        @contextmenu="openFileMenu($event, file, vault.selectedItems)"
         @keydown="onKeydown($event, file)"
       >
         <div class="relative aspect-[4/3] overflow-hidden rounded-chip bg-base-300/40">

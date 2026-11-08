@@ -132,13 +132,25 @@ another site (see *Cross-site embeds* below).
 Folders stay navigable even when `view` is `files`: a file that the options
 refuse is drawn muted with the reason, so an empty folder can explain itself.
 
-### Uploads are unindexed
+### Two sources
 
-With `upload: true` the panel accepts a drop or a file dialog and posts the new
-contents with `index=false`, which keeps the row out of the drive's folder tree
-(`files/unindexed`) while giving it a stable id and URL. A picker should not
-copy every attachment into the person's drive as a side effect. The new row
-arrives already selected and is handed back on confirm.
+The panel has two tabs. **Drive** is the indexed folder tree; **Unindexed** is
+the signed-in account's uploads that have no place in that tree.
+
+With `upload: true` a drop or the file dialog targets the active source:
+
+- **Drive** uploads into the open folder (`index=true` and that folder's
+  `parent_id`; the root when no folder is open), so the new row becomes a
+  normal drive entry.
+- **Unindexed** uploads with `index=false` and no parent, so it stays in
+  `files/unindexed` and out of the drive tree. The new row is held locally
+  until the listing catches up.
+
+Either way the new row arrives selected and is handed back on confirm. Visited
+folders stay in a small per-frame cache: going back paints instantly and
+refreshes in the background after a few seconds. The frame is reused by the
+SDK, so reopening it starts from the requested folder without repaying the
+previous walk.
 
 ### Frame protocol
 

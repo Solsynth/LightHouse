@@ -66,6 +66,27 @@ const multiple = computed(() => props.options.multiple === true)
 const chosenList = computed(() => [...chosen.value.values()])
 const chosenCount = computed(() => chosen.value.size)
 const canUpload = computed(() => props.options.upload === true)
+
+/** The unindexed collection is a flat list, so a folder-only request hides it. */
+const showSources = computed(() => props.options.view !== 'folders')
+const uploadTarget = computed(
+  () => browser.crumbs.value[browser.crumbs.value.length - 1]?.name ?? t('picker.root'),
+)
+const searchPlaceholder = computed(() =>
+  browser.source.value === 'unindexed'
+    ? t('picker.searchUnindexed')
+    : t('picker.searchPlaceholder'),
+)
+const dropHint = computed(() =>
+  browser.source.value === 'drive'
+    ? t('picker.dropHintFolder', { folder: uploadTarget.value })
+    : t('picker.dropHintUnindexed'),
+)
+const uploadHint = computed(() =>
+  browser.source.value === 'drive'
+    ? t('picker.uploadHintFolder', { folder: uploadTarget.value })
+    : t('picker.uploadHintUnindexed'),
+)
 const dragging = computed(() => dragDepth.value > 0)
 
 const heading = computed(() => props.options.title || t('picker.title'))
@@ -84,22 +105,29 @@ const emptyMessage = computed(() => {
   if (props.options.view === 'files' && browser.items.value.length > 0) {
     return t('picker.emptyFiltered')
   }
+  if (browser.source.value === 'unindexed') return t('picker.emptyUnindexed')
   return t('picker.empty')
 })
 
 /**
- * Uploaded rows come first: they are the answer the person just created, and
- * they are not part of the folder listing (an unindexed row has no place in
- * the tree, which is the whole point of uploading it this way).
+ * Uploaded rows that have not reached the listing yet come first. In the drive
+ * source they become real folder entries and the refresh carries them; in the
+ * unindexed source the list endpoint catches up a beat later, so the local row
+ * bridges that gap without duplicating it once the listing includes the id.
  */
-const rows = computed(() => [...uploads.value, ...browser.items.value])
+const rows = computed(() => {
+  if (browser.source.value === 'drive') return browser.items.value
+  const recent = new Set(uploads.value.map((file) => file.id))
+  return [...uploads.value, ...browser.items.value.filter((file) => !recent.has(file.id))]
+})
 
 function isChosen(file: CloudFile): boolean {
   return chosen.value.has(file.id)
 }
 
+/** Only unindexed uploads are held locally; indexed uploads land in the folder. */
 function isUpload(file: CloudFile): boolean {
-  return file.indexed === false
+  return uploads.value.some((entry) => entry.id === file.id)
 }
 
 function toggle(file: CloudFile) {
@@ -225,19 +253,19 @@ function onFilesPicked(event: Event) {
 }
 
 /**
- * Uploads unindexed rows and marks them chosen, so a person who dropped a file
- * only has to press Select. A file the host's rules refuse is uploaded anyway
- * but left unselected, with the reason in the footer: discarding the bytes
- * after transferring them would be worse than saying no.
- *
- * No `parent_id` is sent on purpose. The service promotes an upload into the
- * drive tree when its parent is indexed (`CreateWorkspaceUploadedFile`), so a
- * folder-relative upload would not be unindexed at all — the file would appear
- * in the person's drive as a side effect of attaching it to another app.
+ * Uploads into the active source and marks the new rows chosen, so a person
+ * who dropped a file only has to press Select. In the drive source the file
+ * becomes a real entry in the open folder (`parent_id` included); in the
+ * unindexed source it stays out of the tree, which is the whole point of that
+ * tab. A file the host's rules refuse is uploaded anyway but left unselected,
+ * with the reason in the footer: discarding the bytes after transferring them
+ * would be worse than saying no.
  */
 async function upload(files: File[]) {
   uploading.value = true
   uploadError.value = ''
+  const indexed = browser.source.value === 'drive'
+  const parentId = indexed ? browser.folderId.value : null
   const next = new Map(chosen.value)
   const created: CloudFile[] = []
   try {
@@ -245,19 +273,20 @@ async function upload(files: File[]) {
       uploadName.value = file.name
       uploadPercent.value = 0
       const row = await uploadDirect(file, {
-        indexed: false,
+        indexed,
+        parentId,
         onProgress: (percent) => {
           uploadPercent.value = percent
         },
       })
       created.push(row)
+      if (!indexed) uploads.value = [row, ...uploads.value]
       if (isSelectable(row, props.options)) {
         if (!multiple.value) next.clear()
         next.set(row.id, row)
       }
       uploadPercent.value = Math.round(((index + 1) / files.length) * 100)
     }
-    uploads.value = [...created, ...uploads.value]
     chosen.value = next
   } catch (caught) {
     uploadError.value = caught instanceof Error ? caught.message : t('picker.errors.upload')
@@ -265,6 +294,11 @@ async function upload(files: File[]) {
   } finally {
     uploading.value = false
     uploadName.value = ''
+  }
+  if (created.length > 0) {
+    // The folder listing is authoritative for indexed rows; the unindexed
+    // endpoint catches up a beat later and the recent rows already show.
+    await browser.load(false, true)
   }
 }
 
@@ -293,6 +327,7 @@ watch(
 watch(
   () => props.options,
   () => {
+    browser.reset()
     clearSelection()
     uploads.value = []
     uploadError.value = ''
@@ -332,8 +367,36 @@ defineExpose({ confirm, cancel, clearSelection })
       </button>
     </header>
 
+    <!-- Two sources: the indexed tree and the account's unindexed uploads. -->
+    <div
+      v-if="showSources"
+      class="seg mx-3 mt-1.5 w-fit shrink-0"
+      role="tablist"
+      :aria-label="t('picker.sources')"
+    >
+      <button
+        type="button"
+        role="tab"
+        class="seg-item px-3"
+        :aria-selected="browser.source.value === 'drive'"
+        @click="browser.setSource('drive')"
+      >
+        {{ t('picker.driveTab') }}
+      </button>
+      <button
+        type="button"
+        role="tab"
+        class="seg-item px-3"
+        :aria-selected="browser.source.value === 'unindexed'"
+        @click="browser.setSource('unindexed')"
+      >
+        {{ t('picker.unindexedTab') }}
+      </button>
+    </div>
+
     <!-- Breadcrumb: the trail is the only way back up without guessing. -->
     <div
+      v-if="browser.source.value === 'drive'"
       class="mx-3 flex shrink-0 items-center gap-1 overflow-x-auto rounded-control bg-base-200/60 px-1.5 py-1"
     >
       <button
@@ -373,7 +436,7 @@ defineExpose({ confirm, cancel, clearSelection })
         class="h-8 min-w-0 flex-1 bg-transparent text-[12px] text-base-content outline-none placeholder:text-faint"
         type="search"
         :value="browser.query.value"
-        :placeholder="t('picker.searchPlaceholder')"
+        :placeholder="searchPlaceholder"
         :aria-label="t('picker.search')"
         @input="browser.search(($event.target as HTMLInputElement).value)"
       />
@@ -389,7 +452,7 @@ defineExpose({ confirm, cancel, clearSelection })
           type="button"
           class="btn btn-ghost btn-xs shrink-0 gap-1"
           :disabled="uploading"
-          :title="t('picker.uploadHint')"
+          :title="uploadHint"
           @click="requestUpload"
         >
           <Upload16 class="h-3 w-3" aria-hidden="true" />
@@ -439,9 +502,7 @@ defineExpose({ confirm, cancel, clearSelection })
             :aria-disabled="!isSelectable(file, options)"
             class="group flex h-10 cursor-default items-center gap-2.5 rounded-chip px-2.5 text-[12.5px] transition-colors duration-100 focus-visible:bg-base-300/60"
             :class="[
-              isChosen(file)
-                ? 'bg-primary/12'
-                : 'bg-base-200 hover:bg-base-300',
+              isChosen(file) ? 'bg-primary/12' : 'bg-base-200 hover:bg-base-300',
               isSelectable(file, options) ? '' : 'opacity-45',
             ]"
             @click="activate(file)"
@@ -450,9 +511,7 @@ defineExpose({ confirm, cancel, clearSelection })
             <span
               class="flex size-[18px] shrink-0 items-center justify-center rounded-full transition-colors"
               :class="
-                isChosen(file)
-                  ? 'bg-primary text-primary-content'
-                  : 'bg-base-300 text-transparent'
+                isChosen(file) ? 'bg-primary text-primary-content' : 'bg-base-300 text-transparent'
               "
               aria-hidden="true"
             >
@@ -519,10 +578,12 @@ defineExpose({ confirm, cancel, clearSelection })
       <div v-if="uploading" class="h-1 w-40 overflow-hidden rounded-full bg-base-300/60">
         <div class="h-full bg-primary transition-[width]" :style="{ width: `${uploadPercent}%` }" />
       </div>
-      <p v-else class="text-2xs text-faint">{{ t('picker.dropHint') }}</p>
+      <p v-else class="text-2xs text-faint">{{ dropHint }}</p>
     </div>
 
-    <footer class="m-2 mt-0 flex shrink-0 items-center justify-between gap-3 rounded-card bg-base-200 px-3 py-2">
+    <footer
+      class="m-2 mt-0 flex shrink-0 items-center justify-between gap-3 rounded-card bg-base-200 px-3 py-2"
+    >
       <span
         class="min-w-0 flex-1 truncate text-2xs"
         :class="uploadError ? 'text-error' : 'text-faint'"

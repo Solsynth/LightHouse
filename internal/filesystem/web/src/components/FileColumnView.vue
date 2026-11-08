@@ -15,6 +15,7 @@ import { useRoute, useRouter } from 'vue-router'
 import FileGlyph from './FileGlyph.vue'
 import type { CloudFile } from '@/lib/api/types'
 import { displayName, formatBytes, formatCount } from '@/lib/format'
+import { openFileMenu } from '@/lib/fileMenu'
 import { useFileOpener } from '@/lib/opening'
 import { useVaultStore } from '@/stores/vault'
 
@@ -306,12 +307,7 @@ function isFocused(index: number, id: string): boolean {
             {{ t('empty.nothingHere') }}
           </p>
 
-          <div
-            v-else
-            role="listbox"
-            class="flex flex-col gap-0.5"
-            :aria-label="t('drive.objects')"
-          >
+          <div v-else role="listbox" class="flex flex-col gap-0.5" :aria-label="t('drive.objects')">
             <div
               v-for="(child, row) in rowsAt(index)"
               :key="child.id"
@@ -329,6 +325,7 @@ function isFocused(index: number, id: string): boolean {
               "
               :title="displayName(child)"
               @click="activate(index, child)"
+              @contextmenu="openFileMenu($event, child, vault.selectedItems)"
               @keydown="onKeydown($event, index, row)"
             >
               <FileGlyph :file="child" />

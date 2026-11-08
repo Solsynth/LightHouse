@@ -851,6 +851,14 @@
     @apply font-semibold text-base-content;
   }
 
+  /* The one destructive row in a context menu: tinted, never a second palette. */
+  .menu-choice-danger {
+    @apply text-error;
+  }
+
+  .menu-choice-danger:hover {
+    @apply bg-error/12 text-error;
+  }
 
   @keyframes menu-pop {
     from {

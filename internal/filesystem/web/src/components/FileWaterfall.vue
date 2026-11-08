@@ -8,6 +8,7 @@ import type { CloudFile } from '@/lib/api/types'
 import { previewUrl, thumbnailUrl } from '@/lib/api/drive'
 import { fileKind, hasPreview } from '@/lib/fileKinds'
 import { displayName, formatBytes, formatCount, kindLabel, parseMeta } from '@/lib/format'
+import { openFileMenu } from '@/lib/fileMenu'
 import { useFileOpener } from '@/lib/opening'
 import { useVaultStore } from '@/stores/vault'
 
@@ -141,6 +142,7 @@ function onKeydown(event: KeyboardEvent, file: CloudFile) {
         :class="isSelected(tile.file) ? 'bg-primary/12' : 'bg-base-200/75 hover:bg-base-300/70'"
         :aria-selected="isSelected(tile.file)"
         @click="activate(tile.file)"
+        @contextmenu="openFileMenu($event, tile.file, vault.selectedItems)"
         @keydown="onKeydown($event, tile.file)"
       >
         <div

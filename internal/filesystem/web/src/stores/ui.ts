@@ -21,6 +21,8 @@ export type DialogState =
   | { kind: 'recycle'; files: CloudFile[] }
   | { kind: 'purge'; files: CloudFile[] }
   | { kind: 'share'; file: CloudFile }
+  | { kind: 'inspect'; file: CloudFile }
+  | { kind: 'permissions'; file: CloudFile }
   | { kind: 'shortcuts' }
   | null
 

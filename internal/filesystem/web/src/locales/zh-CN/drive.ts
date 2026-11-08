@@ -35,6 +35,18 @@ export default {
     oneItem: '1 项',
     manyItems: '{n} 项',
   },
+
+  menu: {
+    actions: '文件操作',
+    open: '打开',
+    openFolder: '打开文件夹',
+    inspect: '查看详情',
+    permissions: '权限…',
+    many: '已选 {n} 项',
+    totalSize: '共 {size}',
+    folder: '文件夹',
+  },
+
   status: {
     ok: '正常',
     error: '错误',
@@ -152,6 +164,7 @@ export default {
     manyPurged: '已永久删除 {n} 个对象。',
     published: '已发布。任何持有链接的人都可以读取此文件。',
     unpublished: '已取消发布。此文件恢复为私密。',
+    permissionsUpdated: '访问权限已更新。',
     oneQueued: '{name} 已加入上传队列。',
     manyQueued: '{n} 个文件已加入上传队列。',
     oneUploaded: '{name} 已上传。',

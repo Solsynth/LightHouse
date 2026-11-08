@@ -6,6 +6,7 @@ import { Link16 } from '@carbon/icons-vue'
 import FileGlyph from './FileGlyph.vue'
 import type { CloudFile } from '@/lib/api/types'
 import { displayName, formatBytes, kindLabel, modifiedLabel } from '@/lib/format'
+import { openFileMenu } from '@/lib/fileMenu'
 import { useFileOpener } from '@/lib/opening'
 import { useVaultStore } from '@/stores/vault'
 
@@ -165,6 +166,7 @@ function sortState(key: 'name' | 'size' | 'date') {
           :style="{ animationDelay: `${Math.min(index, 12) * 16}ms` }"
           :aria-selected="vault.selection.includes(file.id)"
           @click="open(file)"
+          @contextmenu="openFileMenu($event, file, vault.selectedItems)"
           @keydown="onKeydown($event, file)"
         >
           <td class="pl-3 pr-1">

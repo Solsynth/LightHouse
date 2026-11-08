@@ -5,15 +5,17 @@ import { Checkmark16, Copy16 } from '@carbon/icons-vue'
 
 const props = defineProps<{
   value: string
-  label: 'source' | 'publicLink'
+  label: 'source' | 'publicLink' | 'id'
 }>()
 
 const { t } = useI18n()
 const copied = ref(false)
 
-const title = computed(() =>
-  props.label === 'source' ? t('preview.copySource') : t('preview.copyLink'),
-)
+const title = computed(() => {
+  if (props.label === 'source') return t('preview.copySource')
+  if (props.label === 'id') return t('preview.copyId')
+  return t('preview.copyLink')
+})
 
 async function copy() {
   try {

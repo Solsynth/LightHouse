@@ -6,6 +6,7 @@ import { useRoute } from 'vue-router'
 import AppSidebar from './AppSidebar.vue'
 import CommandPalette from './CommandPalette.vue'
 import DialogHost from './DialogHost.vue'
+import FileContextMenu from './FileContextMenu.vue'
 import NoticeToast from './NoticeToast.vue'
 import TitleBar from './TitleBar.vue'
 import UploadDock from './UploadDock.vue'
@@ -136,6 +137,7 @@ onBeforeUnmount(() => {
     <NoticeToast />
 
     <CommandPalette />
+    <FileContextMenu />
     <DialogHost />
     <UploadDock />
   </div>

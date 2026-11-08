@@ -69,6 +69,16 @@ function unique(items: CloudFile[]): CloudFile[] {
   })
 }
 
+interface CachedPage {
+  rows: CloudFile[]
+  total: number
+  at: number
+}
+
+const PAGE_CACHE_LIMIT = 32
+/** A cached page is repainted immediately, then revalidated once it is this old. */
+const PAGE_REVALIDATE_MS = 8_000
+
 export const useVaultStore = defineStore('vault', () => {
   const notice = useNoticeStore()
 
@@ -111,6 +121,16 @@ export const useVaultStore = defineStore('vault', () => {
   const childrenCache = new Map<string, CloudFile[]>()
   const childrenLoads = new Map<string, Promise<CloudFile[]>>()
   const childrenVersion = ref(0)
+
+  /**
+   * First-page listings for the list, grid, and waterfall surfaces, keyed by
+   * the whole request (mode, folder, filters, order). Revisiting a folder
+   * paints from memory and refreshes in the background; Miller columns keep
+   * their own whole-folder cache below.
+   */
+  const pageCache = new Map<string, CachedPage>()
+  const pageLoads = new Map<string, Promise<CachedPage>>()
+  let cacheGeneration = 0
 
   const usage = ref<UsageSummary | null>(null)
   const quota = ref<QuotaSummary | null>(null)
@@ -295,29 +315,129 @@ export const useVaultStore = defineStore('vault', () => {
       : driveApi.root(options, signal)
   }
 
+  /** The cache identity of the current listing; searches are never cached. */
+  function listingCacheKey(): string | null {
+    if (query.value.trim()) return null
+    const folder = mode.value === 'drive' ? (folderId.value ?? '') : ''
+    return [
+      mode.value,
+      folder,
+      poolFilter.value ?? '',
+      kind.value,
+      order.value,
+      orderDesc.value ? 'desc' : 'asc',
+    ].join('|')
+  }
+
+  /** Reads a page and remembers it, unless a mutation retired this generation. */
+  function requestPage(key: string): Promise<CachedPage> {
+    const pending = pageLoads.get(key)
+    if (pending) return pending
+    const generation = cacheGeneration
+    const request = fetchPage(0).then((page) => {
+      const cached = { rows: arrangeFoldersFirst(page.items), total: page.total, at: Date.now() }
+      if (generation === cacheGeneration) rememberPage(key, cached)
+      return cached
+    })
+    pageLoads.set(key, request)
+    request.then(
+      () => pageLoads.delete(key),
+      () => pageLoads.delete(key),
+    )
+    return request
+  }
+
+  function rememberPage(key: string, page: CachedPage) {
+    pageCache.delete(key)
+    pageCache.set(key, page)
+    while (pageCache.size > PAGE_CACHE_LIMIT) {
+      const oldest = pageCache.keys().next().value
+      if (oldest === undefined) break
+      pageCache.delete(oldest)
+    }
+  }
+
+  function cachedPage(key: string): CachedPage | undefined {
+    const hit = pageCache.get(key)
+    if (!hit) return undefined
+    // Touch on read so the least recently visited folder leaves first.
+    pageCache.delete(key)
+    pageCache.set(key, hit)
+    return hit
+  }
+
+  /**
+   * A cached page is already on screen; ask once more after the paint so a
+   * change made in another tab catches up without blocking the first paint.
+   */
+  async function revalidatePage(key: string, seq: number, baseLength: number) {
+    try {
+      const page = await requestPage(key)
+      if (seq !== loadSeq || listingCacheKey() !== key) return
+      // The person asked for more rows while this was in flight; keep them.
+      if (items.value.length > baseLength) return
+      items.value = page.rows
+      total.value = page.total
+    } catch {
+      // The painted page stays; a failed background refresh is not an error.
+    }
+  }
+
+  function applyPage(page: CachedPage) {
+    items.value = page.rows
+    total.value = page.total
+    clearSelection()
+  }
+
   async function load() {
     const seq = ++loadSeq
-    loading.value = true
     error.value = ''
-    try {
-      // Columns already list the open folder; sharing their request means a
-      // mount loads one listing instead of racing a second copy of it.
-      if (viewMode.value === 'column' && mode.value !== 'unindexed') {
+    // Columns already list the open folder; sharing their request means a
+    // mount loads one listing instead of racing a second copy of it.
+    if (viewMode.value === 'column' && mode.value !== 'unindexed') {
+      loading.value = true
+      try {
         const parent = mode.value === 'drive' ? folderId.value : null
         const rows = await listChildren(parent)
         if (seq !== loadSeq) return
         items.value = rows
         total.value = rows.length
         clearSelection()
-        return
+      } catch (caught) {
+        if (seq !== loadSeq) return
+        error.value = errorMessage(caught)
+        items.value = []
+        total.value = 0
+      } finally {
+        if (seq === loadSeq) loading.value = false
       }
-      const page = await fetchPage(0)
-      if (seq !== loadSeq) return
-      items.value = arrangeFoldersFirst(page.items)
-      total.value = page.total
-      // Selections do not survive a reload of the listing; the tab's file is
-      // refreshed separately by the preview view.
+      return
+    }
+
+    const key = listingCacheKey()
+    const cached = key ? cachedPage(key) : undefined
+    if (cached) {
+      items.value = cached.rows
+      total.value = cached.total
+      loading.value = false
       clearSelection()
+      if (Date.now() - cached.at >= PAGE_REVALIDATE_MS) {
+        void revalidatePage(key!, seq, cached.rows.length)
+      }
+      return
+    }
+
+    loading.value = true
+    try {
+      const page = key
+        ? await requestPage(key)
+        : await fetchPage(0).then((listing) => ({
+            rows: arrangeFoldersFirst(listing.items),
+            total: listing.total,
+            at: Date.now(),
+          }))
+      if (seq !== loadSeq) return
+      applyPage(page)
     } catch (caught) {
       if (seq !== loadSeq) return
       if (caught instanceof DOMException && caught.name === 'AbortError') return
@@ -643,6 +763,22 @@ export const useVaultStore = defineStore('vault', () => {
     }
   }
 
+  /** Replaces the file's access rules with the edited set. */
+  async function savePermissions(file: CloudFile, items: FilePermission[]) {
+    actionBusy.value = 'permissions'
+    try {
+      await driveApi.setPermissions(file.id, items)
+      invalidateChildren()
+      notice.ok(translate('notice.permissionsUpdated'))
+      await load()
+    } catch (caught) {
+      notice.error(errorMessage(caught))
+      throw caught
+    } finally {
+      actionBusy.value = null
+    }
+  }
+
   async function listFolders(parentId: string | null): Promise<CloudFile[]> {
     const options = {
       is_folder: true,
@@ -660,6 +796,8 @@ export const useVaultStore = defineStore('vault', () => {
   /** Drops every cached column listing and asks open columns to reload. */
   function invalidateChildren() {
     childrenCache.clear()
+    pageCache.clear()
+    cacheGeneration += 1
     childrenVersion.value += 1
   }
 
@@ -778,6 +916,7 @@ export const useVaultStore = defineStore('vault', () => {
     restore,
     purge,
     permissionsFor,
+    savePermissions,
     setVisibility,
     listFolders,
     listChildren,
