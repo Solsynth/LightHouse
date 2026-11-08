@@ -3025,6 +3025,232 @@ func (x *DyValidateSSHPublicKeyResponse) GetReason() string {
 	return ""
 }
 
+// ExchangeSSHPublicKeyForSession is the hosted-login counterpart of
+// ValidateSSHPublicKey: it resolves the key and creates a login session for
+// the owner. Calls without the deployment's exchange service token are
+// refused, because the key is public material and possession is proven only
+// by the gateway's SSH handshake, not by this message.
+type DyExchangeSSHPublicKeyForSessionRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// service_token is the deployment's exchange credential. Empty or wrong is
+	// rejected, not answered with a false validation.
+	ServiceToken string `protobuf:"bytes,1,opt,name=service_token,json=serviceToken,proto3" json:"service_token,omitempty"`
+	PublicKey    string `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
+	Fingerprint  string `protobuf:"bytes,3,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
+	// purpose is echoed for audit; for example "termian-hosted".
+	Purpose       string `protobuf:"bytes,4,opt,name=purpose,proto3" json:"purpose,omitempty"`
+	DeviceName    string `protobuf:"bytes,5,opt,name=device_name,json=deviceName,proto3" json:"device_name,omitempty"`
+	IpAddress     string `protobuf:"bytes,6,opt,name=ip_address,json=ipAddress,proto3" json:"ip_address,omitempty"`
+	UserAgent     string `protobuf:"bytes,7,opt,name=user_agent,json=userAgent,proto3" json:"user_agent,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionRequest) Reset() {
+	*x = DyExchangeSSHPublicKeyForSessionRequest{}
+	mi := &file_account_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DyExchangeSSHPublicKeyForSessionRequest) ProtoMessage() {}
+
+func (x *DyExchangeSSHPublicKeyForSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_account_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DyExchangeSSHPublicKeyForSessionRequest.ProtoReflect.Descriptor instead.
+func (*DyExchangeSSHPublicKeyForSessionRequest) Descriptor() ([]byte, []int) {
+	return file_account_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionRequest) GetServiceToken() string {
+	if x != nil {
+		return x.ServiceToken
+	}
+	return ""
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionRequest) GetPublicKey() string {
+	if x != nil {
+		return x.PublicKey
+	}
+	return ""
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionRequest) GetFingerprint() string {
+	if x != nil {
+		return x.Fingerprint
+	}
+	return ""
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionRequest) GetPurpose() string {
+	if x != nil {
+		return x.Purpose
+	}
+	return ""
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionRequest) GetDeviceName() string {
+	if x != nil {
+		return x.DeviceName
+	}
+	return ""
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionRequest) GetIpAddress() string {
+	if x != nil {
+		return x.IpAddress
+	}
+	return ""
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionRequest) GetUserAgent() string {
+	if x != nil {
+		return x.UserAgent
+	}
+	return ""
+}
+
+type DyExchangeSSHPublicKeyForSessionResponse struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Valid       bool                   `protobuf:"varint,1,opt,name=valid,proto3" json:"valid,omitempty"`
+	AccountId   string                 `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	KeyId       string                 `protobuf:"bytes,3,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
+	KeyLabel    string                 `protobuf:"bytes,4,opt,name=key_label,json=keyLabel,proto3" json:"key_label,omitempty"`
+	Fingerprint string                 `protobuf:"bytes,5,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
+	Purpose     string                 `protobuf:"bytes,6,opt,name=purpose,proto3" json:"purpose,omitempty"`
+	// reason is set when valid is false (KEY_NOT_FOUND, KEY_INVALID,
+	// ACCOUNT_LOCKED).
+	Reason           string `protobuf:"bytes,7,opt,name=reason,proto3" json:"reason,omitempty"`
+	AccessToken      string `protobuf:"bytes,8,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
+	RefreshToken     string `protobuf:"bytes,9,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
+	ExpiresIn        int64  `protobuf:"varint,10,opt,name=expires_in,json=expiresIn,proto3" json:"expires_in,omitempty"`
+	RefreshExpiresIn int64  `protobuf:"varint,11,opt,name=refresh_expires_in,json=refreshExpiresIn,proto3" json:"refresh_expires_in,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionResponse) Reset() {
+	*x = DyExchangeSSHPublicKeyForSessionResponse{}
+	mi := &file_account_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DyExchangeSSHPublicKeyForSessionResponse) ProtoMessage() {}
+
+func (x *DyExchangeSSHPublicKeyForSessionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_account_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DyExchangeSSHPublicKeyForSessionResponse.ProtoReflect.Descriptor instead.
+func (*DyExchangeSSHPublicKeyForSessionResponse) Descriptor() ([]byte, []int) {
+	return file_account_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionResponse) GetValid() bool {
+	if x != nil {
+		return x.Valid
+	}
+	return false
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionResponse) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionResponse) GetKeyId() string {
+	if x != nil {
+		return x.KeyId
+	}
+	return ""
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionResponse) GetKeyLabel() string {
+	if x != nil {
+		return x.KeyLabel
+	}
+	return ""
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionResponse) GetFingerprint() string {
+	if x != nil {
+		return x.Fingerprint
+	}
+	return ""
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionResponse) GetPurpose() string {
+	if x != nil {
+		return x.Purpose
+	}
+	return ""
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionResponse) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionResponse) GetAccessToken() string {
+	if x != nil {
+		return x.AccessToken
+	}
+	return ""
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionResponse) GetRefreshToken() string {
+	if x != nil {
+		return x.RefreshToken
+	}
+	return ""
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionResponse) GetExpiresIn() int64 {
+	if x != nil {
+		return x.ExpiresIn
+	}
+	return 0
+}
+
+func (x *DyExchangeSSHPublicKeyForSessionResponse) GetRefreshExpiresIn() int64 {
+	if x != nil {
+		return x.RefreshExpiresIn
+	}
+	return 0
+}
+
 // ValidatePGPPublicKey is the same connection-validation contract for PGP
 // keys, keyed by the primary key fingerprint.
 type DyValidatePGPPublicKeyRequest struct {
@@ -3039,7 +3265,7 @@ type DyValidatePGPPublicKeyRequest struct {
 
 func (x *DyValidatePGPPublicKeyRequest) Reset() {
 	*x = DyValidatePGPPublicKeyRequest{}
-	mi := &file_account_proto_msgTypes[33]
+	mi := &file_account_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3051,7 +3277,7 @@ func (x *DyValidatePGPPublicKeyRequest) String() string {
 func (*DyValidatePGPPublicKeyRequest) ProtoMessage() {}
 
 func (x *DyValidatePGPPublicKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_account_proto_msgTypes[33]
+	mi := &file_account_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3064,7 +3290,7 @@ func (x *DyValidatePGPPublicKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyValidatePGPPublicKeyRequest.ProtoReflect.Descriptor instead.
 func (*DyValidatePGPPublicKeyRequest) Descriptor() ([]byte, []int) {
-	return file_account_proto_rawDescGZIP(), []int{33}
+	return file_account_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *DyValidatePGPPublicKeyRequest) GetAccountId() string {
@@ -3110,7 +3336,7 @@ type DyValidatePGPPublicKeyResponse struct {
 
 func (x *DyValidatePGPPublicKeyResponse) Reset() {
 	*x = DyValidatePGPPublicKeyResponse{}
-	mi := &file_account_proto_msgTypes[34]
+	mi := &file_account_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3122,7 +3348,7 @@ func (x *DyValidatePGPPublicKeyResponse) String() string {
 func (*DyValidatePGPPublicKeyResponse) ProtoMessage() {}
 
 func (x *DyValidatePGPPublicKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_account_proto_msgTypes[34]
+	mi := &file_account_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3135,7 +3361,7 @@ func (x *DyValidatePGPPublicKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyValidatePGPPublicKeyResponse.ProtoReflect.Descriptor instead.
 func (*DyValidatePGPPublicKeyResponse) Descriptor() ([]byte, []int) {
-	return file_account_proto_rawDescGZIP(), []int{34}
+	return file_account_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *DyValidatePGPPublicKeyResponse) GetValid() bool {
@@ -3198,7 +3424,7 @@ type DyListAuthFactorsRequest struct {
 
 func (x *DyListAuthFactorsRequest) Reset() {
 	*x = DyListAuthFactorsRequest{}
-	mi := &file_account_proto_msgTypes[35]
+	mi := &file_account_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3210,7 +3436,7 @@ func (x *DyListAuthFactorsRequest) String() string {
 func (*DyListAuthFactorsRequest) ProtoMessage() {}
 
 func (x *DyListAuthFactorsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_account_proto_msgTypes[35]
+	mi := &file_account_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3223,7 +3449,7 @@ func (x *DyListAuthFactorsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyListAuthFactorsRequest.ProtoReflect.Descriptor instead.
 func (*DyListAuthFactorsRequest) Descriptor() ([]byte, []int) {
-	return file_account_proto_rawDescGZIP(), []int{35}
+	return file_account_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *DyListAuthFactorsRequest) GetAccountId() string {
@@ -3249,7 +3475,7 @@ type DyListAuthFactorsResponse struct {
 
 func (x *DyListAuthFactorsResponse) Reset() {
 	*x = DyListAuthFactorsResponse{}
-	mi := &file_account_proto_msgTypes[36]
+	mi := &file_account_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3261,7 +3487,7 @@ func (x *DyListAuthFactorsResponse) String() string {
 func (*DyListAuthFactorsResponse) ProtoMessage() {}
 
 func (x *DyListAuthFactorsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_account_proto_msgTypes[36]
+	mi := &file_account_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3274,7 +3500,7 @@ func (x *DyListAuthFactorsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyListAuthFactorsResponse.ProtoReflect.Descriptor instead.
 func (*DyListAuthFactorsResponse) Descriptor() ([]byte, []int) {
-	return file_account_proto_rawDescGZIP(), []int{36}
+	return file_account_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *DyListAuthFactorsResponse) GetFactors() []*DyAccountAuthFactor {
@@ -3295,7 +3521,7 @@ type DyResetPasswordFactorRequest struct {
 
 func (x *DyResetPasswordFactorRequest) Reset() {
 	*x = DyResetPasswordFactorRequest{}
-	mi := &file_account_proto_msgTypes[37]
+	mi := &file_account_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3307,7 +3533,7 @@ func (x *DyResetPasswordFactorRequest) String() string {
 func (*DyResetPasswordFactorRequest) ProtoMessage() {}
 
 func (x *DyResetPasswordFactorRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_account_proto_msgTypes[37]
+	mi := &file_account_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3320,7 +3546,7 @@ func (x *DyResetPasswordFactorRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyResetPasswordFactorRequest.ProtoReflect.Descriptor instead.
 func (*DyResetPasswordFactorRequest) Descriptor() ([]byte, []int) {
-	return file_account_proto_rawDescGZIP(), []int{37}
+	return file_account_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *DyResetPasswordFactorRequest) GetAccountId() string {
@@ -3360,7 +3586,7 @@ type DyCreateMagicSpellRequest struct {
 
 func (x *DyCreateMagicSpellRequest) Reset() {
 	*x = DyCreateMagicSpellRequest{}
-	mi := &file_account_proto_msgTypes[38]
+	mi := &file_account_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3372,7 +3598,7 @@ func (x *DyCreateMagicSpellRequest) String() string {
 func (*DyCreateMagicSpellRequest) ProtoMessage() {}
 
 func (x *DyCreateMagicSpellRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_account_proto_msgTypes[38]
+	mi := &file_account_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3385,7 +3611,7 @@ func (x *DyCreateMagicSpellRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyCreateMagicSpellRequest.ProtoReflect.Descriptor instead.
 func (*DyCreateMagicSpellRequest) Descriptor() ([]byte, []int) {
-	return file_account_proto_rawDescGZIP(), []int{38}
+	return file_account_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *DyCreateMagicSpellRequest) GetAccountId() *wrapperspb.StringValue {
@@ -3447,7 +3673,7 @@ type DyNotifyMagicSpellRequest struct {
 
 func (x *DyNotifyMagicSpellRequest) Reset() {
 	*x = DyNotifyMagicSpellRequest{}
-	mi := &file_account_proto_msgTypes[39]
+	mi := &file_account_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3459,7 +3685,7 @@ func (x *DyNotifyMagicSpellRequest) String() string {
 func (*DyNotifyMagicSpellRequest) ProtoMessage() {}
 
 func (x *DyNotifyMagicSpellRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_account_proto_msgTypes[39]
+	mi := &file_account_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3472,7 +3698,7 @@ func (x *DyNotifyMagicSpellRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyNotifyMagicSpellRequest.ProtoReflect.Descriptor instead.
 func (*DyNotifyMagicSpellRequest) Descriptor() ([]byte, []int) {
-	return file_account_proto_rawDescGZIP(), []int{39}
+	return file_account_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *DyNotifyMagicSpellRequest) GetSpellId() string {
@@ -3502,7 +3728,7 @@ type DyGetMagicSpellRequest struct {
 
 func (x *DyGetMagicSpellRequest) Reset() {
 	*x = DyGetMagicSpellRequest{}
-	mi := &file_account_proto_msgTypes[40]
+	mi := &file_account_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3514,7 +3740,7 @@ func (x *DyGetMagicSpellRequest) String() string {
 func (*DyGetMagicSpellRequest) ProtoMessage() {}
 
 func (x *DyGetMagicSpellRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_account_proto_msgTypes[40]
+	mi := &file_account_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3527,7 +3753,7 @@ func (x *DyGetMagicSpellRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyGetMagicSpellRequest.ProtoReflect.Descriptor instead.
 func (*DyGetMagicSpellRequest) Descriptor() ([]byte, []int) {
-	return file_account_proto_rawDescGZIP(), []int{40}
+	return file_account_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *DyGetMagicSpellRequest) GetLookup() isDyGetMagicSpellRequest_Lookup {
@@ -3585,7 +3811,7 @@ type DyApplyMagicSpellRequest struct {
 
 func (x *DyApplyMagicSpellRequest) Reset() {
 	*x = DyApplyMagicSpellRequest{}
-	mi := &file_account_proto_msgTypes[41]
+	mi := &file_account_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3597,7 +3823,7 @@ func (x *DyApplyMagicSpellRequest) String() string {
 func (*DyApplyMagicSpellRequest) ProtoMessage() {}
 
 func (x *DyApplyMagicSpellRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_account_proto_msgTypes[41]
+	mi := &file_account_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3610,7 +3836,7 @@ func (x *DyApplyMagicSpellRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyApplyMagicSpellRequest.ProtoReflect.Descriptor instead.
 func (*DyApplyMagicSpellRequest) Descriptor() ([]byte, []int) {
-	return file_account_proto_rawDescGZIP(), []int{41}
+	return file_account_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *DyApplyMagicSpellRequest) GetLookup() isDyApplyMagicSpellRequest_Lookup {
@@ -3671,7 +3897,7 @@ type DyApplyMagicSpellResponse struct {
 
 func (x *DyApplyMagicSpellResponse) Reset() {
 	*x = DyApplyMagicSpellResponse{}
-	mi := &file_account_proto_msgTypes[42]
+	mi := &file_account_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3683,7 +3909,7 @@ func (x *DyApplyMagicSpellResponse) String() string {
 func (*DyApplyMagicSpellResponse) ProtoMessage() {}
 
 func (x *DyApplyMagicSpellResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_account_proto_msgTypes[42]
+	mi := &file_account_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3696,7 +3922,7 @@ func (x *DyApplyMagicSpellResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyApplyMagicSpellResponse.ProtoReflect.Descriptor instead.
 func (*DyApplyMagicSpellResponse) Descriptor() ([]byte, []int) {
-	return file_account_proto_rawDescGZIP(), []int{42}
+	return file_account_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *DyApplyMagicSpellResponse) GetSpell() *DyMagicSpell {
@@ -3724,7 +3950,7 @@ type DyListConnectionsRequest struct {
 
 func (x *DyListConnectionsRequest) Reset() {
 	*x = DyListConnectionsRequest{}
-	mi := &file_account_proto_msgTypes[43]
+	mi := &file_account_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3736,7 +3962,7 @@ func (x *DyListConnectionsRequest) String() string {
 func (*DyListConnectionsRequest) ProtoMessage() {}
 
 func (x *DyListConnectionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_account_proto_msgTypes[43]
+	mi := &file_account_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3749,7 +3975,7 @@ func (x *DyListConnectionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyListConnectionsRequest.ProtoReflect.Descriptor instead.
 func (*DyListConnectionsRequest) Descriptor() ([]byte, []int) {
-	return file_account_proto_rawDescGZIP(), []int{43}
+	return file_account_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *DyListConnectionsRequest) GetAccountId() string {
@@ -3775,7 +4001,7 @@ type DyListConnectionsResponse struct {
 
 func (x *DyListConnectionsResponse) Reset() {
 	*x = DyListConnectionsResponse{}
-	mi := &file_account_proto_msgTypes[44]
+	mi := &file_account_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3787,7 +4013,7 @@ func (x *DyListConnectionsResponse) String() string {
 func (*DyListConnectionsResponse) ProtoMessage() {}
 
 func (x *DyListConnectionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_account_proto_msgTypes[44]
+	mi := &file_account_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3800,7 +4026,7 @@ func (x *DyListConnectionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyListConnectionsResponse.ProtoReflect.Descriptor instead.
 func (*DyListConnectionsResponse) Descriptor() ([]byte, []int) {
-	return file_account_proto_rawDescGZIP(), []int{44}
+	return file_account_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *DyListConnectionsResponse) GetConnections() []*DyAccountConnection {
@@ -3821,7 +4047,7 @@ type DyGetValidAccessTokenRequest struct {
 
 func (x *DyGetValidAccessTokenRequest) Reset() {
 	*x = DyGetValidAccessTokenRequest{}
-	mi := &file_account_proto_msgTypes[45]
+	mi := &file_account_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3833,7 +4059,7 @@ func (x *DyGetValidAccessTokenRequest) String() string {
 func (*DyGetValidAccessTokenRequest) ProtoMessage() {}
 
 func (x *DyGetValidAccessTokenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_account_proto_msgTypes[45]
+	mi := &file_account_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3846,7 +4072,7 @@ func (x *DyGetValidAccessTokenRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyGetValidAccessTokenRequest.ProtoReflect.Descriptor instead.
 func (*DyGetValidAccessTokenRequest) Descriptor() ([]byte, []int) {
-	return file_account_proto_rawDescGZIP(), []int{45}
+	return file_account_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *DyGetValidAccessTokenRequest) GetConnectionId() string {
@@ -3879,7 +4105,7 @@ type DyGetValidAccessTokenResponse struct {
 
 func (x *DyGetValidAccessTokenResponse) Reset() {
 	*x = DyGetValidAccessTokenResponse{}
-	mi := &file_account_proto_msgTypes[46]
+	mi := &file_account_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3891,7 +4117,7 @@ func (x *DyGetValidAccessTokenResponse) String() string {
 func (*DyGetValidAccessTokenResponse) ProtoMessage() {}
 
 func (x *DyGetValidAccessTokenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_account_proto_msgTypes[46]
+	mi := &file_account_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3904,7 +4130,7 @@ func (x *DyGetValidAccessTokenResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyGetValidAccessTokenResponse.ProtoReflect.Descriptor instead.
 func (*DyGetValidAccessTokenResponse) Descriptor() ([]byte, []int) {
-	return file_account_proto_rawDescGZIP(), []int{46}
+	return file_account_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *DyGetValidAccessTokenResponse) GetAccessToken() string {
@@ -3924,7 +4150,7 @@ type DyGetAccountByConnectionRequest struct {
 
 func (x *DyGetAccountByConnectionRequest) Reset() {
 	*x = DyGetAccountByConnectionRequest{}
-	mi := &file_account_proto_msgTypes[47]
+	mi := &file_account_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3936,7 +4162,7 @@ func (x *DyGetAccountByConnectionRequest) String() string {
 func (*DyGetAccountByConnectionRequest) ProtoMessage() {}
 
 func (x *DyGetAccountByConnectionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_account_proto_msgTypes[47]
+	mi := &file_account_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3949,7 +4175,7 @@ func (x *DyGetAccountByConnectionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyGetAccountByConnectionRequest.ProtoReflect.Descriptor instead.
 func (*DyGetAccountByConnectionRequest) Descriptor() ([]byte, []int) {
-	return file_account_proto_rawDescGZIP(), []int{47}
+	return file_account_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *DyGetAccountByConnectionRequest) GetProvider() string {
@@ -3975,7 +4201,7 @@ type DyListSuperusersResponse struct {
 
 func (x *DyListSuperusersResponse) Reset() {
 	*x = DyListSuperusersResponse{}
-	mi := &file_account_proto_msgTypes[48]
+	mi := &file_account_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3987,7 +4213,7 @@ func (x *DyListSuperusersResponse) String() string {
 func (*DyListSuperusersResponse) ProtoMessage() {}
 
 func (x *DyListSuperusersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_account_proto_msgTypes[48]
+	mi := &file_account_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4000,7 +4226,7 @@ func (x *DyListSuperusersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyListSuperusersResponse.ProtoReflect.Descriptor instead.
 func (*DyListSuperusersResponse) Descriptor() ([]byte, []int) {
-	return file_account_proto_rawDescGZIP(), []int{48}
+	return file_account_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *DyListSuperusersResponse) GetAccounts() []*DyAccount {
@@ -4327,7 +4553,34 @@ const file_account_proto_rawDesc = "" +
 	"\tkey_label\x18\x04 \x01(\tR\bkeyLabel\x12 \n" +
 	"\vfingerprint\x18\x05 \x01(\tR\vfingerprint\x12\x18\n" +
 	"\apurpose\x18\x06 \x01(\tR\apurpose\x12\x16\n" +
-	"\x06reason\x18\a \x01(\tR\x06reason\"\x99\x01\n" +
+	"\x06reason\x18\a \x01(\tR\x06reason\"\x88\x02\n" +
+	"'DyExchangeSSHPublicKeyForSessionRequest\x12#\n" +
+	"\rservice_token\x18\x01 \x01(\tR\fserviceToken\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x02 \x01(\tR\tpublicKey\x12 \n" +
+	"\vfingerprint\x18\x03 \x01(\tR\vfingerprint\x12\x18\n" +
+	"\apurpose\x18\x04 \x01(\tR\apurpose\x12\x1f\n" +
+	"\vdevice_name\x18\x05 \x01(\tR\n" +
+	"deviceName\x12\x1d\n" +
+	"\n" +
+	"ip_address\x18\x06 \x01(\tR\tipAddress\x12\x1d\n" +
+	"\n" +
+	"user_agent\x18\a \x01(\tR\tuserAgent\"\xfc\x02\n" +
+	"(DyExchangeSSHPublicKeyForSessionResponse\x12\x14\n" +
+	"\x05valid\x18\x01 \x01(\bR\x05valid\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x02 \x01(\tR\taccountId\x12\x15\n" +
+	"\x06key_id\x18\x03 \x01(\tR\x05keyId\x12\x1b\n" +
+	"\tkey_label\x18\x04 \x01(\tR\bkeyLabel\x12 \n" +
+	"\vfingerprint\x18\x05 \x01(\tR\vfingerprint\x12\x18\n" +
+	"\apurpose\x18\x06 \x01(\tR\apurpose\x12\x16\n" +
+	"\x06reason\x18\a \x01(\tR\x06reason\x12!\n" +
+	"\faccess_token\x18\b \x01(\tR\vaccessToken\x12#\n" +
+	"\rrefresh_token\x18\t \x01(\tR\frefreshToken\x12\x1d\n" +
+	"\n" +
+	"expires_in\x18\n" +
+	" \x01(\x03R\texpiresIn\x12,\n" +
+	"\x12refresh_expires_in\x18\v \x01(\x03R\x10refreshExpiresIn\"\x99\x01\n" +
 	"\x1dDyValidatePGPPublicKeyRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12\x1d\n" +
@@ -4462,10 +4715,11 @@ const file_account_proto_rawDesc = "" +
 	"\x0fListConnections\x12\x1f.proto.DyListConnectionsRequest\x1a .proto.DyListConnectionsResponse\"\x00\x12b\n" +
 	"\x13GetValidAccessToken\x12#.proto.DyGetValidAccessTokenRequest\x1a$.proto.DyGetValidAccessTokenResponse\"\x00\x12T\n" +
 	"\x16GetAccountByConnection\x12&.proto.DyGetAccountByConnectionRequest\x1a\x10.proto.DyAccount\"\x00\x12K\n" +
-	"\x0eListSuperusers\x12\x16.google.protobuf.Empty\x1a\x1f.proto.DyListSuperusersResponse\"\x002\xb8\x02\n" +
+	"\x0eListSuperusers\x12\x16.google.protobuf.Empty\x1a\x1f.proto.DyListSuperusersResponse\"\x002\xbe\x03\n" +
 	"\x13DyAccountKeyService\x12S\n" +
 	"\x0eListPublicKeys\x12\x1e.proto.DyListPublicKeysRequest\x1a\x1f.proto.DyListPublicKeysResponse\"\x00\x12e\n" +
-	"\x14ValidateSSHPublicKey\x12$.proto.DyValidateSSHPublicKeyRequest\x1a%.proto.DyValidateSSHPublicKeyResponse\"\x00\x12e\n" +
+	"\x14ValidateSSHPublicKey\x12$.proto.DyValidateSSHPublicKeyRequest\x1a%.proto.DyValidateSSHPublicKeyResponse\"\x00\x12\x83\x01\n" +
+	"\x1eExchangeSSHPublicKeyForSession\x12..proto.DyExchangeSSHPublicKeyForSessionRequest\x1a/.proto.DyExchangeSSHPublicKeyForSessionResponse\"\x00\x12e\n" +
 	"\x14ValidatePGPPublicKey\x12$.proto.DyValidatePGPPublicKeyRequest\x1a%.proto.DyValidatePGPPublicKeyResponse\"\x002\xd1\x02\n" +
 	"\x13DyMagicSpellService\x12K\n" +
 	"\x10CreateMagicSpell\x12 .proto.DyCreateMagicSpellRequest\x1a\x13.proto.DyMagicSpell\"\x00\x12N\n" +
@@ -4486,191 +4740,193 @@ func file_account_proto_rawDescGZIP() []byte {
 }
 
 var file_account_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
-var file_account_proto_msgTypes = make([]protoimpl.MessageInfo, 56)
+var file_account_proto_msgTypes = make([]protoimpl.MessageInfo, 58)
 var file_account_proto_goTypes = []any{
-	(DyAccountBoardItemKind)(0),             // 0: proto.DyAccountBoardItemKind
-	(DyVerificationMarkType)(0),             // 1: proto.DyVerificationMarkType
-	(DyAccountContactType)(0),               // 2: proto.DyAccountContactType
-	(DyAccountAuthFactorType)(0),            // 3: proto.DyAccountAuthFactorType
-	(DyMagicSpellType)(0),                   // 4: proto.DyMagicSpellType
-	(DyAccountPublicKeyKind)(0),             // 5: proto.DyAccountPublicKeyKind
-	(*DyAccount)(nil),                       // 6: proto.DyAccount
-	(*DyUsernameColor)(nil),                 // 7: proto.DyUsernameColor
-	(*DyProfileLink)(nil),                   // 8: proto.DyProfileLink
-	(*DyAccountBoardItem)(nil),              // 9: proto.DyAccountBoardItem
-	(*DyAccountProfile)(nil),                // 10: proto.DyAccountProfile
-	(*DyVerificationMark)(nil),              // 11: proto.DyVerificationMark
-	(*DyAccountContact)(nil),                // 12: proto.DyAccountContact
-	(*DyAccountAuthFactor)(nil),             // 13: proto.DyAccountAuthFactor
-	(*DyAccountBadge)(nil),                  // 14: proto.DyAccountBadge
-	(*DyBadgeReferenceObject)(nil),          // 15: proto.DyBadgeReferenceObject
-	(*DyAccountConnection)(nil),             // 16: proto.DyAccountConnection
-	(*DyMagicSpell)(nil),                    // 17: proto.DyMagicSpell
-	(*DyRelationship)(nil),                  // 18: proto.DyRelationship
-	(*DyGetAccountRequest)(nil),             // 19: proto.DyGetAccountRequest
-	(*DyGetBotAccountRequest)(nil),          // 20: proto.DyGetBotAccountRequest
-	(*DyGetAccountBatchRequest)(nil),        // 21: proto.DyGetAccountBatchRequest
-	(*DyGetBotAccountBatchRequest)(nil),     // 22: proto.DyGetBotAccountBatchRequest
-	(*DyLookupAccountBatchRequest)(nil),     // 23: proto.DyLookupAccountBatchRequest
-	(*DySearchAccountRequest)(nil),          // 24: proto.DySearchAccountRequest
-	(*DyGetAccountBatchResponse)(nil),       // 25: proto.DyGetAccountBatchResponse
-	(*DyListAccountsRequest)(nil),           // 26: proto.DyListAccountsRequest
-	(*DyListAccountsResponse)(nil),          // 27: proto.DyListAccountsResponse
-	(*DyRenameAccountRequest)(nil),          // 28: proto.DyRenameAccountRequest
-	(*DyRenameAccountResponse)(nil),         // 29: proto.DyRenameAccountResponse
-	(*DyListContactsRequest)(nil),           // 30: proto.DyListContactsRequest
-	(*DyListContactsResponse)(nil),          // 31: proto.DyListContactsResponse
-	(*DyGetContactsByProviderRequest)(nil),  // 32: proto.DyGetContactsByProviderRequest
-	(*DyGetContactsByAccountRequest)(nil),   // 33: proto.DyGetContactsByAccountRequest
-	(*DyAccountPublicKey)(nil),              // 34: proto.DyAccountPublicKey
-	(*DyListPublicKeysRequest)(nil),         // 35: proto.DyListPublicKeysRequest
-	(*DyListPublicKeysResponse)(nil),        // 36: proto.DyListPublicKeysResponse
-	(*DyValidateSSHPublicKeyRequest)(nil),   // 37: proto.DyValidateSSHPublicKeyRequest
-	(*DyValidateSSHPublicKeyResponse)(nil),  // 38: proto.DyValidateSSHPublicKeyResponse
-	(*DyValidatePGPPublicKeyRequest)(nil),   // 39: proto.DyValidatePGPPublicKeyRequest
-	(*DyValidatePGPPublicKeyResponse)(nil),  // 40: proto.DyValidatePGPPublicKeyResponse
-	(*DyListAuthFactorsRequest)(nil),        // 41: proto.DyListAuthFactorsRequest
-	(*DyListAuthFactorsResponse)(nil),       // 42: proto.DyListAuthFactorsResponse
-	(*DyResetPasswordFactorRequest)(nil),    // 43: proto.DyResetPasswordFactorRequest
-	(*DyCreateMagicSpellRequest)(nil),       // 44: proto.DyCreateMagicSpellRequest
-	(*DyNotifyMagicSpellRequest)(nil),       // 45: proto.DyNotifyMagicSpellRequest
-	(*DyGetMagicSpellRequest)(nil),          // 46: proto.DyGetMagicSpellRequest
-	(*DyApplyMagicSpellRequest)(nil),        // 47: proto.DyApplyMagicSpellRequest
-	(*DyApplyMagicSpellResponse)(nil),       // 48: proto.DyApplyMagicSpellResponse
-	(*DyListConnectionsRequest)(nil),        // 49: proto.DyListConnectionsRequest
-	(*DyListConnectionsResponse)(nil),       // 50: proto.DyListConnectionsResponse
-	(*DyGetValidAccessTokenRequest)(nil),    // 51: proto.DyGetValidAccessTokenRequest
-	(*DyGetValidAccessTokenResponse)(nil),   // 52: proto.DyGetValidAccessTokenResponse
-	(*DyGetAccountByConnectionRequest)(nil), // 53: proto.DyGetAccountByConnectionRequest
-	(*DyListSuperusersResponse)(nil),        // 54: proto.DyListSuperusersResponse
-	nil,                                     // 55: proto.DyAccountAuthFactor.ConfigEntry
-	nil,                                     // 56: proto.DyAccountAuthFactor.CreatedResponseEntry
-	nil,                                     // 57: proto.DyAccountBadge.MetaEntry
-	nil,                                     // 58: proto.DyBadgeReferenceObject.MetaEntry
-	nil,                                     // 59: proto.DyAccountConnection.MetaEntry
-	nil,                                     // 60: proto.DyMagicSpell.MetaEntry
-	nil,                                     // 61: proto.DyCreateMagicSpellRequest.MetaEntry
-	(*timestamppb.Timestamp)(nil),           // 62: google.protobuf.Timestamp
-	(*DySubscriptionReferenceObject)(nil),   // 63: proto.DySubscriptionReferenceObject
-	(*wrapperspb.StringValue)(nil),          // 64: google.protobuf.StringValue
-	(*DyCloudFile)(nil),                     // 65: proto.DyCloudFile
-	(*structpb.Struct)(nil),                 // 66: google.protobuf.Struct
-	(*structpb.Value)(nil),                  // 67: google.protobuf.Value
-	(*emptypb.Empty)(nil),                   // 68: google.protobuf.Empty
+	(DyAccountBoardItemKind)(0),                      // 0: proto.DyAccountBoardItemKind
+	(DyVerificationMarkType)(0),                      // 1: proto.DyVerificationMarkType
+	(DyAccountContactType)(0),                        // 2: proto.DyAccountContactType
+	(DyAccountAuthFactorType)(0),                     // 3: proto.DyAccountAuthFactorType
+	(DyMagicSpellType)(0),                            // 4: proto.DyMagicSpellType
+	(DyAccountPublicKeyKind)(0),                      // 5: proto.DyAccountPublicKeyKind
+	(*DyAccount)(nil),                                // 6: proto.DyAccount
+	(*DyUsernameColor)(nil),                          // 7: proto.DyUsernameColor
+	(*DyProfileLink)(nil),                            // 8: proto.DyProfileLink
+	(*DyAccountBoardItem)(nil),                       // 9: proto.DyAccountBoardItem
+	(*DyAccountProfile)(nil),                         // 10: proto.DyAccountProfile
+	(*DyVerificationMark)(nil),                       // 11: proto.DyVerificationMark
+	(*DyAccountContact)(nil),                         // 12: proto.DyAccountContact
+	(*DyAccountAuthFactor)(nil),                      // 13: proto.DyAccountAuthFactor
+	(*DyAccountBadge)(nil),                           // 14: proto.DyAccountBadge
+	(*DyBadgeReferenceObject)(nil),                   // 15: proto.DyBadgeReferenceObject
+	(*DyAccountConnection)(nil),                      // 16: proto.DyAccountConnection
+	(*DyMagicSpell)(nil),                             // 17: proto.DyMagicSpell
+	(*DyRelationship)(nil),                           // 18: proto.DyRelationship
+	(*DyGetAccountRequest)(nil),                      // 19: proto.DyGetAccountRequest
+	(*DyGetBotAccountRequest)(nil),                   // 20: proto.DyGetBotAccountRequest
+	(*DyGetAccountBatchRequest)(nil),                 // 21: proto.DyGetAccountBatchRequest
+	(*DyGetBotAccountBatchRequest)(nil),              // 22: proto.DyGetBotAccountBatchRequest
+	(*DyLookupAccountBatchRequest)(nil),              // 23: proto.DyLookupAccountBatchRequest
+	(*DySearchAccountRequest)(nil),                   // 24: proto.DySearchAccountRequest
+	(*DyGetAccountBatchResponse)(nil),                // 25: proto.DyGetAccountBatchResponse
+	(*DyListAccountsRequest)(nil),                    // 26: proto.DyListAccountsRequest
+	(*DyListAccountsResponse)(nil),                   // 27: proto.DyListAccountsResponse
+	(*DyRenameAccountRequest)(nil),                   // 28: proto.DyRenameAccountRequest
+	(*DyRenameAccountResponse)(nil),                  // 29: proto.DyRenameAccountResponse
+	(*DyListContactsRequest)(nil),                    // 30: proto.DyListContactsRequest
+	(*DyListContactsResponse)(nil),                   // 31: proto.DyListContactsResponse
+	(*DyGetContactsByProviderRequest)(nil),           // 32: proto.DyGetContactsByProviderRequest
+	(*DyGetContactsByAccountRequest)(nil),            // 33: proto.DyGetContactsByAccountRequest
+	(*DyAccountPublicKey)(nil),                       // 34: proto.DyAccountPublicKey
+	(*DyListPublicKeysRequest)(nil),                  // 35: proto.DyListPublicKeysRequest
+	(*DyListPublicKeysResponse)(nil),                 // 36: proto.DyListPublicKeysResponse
+	(*DyValidateSSHPublicKeyRequest)(nil),            // 37: proto.DyValidateSSHPublicKeyRequest
+	(*DyValidateSSHPublicKeyResponse)(nil),           // 38: proto.DyValidateSSHPublicKeyResponse
+	(*DyExchangeSSHPublicKeyForSessionRequest)(nil),  // 39: proto.DyExchangeSSHPublicKeyForSessionRequest
+	(*DyExchangeSSHPublicKeyForSessionResponse)(nil), // 40: proto.DyExchangeSSHPublicKeyForSessionResponse
+	(*DyValidatePGPPublicKeyRequest)(nil),            // 41: proto.DyValidatePGPPublicKeyRequest
+	(*DyValidatePGPPublicKeyResponse)(nil),           // 42: proto.DyValidatePGPPublicKeyResponse
+	(*DyListAuthFactorsRequest)(nil),                 // 43: proto.DyListAuthFactorsRequest
+	(*DyListAuthFactorsResponse)(nil),                // 44: proto.DyListAuthFactorsResponse
+	(*DyResetPasswordFactorRequest)(nil),             // 45: proto.DyResetPasswordFactorRequest
+	(*DyCreateMagicSpellRequest)(nil),                // 46: proto.DyCreateMagicSpellRequest
+	(*DyNotifyMagicSpellRequest)(nil),                // 47: proto.DyNotifyMagicSpellRequest
+	(*DyGetMagicSpellRequest)(nil),                   // 48: proto.DyGetMagicSpellRequest
+	(*DyApplyMagicSpellRequest)(nil),                 // 49: proto.DyApplyMagicSpellRequest
+	(*DyApplyMagicSpellResponse)(nil),                // 50: proto.DyApplyMagicSpellResponse
+	(*DyListConnectionsRequest)(nil),                 // 51: proto.DyListConnectionsRequest
+	(*DyListConnectionsResponse)(nil),                // 52: proto.DyListConnectionsResponse
+	(*DyGetValidAccessTokenRequest)(nil),             // 53: proto.DyGetValidAccessTokenRequest
+	(*DyGetValidAccessTokenResponse)(nil),            // 54: proto.DyGetValidAccessTokenResponse
+	(*DyGetAccountByConnectionRequest)(nil),          // 55: proto.DyGetAccountByConnectionRequest
+	(*DyListSuperusersResponse)(nil),                 // 56: proto.DyListSuperusersResponse
+	nil,                                              // 57: proto.DyAccountAuthFactor.ConfigEntry
+	nil,                                              // 58: proto.DyAccountAuthFactor.CreatedResponseEntry
+	nil,                                              // 59: proto.DyAccountBadge.MetaEntry
+	nil,                                              // 60: proto.DyBadgeReferenceObject.MetaEntry
+	nil,                                              // 61: proto.DyAccountConnection.MetaEntry
+	nil,                                              // 62: proto.DyMagicSpell.MetaEntry
+	nil,                                              // 63: proto.DyCreateMagicSpellRequest.MetaEntry
+	(*timestamppb.Timestamp)(nil),                    // 64: google.protobuf.Timestamp
+	(*DySubscriptionReferenceObject)(nil),            // 65: proto.DySubscriptionReferenceObject
+	(*wrapperspb.StringValue)(nil),                   // 66: google.protobuf.StringValue
+	(*DyCloudFile)(nil),                              // 67: proto.DyCloudFile
+	(*structpb.Struct)(nil),                          // 68: google.protobuf.Struct
+	(*structpb.Value)(nil),                           // 69: google.protobuf.Value
+	(*emptypb.Empty)(nil),                            // 70: google.protobuf.Empty
 }
 var file_account_proto_depIdxs = []int32{
-	62,  // 0: proto.DyAccount.activated_at:type_name -> google.protobuf.Timestamp
+	64,  // 0: proto.DyAccount.activated_at:type_name -> google.protobuf.Timestamp
 	10,  // 1: proto.DyAccount.profile:type_name -> proto.DyAccountProfile
-	63,  // 2: proto.DyAccount.perk_subscription:type_name -> proto.DySubscriptionReferenceObject
+	65,  // 2: proto.DyAccount.perk_subscription:type_name -> proto.DySubscriptionReferenceObject
 	12,  // 3: proto.DyAccount.contacts:type_name -> proto.DyAccountContact
 	14,  // 4: proto.DyAccount.badges:type_name -> proto.DyAccountBadge
 	13,  // 5: proto.DyAccount.auth_factors:type_name -> proto.DyAccountAuthFactor
 	16,  // 6: proto.DyAccount.connections:type_name -> proto.DyAccountConnection
 	18,  // 7: proto.DyAccount.outgoing_relationships:type_name -> proto.DyRelationship
 	18,  // 8: proto.DyAccount.incoming_relationships:type_name -> proto.DyRelationship
-	62,  // 9: proto.DyAccount.created_at:type_name -> google.protobuf.Timestamp
-	62,  // 10: proto.DyAccount.updated_at:type_name -> google.protobuf.Timestamp
-	64,  // 11: proto.DyAccount.automated_id:type_name -> google.protobuf.StringValue
-	65,  // 12: proto.DyAccount.picture:type_name -> proto.DyCloudFile
-	65,  // 13: proto.DyAccount.background:type_name -> proto.DyCloudFile
-	64,  // 14: proto.DyUsernameColor.value:type_name -> google.protobuf.StringValue
-	64,  // 15: proto.DyUsernameColor.direction:type_name -> google.protobuf.StringValue
+	64,  // 9: proto.DyAccount.created_at:type_name -> google.protobuf.Timestamp
+	64,  // 10: proto.DyAccount.updated_at:type_name -> google.protobuf.Timestamp
+	66,  // 11: proto.DyAccount.automated_id:type_name -> google.protobuf.StringValue
+	67,  // 12: proto.DyAccount.picture:type_name -> proto.DyCloudFile
+	67,  // 13: proto.DyAccount.background:type_name -> proto.DyCloudFile
+	66,  // 14: proto.DyUsernameColor.value:type_name -> google.protobuf.StringValue
+	66,  // 15: proto.DyUsernameColor.direction:type_name -> google.protobuf.StringValue
 	0,   // 16: proto.DyAccountBoardItem.kind:type_name -> proto.DyAccountBoardItemKind
-	66,  // 17: proto.DyAccountBoardItem.payload:type_name -> google.protobuf.Struct
-	64,  // 18: proto.DyAccountProfile.first_name:type_name -> google.protobuf.StringValue
-	64,  // 19: proto.DyAccountProfile.middle_name:type_name -> google.protobuf.StringValue
-	64,  // 20: proto.DyAccountProfile.last_name:type_name -> google.protobuf.StringValue
-	64,  // 21: proto.DyAccountProfile.bio:type_name -> google.protobuf.StringValue
-	64,  // 22: proto.DyAccountProfile.gender:type_name -> google.protobuf.StringValue
-	64,  // 23: proto.DyAccountProfile.pronouns:type_name -> google.protobuf.StringValue
-	64,  // 24: proto.DyAccountProfile.time_zone:type_name -> google.protobuf.StringValue
-	64,  // 25: proto.DyAccountProfile.location:type_name -> google.protobuf.StringValue
-	62,  // 26: proto.DyAccountProfile.birthday:type_name -> google.protobuf.Timestamp
-	62,  // 27: proto.DyAccountProfile.last_seen_at:type_name -> google.protobuf.Timestamp
+	68,  // 17: proto.DyAccountBoardItem.payload:type_name -> google.protobuf.Struct
+	66,  // 18: proto.DyAccountProfile.first_name:type_name -> google.protobuf.StringValue
+	66,  // 19: proto.DyAccountProfile.middle_name:type_name -> google.protobuf.StringValue
+	66,  // 20: proto.DyAccountProfile.last_name:type_name -> google.protobuf.StringValue
+	66,  // 21: proto.DyAccountProfile.bio:type_name -> google.protobuf.StringValue
+	66,  // 22: proto.DyAccountProfile.gender:type_name -> google.protobuf.StringValue
+	66,  // 23: proto.DyAccountProfile.pronouns:type_name -> google.protobuf.StringValue
+	66,  // 24: proto.DyAccountProfile.time_zone:type_name -> google.protobuf.StringValue
+	66,  // 25: proto.DyAccountProfile.location:type_name -> google.protobuf.StringValue
+	64,  // 26: proto.DyAccountProfile.birthday:type_name -> google.protobuf.Timestamp
+	64,  // 27: proto.DyAccountProfile.last_seen_at:type_name -> google.protobuf.Timestamp
 	11,  // 28: proto.DyAccountProfile.verification:type_name -> proto.DyVerificationMark
 	15,  // 29: proto.DyAccountProfile.active_badge:type_name -> proto.DyBadgeReferenceObject
-	65,  // 30: proto.DyAccountProfile.picture:type_name -> proto.DyCloudFile
-	65,  // 31: proto.DyAccountProfile.background:type_name -> proto.DyCloudFile
-	62,  // 32: proto.DyAccountProfile.created_at:type_name -> google.protobuf.Timestamp
-	62,  // 33: proto.DyAccountProfile.updated_at:type_name -> google.protobuf.Timestamp
+	67,  // 30: proto.DyAccountProfile.picture:type_name -> proto.DyCloudFile
+	67,  // 31: proto.DyAccountProfile.background:type_name -> proto.DyCloudFile
+	64,  // 32: proto.DyAccountProfile.created_at:type_name -> google.protobuf.Timestamp
+	64,  // 33: proto.DyAccountProfile.updated_at:type_name -> google.protobuf.Timestamp
 	7,   // 34: proto.DyAccountProfile.username_color:type_name -> proto.DyUsernameColor
 	8,   // 35: proto.DyAccountProfile.links:type_name -> proto.DyProfileLink
 	9,   // 36: proto.DyAccountProfile.board:type_name -> proto.DyAccountBoardItem
 	1,   // 37: proto.DyVerificationMark.type:type_name -> proto.DyVerificationMarkType
-	62,  // 38: proto.DyVerificationMark.created_at:type_name -> google.protobuf.Timestamp
-	62,  // 39: proto.DyVerificationMark.updated_at:type_name -> google.protobuf.Timestamp
+	64,  // 38: proto.DyVerificationMark.created_at:type_name -> google.protobuf.Timestamp
+	64,  // 39: proto.DyVerificationMark.updated_at:type_name -> google.protobuf.Timestamp
 	2,   // 40: proto.DyAccountContact.type:type_name -> proto.DyAccountContactType
-	62,  // 41: proto.DyAccountContact.verified_at:type_name -> google.protobuf.Timestamp
-	62,  // 42: proto.DyAccountContact.created_at:type_name -> google.protobuf.Timestamp
-	62,  // 43: proto.DyAccountContact.updated_at:type_name -> google.protobuf.Timestamp
+	64,  // 41: proto.DyAccountContact.verified_at:type_name -> google.protobuf.Timestamp
+	64,  // 42: proto.DyAccountContact.created_at:type_name -> google.protobuf.Timestamp
+	64,  // 43: proto.DyAccountContact.updated_at:type_name -> google.protobuf.Timestamp
 	3,   // 44: proto.DyAccountAuthFactor.type:type_name -> proto.DyAccountAuthFactorType
-	64,  // 45: proto.DyAccountAuthFactor.secret:type_name -> google.protobuf.StringValue
-	55,  // 46: proto.DyAccountAuthFactor.config:type_name -> proto.DyAccountAuthFactor.ConfigEntry
-	62,  // 47: proto.DyAccountAuthFactor.enabled_at:type_name -> google.protobuf.Timestamp
-	62,  // 48: proto.DyAccountAuthFactor.expired_at:type_name -> google.protobuf.Timestamp
-	56,  // 49: proto.DyAccountAuthFactor.created_response:type_name -> proto.DyAccountAuthFactor.CreatedResponseEntry
-	62,  // 50: proto.DyAccountAuthFactor.created_at:type_name -> google.protobuf.Timestamp
-	62,  // 51: proto.DyAccountAuthFactor.updated_at:type_name -> google.protobuf.Timestamp
-	64,  // 52: proto.DyAccountBadge.label:type_name -> google.protobuf.StringValue
-	64,  // 53: proto.DyAccountBadge.caption:type_name -> google.protobuf.StringValue
-	57,  // 54: proto.DyAccountBadge.meta:type_name -> proto.DyAccountBadge.MetaEntry
-	62,  // 55: proto.DyAccountBadge.activated_at:type_name -> google.protobuf.Timestamp
-	62,  // 56: proto.DyAccountBadge.expired_at:type_name -> google.protobuf.Timestamp
-	62,  // 57: proto.DyAccountBadge.created_at:type_name -> google.protobuf.Timestamp
-	62,  // 58: proto.DyAccountBadge.updated_at:type_name -> google.protobuf.Timestamp
-	64,  // 59: proto.DyBadgeReferenceObject.label:type_name -> google.protobuf.StringValue
-	64,  // 60: proto.DyBadgeReferenceObject.caption:type_name -> google.protobuf.StringValue
-	58,  // 61: proto.DyBadgeReferenceObject.meta:type_name -> proto.DyBadgeReferenceObject.MetaEntry
-	62,  // 62: proto.DyBadgeReferenceObject.activated_at:type_name -> google.protobuf.Timestamp
-	62,  // 63: proto.DyBadgeReferenceObject.expired_at:type_name -> google.protobuf.Timestamp
-	59,  // 64: proto.DyAccountConnection.meta:type_name -> proto.DyAccountConnection.MetaEntry
-	64,  // 65: proto.DyAccountConnection.access_token:type_name -> google.protobuf.StringValue
-	64,  // 66: proto.DyAccountConnection.refresh_token:type_name -> google.protobuf.StringValue
-	62,  // 67: proto.DyAccountConnection.last_used_at:type_name -> google.protobuf.Timestamp
-	62,  // 68: proto.DyAccountConnection.created_at:type_name -> google.protobuf.Timestamp
-	62,  // 69: proto.DyAccountConnection.updated_at:type_name -> google.protobuf.Timestamp
+	66,  // 45: proto.DyAccountAuthFactor.secret:type_name -> google.protobuf.StringValue
+	57,  // 46: proto.DyAccountAuthFactor.config:type_name -> proto.DyAccountAuthFactor.ConfigEntry
+	64,  // 47: proto.DyAccountAuthFactor.enabled_at:type_name -> google.protobuf.Timestamp
+	64,  // 48: proto.DyAccountAuthFactor.expired_at:type_name -> google.protobuf.Timestamp
+	58,  // 49: proto.DyAccountAuthFactor.created_response:type_name -> proto.DyAccountAuthFactor.CreatedResponseEntry
+	64,  // 50: proto.DyAccountAuthFactor.created_at:type_name -> google.protobuf.Timestamp
+	64,  // 51: proto.DyAccountAuthFactor.updated_at:type_name -> google.protobuf.Timestamp
+	66,  // 52: proto.DyAccountBadge.label:type_name -> google.protobuf.StringValue
+	66,  // 53: proto.DyAccountBadge.caption:type_name -> google.protobuf.StringValue
+	59,  // 54: proto.DyAccountBadge.meta:type_name -> proto.DyAccountBadge.MetaEntry
+	64,  // 55: proto.DyAccountBadge.activated_at:type_name -> google.protobuf.Timestamp
+	64,  // 56: proto.DyAccountBadge.expired_at:type_name -> google.protobuf.Timestamp
+	64,  // 57: proto.DyAccountBadge.created_at:type_name -> google.protobuf.Timestamp
+	64,  // 58: proto.DyAccountBadge.updated_at:type_name -> google.protobuf.Timestamp
+	66,  // 59: proto.DyBadgeReferenceObject.label:type_name -> google.protobuf.StringValue
+	66,  // 60: proto.DyBadgeReferenceObject.caption:type_name -> google.protobuf.StringValue
+	60,  // 61: proto.DyBadgeReferenceObject.meta:type_name -> proto.DyBadgeReferenceObject.MetaEntry
+	64,  // 62: proto.DyBadgeReferenceObject.activated_at:type_name -> google.protobuf.Timestamp
+	64,  // 63: proto.DyBadgeReferenceObject.expired_at:type_name -> google.protobuf.Timestamp
+	61,  // 64: proto.DyAccountConnection.meta:type_name -> proto.DyAccountConnection.MetaEntry
+	66,  // 65: proto.DyAccountConnection.access_token:type_name -> google.protobuf.StringValue
+	66,  // 66: proto.DyAccountConnection.refresh_token:type_name -> google.protobuf.StringValue
+	64,  // 67: proto.DyAccountConnection.last_used_at:type_name -> google.protobuf.Timestamp
+	64,  // 68: proto.DyAccountConnection.created_at:type_name -> google.protobuf.Timestamp
+	64,  // 69: proto.DyAccountConnection.updated_at:type_name -> google.protobuf.Timestamp
 	4,   // 70: proto.DyMagicSpell.type:type_name -> proto.DyMagicSpellType
-	62,  // 71: proto.DyMagicSpell.expires_at:type_name -> google.protobuf.Timestamp
-	62,  // 72: proto.DyMagicSpell.affected_at:type_name -> google.protobuf.Timestamp
-	60,  // 73: proto.DyMagicSpell.meta:type_name -> proto.DyMagicSpell.MetaEntry
-	64,  // 74: proto.DyMagicSpell.account_id:type_name -> google.protobuf.StringValue
-	64,  // 75: proto.DyMagicSpell.spell_word:type_name -> google.protobuf.StringValue
-	62,  // 76: proto.DyMagicSpell.created_at:type_name -> google.protobuf.Timestamp
-	62,  // 77: proto.DyMagicSpell.updated_at:type_name -> google.protobuf.Timestamp
+	64,  // 71: proto.DyMagicSpell.expires_at:type_name -> google.protobuf.Timestamp
+	64,  // 72: proto.DyMagicSpell.affected_at:type_name -> google.protobuf.Timestamp
+	62,  // 73: proto.DyMagicSpell.meta:type_name -> proto.DyMagicSpell.MetaEntry
+	66,  // 74: proto.DyMagicSpell.account_id:type_name -> google.protobuf.StringValue
+	66,  // 75: proto.DyMagicSpell.spell_word:type_name -> google.protobuf.StringValue
+	64,  // 76: proto.DyMagicSpell.created_at:type_name -> google.protobuf.Timestamp
+	64,  // 77: proto.DyMagicSpell.updated_at:type_name -> google.protobuf.Timestamp
 	6,   // 78: proto.DyRelationship.account:type_name -> proto.DyAccount
 	6,   // 79: proto.DyRelationship.related:type_name -> proto.DyAccount
-	62,  // 80: proto.DyRelationship.created_at:type_name -> google.protobuf.Timestamp
-	62,  // 81: proto.DyRelationship.updated_at:type_name -> google.protobuf.Timestamp
+	64,  // 80: proto.DyRelationship.created_at:type_name -> google.protobuf.Timestamp
+	64,  // 81: proto.DyRelationship.updated_at:type_name -> google.protobuf.Timestamp
 	6,   // 82: proto.DyGetAccountBatchResponse.accounts:type_name -> proto.DyAccount
 	6,   // 83: proto.DyListAccountsResponse.accounts:type_name -> proto.DyAccount
 	6,   // 84: proto.DyRenameAccountResponse.account:type_name -> proto.DyAccount
 	2,   // 85: proto.DyListContactsRequest.type:type_name -> proto.DyAccountContactType
 	12,  // 86: proto.DyListContactsResponse.contacts:type_name -> proto.DyAccountContact
 	5,   // 87: proto.DyAccountPublicKey.kind:type_name -> proto.DyAccountPublicKeyKind
-	62,  // 88: proto.DyAccountPublicKey.created_at:type_name -> google.protobuf.Timestamp
-	62,  // 89: proto.DyAccountPublicKey.updated_at:type_name -> google.protobuf.Timestamp
+	64,  // 88: proto.DyAccountPublicKey.created_at:type_name -> google.protobuf.Timestamp
+	64,  // 89: proto.DyAccountPublicKey.updated_at:type_name -> google.protobuf.Timestamp
 	5,   // 90: proto.DyListPublicKeysRequest.kind:type_name -> proto.DyAccountPublicKeyKind
 	34,  // 91: proto.DyListPublicKeysResponse.keys:type_name -> proto.DyAccountPublicKey
 	13,  // 92: proto.DyListAuthFactorsResponse.factors:type_name -> proto.DyAccountAuthFactor
-	64,  // 93: proto.DyResetPasswordFactorRequest.spell_id:type_name -> google.protobuf.StringValue
-	64,  // 94: proto.DyCreateMagicSpellRequest.account_id:type_name -> google.protobuf.StringValue
+	66,  // 93: proto.DyResetPasswordFactorRequest.spell_id:type_name -> google.protobuf.StringValue
+	66,  // 94: proto.DyCreateMagicSpellRequest.account_id:type_name -> google.protobuf.StringValue
 	4,   // 95: proto.DyCreateMagicSpellRequest.type:type_name -> proto.DyMagicSpellType
-	61,  // 96: proto.DyCreateMagicSpellRequest.meta:type_name -> proto.DyCreateMagicSpellRequest.MetaEntry
-	62,  // 97: proto.DyCreateMagicSpellRequest.expires_at:type_name -> google.protobuf.Timestamp
-	62,  // 98: proto.DyCreateMagicSpellRequest.affected_at:type_name -> google.protobuf.Timestamp
-	64,  // 99: proto.DyCreateMagicSpellRequest.code:type_name -> google.protobuf.StringValue
-	64,  // 100: proto.DyApplyMagicSpellRequest.new_password:type_name -> google.protobuf.StringValue
+	63,  // 96: proto.DyCreateMagicSpellRequest.meta:type_name -> proto.DyCreateMagicSpellRequest.MetaEntry
+	64,  // 97: proto.DyCreateMagicSpellRequest.expires_at:type_name -> google.protobuf.Timestamp
+	64,  // 98: proto.DyCreateMagicSpellRequest.affected_at:type_name -> google.protobuf.Timestamp
+	66,  // 99: proto.DyCreateMagicSpellRequest.code:type_name -> google.protobuf.StringValue
+	66,  // 100: proto.DyApplyMagicSpellRequest.new_password:type_name -> google.protobuf.StringValue
 	17,  // 101: proto.DyApplyMagicSpellResponse.spell:type_name -> proto.DyMagicSpell
 	16,  // 102: proto.DyListConnectionsResponse.connections:type_name -> proto.DyAccountConnection
-	64,  // 103: proto.DyGetValidAccessTokenRequest.current_access_token:type_name -> google.protobuf.StringValue
+	66,  // 103: proto.DyGetValidAccessTokenRequest.current_access_token:type_name -> google.protobuf.StringValue
 	6,   // 104: proto.DyListSuperusersResponse.accounts:type_name -> proto.DyAccount
-	67,  // 105: proto.DyAccountAuthFactor.ConfigEntry.value:type_name -> google.protobuf.Value
-	67,  // 106: proto.DyAccountAuthFactor.CreatedResponseEntry.value:type_name -> google.protobuf.Value
-	67,  // 107: proto.DyAccountBadge.MetaEntry.value:type_name -> google.protobuf.Value
-	67,  // 108: proto.DyBadgeReferenceObject.MetaEntry.value:type_name -> google.protobuf.Value
-	67,  // 109: proto.DyAccountConnection.MetaEntry.value:type_name -> google.protobuf.Value
-	67,  // 110: proto.DyMagicSpell.MetaEntry.value:type_name -> google.protobuf.Value
-	67,  // 111: proto.DyCreateMagicSpellRequest.MetaEntry.value:type_name -> google.protobuf.Value
+	69,  // 105: proto.DyAccountAuthFactor.ConfigEntry.value:type_name -> google.protobuf.Value
+	69,  // 106: proto.DyAccountAuthFactor.CreatedResponseEntry.value:type_name -> google.protobuf.Value
+	69,  // 107: proto.DyAccountBadge.MetaEntry.value:type_name -> google.protobuf.Value
+	69,  // 108: proto.DyBadgeReferenceObject.MetaEntry.value:type_name -> google.protobuf.Value
+	69,  // 109: proto.DyAccountConnection.MetaEntry.value:type_name -> google.protobuf.Value
+	69,  // 110: proto.DyMagicSpell.MetaEntry.value:type_name -> google.protobuf.Value
+	69,  // 111: proto.DyCreateMagicSpellRequest.MetaEntry.value:type_name -> google.protobuf.Value
 	19,  // 112: proto.DyAccountService.GetAccount:input_type -> proto.DyGetAccountRequest
 	20,  // 113: proto.DyAccountService.GetBotAccount:input_type -> proto.DyGetBotAccountRequest
 	21,  // 114: proto.DyAccountService.GetAccountBatch:input_type -> proto.DyGetAccountBatchRequest
@@ -4682,45 +4938,47 @@ var file_account_proto_depIdxs = []int32{
 	30,  // 120: proto.DyAccountService.ListContacts:input_type -> proto.DyListContactsRequest
 	32,  // 121: proto.DyAccountService.GetContactsByProvider:input_type -> proto.DyGetContactsByProviderRequest
 	33,  // 122: proto.DyAccountService.GetContactsByAccount:input_type -> proto.DyGetContactsByAccountRequest
-	41,  // 123: proto.DyAccountService.ListAuthFactors:input_type -> proto.DyListAuthFactorsRequest
-	43,  // 124: proto.DyAccountService.ResetPasswordFactor:input_type -> proto.DyResetPasswordFactorRequest
-	49,  // 125: proto.DyAccountService.ListConnections:input_type -> proto.DyListConnectionsRequest
-	51,  // 126: proto.DyAccountService.GetValidAccessToken:input_type -> proto.DyGetValidAccessTokenRequest
-	53,  // 127: proto.DyAccountService.GetAccountByConnection:input_type -> proto.DyGetAccountByConnectionRequest
-	68,  // 128: proto.DyAccountService.ListSuperusers:input_type -> google.protobuf.Empty
+	43,  // 123: proto.DyAccountService.ListAuthFactors:input_type -> proto.DyListAuthFactorsRequest
+	45,  // 124: proto.DyAccountService.ResetPasswordFactor:input_type -> proto.DyResetPasswordFactorRequest
+	51,  // 125: proto.DyAccountService.ListConnections:input_type -> proto.DyListConnectionsRequest
+	53,  // 126: proto.DyAccountService.GetValidAccessToken:input_type -> proto.DyGetValidAccessTokenRequest
+	55,  // 127: proto.DyAccountService.GetAccountByConnection:input_type -> proto.DyGetAccountByConnectionRequest
+	70,  // 128: proto.DyAccountService.ListSuperusers:input_type -> google.protobuf.Empty
 	35,  // 129: proto.DyAccountKeyService.ListPublicKeys:input_type -> proto.DyListPublicKeysRequest
 	37,  // 130: proto.DyAccountKeyService.ValidateSSHPublicKey:input_type -> proto.DyValidateSSHPublicKeyRequest
-	39,  // 131: proto.DyAccountKeyService.ValidatePGPPublicKey:input_type -> proto.DyValidatePGPPublicKeyRequest
-	44,  // 132: proto.DyMagicSpellService.CreateMagicSpell:input_type -> proto.DyCreateMagicSpellRequest
-	45,  // 133: proto.DyMagicSpellService.NotifyMagicSpell:input_type -> proto.DyNotifyMagicSpellRequest
-	46,  // 134: proto.DyMagicSpellService.GetMagicSpell:input_type -> proto.DyGetMagicSpellRequest
-	47,  // 135: proto.DyMagicSpellService.ApplyMagicSpell:input_type -> proto.DyApplyMagicSpellRequest
-	6,   // 136: proto.DyAccountService.GetAccount:output_type -> proto.DyAccount
-	6,   // 137: proto.DyAccountService.GetBotAccount:output_type -> proto.DyAccount
-	25,  // 138: proto.DyAccountService.GetAccountBatch:output_type -> proto.DyGetAccountBatchResponse
-	25,  // 139: proto.DyAccountService.GetBotAccountBatch:output_type -> proto.DyGetAccountBatchResponse
-	25,  // 140: proto.DyAccountService.LookupAccountBatch:output_type -> proto.DyGetAccountBatchResponse
-	25,  // 141: proto.DyAccountService.SearchAccount:output_type -> proto.DyGetAccountBatchResponse
-	27,  // 142: proto.DyAccountService.ListAccounts:output_type -> proto.DyListAccountsResponse
-	29,  // 143: proto.DyAccountService.RenameAccount:output_type -> proto.DyRenameAccountResponse
-	31,  // 144: proto.DyAccountService.ListContacts:output_type -> proto.DyListContactsResponse
-	31,  // 145: proto.DyAccountService.GetContactsByProvider:output_type -> proto.DyListContactsResponse
-	31,  // 146: proto.DyAccountService.GetContactsByAccount:output_type -> proto.DyListContactsResponse
-	42,  // 147: proto.DyAccountService.ListAuthFactors:output_type -> proto.DyListAuthFactorsResponse
-	13,  // 148: proto.DyAccountService.ResetPasswordFactor:output_type -> proto.DyAccountAuthFactor
-	50,  // 149: proto.DyAccountService.ListConnections:output_type -> proto.DyListConnectionsResponse
-	52,  // 150: proto.DyAccountService.GetValidAccessToken:output_type -> proto.DyGetValidAccessTokenResponse
-	6,   // 151: proto.DyAccountService.GetAccountByConnection:output_type -> proto.DyAccount
-	54,  // 152: proto.DyAccountService.ListSuperusers:output_type -> proto.DyListSuperusersResponse
-	36,  // 153: proto.DyAccountKeyService.ListPublicKeys:output_type -> proto.DyListPublicKeysResponse
-	38,  // 154: proto.DyAccountKeyService.ValidateSSHPublicKey:output_type -> proto.DyValidateSSHPublicKeyResponse
-	40,  // 155: proto.DyAccountKeyService.ValidatePGPPublicKey:output_type -> proto.DyValidatePGPPublicKeyResponse
-	17,  // 156: proto.DyMagicSpellService.CreateMagicSpell:output_type -> proto.DyMagicSpell
-	68,  // 157: proto.DyMagicSpellService.NotifyMagicSpell:output_type -> google.protobuf.Empty
-	17,  // 158: proto.DyMagicSpellService.GetMagicSpell:output_type -> proto.DyMagicSpell
-	48,  // 159: proto.DyMagicSpellService.ApplyMagicSpell:output_type -> proto.DyApplyMagicSpellResponse
-	136, // [136:160] is the sub-list for method output_type
-	112, // [112:136] is the sub-list for method input_type
+	39,  // 131: proto.DyAccountKeyService.ExchangeSSHPublicKeyForSession:input_type -> proto.DyExchangeSSHPublicKeyForSessionRequest
+	41,  // 132: proto.DyAccountKeyService.ValidatePGPPublicKey:input_type -> proto.DyValidatePGPPublicKeyRequest
+	46,  // 133: proto.DyMagicSpellService.CreateMagicSpell:input_type -> proto.DyCreateMagicSpellRequest
+	47,  // 134: proto.DyMagicSpellService.NotifyMagicSpell:input_type -> proto.DyNotifyMagicSpellRequest
+	48,  // 135: proto.DyMagicSpellService.GetMagicSpell:input_type -> proto.DyGetMagicSpellRequest
+	49,  // 136: proto.DyMagicSpellService.ApplyMagicSpell:input_type -> proto.DyApplyMagicSpellRequest
+	6,   // 137: proto.DyAccountService.GetAccount:output_type -> proto.DyAccount
+	6,   // 138: proto.DyAccountService.GetBotAccount:output_type -> proto.DyAccount
+	25,  // 139: proto.DyAccountService.GetAccountBatch:output_type -> proto.DyGetAccountBatchResponse
+	25,  // 140: proto.DyAccountService.GetBotAccountBatch:output_type -> proto.DyGetAccountBatchResponse
+	25,  // 141: proto.DyAccountService.LookupAccountBatch:output_type -> proto.DyGetAccountBatchResponse
+	25,  // 142: proto.DyAccountService.SearchAccount:output_type -> proto.DyGetAccountBatchResponse
+	27,  // 143: proto.DyAccountService.ListAccounts:output_type -> proto.DyListAccountsResponse
+	29,  // 144: proto.DyAccountService.RenameAccount:output_type -> proto.DyRenameAccountResponse
+	31,  // 145: proto.DyAccountService.ListContacts:output_type -> proto.DyListContactsResponse
+	31,  // 146: proto.DyAccountService.GetContactsByProvider:output_type -> proto.DyListContactsResponse
+	31,  // 147: proto.DyAccountService.GetContactsByAccount:output_type -> proto.DyListContactsResponse
+	44,  // 148: proto.DyAccountService.ListAuthFactors:output_type -> proto.DyListAuthFactorsResponse
+	13,  // 149: proto.DyAccountService.ResetPasswordFactor:output_type -> proto.DyAccountAuthFactor
+	52,  // 150: proto.DyAccountService.ListConnections:output_type -> proto.DyListConnectionsResponse
+	54,  // 151: proto.DyAccountService.GetValidAccessToken:output_type -> proto.DyGetValidAccessTokenResponse
+	6,   // 152: proto.DyAccountService.GetAccountByConnection:output_type -> proto.DyAccount
+	56,  // 153: proto.DyAccountService.ListSuperusers:output_type -> proto.DyListSuperusersResponse
+	36,  // 154: proto.DyAccountKeyService.ListPublicKeys:output_type -> proto.DyListPublicKeysResponse
+	38,  // 155: proto.DyAccountKeyService.ValidateSSHPublicKey:output_type -> proto.DyValidateSSHPublicKeyResponse
+	40,  // 156: proto.DyAccountKeyService.ExchangeSSHPublicKeyForSession:output_type -> proto.DyExchangeSSHPublicKeyForSessionResponse
+	42,  // 157: proto.DyAccountKeyService.ValidatePGPPublicKey:output_type -> proto.DyValidatePGPPublicKeyResponse
+	17,  // 158: proto.DyMagicSpellService.CreateMagicSpell:output_type -> proto.DyMagicSpell
+	70,  // 159: proto.DyMagicSpellService.NotifyMagicSpell:output_type -> google.protobuf.Empty
+	17,  // 160: proto.DyMagicSpellService.GetMagicSpell:output_type -> proto.DyMagicSpell
+	50,  // 161: proto.DyMagicSpellService.ApplyMagicSpell:output_type -> proto.DyApplyMagicSpellResponse
+	137, // [137:162] is the sub-list for method output_type
+	112, // [112:137] is the sub-list for method input_type
 	112, // [112:112] is the sub-list for extension type_name
 	112, // [112:112] is the sub-list for extension extendee
 	0,   // [0:112] is the sub-list for field type_name
@@ -4736,11 +4994,11 @@ func file_account_proto_init() {
 	file_account_proto_msgTypes[0].OneofWrappers = []any{}
 	file_account_proto_msgTypes[4].OneofWrappers = []any{}
 	file_account_proto_msgTypes[12].OneofWrappers = []any{}
-	file_account_proto_msgTypes[40].OneofWrappers = []any{
+	file_account_proto_msgTypes[42].OneofWrappers = []any{
 		(*DyGetMagicSpellRequest_Id)(nil),
 		(*DyGetMagicSpellRequest_SpellWord)(nil),
 	}
-	file_account_proto_msgTypes[41].OneofWrappers = []any{
+	file_account_proto_msgTypes[43].OneofWrappers = []any{
 		(*DyApplyMagicSpellRequest_Id)(nil),
 		(*DyApplyMagicSpellRequest_SpellWord)(nil),
 	}
@@ -4750,7 +5008,7 @@ func file_account_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_account_proto_rawDesc), len(file_account_proto_rawDesc)),
 			NumEnums:      6,
-			NumMessages:   56,
+			NumMessages:   58,
 			NumExtensions: 0,
 			NumServices:   3,
 		},

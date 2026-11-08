@@ -744,9 +744,10 @@ var DyAccountService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	DyAccountKeyService_ListPublicKeys_FullMethodName       = "/proto.DyAccountKeyService/ListPublicKeys"
-	DyAccountKeyService_ValidateSSHPublicKey_FullMethodName = "/proto.DyAccountKeyService/ValidateSSHPublicKey"
-	DyAccountKeyService_ValidatePGPPublicKey_FullMethodName = "/proto.DyAccountKeyService/ValidatePGPPublicKey"
+	DyAccountKeyService_ListPublicKeys_FullMethodName                 = "/proto.DyAccountKeyService/ListPublicKeys"
+	DyAccountKeyService_ValidateSSHPublicKey_FullMethodName           = "/proto.DyAccountKeyService/ValidateSSHPublicKey"
+	DyAccountKeyService_ExchangeSSHPublicKeyForSession_FullMethodName = "/proto.DyAccountKeyService/ExchangeSSHPublicKeyForSession"
+	DyAccountKeyService_ValidatePGPPublicKey_FullMethodName           = "/proto.DyAccountKeyService/ValidatePGPPublicKey"
 )
 
 // DyAccountKeyServiceClient is the client API for DyAccountKeyService service.
@@ -761,6 +762,13 @@ const (
 type DyAccountKeyServiceClient interface {
 	ListPublicKeys(ctx context.Context, in *DyListPublicKeysRequest, opts ...grpc.CallOption) (*DyListPublicKeysResponse, error)
 	ValidateSSHPublicKey(ctx context.Context, in *DyValidateSSHPublicKeyRequest, opts ...grpc.CallOption) (*DyValidateSSHPublicKeyResponse, error)
+	// ExchangeSSHPublicKeyForSession validates an offered SSH key and mints a
+	// login session for its owner. It is the hosted-app login surface: the
+	// caller has already proven possession of the key during an SSH
+	// handshake, so it trades that proof for API tokens instead of running a
+	// device or password flow. The RPC is internal-only and requires the
+	// deployment's exchange service token.
+	ExchangeSSHPublicKeyForSession(ctx context.Context, in *DyExchangeSSHPublicKeyForSessionRequest, opts ...grpc.CallOption) (*DyExchangeSSHPublicKeyForSessionResponse, error)
 	ValidatePGPPublicKey(ctx context.Context, in *DyValidatePGPPublicKeyRequest, opts ...grpc.CallOption) (*DyValidatePGPPublicKeyResponse, error)
 }
 
@@ -792,6 +800,16 @@ func (c *dyAccountKeyServiceClient) ValidateSSHPublicKey(ctx context.Context, in
 	return out, nil
 }
 
+func (c *dyAccountKeyServiceClient) ExchangeSSHPublicKeyForSession(ctx context.Context, in *DyExchangeSSHPublicKeyForSessionRequest, opts ...grpc.CallOption) (*DyExchangeSSHPublicKeyForSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DyExchangeSSHPublicKeyForSessionResponse)
+	err := c.cc.Invoke(ctx, DyAccountKeyService_ExchangeSSHPublicKeyForSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dyAccountKeyServiceClient) ValidatePGPPublicKey(ctx context.Context, in *DyValidatePGPPublicKeyRequest, opts ...grpc.CallOption) (*DyValidatePGPPublicKeyResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DyValidatePGPPublicKeyResponse)
@@ -814,6 +832,13 @@ func (c *dyAccountKeyServiceClient) ValidatePGPPublicKey(ctx context.Context, in
 type DyAccountKeyServiceServer interface {
 	ListPublicKeys(context.Context, *DyListPublicKeysRequest) (*DyListPublicKeysResponse, error)
 	ValidateSSHPublicKey(context.Context, *DyValidateSSHPublicKeyRequest) (*DyValidateSSHPublicKeyResponse, error)
+	// ExchangeSSHPublicKeyForSession validates an offered SSH key and mints a
+	// login session for its owner. It is the hosted-app login surface: the
+	// caller has already proven possession of the key during an SSH
+	// handshake, so it trades that proof for API tokens instead of running a
+	// device or password flow. The RPC is internal-only and requires the
+	// deployment's exchange service token.
+	ExchangeSSHPublicKeyForSession(context.Context, *DyExchangeSSHPublicKeyForSessionRequest) (*DyExchangeSSHPublicKeyForSessionResponse, error)
 	ValidatePGPPublicKey(context.Context, *DyValidatePGPPublicKeyRequest) (*DyValidatePGPPublicKeyResponse, error)
 	mustEmbedUnimplementedDyAccountKeyServiceServer()
 }
@@ -830,6 +855,9 @@ func (UnimplementedDyAccountKeyServiceServer) ListPublicKeys(context.Context, *D
 }
 func (UnimplementedDyAccountKeyServiceServer) ValidateSSHPublicKey(context.Context, *DyValidateSSHPublicKeyRequest) (*DyValidateSSHPublicKeyResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ValidateSSHPublicKey not implemented")
+}
+func (UnimplementedDyAccountKeyServiceServer) ExchangeSSHPublicKeyForSession(context.Context, *DyExchangeSSHPublicKeyForSessionRequest) (*DyExchangeSSHPublicKeyForSessionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExchangeSSHPublicKeyForSession not implemented")
 }
 func (UnimplementedDyAccountKeyServiceServer) ValidatePGPPublicKey(context.Context, *DyValidatePGPPublicKeyRequest) (*DyValidatePGPPublicKeyResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ValidatePGPPublicKey not implemented")
@@ -891,6 +919,24 @@ func _DyAccountKeyService_ValidateSSHPublicKey_Handler(srv interface{}, ctx cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DyAccountKeyService_ExchangeSSHPublicKeyForSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DyExchangeSSHPublicKeyForSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DyAccountKeyServiceServer).ExchangeSSHPublicKeyForSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DyAccountKeyService_ExchangeSSHPublicKeyForSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DyAccountKeyServiceServer).ExchangeSSHPublicKeyForSession(ctx, req.(*DyExchangeSSHPublicKeyForSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DyAccountKeyService_ValidatePGPPublicKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DyValidatePGPPublicKeyRequest)
 	if err := dec(in); err != nil {
@@ -923,6 +969,10 @@ var DyAccountKeyService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ValidateSSHPublicKey",
 			Handler:    _DyAccountKeyService_ValidateSSHPublicKey_Handler,
+		},
+		{
+			MethodName: "ExchangeSSHPublicKeyForSession",
+			Handler:    _DyAccountKeyService_ExchangeSSHPublicKeyForSession_Handler,
 		},
 		{
 			MethodName: "ValidatePGPPublicKey",

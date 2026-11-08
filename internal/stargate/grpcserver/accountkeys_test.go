@@ -5,8 +5,14 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
+	"io"
+	"log/slog"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -26,9 +32,13 @@ import (
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/stargate/accountkeys"
+	"src.solsynth.dev/sosys/stargate/auth"
+	"src.solsynth.dev/sosys/stargate/config"
 	"src.solsynth.dev/sosys/stargate/db"
 	"src.solsynth.dev/sosys/stargate/dbtest"
+	"src.solsynth.dev/sosys/stargate/geo"
 	"src.solsynth.dev/sosys/stargate/migrate"
+	"src.solsynth.dev/sosys/stargate/store"
 )
 
 func keyTestDatabase(t *testing.T) *gorm.DB {
@@ -127,7 +137,7 @@ func TestAccountKeyService(t *testing.T) {
 
 	lis := bufconn.Listen(1 << 20)
 	server := grpc.NewServer()
-	RegisterAccountKeys(server, keys)
+	RegisterAccountKeys(server, AccountKeyDeps{Keys: keys})
 	go func() { _ = server.Serve(lis) }()
 	t.Cleanup(server.Stop)
 
@@ -204,5 +214,125 @@ func TestAccountKeyService(t *testing.T) {
 
 	if _, err := client.ListPublicKeys(ctx, &gen.DyListPublicKeysRequest{AccountId: "not-a-uuid"}); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("invalid account id code = %v, want InvalidArgument", status.Code(err))
+	}
+}
+
+// keyTestJWT builds an RSA signing pair in a temp dir so the exchange test
+// does not depend on the deployment's keys/ checkout.
+func keyTestJWT(t *testing.T) (*auth.JWTService, *config.Config) {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	privatePEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	publicDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: publicDER})
+	dir := t.TempDir()
+	privatePath := filepath.Join(dir, "PrivateKey.pem")
+	publicPath := filepath.Join(dir, "PublicKey.pem")
+	if err := os.WriteFile(privatePath, privatePEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(publicPath, publicPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.Auth.PrivateKeyPath = privatePath
+	cfg.Auth.PublicKeyPath = publicPath
+	cfg.Hosted.ExchangeToken = "test-exchange-token"
+	svc, err := auth.NewJWTService(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return svc, cfg
+}
+
+func TestExchangeSSHPublicKeyForSession(t *testing.T) {
+	database := keyTestDatabase(t)
+	ctx := context.Background()
+	accountID := uuid.New()
+	name := "grpc_exchange_" + uuid.NewString()[:8]
+	now := time.Now().UTC()
+	if err := database.Exec(`INSERT INTO accounts (id, name, nick, language, region, is_superuser, created_at, updated_at)
+		VALUES (?, ?, ?, 'en', 'US', false, ?, ?)`, accountID, name, name, now, now).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	keys := accountkeys.NewStore(database)
+	sshInfo := keyTestSSH(t)
+	sshKey, err := keys.CreateSSHKey(ctx, accountID, "laptop", sshInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	jwtSvc, cfg := keyTestJWT(t)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	st := store.New(database)
+	authSvc := auth.NewAuthService(st, nil, cfg, geo.NewService(""), jwtSvc, auth.NewTokenAuthService(st, nil, jwtSvc, nil, nil, log), nil, nil, log)
+
+	lis := bufconn.Listen(1 << 20)
+	server := grpc.NewServer()
+	RegisterAccountKeys(server, AccountKeyDeps{Keys: keys, Auth: authSvc, Store: st, Cfg: cfg, Log: log})
+	go func() { _ = server.Serve(lis) }()
+	t.Cleanup(server.Stop)
+
+	conn, err := grpc.NewClient("passthrough:///bufconn",
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+			return lis.DialContext(ctx)
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	client := gen.NewDyAccountKeyServiceClient(conn)
+
+	if _, err := client.ExchangeSSHPublicKeyForSession(ctx, &gen.DyExchangeSSHPublicKeyForSessionRequest{
+		ServiceToken: "wrong",
+		PublicKey:    sshInfo.PublicKey,
+	}); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("wrong exchange token code = %v, want PermissionDenied", status.Code(err))
+	}
+
+	missing, err := client.ExchangeSSHPublicKeyForSession(ctx, &gen.DyExchangeSSHPublicKeyForSessionRequest{
+		ServiceToken: cfg.Hosted.ExchangeToken,
+		Fingerprint:  "SHA256:unknown",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missing.GetValid() || missing.GetReason() != "KEY_NOT_FOUND" {
+		t.Fatalf("unknown SSH key exchange = %+v", missing)
+	}
+
+	exchanged, err := client.ExchangeSSHPublicKeyForSession(ctx, &gen.DyExchangeSSHPublicKeyForSessionRequest{
+		ServiceToken: cfg.Hosted.ExchangeToken,
+		PublicKey:    sshInfo.PublicKey,
+		Purpose:      "termian-hosted",
+		DeviceName:   "laptop",
+		IpAddress:    "203.0.113.9",
+		UserAgent:    "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exchanged.GetValid() || exchanged.GetAccountId() != accountID.String() ||
+		exchanged.GetKeyId() != sshKey.Id || exchanged.GetPurpose() != "termian-hosted" {
+		t.Fatalf("ExchangeSSHPublicKeyForSession = %+v", exchanged)
+	}
+	if exchanged.GetAccessToken() == "" || exchanged.GetRefreshToken() == "" {
+		t.Fatalf("exchange returned no tokens: %+v", exchanged)
+	}
+	if exchanged.GetExpiresIn() <= 0 || exchanged.GetRefreshExpiresIn() <= 0 {
+		t.Fatalf("exchange returned non-positive lifetimes: %+v", exchanged)
+	}
+	// Hosted clients keep sessions alive through the challenge refresh
+	// endpoint; the exchange must mint a token that endpoint accepts.
+	if _, _, err := authSvc.RefreshSessionAndIssueTokens(ctx, exchanged.GetRefreshToken()); err != nil {
+		t.Fatalf("exchanged refresh token was rejected: %v", err)
 	}
 }

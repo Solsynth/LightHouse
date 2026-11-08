@@ -116,6 +116,13 @@ useTLS = true
 certFile = "Keys/server.crt"
 keyFile = "Keys/server.key"
 
+# Hosted terminal apps exchange a validated SSH key for a login session.
+# Empty exchangeToken leaves ExchangeSSHPublicKeyForSession disabled: anyone
+# who can reach the gRPC port could otherwise mint a session from a public
+# key. Set the same value on the hosted Termian server.
+[hosted]
+exchangeToken = ""
+
 [database]
 dsn = "host=localhost port=5432 user=postgres dbname=dyson_stargate sslmode=disable"
 

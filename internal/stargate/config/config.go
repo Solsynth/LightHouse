@@ -47,6 +47,15 @@ type Config struct {
 		ClientKeyFile  string `toml:"clientKeyFile"`
 	} `toml:"grpc"`
 
+	// Hosted configures SSH-key login for hosted terminal apps.
+	Hosted struct {
+		// ExchangeToken authorizes ExchangeSSHPublicKeyForSession. The hosted
+		// gateway sends it with every exchange; empty disables the RPC so a
+		// deployment that does not host apps cannot mint sessions from a
+		// public key.
+		ExchangeToken string `toml:"exchangeToken"`
+	} `toml:"hosted"`
+
 	Database struct {
 		DSN string `toml:"dsn"`
 	} `toml:"database"`

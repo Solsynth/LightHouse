@@ -47,7 +47,13 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 		Logs:     host.Core.Logs,
 		Log:      log,
 	})
-	grpcserver.RegisterAccountKeys(host.GRPC, keys)
+	grpcserver.RegisterAccountKeys(host.GRPC, grpcserver.AccountKeyDeps{
+		Keys:  keys,
+		Auth:  host.Core.Auth,
+		Store: host.Core.Store,
+		Cfg:   host.Core.Config,
+		Log:   log,
+	})
 	return nil
 }
 

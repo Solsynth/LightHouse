@@ -107,7 +107,13 @@ Modules own their schema:
   `/api/accounts/{name}/keys` listing, and the `DyAccountKeyService` gRPC
   validators (`ListPublicKeys`, `ValidateSSHPublicKey`,
   `ValidatePGPPublicKey`) a git/SSH gateway calls to resolve an offered key to
-  its account. Writes are parsed before they are stored: an SSH key becomes its
+  its account. `ExchangeSSHPublicKeyForSession` is the hosted-app login path:
+  it resolves the key, refuses locked accounts, creates a login session and
+  returns access/refresh tokens, so a gateway that already proved possession
+  during an SSH handshake needs no device or password flow. It is disabled
+  unless `[hosted] exchangeToken` is set, and the caller must present that
+  token: a public key is public material. Writes are parsed before they are
+  stored: an SSH key becomes its
   canonical `authorized_keys` line with a `SHA256:` fingerprint, a PGP key
   keeps its armored block with the primary-key fingerprint and key id.
   Fingerprints are unique per account among live rows; private key material is
@@ -402,6 +408,12 @@ copied again.
 
 ## Security posture
 
+- **Hosted key exchange is a bearer capability.** `ExchangeSSHPublicKeyForSession`
+  mints a login session from a registered SSH public key. The key is public
+  material, so the RPC is refused unless `[hosted] exchangeToken` is set and the
+  caller presents it. Treat that token like a root credential: it can mint a
+  session for any account whose key an internal caller knows, so keep the gRPC
+  port private and rotate the token with the hosted gateway.
 - **Trusted proxies.** The client IP used by fail2ban and the per-IP quotas
   is read from `X-Forwarded-For` counting from the **right**
   (`[security] trustedProxyHops`, default 1). The edge (Blade) must append to

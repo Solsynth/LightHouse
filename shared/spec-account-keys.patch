@@ -1,6 +1,8 @@
+diff --git a/proto/account.proto b/proto/account.proto
+index 151491e..03f97c2 100644
 --- a/proto/account.proto
 +++ b/proto/account.proto
-@@ -292,6 +292,17 @@
+@@ -292,6 +292,24 @@ service DyAccountService {
      rpc ListSuperusers(google.protobuf.Empty) returns (DyListSuperusersResponse) {}
  }
  
@@ -12,13 +14,20 @@
 +service DyAccountKeyService {
 +    rpc ListPublicKeys(DyListPublicKeysRequest) returns (DyListPublicKeysResponse) {}
 +    rpc ValidateSSHPublicKey(DyValidateSSHPublicKeyRequest) returns (DyValidateSSHPublicKeyResponse) {}
++    // ExchangeSSHPublicKeyForSession validates an offered SSH key and mints a
++    // login session for its owner. It is the hosted-app login surface: the
++    // caller has already proven possession of the key during an SSH
++    // handshake, so it trades that proof for API tokens instead of running a
++    // device or password flow. The RPC is internal-only and requires the
++    // deployment's exchange service token.
++    rpc ExchangeSSHPublicKeyForSession(DyExchangeSSHPublicKeyForSessionRequest) returns (DyExchangeSSHPublicKeyForSessionResponse) {}
 +    rpc ValidatePGPPublicKey(DyValidatePGPPublicKeyRequest) returns (DyValidatePGPPublicKeyResponse) {}
 +}
 +
  // MagicSpellService is owned by Passport and exposes spell issuance, delivery,
  // lookup, and application for other services such as Padlock.
  service DyMagicSpellService {
-@@ -375,6 +386,88 @@
+@@ -375,6 +393,122 @@ message DyGetContactsByAccountRequest {
      string account_id = 1;
  }
  
@@ -83,6 +92,40 @@
 +    // reason is a stable machine-readable rejection code when valid is false
 +    // (KEY_NOT_FOUND, KEY_INVALID).
 +    string reason = 7;
++}
++
++// ExchangeSSHPublicKeyForSession is the hosted-login counterpart of
++// ValidateSSHPublicKey: it resolves the key and creates a login session for
++// the owner. Calls without the deployment's exchange service token are
++// refused, because the key is public material and possession is proven only
++// by the gateway's SSH handshake, not by this message.
++message DyExchangeSSHPublicKeyForSessionRequest {
++    // service_token is the deployment's exchange credential. Empty or wrong is
++    // rejected, not answered with a false validation.
++    string service_token = 1;
++    string public_key = 2;
++    string fingerprint = 3;
++    // purpose is echoed for audit; for example "termian-hosted".
++    string purpose = 4;
++    string device_name = 5;
++    string ip_address = 6;
++    string user_agent = 7;
++}
++
++message DyExchangeSSHPublicKeyForSessionResponse {
++    bool valid = 1;
++    string account_id = 2;
++    string key_id = 3;
++    string key_label = 4;
++    string fingerprint = 5;
++    string purpose = 6;
++    // reason is set when valid is false (KEY_NOT_FOUND, KEY_INVALID,
++    // ACCOUNT_LOCKED).
++    string reason = 7;
++    string access_token = 8;
++    string refresh_token = 9;
++    int64 expires_in = 10;
++    int64 refresh_expires_in = 11;
 +}
 +
 +// ValidatePGPPublicKey is the same connection-validation contract for PGP
