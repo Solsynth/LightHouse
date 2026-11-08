@@ -111,7 +111,7 @@ export const useUploadStore = defineStore('upload', () => {
       })
       update(id, { status: 'done', progress: 100 })
       notice.ok(translate('notice.oneUploaded', { name: file.name }))
-      await Promise.all([vault.load(), vault.loadVolume()])
+      await vault.refreshAll()
     } catch (caught) {
       if (controller.signal.aborted) {
         update(id, { status: 'cancelled' })

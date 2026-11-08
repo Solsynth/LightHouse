@@ -18,6 +18,10 @@ const { t } = useI18n()
 const failed = ref<string[]>([])
 
 function open(file: CloudFile) {
+  if (vault.selectMode) {
+    vault.toggle(file)
+    return
+  }
   opener.open(file)
 }
 
@@ -27,9 +31,9 @@ function onKeydown(event: KeyboardEvent, file: CloudFile) {
     open(file)
     return
   }
-  if (event.key === ' ') {
+  if (event.key === ' ' && vault.selectMode) {
     event.preventDefault()
-    vault.toggle(file.id)
+    vault.toggle(file)
     return
   }
   if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
@@ -100,18 +104,12 @@ function subline(file: CloudFile): string {
           </div>
 
           <input
+            v-if="vault.selectMode"
             type="checkbox"
-            class="checkbox checkbox-xs absolute left-2 top-2 bg-base-100/85 transition-opacity duration-150"
-            :class="
-              vault.selection.includes(file.id)
-                ? 'opacity-100'
-                : vault.selectionMode
-                  ? 'opacity-100'
-                  : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100'
-            "
+            class="checkbox checkbox-xs absolute left-2 top-2 bg-base-100/85"
             :checked="vault.selection.includes(file.id)"
             :aria-label="t('drive.selectObject', { name: displayName(file) })"
-            @change="vault.toggle(file.id, ($event as MouseEvent).shiftKey)"
+            @change="vault.toggle(file, ($event as MouseEvent).shiftKey)"
             @click.stop
           />
 

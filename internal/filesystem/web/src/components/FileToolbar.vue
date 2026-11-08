@@ -91,7 +91,6 @@ function viewLabel(key: ViewMode): string {
   return t(`view.${key}`)
 }
 
-const hasSelection = computed(() => vault.selectedItems.length > 0)
 const selectionCount = computed(() => vault.selectedItems.length)
 
 
@@ -206,6 +205,13 @@ function restoreSelection() {
 
       <div class="ml-auto flex flex-wrap items-center justify-end gap-1.5">
         <IconButton
+          :label="vault.selectMode ? t('drive.exitSelect') : t('drive.select')"
+          :active="vault.selectMode"
+          @click="vault.toggleSelectMode()"
+        >
+          <Checkmark16 />
+        </IconButton>
+        <IconButton
           :label="vault.loading ? t('drive.refreshing') : t('drive.refresh')"
           :disabled="vault.loading"
           @click="refresh"
@@ -215,14 +221,6 @@ function restoreSelection() {
         <IconButton v-if="onDrive" :label="t('drive.newFolder')" @click="newFolder">
           <FolderAdd16 />
         </IconButton>
-        <button
-          v-else-if="mode === 'recycle' && vault.total > 0"
-          class="btn btn-ghost btn-xs"
-          type="button"
-          @click="vault.selectAll()"
-        >
-          {{ t('drive.selectAll') }}
-        </button>
 
         <details data-toolbar-menu class="dropdown dropdown-end">
           <summary
@@ -314,38 +312,52 @@ function restoreSelection() {
       leave-to-class="opacity-0"
     >
       <div
-        v-if="hasSelection"
+        v-if="vault.selectMode"
         key="selection"
         class="mt-2 flex min-h-[42px] flex-wrap items-center gap-2 rounded-control bg-primary/12 px-2.5 py-1.5"
       >
         <span class="flex items-center gap-2 pl-1 text-[12px] text-base-content">
           <Checkmark16 class="text-primary" aria-hidden="true" />
-          {{ t('status.selectedCount', { n: formatCount(selectionCount) }) }}
-          <span class="text-faint">· {{ formatBytes(vault.selectedBytes) }}</span>
+          <template v-if="selectionCount > 0">
+            {{ t('status.selectedCount', { n: formatCount(selectionCount) }) }}
+            <span class="text-faint">· {{ formatBytes(vault.selectedBytes) }}</span>
+          </template>
+          <template v-else>{{ t('drive.selectPrompt') }}</template>
         </span>
 
+        <button
+          v-if="vault.items.length > 0"
+          class="btn btn-ghost btn-sm"
+          type="button"
+          @click="vault.selectAll()"
+        >
+          {{ t('drive.selectAll') }}
+        </button>
+
         <div class="ml-auto flex flex-wrap items-center gap-1">
-          <template v-if="mode === 'recycle'">
-            <button class="btn btn-outline btn-sm" type="button" @click="restoreSelection">
-              <Undo16 />
-              {{ t('preview.restore') }}
-            </button>
-            <button class="btn btn-error btn-sm" type="button" @click="purgeSelection">
-              <TrashCan16 />
-              {{ t('preview.deleteForever') }}
-            </button>
+          <template v-if="selectionCount > 0">
+            <template v-if="mode === 'recycle'">
+              <button class="btn btn-outline btn-sm" type="button" @click="restoreSelection">
+                <Undo16 />
+                {{ t('preview.restore') }}
+              </button>
+              <button class="btn btn-error btn-sm" type="button" @click="purgeSelection">
+                <TrashCan16 />
+                {{ t('preview.deleteForever') }}
+              </button>
+            </template>
+            <template v-else>
+              <button class="btn btn-outline btn-sm" type="button" @click="moveSelection">
+                <Move16 />
+                {{ t('preview.move') }}
+              </button>
+              <button class="btn btn-outline btn-sm" type="button" @click="recycleSelection">
+                <TrashCan16 />
+                {{ t('preview.recycle') }}
+              </button>
+            </template>
           </template>
-          <template v-else>
-            <button class="btn btn-outline btn-sm" type="button" @click="moveSelection">
-              <Move16 />
-              {{ t('preview.move') }}
-            </button>
-            <button class="btn btn-outline btn-sm" type="button" @click="recycleSelection">
-              <TrashCan16 />
-              {{ t('preview.recycle') }}
-            </button>
-          </template>
-          <IconButton :label="t('drive.clearSelection')" @click="vault.clearSelection()">
+          <IconButton :label="t('drive.exitSelect')" @click="vault.setSelectMode(false)">
             <Close16 />
           </IconButton>
         </div>

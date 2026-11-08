@@ -19,6 +19,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 	"gorm.io/datatypes"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -1021,8 +1023,92 @@ func TestOpenFileRequiresAuthUnlessFileIsPublic(t *testing.T) {
 
 	signedPrivateRec := httptest.NewRecorder()
 	owner.ServeHTTP(signedPrivateRec, httptest.NewRequest(http.MethodGet, "/files/"+privateID, nil))
-	if signedPrivateRec.Code != http.StatusNotFound {
-		t.Fatalf("signed-in private /files status = %d, want %d", signedPrivateRec.Code, http.StatusNotFound)
+	if signedPrivateRec.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("signed-in private /files status = %d, want %d; body = %s", signedPrivateRec.Code, http.StatusTemporaryRedirect, signedPrivateRec.Body.String())
+	}
+
+	otherRouteRec := httptest.NewRecorder()
+	other.ServeHTTP(otherRouteRec, httptest.NewRequest(http.MethodGet, "/files/"+privateID, nil))
+	if otherRouteRec.Code != http.StatusNotFound {
+		t.Fatalf("other account private /files status = %d, want %d", otherRouteRec.Code, http.StatusNotFound)
+	}
+}
+
+type memberWorkspaceClient struct {
+	gen.DyWorkspaceServiceClient
+	members map[string]bool
+}
+
+func (c memberWorkspaceClient) IsMemberWithRole(_ context.Context, req *gen.DyIsWorkspaceMemberWithRoleRequest, _ ...grpc.CallOption) (*wrapperspb.BoolValue, error) {
+	return wrapperspb.Bool(c.members[req.GetAccountId()]), nil
+}
+
+// A file uploaded into a workspace belongs to the workspace, not only to the
+// account that uploaded it: every member reads (and previews) it.
+func TestWorkspaceMembersCanReadWorkspaceFiles(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := openHandlerTestDB(t, &database.CloudFile{}, &database.FileObject{}, &database.FilePool{}, &database.FilePermission{})
+	stor := storage.NewLocalBackend(t.TempDir())
+	files := service.NewFileService(&database.DB{DB: db}, stor)
+	uploaderID := uuid.New()
+	memberID := uuid.New()
+	outsiderID := uuid.New()
+	workspaceID := uuid.New().String()
+
+	objectID := database.NewID()
+	if err := db.Create(&database.FileObject{ID: objectID, Size: 12, MimeType: "image/png", Hash: "hash", StorageKey: &objectID, Meta: datatypes.JSON([]byte(`{}`))}).Error; err != nil {
+		t.Fatalf("create object: %v", err)
+	}
+	fileID := database.NewID()
+	if err := db.Create(&database.CloudFile{ID: fileID, Name: "shared.png", AccountID: uploaderID, WorkspaceID: &workspaceID, ObjectID: &objectID, StorageKey: &objectID, Indexed: true}).Error; err != nil {
+		t.Fatalf("create workspace file: %v", err)
+	}
+	derivedID := database.NewID()
+	derivedKind := "system.thumbnail"
+	if err := db.Create(&database.CloudFile{ID: derivedID, Name: "shared.png", AccountID: uploaderID, ParentID: &fileID, ObjectID: &objectID, StorageKey: &objectID, ApplicationType: &derivedKind}).Error; err != nil {
+		t.Fatalf("create workspace derivative: %v", err)
+	}
+
+	quota := service.NewQuotaService(&database.DB{DB: db})
+	quota.SetWorkspaceClient(memberWorkspaceClient{members: map[string]bool{
+		uploaderID.String(): true,
+		memberID.String():   true,
+	}})
+	deps := Deps{Config: &config.Config{}, Files: files, Tasks: service.NewTaskService(&database.DB{DB: db}), Quota: quota}
+
+	routerFor := func(accountID uuid.UUID) *gin.Engine {
+		r := gin.New()
+		r.Use(testAuthMiddleware(accountID))
+		RegisterRoutes(r, deps)
+		return r
+	}
+
+	member := routerFor(memberID)
+	for _, path := range []string{
+		"/api/files/" + fileID,
+		"/api/files/" + fileID + "/info",
+		"/files/" + fileID,
+		"/api/files/" + derivedID,
+	} {
+		rec := httptest.NewRecorder()
+		member.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusTemporaryRedirect && rec.Code != http.StatusOK {
+			t.Fatalf("member %s status = %d; body = %s", path, rec.Code, rec.Body.String())
+		}
+	}
+
+	outsider := routerFor(outsiderID)
+	for _, path := range []string{"/api/files/" + fileID, "/api/files/" + fileID + "/info"} {
+		rec := httptest.NewRecorder()
+		outsider.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("non-member %s status = %d, want %d", path, rec.Code, http.StatusForbidden)
+		}
+	}
+	outsiderPublic := httptest.NewRecorder()
+	outsider.ServeHTTP(outsiderPublic, httptest.NewRequest(http.MethodGet, "/files/"+fileID, nil))
+	if outsiderPublic.Code != http.StatusNotFound {
+		t.Fatalf("non-member public route status = %d, want %d", outsiderPublic.Code, http.StatusNotFound)
 	}
 }
 

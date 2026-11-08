@@ -5,9 +5,8 @@ import { useRoute } from 'vue-router'
 
 import AppSidebar from './AppSidebar.vue'
 import CommandPalette from './CommandPalette.vue'
-import ConsoleFooter from './ConsoleFooter.vue'
 import DialogHost from './DialogHost.vue'
-import StatusBar from './StatusBar.vue'
+import NoticeToast from './NoticeToast.vue'
 import TitleBar from './TitleBar.vue'
 import UploadDock from './UploadDock.vue'
 import { useUiStore } from '@/stores/ui'
@@ -110,8 +109,8 @@ onBeforeUnmount(() => {
       {{ t('app.skipToContent') }}
     </a>
 
-    <!-- The app bar, rail, and footer share one shell surface; only the
-         working area is a separate panel. -->
+    <!-- The app bar and rail share one shell surface; only the working area
+         is a separate panel. -->
     <TitleBar />
 
     <div class="flex min-h-0 flex-1 gap-2 p-2 pt-1 md:gap-2.5 md:p-2.5 md:pt-1.5">
@@ -134,10 +133,7 @@ onBeforeUnmount(() => {
       </main>
     </div>
 
-    <div class="flex shrink-0 items-center gap-3 px-3 pb-1 md:px-4">
-      <StatusBar />
-      <ConsoleFooter />
-    </div>
+    <NoticeToast />
 
     <CommandPalette />
     <DialogHost />

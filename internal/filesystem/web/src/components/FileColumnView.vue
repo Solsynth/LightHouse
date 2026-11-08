@@ -23,7 +23,13 @@ const route = useRoute()
 const router = useRouter()
 const opener = useFileOpener()
 const { t } = useI18n()
-const rootName = computed(() => vault.crumbs[0]?.name ?? t('nav.drive'))
+// The first crumb is a symbolic location, not a server name: resolve it on
+// every render so a language switch reaches the column header too.
+const rootName = computed(() => {
+  const root = vault.crumbs[0]
+  if (!root || root.id === null) return t(vault.mode === 'recycle' ? 'nav.recycle' : 'nav.drive')
+  return root.name
+})
 
 /**
  * The folder a click has opened, at the column position it belongs to. It
@@ -134,10 +140,17 @@ async function loadColumn(index: number) {
   }
 }
 
+/** The browsing mode whose trail is mounted; switching mode rebuilds every column. */
+let mountedMode = ''
 /** Keeps the columns, the focused entry, and the route in step. */
 watch(
-  () => trailIds.value.join('/'),
+  () => `${vault.mode}:${trailIds.value.join('/')}`,
   () => {
+    if (vault.mode !== mountedMode) {
+      mountedMode = vault.mode
+      listings.value = {}
+      focused.value = {}
+    }
     const depth = trail.value.length
     const kept: Record<number, Column> = {}
     for (const [key, column] of Object.entries(listings.value)) {
@@ -151,12 +164,29 @@ watch(
   { immediate: true },
 )
 
+/** A mutation elsewhere in the app retires the cached listings; refetch each column. */
+watch(
+  () => vault.childrenVersion,
+  () => {
+    for (const index of Object.keys(listings.value)) void loadColumn(Number(index))
+  },
+)
+
 watch(
   () => route.path,
   (path) => {
     if (path !== drillPath.value) drill.value = null
   },
 )
+
+/** A row click ticks files while selecting; folders always keep drilling. */
+function activate(index: number, file: CloudFile) {
+  if (vault.selectMode && !file.is_folder) {
+    vault.toggle(file)
+    return
+  }
+  descend(index, file)
+}
 
 /** Descends into a folder: truncates the columns to its right, then opens it. */
 function descend(index: number, file: CloudFile) {
@@ -220,10 +250,10 @@ function onKeydown(event: KeyboardEvent, index: number, row: number) {
     descend(index, entry)
     return
   }
-  // Space ticks the checkbox, matching the checkbox semantics used elsewhere.
-  if (event.key === ' ') {
+  // Space ticks the checkbox while the dedicated selection mode is on.
+  if (event.key === ' ' && vault.selectMode) {
     event.preventDefault()
-    vault.toggle(entry.id)
+    vault.toggle(entry)
   }
 }
 
@@ -289,7 +319,7 @@ function isFocused(index: number, id: string): boolean {
               :aria-selected="vault.selection.includes(child.id)"
               :aria-current="isOpenPath(index, child) ? 'true' : undefined"
               :tabindex="isFocused(index, child.id) ? 0 : -1"
-              class="group flex h-8 cursor-default items-center gap-2 rounded-chip px-2 outline-offset-[-2px]"
+              class="flex h-8 cursor-default items-center gap-2 rounded-chip px-2 outline-offset-[-2px]"
               :class="
                 isOpenPath(index, child)
                   ? 'bg-primary/12 font-semibold text-base-content'
@@ -298,21 +328,17 @@ function isFocused(index: number, id: string): boolean {
                     : 'bg-base-200/75 text-dim hover:bg-base-300/70'
               "
               :title="displayName(child)"
-              @click="descend(index, child)"
+              @click="activate(index, child)"
               @keydown="onKeydown($event, index, row)"
             >
               <FileGlyph :file="child" />
               <input
+                v-if="vault.selectMode"
                 type="checkbox"
-                class="checkbox checkbox-xs shrink-0 transition-opacity duration-150"
-                :class="
-                  vault.selectionMode
-                    ? 'opacity-100'
-                    : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100'
-                "
+                class="checkbox checkbox-xs shrink-0"
                 :checked="vault.selection.includes(child.id)"
                 :aria-label="t('drive.selectObject', { name: displayName(child) })"
-                @change="vault.toggle(child.id)"
+                @change="vault.toggle(child)"
                 @click.stop
               />
               <span class="min-w-0 flex-1 truncate text-[12.5px]">{{ displayName(child) }}</span>

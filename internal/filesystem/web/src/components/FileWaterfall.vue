@@ -71,6 +71,14 @@ function isSelected(file: CloudFile): boolean {
   return vault.selection.includes(file.id)
 }
 
+function activate(file: CloudFile) {
+  if (vault.selectMode && !file.is_folder) {
+    vault.toggle(file)
+    return
+  }
+  open(file)
+}
+
 /** Arrow keys walk the masonry in document order, which is column flow here. */
 const ARROW_STEP: Record<string, number> = {
   ArrowDown: 1,
@@ -85,9 +93,9 @@ function onKeydown(event: KeyboardEvent, file: CloudFile) {
     open(file)
     return
   }
-  if (event.key === ' ') {
+  if (event.key === ' ' && vault.selectMode) {
     event.preventDefault()
-    vault.toggle(file.id)
+    vault.toggle(file)
     return
   }
   const step = ARROW_STEP[event.key]
@@ -110,7 +118,7 @@ function onKeydown(event: KeyboardEvent, file: CloudFile) {
           type="button"
           class="chip max-w-full bg-base-200/60 px-2.5 py-1 hover:bg-base-300 hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           :title="displayName(folder)"
-          @click="open(folder)"
+          @click="activate(folder)"
         >
           <FileGlyph :file="folder" />
           <span class="max-w-[15rem] truncate">{{ displayName(folder) }}</span>
@@ -132,7 +140,7 @@ function onKeydown(event: KeyboardEvent, file: CloudFile) {
         class="group relative mb-2.5 cursor-default break-inside-avoid rounded-card p-1.5 transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         :class="isSelected(tile.file) ? 'bg-primary/12' : 'bg-base-200/75 hover:bg-base-300/70'"
         :aria-selected="isSelected(tile.file)"
-        @click="open(tile.file)"
+        @click="activate(tile.file)"
         @keydown="onKeydown($event, tile.file)"
       >
         <div
@@ -153,18 +161,12 @@ function onKeydown(event: KeyboardEvent, file: CloudFile) {
           </div>
 
           <input
+            v-if="vault.selectMode"
             type="checkbox"
-            class="checkbox checkbox-xs absolute left-2 top-2 bg-base-100/85 transition-opacity duration-150"
-            :class="
-              isSelected(tile.file)
-                ? 'opacity-100'
-                : vault.selectionMode
-                  ? 'opacity-100'
-                  : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100'
-            "
+            class="checkbox checkbox-xs absolute left-2 top-2 bg-base-100/85"
             :checked="isSelected(tile.file)"
             :aria-label="t('drive.selectObject', { name: displayName(tile.file) })"
-            @change="vault.toggle(tile.file.id, ($event as MouseEvent).shiftKey)"
+            @change="vault.toggle(tile.file, ($event as MouseEvent).shiftKey)"
             @click.stop
           />
         </div>

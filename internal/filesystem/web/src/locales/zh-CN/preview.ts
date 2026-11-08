@@ -16,6 +16,7 @@ export default {
     unpublish: '取消发布文件',
     copyLink: '复制链接',
     linkCopied: '已复制公开链接。',
+    privateLinkCopied: '链接已复制，仅可访问该文件的账户能打开。',
     download: '下载',
     downloaded: '已下载',
     rename: '重命名',

@@ -3931,6 +3931,29 @@ func (s *QuotaService) GetWorkspaceUsage(ctx context.Context, workspaceID, accou
 	return s.workspaceUsage(ctx, workspaceID, accountID)
 }
 
+// CanAccessWorkspace reports whether the account belongs to the workspace, and
+// may therefore read files that workspace owns. Membership is asked of the
+// workspace service and fails closed when that service is not configured.
+func (s *QuotaService) CanAccessWorkspace(ctx context.Context, workspaceID, accountID string) bool {
+	if s == nil || s.workspaceClient == nil {
+		return false
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	accountID = strings.TrimSpace(accountID)
+	if _, err := uuid.Parse(workspaceID); err != nil {
+		return false
+	}
+	if _, err := uuid.Parse(accountID); err != nil {
+		return false
+	}
+	member, err := s.workspaceClient.IsMemberWithRole(ctx, &gen.DyIsWorkspaceMemberWithRoleRequest{
+		WorkspaceId:   workspaceID,
+		AccountId:     accountID,
+		RequiredRoles: []int32{50},
+	})
+	return err == nil && member.GetValue()
+}
+
 // ChargedWorkspaceBytes returns the bytes charged to a workspace's storage
 // quota, without a membership check: the workspace's own files, plus the
 // owner's personal files when the workspace is an individual (personal) drive.

@@ -25,6 +25,10 @@ function isPublic(file: CloudFile): boolean {
 }
 
 function open(file: CloudFile) {
+  if (vault.selectMode) {
+    vault.toggle(file)
+    return
+  }
   opener.open(file)
 }
 
@@ -34,9 +38,9 @@ function onKeydown(event: KeyboardEvent, file: CloudFile) {
     open(file)
     return
   }
-  if (event.key === ' ') {
+  if (event.key === ' ' && vault.selectMode) {
     event.preventDefault()
-    vault.toggle(file.id)
+    vault.toggle(file)
     return
   }
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -75,6 +79,7 @@ function sortState(key: 'name' | 'size' | 'date') {
           <th scope="col" class="w-10 pl-3 pr-1 text-left">
             <span class="sr-only">{{ t('drive.selectColumn') }}</span>
             <input
+              v-if="vault.selectMode"
               type="checkbox"
               class="checkbox checkbox-xs"
               :checked="allSelected"
@@ -164,18 +169,12 @@ function sortState(key: 'name' | 'size' | 'date') {
         >
           <td class="pl-3 pr-1">
             <input
+              v-if="vault.selectMode"
               type="checkbox"
-              class="checkbox checkbox-xs transition-opacity duration-150"
-              :class="
-                vault.selection.includes(file.id)
-                  ? 'opacity-100'
-                  : vault.selectionMode
-                    ? 'opacity-100'
-                    : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100'
-              "
+              class="checkbox checkbox-xs"
               :checked="vault.selection.includes(file.id)"
               :aria-label="t('drive.selectObject', { name: displayName(file) })"
-              @change="vault.toggle(file.id, ($event as MouseEvent).shiftKey)"
+              @change="vault.toggle(file, ($event as MouseEvent).shiftKey)"
               @click.stop
             />
           </td>

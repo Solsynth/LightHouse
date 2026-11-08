@@ -51,9 +51,11 @@ GET /api/files/unindexed?workspace_id=WORKSPACE_ID
 GET /api/files/:folderId/children?workspace_id=WORKSPACE_ID
 ```
 
-Direct file reads (`GET /api/files/:fileId`) and metadata lookups
-(`GET /api/files/meta?ids=FILE_ID`) are ID-based and may resolve either
-personal or workspace files without `workspace_id`.
+Direct file reads (`GET /api/files/:fileId`, `/info`, `/breadcrumb`, and the
+clean `/files/:fileId` address) and metadata lookups (`GET /api/files/meta`)
+are ID-based and resolve either personal or workspace files without
+`workspace_id`. They authorize a caller who is a member of the file's
+workspace, so every member can open and preview a file another member uploaded.
 
 Workspace membership is verified before these queries run. View its storage
 limit and current usage with:

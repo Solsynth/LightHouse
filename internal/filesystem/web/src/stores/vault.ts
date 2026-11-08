@@ -90,15 +90,27 @@ export const useVaultStore = defineStore('vault', () => {
   const orderDesc = ref(true)
   const poolFilter = ref<string | null>(null)
   const viewMode = ref<ViewMode>(readView())
-
   // Selection is the checkbox's business alone; activating an object is a
-  // separate gesture that opens a tab.
+  // separate gesture that opens a tab. Objects are remembered alongside their
+  // ids so a selection made in a column can outlive the listing that made it.
   const selection = ref<string[]>([])
+  const picked = ref<Record<string, CloudFile>>({})
+  /** Toggled by the toolbar; checkboxes render only while it is on. */
+  const selectMode = ref(false)
   /** The file whose tab is active: what the inspector and preview describe. */
   const previewFile = ref<CloudFile | null>(null)
   let lastSelected: string | null = null
   let searchTimer: number | undefined
   let loadSeq = 0
+
+  /**
+   * Folder listings for the Miller columns, keyed by browsing mode and parent.
+   * Columns refetch only after a mutation or an explicit refresh, so walking
+   * back up a trail is instant.
+   */
+  const childrenCache = new Map<string, CloudFile[]>()
+  const childrenLoads = new Map<string, Promise<CloudFile[]>>()
+  const childrenVersion = ref(0)
 
   const usage = ref<UsageSummary | null>(null)
   const quota = ref<QuotaSummary | null>(null)
@@ -133,13 +145,11 @@ export const useVaultStore = defineStore('vault', () => {
   )
   const fileCount = computed(() => usage.value?.total_file_count ?? 0)
 
-  const selectedItems = computed(() => {
-    const ids = new Set(selection.value)
-    return items.value.filter((item) => ids.has(item.id))
-  })
-  const selectionCount = computed(() => selection.value.length)
-  /** True once at least one object is ticked; row checkboxes appear then. */
-  const selectionMode = computed(() => selection.value.length > 0)
+  const selectedItems = computed(() =>
+    selection.value
+      .map((id) => picked.value[id])
+      .filter((item): item is CloudFile => item !== undefined),
+  )
 
   const selectedBytes = computed(() =>
     selectedItems.value.reduce((sum, item) => sum + (item.object?.size ?? 0), 0),
@@ -186,31 +196,67 @@ export const useVaultStore = defineStore('vault', () => {
 
   function clearSelection() {
     selection.value = []
+    picked.value = {}
     lastSelected = null
   }
 
+  /** Turns the dedicated selection mode on or off; leaving it clears the ticks. */
+  function setSelectMode(next: boolean) {
+    selectMode.value = next
+    if (!next) clearSelection()
+  }
+
+  function toggleSelectMode() {
+    setSelectMode(!selectMode.value)
+  }
+
+  function remember(files: CloudFile[]) {
+    const next = { ...picked.value }
+    for (const file of files) next[file.id] = file
+    picked.value = next
+  }
+
+  /** Drops remembered rows that are no longer ticked. */
+  function prunePicked() {
+    const next: Record<string, CloudFile> = {}
+    for (const id of selection.value) {
+      const file = picked.value[id]
+      if (file) next[id] = file
+    }
+    picked.value = next
+  }
+
   /** Ticks or unticks one checkbox. Shift extends the range from the anchor. */
-  function toggle(id: string, range = false) {
+  function toggle(file: CloudFile, range = false) {
     if (range && lastSelected) {
       const ids = items.value.map((entry) => entry.id)
       const from = ids.indexOf(lastSelected)
-      const to = ids.indexOf(id)
+      const to = ids.indexOf(file.id)
       if (from >= 0 && to >= 0) {
         const [start, end] = from < to ? [from, to] : [to, from]
         selection.value = ids.slice(start, end + 1)
+        remember(items.value)
+        prunePicked()
         return
       }
     }
 
     const next = new Set(selection.value)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
+    if (next.has(file.id)) {
+      next.delete(file.id)
+    } else {
+      next.add(file.id)
+      remember([file])
+    }
     selection.value = [...next]
-    lastSelected = id
+    prunePicked()
+    lastSelected = file.id
   }
 
   function selectAll() {
     selection.value = items.value.map((item) => item.id)
+    remember(items.value)
+    prunePicked()
     lastSelected = selection.value[selection.value.length - 1] ?? null
   }
 
@@ -221,6 +267,7 @@ export const useVaultStore = defineStore('vault', () => {
 
   function patchItem(id: string, changes: Partial<CloudFile>) {
     items.value = items.value.map((item) => (item.id === id ? { ...item, ...changes } : item))
+    if (picked.value[id]) picked.value = { ...picked.value, [id]: { ...picked.value[id], ...changes } }
     if (previewFile.value?.id === id) previewFile.value = { ...previewFile.value, ...changes }
   }
 
@@ -253,6 +300,17 @@ export const useVaultStore = defineStore('vault', () => {
     loading.value = true
     error.value = ''
     try {
+      // Columns already list the open folder; sharing their request means a
+      // mount loads one listing instead of racing a second copy of it.
+      if (viewMode.value === 'column' && mode.value !== 'unindexed') {
+        const parent = mode.value === 'drive' ? folderId.value : null
+        const rows = await listChildren(parent)
+        if (seq !== loadSeq) return
+        items.value = rows
+        total.value = rows.length
+        clearSelection()
+        return
+      }
       const page = await fetchPage(0)
       if (seq !== loadSeq) return
       items.value = arrangeFoldersFirst(page.items)
@@ -381,6 +439,7 @@ export const useVaultStore = defineStore('vault', () => {
   }
 
   async function refreshAll() {
+    invalidateChildren()
     await Promise.all([load(), loadVolume()])
   }
 
@@ -430,6 +489,7 @@ export const useVaultStore = defineStore('vault', () => {
     actionBusy.value = 'rename'
     try {
       await driveApi.rename(file.id, trimmed)
+      invalidateChildren()
       if (folder.value?.id === file.id) setFolderName(trimmed)
       notice.ok(translate('notice.renamed', { name: trimmed }))
       await load()
@@ -447,6 +507,7 @@ export const useVaultStore = defineStore('vault', () => {
     actionBusy.value = 'new-folder'
     try {
       await driveApi.createFolder(trimmed, folderId.value)
+      invalidateChildren()
       notice.ok(translate('notice.folderCreated', { name: trimmed }))
       await Promise.all([load(), loadVolume()])
     } catch (caught) {
@@ -463,6 +524,7 @@ export const useVaultStore = defineStore('vault', () => {
     actionBusy.value = 'move'
     try {
       await driveApi.move(ids, parentId)
+      invalidateChildren()
       notice.ok(
         files.length === 1
           ? translate('notice.oneMoved', { name: files[0]?.name ?? translate('dialog.object') })
@@ -484,6 +546,7 @@ export const useVaultStore = defineStore('vault', () => {
     actionBusy.value = 'recycle'
     try {
       await driveApi.recycle(ids)
+      invalidateChildren()
       notice.ok(
         files.length === 1
           ? translate('notice.oneRecycled', {
@@ -507,6 +570,7 @@ export const useVaultStore = defineStore('vault', () => {
     actionBusy.value = 'restore'
     try {
       await driveApi.restore(ids)
+      invalidateChildren()
       notice.ok(
         files.length === 1
           ? translate('notice.oneRestored', {
@@ -530,6 +594,7 @@ export const useVaultStore = defineStore('vault', () => {
     actionBusy.value = 'purge'
     try {
       await driveApi.purge(ids)
+      invalidateChildren()
       notice.ok(
         files.length === 1
           ? translate('notice.onePurged', {
@@ -567,6 +632,7 @@ export const useVaultStore = defineStore('vault', () => {
         permission: 'read',
       })
       await driveApi.setPermissions(file.id, next)
+      invalidateChildren()
       notice.ok(translate(isPublic ? 'notice.published' : 'notice.unpublished'))
       await load()
     } catch (caught) {
@@ -591,25 +657,48 @@ export const useVaultStore = defineStore('vault', () => {
     return page.items
   }
 
+  /** Drops every cached column listing and asks open columns to reload. */
+  function invalidateChildren() {
+    childrenCache.clear()
+    childrenVersion.value += 1
+  }
+
   /** Every entry under a folder, folders and files together, for columns. */
   async function listChildren(parentId: string | null): Promise<CloudFile[]> {
-    const options = {
-      take: 200,
-      order: 'name' as const,
-      orderDesc: false,
-      recycled: false,
+    const key = `${mode.value}:${parentId ?? ''}`
+    const cached = childrenCache.get(key)
+    if (cached) return cached
+    const pending = childrenLoads.get(key)
+    if (pending) return pending
+
+    const request = (async () => {
+      const options = {
+        take: 200,
+        order: 'name' as const,
+        orderDesc: false,
+        recycled: false,
+      }
+      let items: CloudFile[]
+      if (parentId) {
+        items = (await driveApi.children(parentId, options)).items
+      } else if (mode.value === 'recycle') {
+        items = (await driveApi.owned({ ...options, recycled: true })).items
+      } else if (mode.value === 'unindexed') {
+        items = (await driveApi.unindexed(options)).items
+      } else {
+        items = (await driveApi.root(options)).items
+      }
+      const rows = arrangeFoldersFirst(items)
+      childrenCache.set(key, rows)
+      return rows
+    })()
+
+    childrenLoads.set(key, request)
+    try {
+      return await request
+    } finally {
+      childrenLoads.delete(key)
     }
-    let items: CloudFile[]
-    if (parentId) {
-      items = (await driveApi.children(parentId, options)).items
-    } else if (mode.value === 'recycle') {
-      items = (await driveApi.owned({ ...options, recycled: true })).items
-    } else if (mode.value === 'unindexed') {
-      items = (await driveApi.unindexed(options)).items
-    } else {
-      items = (await driveApi.root(options)).items
-    }
-    return arrangeFoldersFirst(items)
   }
 
   function previewFor(file: CloudFile): string {
@@ -655,8 +744,11 @@ export const useVaultStore = defineStore('vault', () => {
     usedFraction,
     fileCount,
     selectedItems,
-    selectionCount,
-    selectionMode,
+    selectMode,
+    setSelectMode,
+    toggleSelectMode,
+    childrenVersion,
+    invalidateChildren,
     selectedBytes,
     activePool,
     canGoUp,

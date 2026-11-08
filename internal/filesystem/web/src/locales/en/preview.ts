@@ -16,6 +16,7 @@ export default {
     unpublish: 'Unpublish file',
     copyLink: 'Copy link',
     linkCopied: 'Public link copied.',
+    privateLinkCopied: 'Link copied. Only accounts with access can open it.',
     download: 'Download',
     downloaded: 'Downloaded',
     rename: 'Rename',

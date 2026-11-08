@@ -6,7 +6,6 @@ export default {
     console: 'File console',
     skipToContent: 'Skip to content',
     home: 'SnFS home',
-    copyright: '© {year} Solar Network',
     language: 'Language',
     languageEnglish: 'English',
     languageChinese: '简体中文',
@@ -18,6 +17,8 @@ export default {
     uploadFiles: 'Upload files',
     uploadDisabled: 'Open a drive folder to upload',
     signedInAs: 'Signed in as {name}',
+    account: 'Account',
+    dismissNotice: 'Dismiss notice',
   },
   nav: {
     drive: 'My Drive',

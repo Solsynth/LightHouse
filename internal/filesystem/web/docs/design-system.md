@@ -13,7 +13,7 @@ search line, a browsable object list, and a details column.
 
 ## 1. Principles
 
-1. **One shell, one panel.** The app bar, rail, and footer share one `base-200`
+1. **One shell, one panel.** The app bar and rail share one `base-200`
    shell; only the working area is a separate `base-100` panel with a card
    corner. Separation comes from that one edge and the tone of a block — never
    from a border, divider, or rule.
@@ -42,28 +42,27 @@ search line, a browsable object list, and a details column.
 
 ## 2. Layout
 
-The app bar, rail, and footer share one shell; only the working area is a panel:
+The app bar and rail share one shell; only the working area is a panel:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  shell: app bar (lockup · search · actions)                     │
+│  shell: app bar (lockup · search · actions · account)           │
 ├───────────────────┬─────────────────────────────────────────────┤
 │  shell: rail      │  content panel (rounded, base-100)          │
 │  locations        │  toolbar (crumbs · sort · filter · view)    │
 │  pools            │  object bars / grid cards / columns         │
 │  quota well       │                                             │
-├───────────────────┴─────────────────────────────────────────────┤
-│  shell: status + language                                       │
-└─────────────────────────────────────────────────────────────────┘
+│                   │                                             │
+└───────────────────┴─────────────────────────────────────────────┘
 ```
 
-- The shell is one `base-200` surface behind the app bar, rail, and footer.
+- The shell is one `base-200` surface behind the app bar and rail.
   Only the content is a `base-100` panel with a card corner, inset by the page
   gutter.
 - Rows and cards inside the panel are `base-200`; nested wells step to
   `base-300`.
-- Content is left-aligned. The rail, toolbar, and status line share one
-  horizontal rhythm; object names lead, metadata trails.
+- Content is left-aligned. The rail and toolbar share one horizontal rhythm;
+  object names lead, metadata trails.
 - Below `md` the rail becomes a rounded drawer over a dimmed ground, and the
   header collapses to controls only.
 
@@ -83,7 +82,7 @@ not warm — with indigo as the single brand signal.
 | Role | Token | Dark | Light |
 | --- | --- | --- | --- |
 | Content panel | `--color-base-100` | `#171618` | `#faf7f9` |
-| Shell (app bar, rail, footer) | `--color-base-200` | `#1d1d20` | `#f6f2f6` |
+| Shell (app bar, rail) | `--color-base-200` | `#1d1d20` | `#f6f2f6` |
 | Row / card / well step | `--color-base-300` | `#2e2e31` | `#e4e1e5` |
 | Brand-tinted block | `--surface-tint` (`bg-tint`) | `#262833` | `#e8e9f5` |
 | Text content | `--color-base-content` | `#edeaee` | `#1f1f22` |
@@ -174,9 +173,11 @@ corner, no dividers, tonal selection.
 | Waterfall | Masonry of `base-200` cards, media ratio clamped between 0.35:1 and 4:1 |
 
 The Unindexed listing has no column view; its three remaining views share the
-same row and card rules. Row checkboxes stay hidden until a selection starts;
-the header select-all control is the entry point, and once one object is
-selected every row shows its checkbox.
+same row and card rules. Selection is a dedicated mode, entered from the check
+control in the toolbar: while it is off no checkbox exists in the DOM at all.
+While it is on every row and card carries a checkbox, the selection bar offers
+select-all; leaving the mode clears the ticks. The account menu (avatar in the
+app bar) holds the language switch; there is no footer.
 
 Folders are set in the same face as files; kind and size are the only metadata
 that appear by default. A public-by-link object gets a small brand glyph, not a

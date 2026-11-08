@@ -53,7 +53,7 @@ function statusLabel(status: string, progress: number): string {
   >
     <section
       v-if="visible"
-      class="fixed bottom-16 right-3 z-50 w-[360px] max-w-[calc(100vw-24px)] rounded-sheet bg-base-200 p-1.5 shadow-[0_24px_60px_-28px_rgb(0_0_0/0.6)] md:right-4"
+      class="fixed bottom-4 right-3 z-50 w-[360px] max-w-[calc(100vw-24px)] rounded-sheet bg-base-200 p-1.5 shadow-[0_24px_60px_-28px_rgb(0_0_0/0.6)] md:right-4"
       :aria-label="t('transfers.aria')"
     >
       <button

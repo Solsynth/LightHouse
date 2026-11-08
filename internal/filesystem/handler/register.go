@@ -40,14 +40,14 @@ func RegisterFileRoutes(r *gin.Engine, d Deps) {
 	files, quota := d.Files, d.Quota
 	// Clean public address for shared files; the API keeps the authenticated
 	// surface at /api/files/{id}.
-	r.GET("/files/:id", func(c *gin.Context) { publicFile(c, d.Config, files) })
+	r.GET("/files/:id", func(c *gin.Context) { publicFile(c, d.Config, files, quota) })
 	f := r.Group("/api/files")
 	{
-		f.GET("/meta", func(c *gin.Context) { listFilesMetadata(c, files) })
-		f.GET("/:id", func(c *gin.Context) { openFile(c, d.Config, files) })
-		f.GET("/:id/info", func(c *gin.Context) { fileInfo(c, files) })
-		f.GET("/:id/breadcrumb", func(c *gin.Context) { fileBreadcrumb(c, files) })
-		f.GET("/:id/open", func(c *gin.Context) { openFile(c, d.Config, files) })
+		f.GET("/meta", func(c *gin.Context) { listFilesMetadata(c, files, quota) })
+		f.GET("/:id", func(c *gin.Context) { openFile(c, d.Config, files, quota) })
+		f.GET("/:id/info", func(c *gin.Context) { fileInfo(c, files, quota) })
+		f.GET("/:id/breadcrumb", func(c *gin.Context) { fileBreadcrumb(c, files, quota) })
+		f.GET("/:id/open", func(c *gin.Context) { openFile(c, d.Config, files, quota) })
 		f.GET("/:id/references", func(c *gin.Context) { c.JSON(http.StatusOK, []any{}) })
 		f.GET("/root/children", func(c *gin.Context) { listRootIndexed(c, files, quota) })
 		f.GET("/:id/children", func(c *gin.Context) { listChildren(c, files, quota) })

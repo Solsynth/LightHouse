@@ -169,7 +169,6 @@ function retry() {
           vault.viewMode === 'column' &&
           (vault.items.length > 0 || vault.loading)
         "
-        :key="viewKey"
       />
       <FileWaterfall
         v-else-if="vault.viewMode === 'waterfall' && (vault.items.length > 0 || vault.loading)"

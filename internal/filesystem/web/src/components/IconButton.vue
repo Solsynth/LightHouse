@@ -8,6 +8,8 @@ const props = defineProps<{
   label: string
   tone?: 'neutral' | 'danger'
   disabled?: boolean
+  /** Draws the control in its on state, for toggles like selection mode. */
+  active?: boolean
 }>()
 
 const emit = defineEmits<{ click: [] }>()
@@ -18,10 +20,15 @@ const emit = defineEmits<{ click: [] }>()
     type="button"
     class="btn btn-ghost btn-xs px-1"
     :class="
-      props.tone === 'danger' ? 'text-dim hover:text-error' : 'text-dim hover:text-base-content'
+      props.active
+        ? 'bg-primary/12 text-primary hover:text-primary'
+        : props.tone === 'danger'
+          ? 'text-dim hover:text-error'
+          : 'text-dim hover:text-base-content'
     "
     :title="props.label"
     :aria-label="props.label"
+    :aria-pressed="props.active === undefined ? undefined : props.active"
     :disabled="props.disabled"
     @click="emit('click')"
   >

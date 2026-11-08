@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { Menu16, Moon16, Search16, Sun16, Upload16 } from '@carbon/icons-vue'
+import { Checkmark16, Menu16, Moon16, Search16, Sun16, Upload16 } from '@carbon/icons-vue'
 
 import BrandMark from './BrandMark.vue'
 import { useSessionStore } from '@/stores/session'
@@ -10,6 +10,7 @@ import { useUiStore } from '@/stores/ui'
 import { useUploadStore } from '@/stores/upload'
 import { useVaultStore } from '@/stores/vault'
 import { initialOf } from '@/lib/format'
+import type { Locale } from '@/lib/prefs'
 
 const session = useSessionStore()
 const ui = useUiStore()
@@ -25,6 +26,17 @@ const canUpload = computed(() => onDrive.value)
 const identityName = computed(
   () => session.identity?.nick || session.identity?.name || t('session.account'),
 )
+
+/** Language lives in the account menu; the footer that used to hold it is gone. */
+const locales: { key: Locale; label: string }[] = [
+  { key: 'en', label: 'app.languageEnglish' },
+  { key: 'zh-CN', label: 'app.languageChinese' },
+]
+
+function chooseLocale(next: Locale, event: Event) {
+  ui.setLocale(next)
+  ;(event.currentTarget as HTMLElement | null)?.closest('details')?.removeAttribute('open')
+}
 
 function openPicker() {
   if (!canUpload.value) return
@@ -134,13 +146,43 @@ onBeforeUnmount(() => {
         </span>
       </button>
 
-      <span
-        class="ml-1.5 grid size-7 shrink-0 place-items-center rounded-full bg-base-300/70 text-2xs font-semibold text-dim"
-        :title="`${identityName} · ${t('app.network')}`"
-        :aria-label="t('app.signedInAs', { name: identityName })"
-      >
-        {{ initialOf(identityName) }}
-      </span>
+      <details class="dropdown dropdown-end">
+        <summary
+          class="account-trigger ml-1.5 grid size-7 shrink-0 cursor-pointer place-items-center rounded-full bg-base-300/70 text-2xs font-semibold text-dim transition-colors hover:bg-base-300 hover:text-base-content"
+          :title="`${identityName} · ${t('app.network')}`"
+          :aria-label="t('app.signedInAs', { name: identityName })"
+        >
+          {{ initialOf(identityName) }}
+        </summary>
+        <div
+          class="menu-plate dropdown-content z-50 mt-2 w-[220px] p-1.5"
+          role="menu"
+          :aria-label="t('app.account')"
+        >
+          <div class="px-2.5 pb-1.5 pt-1">
+            <div class="truncate text-[12px] font-semibold text-base-content">
+              {{ identityName }}
+            </div>
+            <div class="mt-0.5 truncate text-2xs text-faint">{{ t('app.network') }}</div>
+          </div>
+          <div class="eyebrow px-2.5 pb-1 pt-2 text-faint">{{ t('app.language') }}</div>
+          <button
+            v-for="entry in locales"
+            :key="entry.key"
+            type="button"
+            role="menuitemradio"
+            class="menu-choice"
+            :aria-checked="ui.locale === entry.key"
+            @click="chooseLocale(entry.key, $event)"
+          >
+            <span class="flex-1">{{ t(entry.label) }}</span>
+            <Checkmark16
+              v-if="ui.locale === entry.key"
+              class="h-3.5 w-3.5 shrink-0 text-primary"
+            />
+          </button>
+        </div>
+      </details>
 
       <input
         ref="input"
@@ -154,3 +196,18 @@ onBeforeUnmount(() => {
     </div>
   </header>
 </template>
+
+<style scoped>
+/* The avatar is a details summary, not a chip with a disclosure triangle. */
+.account-trigger {
+  list-style: none;
+}
+
+.account-trigger::-webkit-details-marker {
+  display: none;
+}
+
+.account-trigger::marker {
+  content: '';
+}
+</style>

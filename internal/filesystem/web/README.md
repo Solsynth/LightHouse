@@ -53,9 +53,12 @@ A file marked public has a clean anonymous address:
 https://fs.solian.app/files/<file-id>
 ```
 
-That route serves only public files; a private file returns 404 even to a
-signed-in caller. The authenticated `/api/files/<id>` surface remains the
-route for private files and studio operations.
+That route always serves files policy marks public. A signed-in caller also
+reaches the private files it may read (its own, granted files, and files owned
+by a workspace it belongs to); anyone without a grant gets the same 404 as a
+missing file, so the route never confirms a private object exists. The
+authenticated `/api/files/<id>` surface stays the API route for private files
+and studio operations.
 
 ## Scripts
 

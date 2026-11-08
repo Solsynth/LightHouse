@@ -164,7 +164,7 @@ async function copyLink() {
   if (!publicLink.value) return
   try {
     await navigator.clipboard.writeText(publicLink.value)
-    notice.ok(t('preview.linkCopied'))
+    notice.ok(t(isPublic.value ? 'preview.linkCopied' : 'preview.privateLinkCopied'))
   } catch {
     notice.error(t('preview.clipboardDenied'))
   }

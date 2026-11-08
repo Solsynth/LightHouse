@@ -35,6 +35,37 @@ import (
 	"gorm.io/gorm"
 )
 
+// canReadFile is the read gate for one object. A public grant always passes;
+// a signed-in account also reads its own files, files it holds a grant on, and
+// every file owned by a workspace it belongs to. A derivative (thumbnail or
+// compression) is read through its source, which carries the workspace.
+func canReadFile(
+	c *gin.Context,
+	files *service.FileService,
+	quota *service.QuotaService,
+	account *gen.DyAccount,
+	session *gen.DyAuthSession,
+	file *database.CloudFile,
+) bool {
+	if files.CanAccessFile(account, session, file, "read") {
+		return true
+	}
+	if account == nil {
+		return false
+	}
+	if file.ParentID != nil && isDerivedVariant(file) {
+		if parent, err := files.GetFile(*file.ParentID); err == nil && parent.ID != file.ID {
+			if canReadFile(c, files, quota, account, session, parent) {
+				return true
+			}
+		}
+	}
+	if file.WorkspaceID == nil || quota == nil {
+		return false
+	}
+	return quota.CanAccessWorkspace(c.Request.Context(), *file.WorkspaceID, account.GetId())
+}
+
 // @Summary Get file info
 // @Tags files
 // @Produce json
@@ -42,7 +73,7 @@ import (
 // @Success 200 {object} database.CloudFile
 // @Failure 404 {object} map[string]any
 // @Router /api/files/{id}/info [get]
-func fileInfo(c *gin.Context, files *service.FileService) {
+func fileInfo(c *gin.Context, files *service.FileService, quota *service.QuotaService) {
 	file, err := getRequestedFile(c, files, c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
@@ -52,11 +83,11 @@ func fileInfo(c *gin.Context, files *service.FileService) {
 	if !ok {
 		// Same policy as openFile: anonymous metadata reads are limited to
 		// files that carry a public grant.
-		if !files.CanAccessFile(nil, nil, file, "read") {
+		if !canReadFile(c, files, quota, nil, nil, file) {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
-	} else if !files.CanAccessFile(result.Account, result.Session, file, "read") {
+	} else if !canReadFile(c, files, quota, result.Account, result.Session, file) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
@@ -69,7 +100,7 @@ func fileInfo(c *gin.Context, files *service.FileService) {
 // @Param ids query []string true "File IDs; may be repeated or comma-separated"
 // @Success 200 {array} database.CloudFile
 // @Router /api/files/meta [get]
-func listFilesMetadata(c *gin.Context, files *service.FileService) {
+func listFilesMetadata(c *gin.Context, files *service.FileService, quota *service.QuotaService) {
 	ids := queryFileIDs(c, "ids")
 	if len(ids) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ids is required"})
@@ -88,10 +119,10 @@ func listFilesMetadata(c *gin.Context, files *service.FileService) {
 	itemsByID := make(map[string]database.CloudFile, len(items))
 	for _, item := range items {
 		if authenticated {
-			if !files.CanAccessFile(result.Account, result.Session, &item, "read") {
+			if !canReadFile(c, files, quota, result.Account, result.Session, &item) {
 				continue
 			}
-		} else if !files.CanAccessFile(nil, nil, &item, "read") {
+		} else if !canReadFile(c, files, quota, nil, nil, &item) {
 			continue
 		}
 		itemsByID[item.ID] = item
@@ -126,18 +157,19 @@ type breadcrumbItem struct {
 	IsFolder bool    `json:"is_folder"`
 }
 
-func fileBreadcrumb(c *gin.Context, files *service.FileService) {
+func fileBreadcrumb(c *gin.Context, files *service.FileService, quota *service.QuotaService) {
 	file, err := getRequestedFile(c, files, c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 	result, _, ok := auth.GetAuth(c)
-	if !ok && !files.CanAccessFile(nil, nil, file, "read") {
-		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
-		return
-	}
-	if ok && !files.CanAccessFile(result.Account, result.Session, file, "read") {
+	if ok {
+		if !canReadFile(c, files, quota, result.Account, result.Session, file) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
+	} else if !canReadFile(c, files, quota, nil, nil, file) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
@@ -330,26 +362,49 @@ func bearerToken(header string) string {
 // @Failure 404 {object} map[string]any
 // @Router /api/files/{id} [get]
 // @Router /api/files/{id}/open [get]
-func openFile(c *gin.Context, cfg *config.Config, files *service.FileService) {
-	serveOpenFile(c, cfg, files, false)
+func openFile(c *gin.Context, cfg *config.Config, files *service.FileService, quota *service.QuotaService) {
+	serveOpenFile(c, cfg, files, quota, false)
 }
 
-// publicFile serves the clean /files/{id} address for anonymous sharing. It
-// accepts only files that policy marks public, even when the caller is signed
-// in, so a public link can never expose a private object.
-func publicFile(c *gin.Context, cfg *config.Config, files *service.FileService) {
-	serveOpenFile(c, cfg, files, true)
+// publicFile serves the clean /files/{id} address for sharing. Anonymous
+// callers only reach files policy marks public; a signed-in caller also reaches
+// the files it may read itself, so an owner's link opens for the owner. Anyone
+// without a grant gets the same 404 as a missing file, so the route never
+// confirms that a private object exists.
+func publicFile(c *gin.Context, cfg *config.Config, files *service.FileService, quota *service.QuotaService) {
+	serveOpenFile(c, cfg, files, quota, true)
 }
 
 func serveOpenFile(
 	c *gin.Context,
 	cfg *config.Config,
 	files *service.FileService,
+	quota *service.QuotaService,
 	publicOnly bool,
 ) {
 	file, err := getRequestedFile(c, files, c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	// Authorize the requested object before swapping in a derivative: a
+	// thumbnail or compression variant does not carry the source's ownership.
+	result, _, authenticated := auth.GetAuth(c)
+	allowed := false
+	if authenticated {
+		allowed = canReadFile(c, files, quota, result.Account, result.Session, file)
+	} else {
+		allowed = canReadFile(c, files, quota, nil, nil, file)
+	}
+	if !allowed {
+		switch {
+		case publicOnly:
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		case authenticated:
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		default:
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		}
 		return
 	}
 	if variant := c.Query("thumbnail"); strings.EqualFold(variant, "1") || strings.EqualFold(variant, "true") {
@@ -368,25 +423,6 @@ func serveOpenFile(
 	} else if file.Object != nil && strings.HasPrefix(file.Object.MimeType, "image/") {
 		if compressed, err := resolveOpenVariant(c.Request.Context(), files, file, "system.compression.low"); err == nil {
 			file = compressed
-		}
-	}
-	if publicOnly {
-		if !files.CanAccessFile(nil, nil, file, "read") {
-			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-			return
-		}
-	} else {
-		result, _, ok := auth.GetAuth(c)
-		if !ok {
-			// Anonymous callers may only open files that policy marks public;
-			// anything else needs a bearer token.
-			if !files.CanAccessFile(nil, nil, file, "read") {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-				return
-			}
-		} else if !files.CanAccessFile(result.Account, result.Session, file, "read") {
-			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
-			return
 		}
 	}
 	download := c.Query("download") == "1" || strings.EqualFold(c.Query("download"), "true")

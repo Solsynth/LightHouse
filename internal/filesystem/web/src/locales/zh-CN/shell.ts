@@ -6,7 +6,6 @@ export default {
     console: '文件控制台',
     skipToContent: '跳到主要内容',
     home: 'SnFS 首页',
-    copyright: '© {year} Solar Network',
     language: '语言',
     languageEnglish: 'English',
     languageChinese: '简体中文',
@@ -18,6 +17,8 @@ export default {
     uploadFiles: '上传文件',
     uploadDisabled: '打开云盘文件夹以上传',
     signedInAs: '已登录为 {name}',
+    account: '账户',
+    dismissNotice: '关闭通知',
   },
   nav: {
     drive: '我的云盘',
