@@ -297,6 +297,7 @@ wallet = { grpc = "" }
 pass = { grpc = "" }
 blade = { grpc = "" }
 ring = { grpc = "" }
+pulsar = { grpc = "localhost:7101" }
 
 [discovery]
 # Register with Blade service discovery so Blade's /meta capability

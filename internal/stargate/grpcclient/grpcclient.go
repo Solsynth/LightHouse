@@ -62,15 +62,16 @@ func DialInsecure(target string) (*grpc.ClientConn, error) {
 
 // Clients holds the outbound clients.
 type Clients struct {
-	Wallet  gen.DySubscriptionServiceClient
-	Payment gen.DyPaymentServiceClient
-	Develop gen.DyCustomAppServiceClient
-	Drive   gen.DyFileServiceClient
-	Pass    gen.DyProfileServiceClient
-	Nfc     gen.DyNfcServiceClient
-	Blade   gen.WebSocketServiceClient
-	Ring    gen.DyRingServiceClient
-	conns   []*grpc.ClientConn
+	Wallet         gen.DySubscriptionServiceClient
+	Payment        gen.DyPaymentServiceClient
+	Develop        gen.DyCustomAppServiceClient
+	Drive          gen.DyFileServiceClient
+	Pass           gen.DyProfileServiceClient
+	Nfc            gen.DyNfcServiceClient
+	Blade          gen.WebSocketServiceClient
+	Ring           gen.DyRingServiceClient
+	PulsarPresence gen.DyPresenceServiceClient
+	conns          []*grpc.ClientConn
 }
 
 // Available reports whether a named optional outbound service was configured
@@ -98,6 +99,8 @@ func (c *Clients) Available(service string) bool {
 		return c.Blade != nil
 	case "ring":
 		return c.Ring != nil
+	case "pulsar":
+		return c.PulsarPresence != nil
 	default:
 		return false
 	}
@@ -129,6 +132,9 @@ func (c *Clients) FilterServices(enabled map[string]bool) {
 	}
 	if !enabled["ring"] {
 		c.Ring = nil
+	}
+	if !enabled["pulsar"] {
+		c.PulsarPresence = nil
 	}
 }
 
@@ -186,6 +192,9 @@ func NewClientsWithResolver(cfg *config.Config, resolver *shareddiscovery.Resolv
 	}
 	if conn := dial("ring", cfg.Services.Ring.GRPC, false); conn != nil {
 		c.Ring = gen.NewDyRingServiceClient(conn)
+	}
+	if conn := dial("pulsar", cfg.Services.Pulsar.GRPC, false); conn != nil {
+		c.PulsarPresence = gen.NewDyPresenceServiceClient(conn)
 	}
 	return c, nil
 }

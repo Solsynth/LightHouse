@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -81,7 +82,7 @@ func setupTestRouter(t *testing.T, testAccountID uuid.UUID) (*gin.Engine, *core.
 
 func TestNowPlayingHttpEndpoints(t *testing.T) {
 	testAcc := uuid.New()
-	router, _ := setupTestRouter(t, testAcc)
+	router, services := setupTestRouter(t, testAcc)
 
 	// 1. Report now playing
 	sub := "Madeon"
@@ -150,5 +151,30 @@ func TestNowPlayingHttpEndpoints(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 OK from end, got %d", w.Code)
+	}
+
+	// 5. Test gRPC presenceServer ListFriendsActivities
+	grpcSrv := newPresenceServer(services)
+	now := time.Now().UTC()
+	_ = services.DB.Create(&model.ActiveSession{
+		AccountID:       testAcc,
+		Domain:          model.DomainMusic,
+		ManualID:        "grpc:test",
+		Title:           "Miracle",
+		LeaseExpiresAt:  now.Add(5 * time.Minute),
+		StartedAt:       now,
+	})
+
+	resp, err := grpcSrv.ListFriendsActivities(context.Background(), &gen.DyListFriendsActivitiesRequest{
+		AccountIds: []string{testAcc.String()},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error from ListFriendsActivities: %v", err)
+	}
+	if len(resp.GetActivities()) == 0 {
+		t.Fatalf("expected at least 1 activity in gRPC response")
+	}
+	if resp.GetActivities()[0].GetTitle() != "Miracle" {
+		t.Fatalf("expected activity title 'Miracle', got '%s'", resp.GetActivities()[0].GetTitle())
 	}
 }

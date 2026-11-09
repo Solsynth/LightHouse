@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
+	"src.solsynth.dev/sosys/stargate/grpcclient"
 	"src.solsynth.dev/sosys/stargate/store"
 )
 
@@ -105,5 +106,50 @@ func TestListFriendsActivitiesCapsPerType(t *testing.T) {
 	}
 	if len(emptyResp.Activities) != 0 {
 		t.Fatalf("expected no activities, got %d", len(emptyResp.Activities))
+	}
+}
+
+type fakePulsarPresenceClient struct {
+	gen.DyPresenceServiceClient
+	called bool
+	resp   *gen.DyListFriendsActivitiesResponse
+	err    error
+}
+
+func (f *fakePulsarPresenceClient) ListFriendsActivities(ctx context.Context, in *gen.DyListFriendsActivitiesRequest, opts ...grpc.CallOption) (*gen.DyListFriendsActivitiesResponse, error) {
+	f.called = true
+	return f.resp, f.err
+}
+
+func TestPresenceServiceDelegatesToPulsar(t *testing.T) {
+	mockPulsar := &fakePulsarPresenceClient{
+		resp: &gen.DyListFriendsActivitiesResponse{
+			Activities: []*gen.DyPresenceActivity{
+				{
+					Id:        "pulsar-test-1",
+					AccountId: "11111111-1111-1111-1111-111111111111",
+				},
+			},
+		},
+	}
+
+	deps := Deps{
+		Clients: &grpcclient.Clients{
+			PulsarPresence: mockPulsar,
+		},
+	}
+
+	srv := newPresenceService(deps)
+	resp, err := srv.ListFriendsActivities(context.Background(), &gen.DyListFriendsActivitiesRequest{
+		AccountIds: []string{"11111111-1111-1111-1111-111111111111"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !mockPulsar.called {
+		t.Fatalf("expected call to PulsarPresence client")
+	}
+	if len(resp.GetActivities()) != 1 || resp.GetActivities()[0].GetId() != "pulsar-test-1" {
+		t.Fatalf("unexpected response from delegated call: %+v", resp)
 	}
 }

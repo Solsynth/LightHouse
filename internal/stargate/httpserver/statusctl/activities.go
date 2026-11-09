@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 	"src.solsynth.dev/sosys/stargate/middleware"
@@ -149,6 +150,19 @@ func (d Deps) listActivities(c *gin.Context) {
 		to != nil
 
 	if !includeExpired && !hasFilters {
+		if d.Clients != nil && d.Clients.PulsarPresence != nil {
+			res, err := d.Clients.PulsarPresence.ListFriendsActivities(ctx, &gen.DyListFriendsActivitiesRequest{
+				AccountIds: []string{accountID.String()},
+			})
+			if err == nil && res != nil {
+				items := make([]model.PresenceActivity, 0, len(res.Activities))
+				for _, act := range res.Activities {
+					items = append(items, model.ProtoToPresenceActivity(act))
+				}
+				c.JSON(http.StatusOK, items)
+				return
+			}
+		}
 		activities, err := d.Store.GetActiveActivities(ctx, accountID)
 		if err != nil {
 			internalError(c, err)
@@ -217,6 +231,19 @@ func (d Deps) activitiesByAccount(c *gin.Context) {
 	if err != nil {
 		internalError(c, err)
 		return
+	}
+	if d.Clients != nil && d.Clients.PulsarPresence != nil {
+		res, err := d.Clients.PulsarPresence.ListFriendsActivities(ctx, &gen.DyListFriendsActivitiesRequest{
+			AccountIds: []string{accountID.String()},
+		})
+		if err == nil && res != nil {
+			items := make([]model.PresenceActivity, 0, len(res.Activities))
+			for _, act := range res.Activities {
+				items = append(items, model.ProtoToPresenceActivity(act))
+			}
+			c.JSON(http.StatusOK, items)
+			return
+		}
 	}
 	activities, err := d.Store.GetActiveActivities(ctx, accountID)
 	if err != nil {

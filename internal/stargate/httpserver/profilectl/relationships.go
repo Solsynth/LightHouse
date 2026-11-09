@@ -133,10 +133,33 @@ func (d Deps) getFriendsOverview(c *gin.Context) {
 
 	// Live activities, one batch query for every friend (C#
 	// GetActiveActivitiesBatch). A friend with none gets an empty array.
-	activitiesByAccount, err := d.Store.GetActiveActivitiesBatch(ctx, uuids)
-	if err != nil {
-		internalError(c, err)
-		return
+	var activitiesByAccount map[uuid.UUID][]model.PresenceActivity
+	if d.Clients != nil && d.Clients.PulsarPresence != nil && len(uuids) > 0 {
+		reqIDs := make([]string, 0, len(uuids))
+		for _, u := range uuids {
+			reqIDs = append(reqIDs, u.String())
+		}
+		res, err := d.Clients.PulsarPresence.ListFriendsActivities(ctx, &gen.DyListFriendsActivitiesRequest{
+			AccountIds: reqIDs,
+			Take:       int32(len(uuids) * 5),
+		})
+		if err == nil && res != nil {
+			activitiesByAccount = make(map[uuid.UUID][]model.PresenceActivity, len(uuids))
+			for _, act := range res.Activities {
+				accID, parseErr := uuid.Parse(act.AccountId)
+				if parseErr == nil {
+					activitiesByAccount[accID] = append(activitiesByAccount[accID], model.ProtoToPresenceActivity(act))
+				}
+			}
+		}
+	}
+	if activitiesByAccount == nil {
+		var err error
+		activitiesByAccount, err = d.Store.GetActiveActivitiesBatch(ctx, uuids)
+		if err != nil {
+			internalError(c, err)
+			return
+		}
 	}
 
 	now := time.Now()

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 // Account status and presence-activity wire types. They mirror
@@ -193,4 +194,61 @@ type PresenceCatalogItem struct {
 	CreatedAt      *Time              `json:"created_at"`
 	UpdatedAt      *Time              `json:"updated_at"`
 	DeletedAt      *Time              `json:"deleted_at"`
+}
+
+// ProtoToPresenceActivity converts a DyPresenceActivity protobuf message to PresenceActivity.
+func ProtoToPresenceActivity(act *gen.DyPresenceActivity) PresenceActivity {
+	if act == nil {
+		return PresenceActivity{}
+	}
+	out := PresenceActivity{
+		Id:           act.Id,
+		AccountId:    act.AccountId,
+		Type:         act.Type,
+		ManualId:     act.ManualId,
+		Title:        act.Title,
+		Subtitle:     act.Subtitle,
+		Caption:      act.Caption,
+		LargeImage:   act.LargeImage,
+		SmallImage:   act.SmallImage,
+		TitleUrl:     act.TitleUrl,
+		SubtitleUrl:  act.SubtitleUrl,
+		LeaseMinutes: int(act.LeaseMinutes),
+		Visibility:   PresenceVisibility(act.Visibility),
+	}
+	if act.CatalogId != nil {
+		out.CatalogId = act.CatalogId
+	}
+	if act.LeaseExpiresAt != nil {
+		t := Time(act.LeaseExpiresAt.AsTime())
+		out.LeaseExpiresAt = &t
+	}
+	if act.StartedAt != nil {
+		t := Time(act.StartedAt.AsTime())
+		out.StartedAt = &t
+	}
+	if act.EndedAt != nil {
+		t := Time(act.EndedAt.AsTime())
+		out.EndedAt = &t
+	}
+	if act.CreatedAt != nil {
+		t := Time(act.CreatedAt.AsTime())
+		out.CreatedAt = &t
+	}
+	if act.UpdatedAt != nil {
+		t := Time(act.UpdatedAt.AsTime())
+		out.UpdatedAt = &t
+	}
+	if act.Meta != nil {
+		out.Meta = act.Meta.AsMap()
+	}
+	for _, tag := range act.Tags {
+		if tag != nil {
+			out.Tags = append(out.Tags, PresenceTag{
+				Slug: tag.Slug,
+				Name: tag.Name,
+			})
+		}
+	}
+	return out
 }

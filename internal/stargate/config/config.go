@@ -162,6 +162,7 @@ type Config struct {
 		Blade   ServiceTarget `toml:"blade"`
 		Ring    ServiceTarget `toml:"ring"`
 		Develop ServiceTarget `toml:"develop"`
+		Pulsar  ServiceTarget `toml:"pulsar"`
 	} `toml:"services"`
 
 	Oidc struct {
@@ -622,6 +623,7 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("STARGATE_SERVICES_BLADE__GRPC", &cfg.Services.Blade.GRPC)
 	setStr("STARGATE_SERVICES_RING__GRPC", &cfg.Services.Ring.GRPC)
 	setStr("STARGATE_SERVICES_DEVELOP__GRPC", &cfg.Services.Develop.GRPC)
+	setStr("STARGATE_SERVICES_PULSAR__GRPC", &cfg.Services.Pulsar.GRPC)
 	setBool("STARGATE_CAPTCHA_SKIP", &cfg.Captcha.Skip)
 	setBool("STARGATE_CAPTCHA_ALLOWDISABLED", &cfg.Captcha.AllowDisabled)
 	setBool("STARGATE_ACCOUNT_ACTIVATION__TESTS_ENABLED", &cfg.AccountActivation.TestsEnabled)

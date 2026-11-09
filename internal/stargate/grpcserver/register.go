@@ -15,6 +15,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/actionlog"
 	"src.solsynth.dev/sosys/stargate/auth"
 	"src.solsynth.dev/sosys/stargate/config"
+	"src.solsynth.dev/sosys/stargate/grpcclient"
 	"src.solsynth.dev/sosys/stargate/httpserver/e2eectl"
 	"src.solsynth.dev/sosys/stargate/permission"
 	"src.solsynth.dev/sosys/stargate/presence"
@@ -36,6 +37,7 @@ type Deps struct {
 	E2ee       *e2eectl.Service
 	Presence   *auth.DevicePresence
 	SingleUser *auth.SingleUser
+	Clients    *grpcclient.Clients
 	Cfg        *config.Config
 	Log        *slog.Logger
 

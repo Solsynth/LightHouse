@@ -13,6 +13,7 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/authn"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/httpx"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 func Factory() module.Factory[core.Services] {
@@ -42,6 +43,11 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 
 	// User public now-playing endpoint
 	host.API.GET("/users/:identifier/now-playing", i.getUserNowPlaying)
+
+	// gRPC DyPresenceServiceServer
+	if host.GRPC != nil {
+		gen.RegisterDyPresenceServiceServer(host.GRPC, newPresenceServer(host.Core))
+	}
 
 	// Background job: periodic expired session cleanup
 	if host.Core != nil && host.Core.Jobs != nil {

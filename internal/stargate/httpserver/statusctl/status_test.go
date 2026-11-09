@@ -13,7 +13,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
+	"src.solsynth.dev/sosys/stargate/grpcclient"
 	"src.solsynth.dev/sosys/stargate/middleware"
 	"src.solsynth.dev/sosys/stargate/model"
 	"src.solsynth.dev/sosys/stargate/presence"
@@ -1176,4 +1179,65 @@ func TestCreateStatusIgnoresMissingArtwork(t *testing.T) {
 
 func itoa(value int) string {
 	return strconv.Itoa(value)
+}
+
+type fakePulsarPresenceClient struct {
+	gen.DyPresenceServiceClient
+	called bool
+	resp   *gen.DyListFriendsActivitiesResponse
+}
+
+func (f *fakePulsarPresenceClient) ListFriendsActivities(ctx context.Context, in *gen.DyListFriendsActivitiesRequest, opts ...grpc.CallOption) (*gen.DyListFriendsActivitiesResponse, error) {
+	f.called = true
+	return f.resp, nil
+}
+
+func TestListActivitiesDelegatesToPulsar(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	user := &model.Account{Id: testAccountID.String(), Name: "owner"}
+	title := "Pulsar Track"
+	mockPulsar := &fakePulsarPresenceClient{
+		resp: &gen.DyListFriendsActivitiesResponse{
+			Activities: []*gen.DyPresenceActivity{
+				{
+					Id:        "pulsar-activity-123",
+					AccountId: testAccountID.String(),
+					Title:     &title,
+				},
+			},
+		},
+	}
+	deps := Deps{
+		Store:    newFakeStore(testAccountID),
+		Accounts: &fakeAccounts{account: user},
+		Perm:     fakePerm{},
+		Presence: &fakePresence{},
+		Clients: &grpcclient.Clients{
+			PulsarPresence: mockPulsar,
+		},
+	}
+	engine := gin.New()
+	api := engine.Group("/api")
+	api.Use(func(c *gin.Context) {
+		c.Request = c.Request.WithContext(middleware.WithCurrentUser(c.Request.Context(), user))
+	})
+	Register(api, deps)
+
+	rec := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/api/activities", nil)
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !mockPulsar.called {
+		t.Fatalf("expected call to Pulsar")
+	}
+	var res []model.PresenceActivity
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(res) != 1 || res[0].Id != "pulsar-activity-123" || *res[0].Title != "Pulsar Track" {
+		t.Fatalf("unexpected res: %+v", res)
+	}
 }

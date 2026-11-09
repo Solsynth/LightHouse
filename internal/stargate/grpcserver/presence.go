@@ -43,6 +43,16 @@ func newPresenceService(deps Deps) *dyPresenceService {
 // max_per_type per activity type, ordered by update time and paged by an
 // updated_at cursor.
 func (s *dyPresenceService) ListFriendsActivities(ctx context.Context, req *gen.DyListFriendsActivitiesRequest) (*gen.DyListFriendsActivitiesResponse, error) {
+	if s != nil && s.d.Clients != nil && s.d.Clients.PulsarPresence != nil {
+		resp, err := s.d.Clients.PulsarPresence.ListFriendsActivities(ctx, req)
+		if err == nil {
+			return resp, nil
+		}
+		if s.d.Log != nil {
+			s.d.Log.Warn("query pulsar presence failed, falling back to local store", "error", err)
+		}
+	}
+
 	if s == nil || s.d.Store == nil {
 		return nil, status.Errorf(codes.Unimplemented, "method ListFriendsActivities not implemented")
 	}
