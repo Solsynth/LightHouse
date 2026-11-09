@@ -4,6 +4,7 @@ BIN_DIR := bin
 # and its example config. Local configs are the same paths without `.example`.
 SPHERE_CONFIG ?= internal/sphere/config.example.toml
 MESSAGER_CONFIG ?= internal/messager/config.example.toml
+PULSAR_CONFIG ?= internal/pulsar/config.example.toml
 STARGATE_CONFIG ?= internal/stargate/config.example.toml
 METOER_CONFIG ?= internal/metoer/config.example.toml
 BLADE_CONFIG ?= internal/blade/configs/config.toml
@@ -15,17 +16,17 @@ FILESYSTEM_CONFIG ?= internal/filesystem/config.example.toml
 # below therefore runs outside the workspace with that toolchain.
 FS_GO := GOWORK=off GOTOOLCHAIN=go1.26.2 go
 
-.PHONY: all build build-sphere build-messager build-stargate build-metoer build-blade build-relay build-filesystem \
-	run-sphere run-messager run-stargate run-metoer run-blade run-relay run-filesystem \
+.PHONY: all build build-sphere build-messager build-pulsar build-stargate build-metoer build-blade build-relay build-filesystem \
+	run-sphere run-messager run-pulsar run-stargate run-metoer run-blade run-relay run-filesystem \
 	web-stargate web-stargate-check web-stargate-dev web-stargate-test \
 	web-filesystem web-filesystem-check web-filesystem-dev web-filesystem-test \
-	test test-sphere test-stargate test-metoer test-blade test-filesystem lint tidy fmt \
+	test test-sphere test-pulsar test-stargate test-metoer test-blade test-filesystem lint tidy fmt \
 	migrate-sphere migrate-messager migrate-stargate migrate-filesystem-legacy \
 	stargate-hash-password stargate-module-import
 
 all: build
 
-build: build-sphere build-messager build-stargate build-metoer build-blade build-relay build-filesystem
+build: build-sphere build-messager build-pulsar build-stargate build-metoer build-blade build-relay build-filesystem
 
 # Children are built from inside their module so relative config/web paths and
 # their own Makefile defaults keep working.
@@ -34,6 +35,9 @@ build-sphere:
 
 build-messager:
 	go build -o $(BIN_DIR)/messager ./internal/messager/cmd/messager
+
+build-pulsar:
+	go build -o $(BIN_DIR)/pulsar ./internal/pulsar/cmd/pulsar
 
 build-stargate:
 	cd internal/stargate && go build -o ../../$(BIN_DIR)/stargate ./cmd/stargate
@@ -55,6 +59,9 @@ run-sphere:
 
 run-messager:
 	CONFIG_PATH=$(MESSAGER_CONFIG) go run ./internal/messager/cmd/messager
+
+run-pulsar:
+	CONFIG_PATH=$(PULSAR_CONFIG) go run ./internal/pulsar/cmd/pulsar
 
 run-stargate:
 	cd internal/stargate && CONFIG_PATH=$(STARGATE_CONFIG) go run ./cmd/stargate
@@ -96,13 +103,16 @@ web-filesystem-dev:
 web-filesystem-test:
 	$(MAKE) -C internal/filesystem web-test
 
-test: test-shared test-sphere test-stargate test-metoer test-blade test-filesystem
+test: test-shared test-sphere test-pulsar test-stargate test-metoer test-blade test-filesystem
 
 test-shared:
 	cd shared && go test ./...
 
 test-sphere:
 	go test ./...
+
+test-pulsar:
+	go test ./internal/pulsar/...
 
 # internal/stargate/store needs a reachable PostgreSQL (dyson_stargate); it
 # fails fast without one.

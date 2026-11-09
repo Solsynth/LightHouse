@@ -1,0 +1,39 @@
+siteUrl = "http://localhost:5173"
+baseUrl = "http://localhost:5073"
+
+[http]
+port = "5073"
+
+[grpc]
+port = "7101"
+useTLS = false
+
+[database]
+dsn = "postgres://postgres:postgres@localhost:5432/dyson_pulsar?sslmode=disable"
+
+[redis]
+addr = "localhost:6379"
+password = ""
+db = 0
+
+[nats]
+target = "nats://localhost:4222"
+websocketPushSubject = "websocket_push"
+
+[services]
+stargate = { grpc = "localhost:9090" }
+blade    = { grpc = "localhost:7001" }
+
+[discovery]
+enabled = false
+target = "localhost:7001"
+service = "pulsar"
+
+[scrobbler]
+autoScrobbleThresholdPercent = 50
+autoScrobbleMinSeconds = 240
+maxBatchScrobble = 50
+
+[security]
+trustedProxyHops = 1
+maxTake = 100

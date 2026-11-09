@@ -10,6 +10,7 @@ over one shared platform layer.
 |---|---|---|---|---|
 | **Sphere** | Posts, publishers, timelines, categories/tags/collections, surveys, stickers, automod, the web reader, livestreams, ActivityPub federation | `:5071` | `:7099` | `internal/sphere/config.toml` |
 | **Messager** | Chat rooms, members, groups, messages, reactions, pins, voice clips, realtime calls | `:5072` | `:7100` | `internal/messager/config.toml` |
+| **Pulsar** | Multi-domain playback tracking, now-playing sessions, scrobbling, multi-media catalog, playlists & collections, rewind stats | `:5073` | `:7101` | `internal/pulsar/config.toml` |
 | **Stargate** | Auth, accounts, OIDC, admin, E2EE/MLS, profiles, relationships, wallet | `:8080` | `:9090` | `internal/stargate/config.toml` |
 | **Metoer** | Notifications, push delivery (FCM/APNs/UnifiedPush/SOP), email sending plans and delivery observability | `:8080` | `:9090` | `internal/metoer/config.toml` |
 | **Blade** | Reverse proxy, health checks, gRPC service discovery, websocket gateway | `:6000` | `:7001` | `internal/blade/configs/config.toml` |
@@ -31,10 +32,11 @@ flowchart LR
     clients["Clients / apps"] --> blade["Blade :6000"]
     blade --> sphere["Sphere :5071"]
     blade --> messager["Messager :5072"]
+    blade --> pulsar["Pulsar :5073"]
     blade --> stargate["Stargate :8080"]
     blade --> metoer["Metoer :8080"]
     clients --> dysonfs["DysonFS :8080"]
-    sphere & messager & metoer & dysonfs -. "token validation" .-> stargate
+    sphere & messager & pulsar & metoer & dysonfs -. "token validation" .-> stargate
     subgraph state["State"]
         pg[(PostgreSQL)]
         redis[(Redis)]
@@ -107,6 +109,7 @@ shared/                 vendored fleet SDK: auth, cache, errs, eventbus, models,
 shared/platform/        house platform layer: bootstrap, config, DB, Redis, NATS, HTTP/gRPC
 internal/sphere/        Sphere module: cmd/, config, core, models, store, ports, modules
 internal/messager/      Messager module, same shape
+internal/pulsar/        Pulsar module: cmd/, config, core, models, store, modules
 internal/stargate/      Stargate module: cmd/, console, migration commands, packages
 internal/metoer/        Metoer module: cmd/, config, store, push, email, scheduler
 internal/blade/         Blade module: cmd/, gateway, relay, discovery, websocket gateway

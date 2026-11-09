@@ -31,6 +31,10 @@ jobs:
             context: .
             dockerfile: ./Dockerfile.messager
             scope: messager
+          - image: lighthouse-pulsar
+            context: .
+            dockerfile: ./Dockerfile.pulsar
+            scope: pulsar
           - image: lighthouse-stargate
             context: ./internal/stargate
             dockerfile: ./internal/stargate/Dockerfile

@@ -43,6 +43,7 @@ zone = { http = "http://localhost:8007", grpc = "localhost:7008" }
 messager = { http = "http://localhost:8008", grpc = "localhost:7009" }
 wallet = { http = "http://localhost:8009", grpc = "localhost:7010" }
 stargate = { http = "http://localhost:8080", grpc = "localhost:9090" }
+pulsar = { http = "http://localhost:5073", grpc = "localhost:7101" }
 
 [endpoints]
 # Static health-check fallbacks. Registered services are tracked automatically;
@@ -57,6 +58,7 @@ serviceNames = [
   "messager",
   "wallet",
   "stargate",
+  "pulsar",
 ]
 coreServiceNames = ["drive", "sphere"]
 
@@ -155,3 +157,10 @@ path = "/api/activitypub"
 service = "sphere"
 target = "/activitypub"
 prefix = true
+
+[[routes]]
+path = "/pulsar"
+service = "pulsar"
+target = "/api"
+prefix = true
+
