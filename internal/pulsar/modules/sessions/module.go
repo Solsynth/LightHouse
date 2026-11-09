@@ -49,6 +49,8 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 func (i *instance) Stop(context.Context) error { return nil }
 
 type nowPlayingRequest struct {
+	URN             string         `json:"urn,omitempty"`
+	CatalogID       *uuid.UUID     `json:"catalog_id,omitempty"`
 	ManualID        string         `json:"manual_id"`
 	Domain          string         `json:"domain"`
 	Title           string         `json:"title"`
@@ -97,29 +99,41 @@ func (i *instance) reportNowPlaying(c *gin.Context) {
 
 	// Resolve or upsert catalog item
 	var catalogID *uuid.UUID
+	if req.CatalogID != nil && *req.CatalogID != uuid.Nil {
+		catalogID = req.CatalogID
+	} else if strings.TrimSpace(req.URN) != "" {
+		var match model.CatalogItem
+		if err := i.core.DB.WithContext(c.Request.Context()).
+			Where("urn = ? OR slug = ?", req.URN, req.URN).First(&match).Error; err == nil {
+			catalogID = &match.ID
+		}
+	}
+
 	artURL := req.ArtworkURL
 	if artURL == nil {
 		artURL = req.LargeImage
 	}
 
-	catItem := &model.CatalogItem{
-		Domain:          domain,
-		Title:           strings.TrimSpace(req.Title),
-		Subtitle:        req.Subtitle,
-		Caption:         req.Caption,
-		ArtworkURL:      artURL,
-		DurationSeconds: req.DurationSeconds,
-	}
-	if req.Provider != nil {
-		catItem.Provider = strings.TrimSpace(*req.Provider)
-	}
-	if req.ProviderKey != nil {
-		catItem.ProviderKey = strings.TrimSpace(*req.ProviderKey)
-	}
+	if catalogID == nil {
+		catItem := &model.CatalogItem{
+			Domain:          domain,
+			Title:           strings.TrimSpace(req.Title),
+			Subtitle:        req.Subtitle,
+			Caption:         req.Caption,
+			ArtworkURL:      artURL,
+			DurationSeconds: req.DurationSeconds,
+		}
+		if req.Provider != nil {
+			catItem.Provider = strings.TrimSpace(*req.Provider)
+		}
+		if req.ProviderKey != nil {
+			catItem.ProviderKey = strings.TrimSpace(*req.ProviderKey)
+		}
 
-	savedCatalog, err := i.core.Store.FindOrCreateCatalogItem(c.Request.Context(), catItem)
-	if err == nil && savedCatalog != nil {
-		catalogID = &savedCatalog.ID
+		savedCatalog, err := i.core.Store.FindOrCreateCatalogItem(c.Request.Context(), catItem)
+		if err == nil && savedCatalog != nil {
+			catalogID = &savedCatalog.ID
+		}
 	}
 
 	session := &model.ActiveSession{

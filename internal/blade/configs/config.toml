@@ -164,3 +164,15 @@ service = "pulsar"
 target = "/api"
 prefix = true
 
+[[routes]]
+path = "/share"
+service = "pulsar"
+target = "/share"
+prefix = true
+
+[[routes]]
+path = "/m"
+service = "pulsar"
+target = "/m"
+prefix = true
+

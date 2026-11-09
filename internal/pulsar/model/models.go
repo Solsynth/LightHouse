@@ -41,15 +41,22 @@ const (
 type CatalogItem struct {
 	ID              uuid.UUID      `gorm:"type:uuid;primaryKey" json:"id"`
 	Domain          string         `gorm:"type:varchar(32);not null;index:ix_pulsar_catalog_domain" json:"domain"`
+	Slug            string         `gorm:"type:varchar(256);index:ix_pulsar_catalog_slug" json:"slug,omitempty"`
+	URN             string         `gorm:"type:varchar(512);index:ix_pulsar_catalog_urn" json:"urn,omitempty"`
 	Provider        string         `gorm:"type:varchar(64);index:ix_pulsar_catalog_prov" json:"provider"`
 	ProviderKey     string         `gorm:"type:varchar(512);index:ix_pulsar_catalog_provkey" json:"provider_key,omitempty"`
 	Title           string         `gorm:"type:varchar(1024);not null" json:"title"`
 	Subtitle        *string        `gorm:"type:varchar(1024)" json:"subtitle,omitempty"`
 	Caption         *string        `gorm:"type:varchar(2048)" json:"caption,omitempty"`
+	Description     *string        `gorm:"type:text" json:"description,omitempty"`
 	ArtworkHash     *string        `gorm:"type:varchar(128)" json:"artwork_hash,omitempty"`
 	ArtworkURL      *string        `gorm:"type:varchar(4096)" json:"artwork_url,omitempty"`
+	BannerURL       *string        `gorm:"type:varchar(4096)" json:"banner_url,omitempty"`
 	DurationSeconds int            `gorm:"default:0" json:"duration_seconds"`
+	ReleaseDate     *string        `gorm:"type:varchar(64)" json:"release_date,omitempty"`
+	Genres          datatypes.JSON `gorm:"type:jsonb" json:"genres,omitempty"`
 	ExternalIDs     datatypes.JSON `gorm:"type:jsonb" json:"external_ids,omitempty"`
+	ExternalLinks   datatypes.JSON `gorm:"type:jsonb" json:"external_links,omitempty"`
 	Metadata        datatypes.JSON `gorm:"type:jsonb" json:"metadata,omitempty"`
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
@@ -57,6 +64,27 @@ type CatalogItem struct {
 }
 
 func (CatalogItem) TableName() string { return "pulsar_catalog_items" }
+
+// GetGenres decodes the Genres JSON array.
+func (c *CatalogItem) GetGenres() []string {
+	if len(c.Genres) == 0 {
+		return nil
+	}
+	var genres []string
+	_ = json.Unmarshal(c.Genres, &genres)
+	return genres
+}
+
+// GetExternalIDs decodes ExternalIDs map.
+func (c *CatalogItem) GetExternalIDs() map[string]string {
+	if len(c.ExternalIDs) == 0 {
+		return nil
+	}
+	var res map[string]string
+	_ = json.Unmarshal(c.ExternalIDs, &res)
+	return res
+}
+
 
 // ActiveSession represents real-time now-playing or live gaming/media playback.
 type ActiveSession struct {

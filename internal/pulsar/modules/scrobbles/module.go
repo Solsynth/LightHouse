@@ -47,6 +47,8 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 func (i *instance) Stop(context.Context) error { return nil }
 
 type singleScrobblePayload struct {
+	URN             string         `json:"urn,omitempty"`
+	CatalogID       *uuid.UUID     `json:"catalog_id,omitempty"`
 	Domain          string         `json:"domain"`
 	ClientName      string         `json:"client_name"`
 	Title           string         `json:"title"`
@@ -110,24 +112,36 @@ func (i *instance) submitScrobbles(c *gin.Context) {
 
 		// Ensure catalog entry exists
 		var catalogID *uuid.UUID
-		catItem := &model.CatalogItem{
-			Domain:          domain,
-			Title:           strings.TrimSpace(item.Title),
-			Subtitle:        item.Subtitle,
-			Caption:         item.Caption,
-			ArtworkURL:      item.ArtworkURL,
-			DurationSeconds: item.DurationSeconds,
-		}
-		if item.Provider != nil {
-			catItem.Provider = strings.TrimSpace(*item.Provider)
-		}
-		if item.ProviderKey != nil {
-			catItem.ProviderKey = strings.TrimSpace(*item.ProviderKey)
+		if item.CatalogID != nil && *item.CatalogID != uuid.Nil {
+			catalogID = item.CatalogID
+		} else if strings.TrimSpace(item.URN) != "" {
+			var match model.CatalogItem
+			if err := i.core.DB.WithContext(c.Request.Context()).
+				Where("urn = ? OR slug = ?", item.URN, item.URN).First(&match).Error; err == nil {
+				catalogID = &match.ID
+			}
 		}
 
-		savedCat, err := i.core.Store.FindOrCreateCatalogItem(c.Request.Context(), catItem)
-		if err == nil && savedCat != nil {
-			catalogID = &savedCat.ID
+		if catalogID == nil {
+			catItem := &model.CatalogItem{
+				Domain:          domain,
+				Title:           strings.TrimSpace(item.Title),
+				Subtitle:        item.Subtitle,
+				Caption:         item.Caption,
+				ArtworkURL:      item.ArtworkURL,
+				DurationSeconds: item.DurationSeconds,
+			}
+			if item.Provider != nil {
+				catItem.Provider = strings.TrimSpace(*item.Provider)
+			}
+			if item.ProviderKey != nil {
+				catItem.ProviderKey = strings.TrimSpace(*item.ProviderKey)
+			}
+
+			savedCat, err := i.core.Store.FindOrCreateCatalogItem(c.Request.Context(), catItem)
+			if err == nil && savedCat != nil {
+				catalogID = &savedCat.ID
+			}
 		}
 
 		playedAt := time.Now().UTC()
