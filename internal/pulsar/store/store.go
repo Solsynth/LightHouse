@@ -189,6 +189,16 @@ func (s *Store) EndActiveSession(ctx context.Context, accountID uuid.UUID, manua
 	return &session, nil
 }
 
+// CleanupExpiredSessions prunes sessions that expired more than grace period ago.
+func (s *Store) CleanupExpiredSessions(ctx context.Context, gracePeriod time.Duration) (int64, error) {
+	if gracePeriod <= 0 {
+		gracePeriod = 15 * time.Minute
+	}
+	cutoff := time.Now().UTC().Add(-gracePeriod)
+	res := s.DB.WithContext(ctx).Where("lease_expires_at < ?", cutoff).Delete(&model.ActiveSession{})
+	return res.RowsAffected, res.Error
+}
+
 // ─────────────────────────── Scrobbles (History) ───────────────────────────
 
 // CreateScrobble writes an immutable playback history record.

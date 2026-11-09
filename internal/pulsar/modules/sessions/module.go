@@ -43,6 +43,14 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 	// User public now-playing endpoint
 	host.API.GET("/users/:identifier/now-playing", i.getUserNowPlaying)
 
+	// Background job: periodic expired session cleanup
+	if host.Core != nil && host.Core.Jobs != nil {
+		host.Core.Jobs.Every("pulsar.sessions.cleanup", 5*time.Minute, func(ctx context.Context) error {
+			_, err := i.core.Store.CleanupExpiredSessions(ctx, 15*time.Minute)
+			return err
+		})
+	}
+
 	return nil
 }
 

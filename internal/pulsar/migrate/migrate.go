@@ -9,6 +9,9 @@ import (
 
 // Run applies core prerequisite database extensions.
 func Run(ctx context.Context, database *gorm.DB) error {
+	if database.Dialector == nil || database.Dialector.Name() != "postgres" {
+		return nil
+	}
 	for _, statement := range []string{
 		`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`,
 		`CREATE EXTENSION IF NOT EXISTS pg_trgm`,
