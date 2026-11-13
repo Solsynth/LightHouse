@@ -5,6 +5,7 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/activities"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/catalog"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/collections"
+	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/librarysync"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/metadata"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/rewind"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/scrobbles"
@@ -20,6 +21,7 @@ func Modules() []module.Factory[core.Services] {
 		sessions.Factory(),
 		scrobbles.Factory(),
 		collections.Factory(),
+		librarysync.Factory(),
 		rewind.Factory(),
 		activities.Factory(),
 	}

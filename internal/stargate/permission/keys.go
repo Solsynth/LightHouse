@@ -99,6 +99,7 @@ const (
 	ChatInvitesManage  = "chat.invites.manage"
 	ChatE2eeManage     = "chat.e2ee.manage"
 	ChatSync           = "chat.sync"
+	LibrarySync        = "library.sync"
 	ChatCallStart      = "chat.call.start"
 	ChatCallEnd        = "chat.call.end"
 	ChatCallInvite     = "chat.call.invite"
@@ -528,6 +529,7 @@ var AllKeys = []string{
 	ChatInvitesManage,
 	ChatE2eeManage,
 	ChatSync,
+	LibrarySync,
 	ChatCallStart,
 	ChatCallEnd,
 	ChatCallInvite,

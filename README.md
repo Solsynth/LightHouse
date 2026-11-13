@@ -10,7 +10,7 @@ over one shared platform layer.
 |---|---|---|---|---|
 | **Sphere** | Posts, publishers, timelines, categories/tags/collections, surveys, stickers, automod, the web reader, livestreams, ActivityPub federation | `:5071` | `:7099` | `internal/sphere/config.toml` |
 | **Messager** | Chat rooms, members, groups, messages, reactions, pins, voice clips, realtime calls | `:5072` | `:7100` | `internal/messager/config.toml` |
-| **Pulsar** | Multi-domain playback tracking, now-playing sessions, scrobbling, multi-media catalog, playlists & collections, rewind stats | `:5073` | `:7101` | `internal/pulsar/config.toml` |
+| **Pulsar** | Multi-domain playback tracking, now-playing sessions, scrobbling, multi-media catalog, playlists & collections, rewind stats, and the per-account library mirror GroovyBox syncs | `:5073` | `:7101` | `internal/pulsar/config.toml` |
 | **Stargate** | Auth, accounts, OIDC, admin, E2EE/MLS, profiles, relationships, wallet | `:8080` | `:9090` | `internal/stargate/config.toml` |
 | **Metoer** | Notifications, push delivery (FCM/APNs/UnifiedPush/SOP), email sending plans and delivery observability | `:8080` | `:9090` | `internal/metoer/config.toml` |
 | **Blade** | Reverse proxy, health checks, gRPC service discovery, websocket gateway | `:6000` | `:7001` | `internal/blade/configs/config.toml` |
@@ -42,7 +42,7 @@ flowchart LR
         redis[(Redis)]
         nats[(NATS JetStream)]
     end
-    sphere & messager & stargate & metoer & dysonfs --> pg
+    sphere & messager & pulsar & stargate & metoer & dysonfs --> pg
     sphere & messager & stargate & metoer & dysonfs -.-> redis
     sphere & messager & stargate & metoer & dysonfs -.-> nats
     blade -.-> redis
@@ -90,12 +90,14 @@ make run-filesystem FILESYSTEM_CONFIG=internal/filesystem/config.toml
 Run each service in its own terminal. The `run-*` targets default to the
 checked-in example configs; the `*_CONFIG` variables above point them at your
 copies. The example DSNs expect the databases `dyson_sphere`, `dyson_messager`,
-`dyson_stargate`, `dyson_ring` and `dyson_drive`; create them or edit the DSNs.
+`dyson_pulsar`, `dyson_stargate`, `dyson_ring` and
+`dyson_drive`; create them or edit the DSNs.
 DysonFS can also run without an auth service by setting `[auth] target = ""`.
 
-Sphere, Messager, Stargate, Metoer and DysonFS expose `/health`, `/alive` and
-`/api/modules`; Blade serves `/health` and `/health/:service`. Blade's gateway
-is optional when calling a service directly.
+Sphere, Messager, Pulsar, Stargate, Metoer and DysonFS expose
+`/health`, `/alive` and `/api/modules`; Blade serves `/health` and
+`/health/:service`. Blade's gateway is optional when calling a service
+directly.
 
 ## Layout
 
@@ -189,8 +191,8 @@ libvips and ffmpeg and carries two known failures listed in the Makefile.
 
 ## Deploy
 
-- `Dockerfile.sphere` and `Dockerfile.messager` build the root-module services
-  from context `.` into static `scratch` images.
+- `Dockerfile.sphere`, `Dockerfile.messager` and `Dockerfile.pulsar` build the
+  root-module services from context `.` into static `scratch` images.
 - `internal/stargate/Dockerfile` builds the console and the service; context
   `./internal/stargate`.
 - `internal/metoer/Dockerfile` builds Metoer; context `./internal/metoer`.
@@ -202,9 +204,9 @@ libvips and ffmpeg and carries two known failures listed in the Makefile.
 - `internal/blade/docker-compose.yml` runs the gateway with its Redis registry;
   `internal/blade/docker-compose.relay.yml` runs a PoP relay.
 - CI (`.github/workflows/{sphere,messager,stargate,metoer,blade,filesystem}.yml`)
-  builds and pushes the six service images — `lighthouse-sphere`,
+  builds and pushes the six path-filtered service images — `lighthouse-sphere`,
   `lighthouse-messager`, `lighthouse-stargate`, `lighthouse-metoer`,
-  `lighthouse-blade`, `lighthouse-dysonfs` — path-filtered on its sources. The
+  `lighthouse-blade`, `lighthouse-dysonfs`. The
   `lighthouse-` prefix keeps them off the package names the legacy fleet still
   publishes to. `.github/workflows/images.yml` rebuilds all six on manual
   dispatch — use it after base-image or toolchain bumps, or to verify a change

@@ -384,6 +384,7 @@ var defaultPermissionKeys = []string{
 	ChatInvitesManage,
 	ChatE2eeManage,
 	ChatSync,
+	LibrarySync,
 	ChatCallStart,
 	ChatCallEnd,
 	ChatCallInvite,

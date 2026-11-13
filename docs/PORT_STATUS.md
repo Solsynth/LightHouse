@@ -4,6 +4,47 @@ What is implemented in this monorepo today, what was verified against a live
 PostgreSQL, and what is knowingly missing. Everything below was exercised
 either by starting the service and calling it, or by the module's own test.
 
+## Library sync (Pulsar module)
+
+`internal/pulsar/modules/librarysync` mirrors one account's GroovyBox music
+library so a second device can adopt it. It is a Pulsar feature module
+(`app.solian.pulsar.librarysync`), not a separate service: scrobbles and live
+now-playing stay with their own modules, and the mirror shares Pulsar's
+database, auth and jobs.
+
+Seven tables (`pulsar_library_cursors`, `pulsar_library_tracks`,
+`pulsar_library_links`, `pulsar_library_lyrics`, `pulsar_library_plays`,
+`pulsar_library_session`, `pulsar_library_settings`), a monotone
+`(account_id, rev)` cursor per account, and three endpoints —
+`POST /api/library/push`, `GET /api/library/pull`, `GET /api/library/status` —
+gated on the `library.sync` permission key.
+
+- Every entity table keeps a live row or a tombstone (`deleted_at IS NOT NULL`).
+  Last-write-wins compares each entity's own clock (`updated_at`,
+  `last_seen_at`, `fetched_at`, `play.clock`, the document clock); a stale write
+  is rejected and reported by index in the push response.
+- A pull page is a contiguous revision range across all six data tables, so a
+  device cursor can never skip an entity another table queued at the same
+  revision. Tombstones travel in the `removed` map with their clock.
+- A `play` is append-only and merges column-wise: two devices' progress folds
+  into the wider one instead of colliding.
+- `source_id = "local"` links are rejected: a local file's path belongs to one
+  device.
+- The tombstone purge job runs every 24h and deletes tombstones older than
+  `librarySync.retentionDays` (default 90); the cursor and the two per-account
+  documents are exempt.
+- `librarySync.devAccountHeader` names a request header trusted as the account
+  id for local runs without a Stargate. It bypasses fleet auth entirely and must
+  stay empty in any deployed config.
+
+Verified: `go build ./...`, `go vet`, `go test ./internal/pulsar/...`
+(LWW accept/reject, local-link skip, play merge, tombstone, session and settings
+clocks, page boundary, HTTP push→pull round trips, status), and a manual smoke
+against a scratch PostgreSQL — push answers `{"rev":1,"rejected":[]}`, pull
+returns the track, a stale push is rejected, a delete shows up under
+`removed.track`, a `limit=2` page over four tracks splits at the boundary, and
+`/status` reports distinct devices.
+
 ## Verification performed
 
 - `go build ./...`, `go vet ./...`, `go test ./...` pass.

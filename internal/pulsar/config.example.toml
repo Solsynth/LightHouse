@@ -34,6 +34,18 @@ autoScrobbleThresholdPercent = 50
 autoScrobbleMinSeconds = 240
 maxBatchScrobble = 50
 
+[librarySync]
+# GroovyBox's per-account music library mirror (tracks, source links, lyrics,
+# play events, session and settings documents). Tombstones stay visible to
+# pulls for this long, then the purge job removes them.
+retentionDays = 90
+# Caps one push request and one pull page.
+maxBatch = 500
+# Local-development switch: a non-empty value names a request header whose UUID
+# value is trusted as the account id. This bypasses fleet auth ENTIRELY; it must
+# stay empty in any deployed config.
+devAccountHeader = ""
+
 [security]
 trustedProxyHops = 1
 maxTake = 100
