@@ -302,7 +302,7 @@ func (s *service) loadPublishers(ctx context.Context, posts []model.Post) {
 		return
 	}
 	byID := make(map[string]model.Publisher, len(rows))
-	accountIDs := make([]string, 0, len(rows))
+	accountIDs := make([]string, 0, len(rows)+len(posts))
 	for i := range rows {
 		publisher := store.PublisherToModel(&rows[i])
 		byID[publisher.ID] = publisher
@@ -310,8 +310,18 @@ func (s *service) loadPublishers(ctx context.Context, posts []model.Post) {
 			accountIDs = append(accountIDs, rows[i].AccountID.String())
 		}
 	}
+	for i := range posts {
+		if posts[i].AccountID != nil && *posts[i].AccountID != "" {
+			accountIDs = append(accountIDs, *posts[i].AccountID)
+		}
+	}
 	accounts := s.accountBatch(ctx, accountIDs)
 	for i := range posts {
+		if posts[i].AccountID != nil {
+			if account, ok := accounts[*posts[i].AccountID]; ok {
+				posts[i].Account = account
+			}
+		}
 		publisher, ok := byID[posts[i].PublisherID]
 		if !ok {
 			continue
@@ -322,6 +332,10 @@ func (s *service) loadPublishers(ctx context.Context, posts []model.Post) {
 			}
 		}
 		posts[i].Publisher = &publisher
+		if posts[i].Account == nil && publisher.Type == int(model.PublisherIndividual) && publisher.AccountID != nil {
+			posts[i].AccountID = publisher.AccountID
+			posts[i].Account = publisher.Account
+		}
 	}
 }
 

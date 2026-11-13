@@ -22,6 +22,7 @@ import (
 type postRelations struct {
 	publishers        map[uuid.UUID]*store.PublisherEntity
 	publisherAccounts map[uuid.UUID]any
+	accounts          map[uuid.UUID]any
 	tags              map[uuid.UUID][]model.PostTag
 	categories        map[uuid.UUID][]model.PostCategory
 	featured          map[uuid.UUID][]model.PostFeaturedRecord
@@ -61,18 +62,22 @@ func (h *handler) hydrate(ctx context.Context, ents []store.PostEntity, v *viewe
 
 	allIDs := make([]uuid.UUID, 0, len(allEnts))
 	publisherIDs := make([]uuid.UUID, 0, len(allEnts))
+	accountIDs := make([]uuid.UUID, 0, len(allEnts))
 	realmIDs := make([]uuid.UUID, 0, len(allEnts))
 	for i := range allEnts {
 		allIDs = append(allIDs, allEnts[i].ID)
 		if allEnts[i].PublisherID != uuid.Nil {
 			publisherIDs = append(publisherIDs, allEnts[i].PublisherID)
 		}
+		if allEnts[i].AccountID != nil && *allEnts[i].AccountID != uuid.Nil {
+			accountIDs = append(accountIDs, *allEnts[i].AccountID)
+		}
 		if allEnts[i].RealmID != nil {
 			realmIDs = append(realmIDs, *allEnts[i].RealmID)
 		}
 	}
 
-	rel, err := h.loadRelations(ctx, allIDs, publisherIDs, v)
+	rel, err := h.loadRelations(ctx, allIDs, publisherIDs, accountIDs, v)
 	if err != nil {
 		return nil, err
 	}
@@ -210,10 +215,11 @@ func (h *handler) loadChainedChildren(ctx context.Context, ents []store.PostEnti
 	return rows, nil
 }
 
-func (h *handler) loadRelations(ctx context.Context, postIDs, publisherIDs []uuid.UUID, v *viewer) (*postRelations, error) {
+func (h *handler) loadRelations(ctx context.Context, postIDs, publisherIDs, accountIDs []uuid.UUID, v *viewer) (*postRelations, error) {
 	rel := &postRelations{
 		publishers:        map[uuid.UUID]*store.PublisherEntity{},
 		publisherAccounts: map[uuid.UUID]any{},
+		accounts:          map[uuid.UUID]any{},
 		tags:              map[uuid.UUID][]model.PostTag{},
 		categories:        map[uuid.UUID][]model.PostCategory{},
 		featured:          map[uuid.UUID][]model.PostFeaturedRecord{},
@@ -230,6 +236,7 @@ func (h *handler) loadRelations(ctx context.Context, postIDs, publisherIDs []uui
 	}
 	rel.publishers = publishers
 	rel.publisherAccounts = h.loadPublisherAccounts(ctx, publishers)
+	rel.accounts = h.loadAccounts(ctx, dedupeUUID(accountIDs))
 
 	if err := h.loadTags(ctx, postIDs, rel); err != nil {
 		return nil, err
@@ -427,12 +434,26 @@ func (h *handler) loadCollections(ctx context.Context, postIDs []uuid.UUID, rel 
 
 func (h *handler) buildPost(ent *store.PostEntity, rel *postRelations) model.Post {
 	post := store.PostToModel(ent)
+	var pubAccount any
+	var publisherEnt *store.PublisherEntity
 	if publisher, ok := rel.publishers[ent.PublisherID]; ok {
+		publisherEnt = publisher
 		mapped := store.PublisherToModel(publisher)
 		if account, ok := rel.publisherAccounts[ent.PublisherID]; ok {
 			mapped.Account = account
+			pubAccount = account
 		}
 		post.Publisher = &mapped
+	}
+	if ent.AccountID != nil {
+		if account, ok := rel.accounts[*ent.AccountID]; ok {
+			post.Account = account
+		} else if pubAccount != nil && publisherEnt != nil && publisherEnt.AccountID != nil && *ent.AccountID == *publisherEnt.AccountID {
+			post.Account = pubAccount
+		}
+	} else if publisherEnt != nil && publisherEnt.Type == int(model.PublisherIndividual) && publisherEnt.AccountID != nil {
+		post.AccountID = store.UUIDPtrString(publisherEnt.AccountID)
+		post.Account = pubAccount
 	}
 	if tags, ok := rel.tags[ent.ID]; ok {
 		post.Tags = tags
@@ -465,6 +486,36 @@ func accountIDOf(publisher *store.PublisherEntity) uuid.UUID {
 		return uuid.Nil
 	}
 	return *publisher.AccountID
+}
+
+// loadAccounts batch-resolves account snapshots for post creators.
+func (h *handler) loadAccounts(ctx context.Context, accountIDs []uuid.UUID) map[uuid.UUID]any {
+	accountsByID := map[uuid.UUID]any{}
+	if len(accountIDs) == 0 || h.ports == nil {
+		return accountsByID
+	}
+	rawIDs := make([]string, 0, len(accountIDs))
+	for _, id := range accountIDs {
+		rawIDs = append(rawIDs, id.String())
+	}
+	accounts, ok := module.Get[ports.Accounts](h.ports, ports.PortAccounts)
+	if !ok {
+		return accountsByID
+	}
+	list, err := accounts.GetAccounts(ctx, rawIDs)
+	if err != nil {
+		h.log.Warn("posts: load accounts", "error", err)
+		return accountsByID
+	}
+	for _, account := range list {
+		if account == nil {
+			continue
+		}
+		if id, err := uuid.Parse(account.GetId()); err == nil {
+			accountsByID[id] = accountjson.FromProto(account)
+		}
+	}
+	return accountsByID
 }
 
 // loadPublisherAccounts embeds the account snapshot on individual publishers,

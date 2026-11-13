@@ -153,6 +153,7 @@ func PostToModel(entity *PostEntity) model.Post {
 		QuoteAuthorizationID: UUIDPtrString(entity.QuoteAuthorizationID),
 		RealmID:              UUIDPtrString(entity.RealmID),
 		PublisherID:          entity.PublisherID.String(),
+		AccountID:            UUIDPtrString(entity.AccountID),
 		ShadowbanReason:      entity.ShadowbanReason,
 		ShadowbannedAt:       TimePtr(entity.ShadowbannedAt),
 		LockedAt:             TimePtr(entity.LockedAt),

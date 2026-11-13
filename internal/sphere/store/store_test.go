@@ -81,3 +81,20 @@ func TestStickerToModelNormalizesLegacyFileReferences(t *testing.T) {
 		}
 	}
 }
+
+func TestPostToModelMapsAccountID(t *testing.T) {
+	postID := uuid.New()
+	pubID := uuid.New()
+	accID := uuid.New()
+	title := "Post with creator audit"
+	entity := &PostEntity{
+		ID:          postID,
+		PublisherID: pubID,
+		AccountID:   &accID,
+		Title:       &title,
+	}
+	model := PostToModel(entity)
+	if model.AccountID == nil || *model.AccountID != accID.String() {
+		t.Errorf("model.AccountID = %v, want %s", model.AccountID, accID.String())
+	}
+}

@@ -64,6 +64,7 @@ type PostEntity struct {
 	RealmID              *uuid.UUID     `gorm:"column:realm_id;type:uuid"`
 	Attachments          datatypes.JSON `gorm:"column:attachments;type:jsonb"`
 	PublisherID          uuid.UUID      `gorm:"column:publisher_id;type:uuid"`
+	AccountID            *uuid.UUID     `gorm:"column:account_id;type:uuid"`
 	ShadowbanReason      *int           `gorm:"column:shadowban_reason"`
 	ShadowbannedAt       *time.Time     `gorm:"column:shadowbanned_at"`
 	LockedAt             *time.Time     `gorm:"column:locked_at"`

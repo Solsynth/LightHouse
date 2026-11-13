@@ -124,6 +124,7 @@ func schemaHook(ctx context.Context, db *gorm.DB) error {
 			USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)`,
 		`CREATE INDEX IF NOT EXISTS ix_posts_published_at ON posts (published_at)`,
 		`CREATE INDEX IF NOT EXISTS ix_posts_publisher_published ON posts (publisher_id, published_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS ix_posts_account ON posts (account_id)`,
 		`CREATE INDEX IF NOT EXISTS ix_posts_replied_post ON posts (replied_post_id)`,
 		`CREATE INDEX IF NOT EXISTS ix_posts_forwarded_post ON posts (forwarded_post_id)`,
 		`CREATE INDEX IF NOT EXISTS ix_posts_chained_post ON posts (chained_post_id)`,

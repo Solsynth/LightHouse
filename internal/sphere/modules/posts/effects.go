@@ -588,11 +588,14 @@ func (h *handler) publisherAccountID(ctx context.Context, publisherID uuid.UUID)
 	return *publisher.AccountID, true
 }
 
-// postAuthorAccountID resolves the owning account of a post's publisher.
+// postAuthorAccountID resolves the creator account or the owning account of a post's publisher.
 func (h *handler) postAuthorAccountID(ctx context.Context, postID uuid.UUID) (uuid.UUID, bool) {
 	var ent store.PostEntity
 	if err := h.db.WithContext(ctx).Where("id = ?", postID).First(&ent).Error; err != nil {
 		return uuid.Nil, false
+	}
+	if ent.AccountID != nil && *ent.AccountID != uuid.Nil {
+		return *ent.AccountID, true
 	}
 	return h.publisherAccountID(ctx, ent.PublisherID)
 }

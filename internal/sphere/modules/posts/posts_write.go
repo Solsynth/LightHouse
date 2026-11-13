@@ -339,6 +339,7 @@ func (h *handler) createPost(c *gin.Context) {
 		Type:        postType,
 		Language:    request.Language,
 		PublisherID: publisher.ID,
+		AccountID:   &accountID,
 		Metadata:    store.ToJSON(request.Meta),
 		EmbedView:   store.ToJSON(request.EmbedView),
 		Mentions:    store.ToJSON([]model.ContentMention{}),
@@ -1271,6 +1272,9 @@ func (h *handler) publishDraft(c *gin.Context) {
 		return
 	}
 	now := time.Now().UTC()
+	if ent.AccountID == nil {
+		ent.AccountID = &accountID
+	}
 	ent.DraftedAt = nil
 	ent.PublishedAt = &now
 	ent.PublishNotifiedAt = &now

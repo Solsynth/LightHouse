@@ -62,6 +62,9 @@ type Post struct {
 	PublisherID string     `json:"publisher_id"`
 	Publisher   *Publisher `json:"publisher"`
 
+	AccountID *string `json:"account_id"`
+	Account   any     `json:"account"`
+
 	ShadowbanReason *int  `json:"shadowban_reason"`
 	ShadowbannedAt  *Time `json:"shadowbanned_at"`
 	LockedAt        *Time `json:"locked_at"`
