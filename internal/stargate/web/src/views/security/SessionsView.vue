@@ -119,6 +119,9 @@ onMounted(load)
                   <span v-if="item.trusted" class="chip chip-active">{{
                     t('sessions.trusted')
                   }}</span>
+                  <span v-if="item.is_temporary" class="chip text-warning">{{
+                    t('sessions.temporary')
+                  }}</span>
                 </div>
                 <p class="mt-1 text-2xs text-faint" :title="item.id">{{ shortId(item.id) }}</p>
               </td>

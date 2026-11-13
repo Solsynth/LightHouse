@@ -41,6 +41,8 @@ func sessionEntityFrom(session *model.AuthSession) store.AuthSessionEntity {
 		Scopes:          datatypes.JSON(mustJSON(session.Scopes)),
 		Type:            int(session.Type),
 		UserAgent:       session.UserAgent,
+		IsTemporary:     session.IsTemporary,
+		AutoRenewable:   session.AutoRenewable,
 	}
 }
 

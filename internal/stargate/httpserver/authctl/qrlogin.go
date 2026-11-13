@@ -56,11 +56,15 @@ type qrLoginChallenge struct {
 
 // qrGenerateRequest mirrors QrGenerateRequest.
 type qrGenerateRequest struct {
-	DeviceId   string               `json:"device_id"`
-	DeviceName *string              `json:"device_name"`
-	Platform   model.ClientPlatform `json:"platform"`
-	Audiences  []string             `json:"audiences"`
-	Scopes     []string             `json:"scopes"`
+	DeviceId      string               `json:"device_id"`
+	DeviceName    *string              `json:"device_name"`
+	Platform      model.ClientPlatform `json:"platform"`
+	Audiences     []string             `json:"audiences"`
+	Scopes        []string             `json:"scopes"`
+	IsTemporary   *bool                `json:"is_temporary"`
+	Temporary     *bool                `json:"temporary"`
+	AutoRenewable *bool                `json:"auto_renewable"`
+	AutoRenew     *bool                `json:"auto_renew"`
 }
 
 // qrGenerateResponse mirrors QrGenerateResponse.
@@ -112,23 +116,27 @@ func (h *handler) generateQrChallenge(c *gin.Context) {
 		return
 	}
 
+	isTemporary, autoRenewable := resolveSessionOptions(req.IsTemporary, req.Temporary, req.AutoRenewable, req.AutoRenew)
+
 	authChallenge := &model.AuthChallenge{
-		Id:          authChallengeID,
-		StepTotal:   1,
-		StepRemain:  1,
-		DeviceId:    req.DeviceId,
-		DeviceName:  &deviceName,
-		Platform:    req.Platform,
-		IpAddress:   &ipAddress,
-		UserAgent:   &userAgent,
-		Audiences:   req.Audiences,
-		Scopes:      req.Scopes,
-		AccountId:   uuid.Nil.String(),
-		ExpiredAt:   model.NewTime(expiresAt),
-		CreatedAt:   model.NewTime(now),
-		UpdatedAt:   model.NewTime(now),
-		Origin:      model.ChallengeOriginQR,
-		RiskSignals: []string{"origin:qr"},
+		Id:            authChallengeID,
+		StepTotal:     1,
+		StepRemain:    1,
+		DeviceId:      req.DeviceId,
+		DeviceName:    &deviceName,
+		Platform:      req.Platform,
+		IpAddress:     &ipAddress,
+		UserAgent:     &userAgent,
+		Audiences:     req.Audiences,
+		Scopes:        req.Scopes,
+		AccountId:     uuid.Nil.String(),
+		ExpiredAt:     model.NewTime(expiresAt),
+		CreatedAt:     model.NewTime(now),
+		UpdatedAt:     model.NewTime(now),
+		Origin:        model.ChallengeOriginQR,
+		RiskSignals:   []string{"origin:qr"},
+		IsTemporary:   isTemporary,
+		AutoRenewable: autoRenewable,
 		Trail: []model.ChallengeEvent{{
 			At:        now,
 			Type:      model.ChallengeEventCreated,

@@ -357,12 +357,21 @@ func (s *AuthService) CreateSessionAndIssueTokens(ctx context.Context, challenge
 	if err != nil {
 		return nil, err
 	}
-	refreshLifetime := s.cfg.RefreshTokenLifetime()
+	var sessionLifetime time.Duration
+	autoRenewable := challenge.AutoRenewable
+	if challenge.IsTemporary {
+		sessionLifetime = s.cfg.TemporarySessionLifetime()
+		autoRenewable = false
+	} else {
+		sessionLifetime = s.cfg.RefreshTokenLifetime()
+	}
 	locationJSON, _ := json.Marshal(challenge.Location)
 	session := &model.AuthSession{
 		Type:            model.SessionTypeLogin,
 		LastGrantedAt:   model.NewTime(now),
-		ExpiredAt:       model.NewTime(now.Add(refreshLifetime)),
+		ExpiredAt:       model.NewTime(now.Add(sessionLifetime)),
+		IsTemporary:     challenge.IsTemporary,
+		AutoRenewable:   autoRenewable,
 		AccountId:       challenge.AccountId,
 		IpAddress:       challenge.IpAddress,
 		UserAgent:       challenge.UserAgent,
@@ -478,8 +487,14 @@ func (s *AuthService) RefreshSessionAndIssueTokens(ctx context.Context, refreshT
 	if session.AccountId != accountID.String() {
 		return nil, nil, &ErrInvalid{Message: "Session was not found."}
 	}
+	if session.Type == model.SessionTypeLogin && session.ExpiredAt == nil {
+		return nil, nil, &ErrInvalid{Message: "Session has been expired."}
+	}
 	if session.ExpiredAt != nil && !session.ExpiredAt.Time().After(now) {
 		return nil, nil, &ErrInvalid{Message: "Session has been expired."}
+	}
+	if session.IsTemporary || !session.AutoRenewable {
+		return nil, nil, &ErrInvalid{Message: "Session is not renewable."}
 	}
 
 	tokenEpoch, hasEpoch := ClaimInt(claims, "epoch")
@@ -514,8 +529,14 @@ func (s *AuthService) RefreshSessionAndIssueTokens(ctx context.Context, refreshT
 		if rerr != nil {
 			return nil, nil, rerr
 		}
+		if reloaded.Type == model.SessionTypeLogin && reloaded.ExpiredAt == nil {
+			return nil, nil, &ErrInvalid{Message: "Session has been expired."}
+		}
 		if reloaded.ExpiredAt != nil && !reloaded.ExpiredAt.Time().After(now) {
 			return nil, nil, &ErrInvalid{Message: "Session has been expired."}
+		}
+		if reloaded.IsTemporary || !reloaded.AutoRenewable {
+			return nil, nil, &ErrInvalid{Message: "Session is not renewable."}
 		}
 		if RefreshGraceAccepted(reloaded, session.Epoch, now, s.cfg.RefreshGracePeriod()) {
 			pair, perr := s.CreateTokenPair(ctx, reloaded)
@@ -872,11 +893,14 @@ func authClientModel(entity *store.AuthClientEntity) *model.AuthClient {
 }
 
 // CreateSessionFromParent creates a child session for login/session flows.
-func (s *AuthService) CreateSessionFromParent(ctx context.Context, parentSession *model.AuthSession, deviceID string, deviceName *string, platform model.ClientPlatform, expiredAt *time.Time) (*model.AuthSession, error) {
+func (s *AuthService) CreateSessionFromParent(ctx context.Context, parentSession *model.AuthSession, deviceID string, deviceName *string, platform model.ClientPlatform, expiredAt *time.Time, isTemporary, autoRenewable *bool) (*model.AuthSession, error) {
 	now := time.Now().UTC()
 	parent, err := s.store.GetSessionWithAccount(ctx, uuid.MustParse(parentSession.Id))
 	if err != nil {
 		return nil, errors.New("Parent session not found.")
+	}
+	if parent.Type == model.SessionTypeLogin && parent.ExpiredAt == nil {
+		return nil, errors.New("Parent session is expired.")
 	}
 	if parent.ExpiredAt != nil && !parent.ExpiredAt.Time().After(now) {
 		return nil, errors.New("Parent session is expired.")
@@ -893,9 +917,41 @@ func (s *AuthService) CreateSessionFromParent(ctx context.Context, parentSession
 	if err != nil {
 		return nil, err
 	}
-	finalExpiry := parent.ExpiredAt
-	if expiredAt != nil {
-		finalExpiry = model.NewTime(*expiredAt)
+
+	isTemp := false
+	if isTemporary != nil {
+		isTemp = *isTemporary
+	} else if parent.IsTemporary {
+		isTemp = true
+	}
+
+	autoRenew := true
+	if isTemp {
+		autoRenew = false
+	} else if autoRenewable != nil {
+		autoRenew = *autoRenewable
+	} else {
+		autoRenew = parent.AutoRenewable
+	}
+
+	var finalExpiry *model.Time
+	if isTemp {
+		tempExpiry := now.Add(s.cfg.TemporarySessionLifetime())
+		if expiredAt != nil && expiredAt.Before(tempExpiry) {
+			tempExpiry = *expiredAt
+		}
+		if parent.ExpiredAt != nil && parent.ExpiredAt.Time().Before(tempExpiry) {
+			tempExpiry = parent.ExpiredAt.Time()
+		}
+		finalExpiry = model.NewTime(tempExpiry)
+	} else {
+		if expiredAt != nil {
+			finalExpiry = model.NewTime(*expiredAt)
+		} else if parent.ExpiredAt != nil {
+			finalExpiry = parent.ExpiredAt
+		} else {
+			finalExpiry = model.NewTime(now.Add(s.cfg.RefreshTokenLifetime()))
+		}
 	}
 	if finalExpiry != nil && !finalExpiry.Time().After(now) {
 		return nil, errors.New("Requested expiration time is already in the past.")
@@ -908,6 +964,8 @@ func (s *AuthService) CreateSessionFromParent(ctx context.Context, parentSession
 		AccountId:       parent.AccountId,
 		LastGrantedAt:   model.NewTime(now),
 		ExpiredAt:       finalExpiry,
+		IsTemporary:     isTemp,
+		AutoRenewable:   autoRenew,
 		ParentSessionId: &parent.Id,
 		ClientId:        &device.Id,
 		Audiences:       parent.Audiences,

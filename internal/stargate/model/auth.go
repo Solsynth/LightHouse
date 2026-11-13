@@ -80,6 +80,10 @@ type AuthSession struct {
 	Trusted bool `json:"trusted,omitempty"`
 	// IsOnline is derived from the owning device's live wsgateway connection.
 	IsOnline bool `json:"is_online"`
+	// IsTemporary marks short-lived temporary login sessions (non-renewable).
+	IsTemporary bool `json:"is_temporary,omitempty"`
+	// AutoRenewable marks whether this session can be renewed via keep-alive / refresh.
+	AutoRenewable bool `json:"auto_renewable,omitempty"`
 	// Account is populated server-side for enrichment.
 	Account *Account `json:"-"`
 }
@@ -129,6 +133,10 @@ type AuthChallenge struct {
 	CreatedAt           *Time          `json:"created_at"`
 	UpdatedAt           *Time          `json:"updated_at"`
 	DeletedAt           *Time          `json:"deleted_at"`
+	// IsTemporary marks short-lived temporary login challenges (non-renewable).
+	IsTemporary bool `json:"is_temporary,omitempty"`
+	// AutoRenewable marks whether this login challenge can result in a renewable session.
+	AutoRenewable bool `json:"auto_renewable,omitempty"`
 	// Purpose discriminates ordinary login challenges from elevation ("sudo")
 	// challenges; empty means an ordinary login challenge.
 	Purpose string `json:"purpose,omitempty"`

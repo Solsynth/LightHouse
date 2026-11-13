@@ -285,6 +285,7 @@ export default {
     connectedNow: 'Connected now',
     thisBrowser: 'this browser',
     trusted: 'trusted',
+    temporary: 'temporary',
     fallbackType: 'session',
     footer:
       'The session marked “this browser” is the one you are using now. The others can be revoked safely.',

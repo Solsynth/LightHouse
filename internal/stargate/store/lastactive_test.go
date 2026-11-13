@@ -30,7 +30,7 @@ func TestTouchLastActive(t *testing.T) {
 	s := New(pool)
 
 	accountID := uuid.NewString()
-	now := time.Now().UTC()
+	now := time.Now().UTC().Truncate(time.Microsecond)
 	if _, err := pool.Exec(ctx, `INSERT INTO accounts (id, name, nick, language, region, is_superuser, created_at, updated_at)
 		VALUES ($1, $2, $2, 'en', 'US', false, $3, $3)`, accountID, "last_active_"+uuid.NewString()[:8], now); err != nil {
 		t.Fatalf("seed account: %v", err)
@@ -46,8 +46,8 @@ func TestTouchLastActive(t *testing.T) {
 	sessionID := uuid.NewString()
 	expiredAt := now.Add(24 * time.Hour)
 	if _, err := pool.Exec(ctx, `INSERT INTO auth_sessions
-		(id, account_id, audiences, epoch, scopes, type, expired_at, created_at, updated_at)
-		VALUES ($1, $2, '[]', 0, '[]', 0, $3, $4, $4)`, sessionID, accountID, expiredAt, now); err != nil {
+		(id, account_id, audiences, epoch, scopes, type, expired_at, is_temporary, auto_renewable, created_at, updated_at)
+		VALUES ($1, $2, '[]', 0, '[]', 0, $3, false, true, $4, $4)`, sessionID, accountID, expiredAt, now); err != nil {
 		t.Fatalf("seed session: %v", err)
 	}
 
@@ -74,6 +74,28 @@ func TestTouchLastActive(t *testing.T) {
 	wantKeepAlive := seenAt.Add(7 * 24 * time.Hour)
 	if !keptAlive.UTC().Equal(wantKeepAlive.UTC()) {
 		t.Fatalf("session expired_at = %v, want keep-alive %v", keptAlive, wantKeepAlive)
+	}
+
+	// A temporary session must NOT have its expired_at extended by keep-alive.
+	tempSessionID := uuid.NewString()
+	tempExpiredAt := now.Add(15 * time.Minute)
+	if _, err := pool.Exec(ctx, `INSERT INTO auth_sessions
+		(id, account_id, audiences, epoch, scopes, type, expired_at, is_temporary, auto_renewable, created_at, updated_at)
+		VALUES ($1, $2, '[]', 0, '[]', 0, $3, true, false, $4, $4)`, tempSessionID, accountID, tempExpiredAt, now); err != nil {
+		t.Fatalf("seed temporary session: %v", err)
+	}
+	if err := s.TouchLastActive(ctx, accountID, tempSessionID, seenAt); err != nil {
+		t.Fatalf("TouchLastActive (temp session): %v", err)
+	}
+	var tempGranted, tempKeptAlive time.Time
+	if err := pool.QueryRow(ctx, `SELECT last_granted_at, expired_at FROM auth_sessions WHERE id = $1`, tempSessionID).Scan(&tempGranted, &tempKeptAlive); err != nil {
+		t.Fatalf("read temporary session: %v", err)
+	}
+	if !tempGranted.UTC().Equal(seenAt.UTC()) {
+		t.Fatalf("temp session last_granted_at = %v, want %v", tempGranted, seenAt)
+	}
+	if !tempKeptAlive.UTC().Equal(tempExpiredAt.UTC()) {
+		t.Fatalf("temp session expired_at = %v, want %v (should not be extended)", tempKeptAlive, tempExpiredAt)
 	}
 
 	// A session without an expiry must not be touched by the keep-alive.

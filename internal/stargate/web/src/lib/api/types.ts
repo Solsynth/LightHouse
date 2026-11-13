@@ -181,6 +181,8 @@ export interface AuthSession {
   category?: string
   trusted?: boolean
   is_online: boolean
+  is_temporary?: boolean
+  auto_renewable?: boolean
 }
 
 export interface Device {

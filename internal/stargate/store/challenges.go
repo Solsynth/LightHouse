@@ -51,6 +51,8 @@ func challengeFromEntity(entity *ChallengeEntity) *model.AuthChallenge {
 		ExtraFactorType:     entity.ExtraFactorType,
 		Origin:              derefString(entity.Origin),
 		RiskScore:           entity.RiskScore,
+		IsTemporary:         entity.IsTemporary,
+		AutoRenewable:       entity.AutoRenewable,
 	}
 	if entity.RiskSignals != nil {
 		_ = decodeJSON(entity.RiskSignals, &challenge.RiskSignals)
@@ -281,6 +283,8 @@ func (s *Store) CreateAuthChallenge(ctx context.Context, ch *model.AuthChallenge
 		Origin:           optionalString(ch.Origin),
 		RiskScore:        ch.RiskScore,
 		RiskSignals:      riskSignals,
+		IsTemporary:      ch.IsTemporary,
+		AutoRenewable:    ch.AutoRenewable,
 		// trail is jsonb NOT NULL: seed with whatever the caller recorded.
 		Trail: datatypes.JSON(jsonbOrEmpty(ch.Trail)),
 	}).Error
@@ -369,6 +373,8 @@ func (s *Store) UpdateAuthChallenge(ctx context.Context, ch *model.AuthChallenge
 			"origin":       optionalString(ch.Origin),
 			"risk_score":   ch.RiskScore,
 			"risk_signals": riskSignalsJSON(ch.RiskSignals),
+			"is_temporary":   ch.IsTemporary,
+			"auto_renewable": ch.AutoRenewable,
 		}).Error
 }
 

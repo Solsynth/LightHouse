@@ -677,12 +677,35 @@ func (h *handler) clearAuthCookies(c *gin.Context) {
 
 // challengeRequest mirrors ChallengeRequest.
 type challengeRequest struct {
-	Platform   model.ClientPlatform `json:"platform"`
-	Account    string               `json:"account"`
-	DeviceId   string               `json:"device_id"`
-	DeviceName *string              `json:"device_name"`
-	Audiences  []string             `json:"audiences"`
-	Scopes     []string             `json:"scopes"`
+	Platform      model.ClientPlatform `json:"platform"`
+	Account       string               `json:"account"`
+	DeviceId      string               `json:"device_id"`
+	DeviceName    *string              `json:"device_name"`
+	Audiences     []string             `json:"audiences"`
+	Scopes        []string             `json:"scopes"`
+	IsTemporary   *bool                `json:"is_temporary"`
+	Temporary     *bool                `json:"temporary"`
+	AutoRenewable *bool                `json:"auto_renewable"`
+	AutoRenew     *bool                `json:"auto_renew"`
+}
+
+func resolveSessionOptions(isTemp, temp, autoRenewable, autoRenew *bool) (bool, bool) {
+	temporary := false
+	if isTemp != nil {
+		temporary = *isTemp
+	} else if temp != nil {
+		temporary = *temp
+	}
+	if temporary {
+		return true, false
+	}
+	renewable := true
+	if autoRenewable != nil {
+		renewable = *autoRenewable
+	} else if autoRenew != nil {
+		renewable = *autoRenew
+	}
+	return false, renewable
 }
 
 // challengeReviewWindow is how long a satisfied password-first login stays
@@ -771,6 +794,8 @@ func (h *handler) createChallenge(c *gin.Context) {
 		return
 	}
 
+	isTemporary, autoRenewable := resolveSessionOptions(req.IsTemporary, req.Temporary, req.AutoRenewable, req.AutoRenew)
+
 	// Reuse resumes a challenge the same device already opened. Without a
 	// device id the tuple (account, NAT IP, UA) is shared by every client
 	// behind that NAT using the same browser, and the challenge id is itself
@@ -783,6 +808,11 @@ func (h *handler) createChallenge(c *gin.Context) {
 			h.logError("find live challenge", err)
 		}
 		if existing != nil {
+			if existing.IsTemporary != isTemporary || existing.AutoRenewable != autoRenewable {
+				existing.IsTemporary = isTemporary
+				existing.AutoRenewable = autoRenewable
+				_ = h.d.Store.UpdateAuthChallenge(ctx, existing)
+			}
 			// Reuse mints no new challenge, so return the quota slot this
 			// request just claimed.
 			risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
@@ -844,12 +874,14 @@ func (h *handler) createChallenge(c *gin.Context) {
 		DeviceId:    req.DeviceId,
 		DeviceName:  &deviceName,
 		Platform:    req.Platform,
-		AccountId:   account.Id,
-		CreatedAt:   model.NewTime(now),
-		UpdatedAt:   model.NewTime(now),
-		Origin:      model.ChallengeOriginPassword,
-		RiskScore:   assessment.Score,
-		RiskSignals: assessment.Signals,
+		AccountId:     account.Id,
+		CreatedAt:     model.NewTime(now),
+		UpdatedAt:     model.NewTime(now),
+		Origin:        model.ChallengeOriginPassword,
+		RiskScore:     assessment.Score,
+		RiskSignals:   assessment.Signals,
+		IsTemporary:   isTemporary,
+		AutoRenewable: autoRenewable,
 		Trail: []model.ChallengeEvent{{
 			At:        now,
 			Type:      model.ChallengeEventCreated,
@@ -2010,11 +2042,15 @@ func (h *handler) completePasskeyChallenge(c *gin.Context) {
 
 // passkeyLoginStartRequest mirrors PasskeyLoginStartRequest.
 type passkeyLoginStartRequest struct {
-	Platform   model.ClientPlatform `json:"platform"`
-	DeviceId   string               `json:"device_id"`
-	DeviceName *string              `json:"device_name"`
-	Audiences  []string             `json:"audiences"`
-	Scopes     []string             `json:"scopes"`
+	Platform      model.ClientPlatform `json:"platform"`
+	DeviceId      string               `json:"device_id"`
+	DeviceName    *string              `json:"device_name"`
+	Audiences     []string             `json:"audiences"`
+	Scopes        []string             `json:"scopes"`
+	IsTemporary   *bool                `json:"is_temporary"`
+	Temporary     *bool                `json:"temporary"`
+	AutoRenewable *bool                `json:"auto_renewable"`
+	AutoRenew     *bool                `json:"auto_renew"`
 }
 
 func (h *handler) startPasskeyLogin(c *gin.Context) {
@@ -2024,6 +2060,7 @@ func (h *handler) startPasskeyLogin(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("BAD_REQUEST", "Invalid request body."))
 		return
 	}
+	isTemporary, autoRenewable := resolveSessionOptions(req.IsTemporary, req.Temporary, req.AutoRenewable, req.AutoRenew)
 	now := time.Now().UTC()
 	ipAddress := middleware.ClientIP(c.Request)
 	userAgent := c.Request.UserAgent()
@@ -2040,23 +2077,25 @@ func (h *handler) startPasskeyLogin(c *gin.Context) {
 		return
 	}
 	challenge := &model.AuthChallenge{
-		Id:          challengeID,
-		StepTotal:   1,
-		StepRemain:  1,
-		DeviceId:    req.DeviceId,
-		DeviceName:  &deviceName,
-		Platform:    req.Platform,
-		IpAddress:   &ipAddress,
-		UserAgent:   &userAgent,
-		Location:    h.d.Geo.GetPointFromIp(ipAddress),
-		Audiences:   req.Audiences,
-		Scopes:      req.Scopes,
-		AccountId:   uuid.Nil.String(),
-		ExpiredAt:   model.NewTime(now.Add(5 * time.Minute)),
-		CreatedAt:   model.NewTime(now),
-		UpdatedAt:   model.NewTime(now),
-		Origin:      model.ChallengeOriginPasskey,
-		RiskSignals: []string{"origin:discoverable_passkey"},
+		Id:            challengeID,
+		StepTotal:     1,
+		StepRemain:    1,
+		DeviceId:      req.DeviceId,
+		DeviceName:    &deviceName,
+		Platform:      req.Platform,
+		IpAddress:     &ipAddress,
+		UserAgent:     &userAgent,
+		Location:      h.d.Geo.GetPointFromIp(ipAddress),
+		Audiences:     req.Audiences,
+		Scopes:        req.Scopes,
+		AccountId:     uuid.Nil.String(),
+		ExpiredAt:     model.NewTime(now.Add(5 * time.Minute)),
+		CreatedAt:     model.NewTime(now),
+		UpdatedAt:     model.NewTime(now),
+		Origin:        model.ChallengeOriginPasskey,
+		RiskSignals:   []string{"origin:discoverable_passkey"},
+		IsTemporary:   isTemporary,
+		AutoRenewable: autoRenewable,
 		Trail: []model.ChallengeEvent{{
 			At:        now,
 			Type:      model.ChallengeEventCreated,
@@ -2852,10 +2891,14 @@ func (h *handler) logout(c *gin.Context) {
 
 // newSessionRequest mirrors NewSessionRequest.
 type newSessionRequest struct {
-	DeviceId   string               `json:"device_id"`
-	DeviceName *string              `json:"device_name"`
-	Platform   model.ClientPlatform `json:"platform"`
-	ExpiredAt  *model.Time          `json:"expired_at"`
+	DeviceId      string               `json:"device_id"`
+	DeviceName    *string              `json:"device_name"`
+	Platform      model.ClientPlatform `json:"platform"`
+	ExpiredAt     *model.Time          `json:"expired_at"`
+	IsTemporary   *bool                `json:"is_temporary"`
+	Temporary     *bool                `json:"temporary"`
+	AutoRenewable *bool                `json:"auto_renewable"`
+	AutoRenew     *bool                `json:"auto_renew"`
 }
 
 func (h *handler) loginFromSession(c *gin.Context) {
@@ -2876,7 +2919,14 @@ func (h *handler) loginFromSession(c *gin.Context) {
 		t := req.ExpiredAt.Time()
 		expiredAt = &t
 	}
-	newSession, err := h.d.Auth.CreateSessionFromParent(ctx, session, req.DeviceId, req.DeviceName, req.Platform, expiredAt)
+	var isTempPtr *bool
+	var autoRenewPtr *bool
+	if req.IsTemporary != nil || req.Temporary != nil || req.AutoRenewable != nil || req.AutoRenew != nil {
+		isTemp, autoRenew := resolveSessionOptions(req.IsTemporary, req.Temporary, req.AutoRenewable, req.AutoRenew)
+		isTempPtr = &isTemp
+		autoRenewPtr = &autoRenew
+	}
+	newSession, err := h.d.Auth.CreateSessionFromParent(ctx, session, req.DeviceId, req.DeviceName, req.Platform, expiredAt, isTempPtr, autoRenewPtr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_CREATE_SESSION_FAILED", err.Error()))
 		return

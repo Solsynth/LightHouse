@@ -674,9 +674,9 @@ func (s *Store) AdminRevokeSession(ctx context.Context, accountID, sessionID uui
 // AdminRevokeAllSessions expires every live session of the account (mirroring
 // AccountService.DeleteAllSessions) and returns the revoked sessions.
 func (s *Store) AdminRevokeAllSessions(ctx context.Context, accountID uuid.UUID, now time.Time) ([]model.AuthSession, error) {
-	where := "account_id = ? AND expired_at IS NULL"
+	where := "account_id = ? AND (expired_at IS NULL OR expired_at > ?)"
 	var entities []AuthSessionEntity
-	if err := s.DB.WithContext(ctx).Where(where, accountID).Find(&entities).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Where(where, accountID, now).Find(&entities).Error; err != nil {
 		return nil, err
 	}
 	if len(entities) == 0 {
@@ -693,7 +693,7 @@ func (s *Store) AdminRevokeAllSessions(ctx context.Context, accountID uuid.UUID,
 		sessions = append(sessions, *sessionFromEntity(entity))
 	}
 	if err := s.DB.WithContext(ctx).Model(&AuthSessionEntity{}).
-		Where("id IN ? AND expired_at IS NULL", ids).
+		Where("id IN ?", ids).
 		Updates(map[string]any{"expired_at": now, "epoch": gorm.Expr("epoch + 1"), "updated_at": now}).Error; err != nil {
 		return nil, err
 	}

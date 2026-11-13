@@ -69,6 +69,8 @@ type AuthSessionEntity struct {
 	Scopes          datatypes.JSON  `gorm:"column:scopes;type:jsonb"`
 	Type            int             `gorm:"column:type"`
 	UserAgent       *string         `gorm:"column:user_agent"`
+	IsTemporary     bool            `gorm:"column:is_temporary"`
+	AutoRenewable   bool            `gorm:"column:auto_renewable"`
 }
 
 func (AuthSessionEntity) TableName() string { return "auth_sessions" }
@@ -214,6 +216,8 @@ type ChallengeEntity struct {
 	RiskScore   *float64        `gorm:"column:risk_score"`
 	RiskSignals *datatypes.JSON `gorm:"column:risk_signals;type:jsonb"`
 	Trail       datatypes.JSON  `gorm:"column:trail;type:jsonb"`
+	IsTemporary   bool          `gorm:"column:is_temporary"`
+	AutoRenewable bool          `gorm:"column:auto_renewable"`
 }
 
 func (ChallengeEntity) TableName() string { return "auth_challenges" }

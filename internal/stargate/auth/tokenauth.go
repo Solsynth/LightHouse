@@ -228,6 +228,10 @@ func (t *TokenAuthService) AuthenticateToken(ctx context.Context, token, ipAddre
 				_ = t.redis.Cache.Remove(ctx, cacheKey)
 				return false, nil, "Token has been invalidated.", tokenUse
 			}
+			if cached.Type == gen.DySessionType_DY_LOGIN && cached.ExpiredAt == nil {
+				_ = t.redis.Cache.Remove(ctx, cacheKey)
+				return false, nil, "Session has been expired.", tokenUse
+			}
 			if cached.ExpiredAt != nil && cached.ExpiredAt.AsTime().Before(time.Now().UTC()) {
 				_ = t.redis.Cache.Remove(ctx, cacheKey)
 				return false, nil, "Session has been expired.", tokenUse
@@ -259,6 +263,9 @@ func (t *TokenAuthService) AuthenticateToken(ctx context.Context, token, ipAddre
 	}
 	if session.Epoch != tokenEpoch {
 		return false, nil, "Token has been invalidated.", tokenUse
+	}
+	if session.Type == model.SessionTypeLogin && session.ExpiredAt == nil {
+		return false, nil, "Session has been expired.", tokenUse
 	}
 	if session.ExpiredAt != nil && session.ExpiredAt.Time().Before(time.Now().UTC()) {
 		return false, nil, "Session has been expired.", tokenUse

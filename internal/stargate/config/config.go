@@ -94,10 +94,11 @@ type Config struct {
 		Audiences            []string `toml:"audiences"`
 		PublicKeyPath        string   `toml:"publicKeyPath"`
 		PrivateKeyPath       string   `toml:"privateKeyPath"`
-		AccessTokenLifetime  string   `toml:"accessTokenLifetime"`
-		RefreshTokenLifetime string   `toml:"refreshTokenLifetime"`
-		RefreshGracePeriod   string   `toml:"refreshGracePeriod"`
-		CookieDomain         string   `toml:"cookieDomain"`
+		AccessTokenLifetime      string   `toml:"accessTokenLifetime"`
+		RefreshTokenLifetime     string   `toml:"refreshTokenLifetime"`
+		RefreshGracePeriod       string   `toml:"refreshGracePeriod"`
+		TemporarySessionLifetime string   `toml:"temporarySessionLifetime"`
+		CookieDomain             string   `toml:"cookieDomain"`
 		CookieSecure         bool     `toml:"cookieSecure"`
 		// HandoffClients are the apps this deployment hands a session to with a
 		// single-use code. They exist because a cookie cannot cross registrable
@@ -515,6 +516,7 @@ func Default() *Config {
 	cfg.Auth.AccessTokenLifetime = "5m"
 	cfg.Auth.RefreshTokenLifetime = "720h"
 	cfg.Auth.RefreshGracePeriod = "60s"
+	cfg.Auth.TemporarySessionLifetime = "15m"
 	cfg.Auth.CookieDomain = "localhost"
 	cfg.OidcProvider.IssuerUri = "https://nt.solian.app"
 	cfg.OidcProvider.AccessTokenLifetime = "5m"
@@ -611,6 +613,7 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("STARGATE_AUTH_ACCESS_TOKEN_LIFETIME", &cfg.Auth.AccessTokenLifetime)
 	setStr("STARGATE_AUTH_REFRESH_TOKEN_LIFETIME", &cfg.Auth.RefreshTokenLifetime)
 	setStr("STARGATE_AUTH_REFRESH_GRACE_PERIOD", &cfg.Auth.RefreshGracePeriod)
+	setStr("STARGATE_AUTH_TEMPORARY_SESSION_LIFETIME", &cfg.Auth.TemporarySessionLifetime)
 	setStr("STARGATE_AUTH_HANDOFF_CODE_TTL", &cfg.Auth.HandoffCodeTTL)
 	setStr("STARGATE_OIDC_PROVIDER_ISSUER", &cfg.OidcProvider.IssuerUri)
 	setStr("STARGATE_OIDC_TWITTER_CLIENT_ID", &cfg.Oidc.Twitter.ClientId)
@@ -718,6 +721,16 @@ func (c *Config) RefreshGracePeriod() time.Duration {
 	return 0
 }
 
+// TemporarySessionLifetime parses the configured lifetime for temporary login sessions.
+func (c *Config) TemporarySessionLifetime() time.Duration {
+	if c != nil {
+		if d, err := time.ParseDuration(c.Auth.TemporarySessionLifetime); err == nil && d > 0 {
+			return d
+		}
+	}
+	return 15 * time.Minute
+}
+
 // CaptchaEnabled reports whether an external captcha verifier is configured.
 // Skip and incomplete credentials both mean the verifier is unusable, i.e.
 // captcha tokens cannot be checked. Callers must not treat that as "verification
@@ -797,6 +810,15 @@ func (c *Config) Validate() error {
 		}
 		if ttl <= 0 {
 			return fmt.Errorf("[auth] handoffCodeTTL must be positive")
+		}
+	}
+	if raw := strings.TrimSpace(c.Auth.TemporarySessionLifetime); raw != "" {
+		ttl, err := time.ParseDuration(raw)
+		if err != nil {
+			return fmt.Errorf("[auth] temporarySessionLifetime %q is not a duration", raw)
+		}
+		if ttl <= 0 {
+			return fmt.Errorf("[auth] temporarySessionLifetime must be positive")
 		}
 	}
 	return nil

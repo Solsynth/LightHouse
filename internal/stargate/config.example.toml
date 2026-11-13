@@ -165,6 +165,9 @@ publicKeyPath = "Keys/PublicKey.pem"
 privateKeyPath = "Keys/PrivateKey.pem"
 accessTokenLifetime = "5m"
 refreshTokenLifetime = "720h"
+# Lifetime for temporary login sessions (e.g. kiosk / shared device logins).
+# Temporary sessions have a short TTL and are non-renewable.
+# temporarySessionLifetime = "15m"
 # How long the immediately previous refresh token is still accepted after a
 # rotation. Refresh rotation revokes the presented token before the replacement
 # is delivered, so a dropped/timed-out response (or a concurrent duplicate)

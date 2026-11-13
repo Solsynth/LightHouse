@@ -127,7 +127,9 @@ func sessionFromEntity(entity *AuthSessionEntity) *model.AuthSession {
 		UpdatedAt: timePtr(&entity.UpdatedAt), DeletedAt: deletedTime(entity.DeletedAt),
 		ClientId: uuidPtrStr(entity.ClientID), ParentSessionId: uuidPtrStr(entity.ParentSessionID),
 		ChallengeId: uuidPtrStr(entity.ChallengeID), AppId: uuidPtrStr(entity.AppID),
-		Epoch: entity.Epoch,
+		Epoch:         entity.Epoch,
+		IsTemporary:   entity.IsTemporary,
+		AutoRenewable: entity.AutoRenewable,
 	}
 	_ = decodeJSON(&entity.Audiences, &session.Audiences)
 	_ = decodeJSON(&entity.Scopes, &session.Scopes)
@@ -179,7 +181,7 @@ func (s *Store) TouchLastActive(ctx context.Context, accountID, sessionID string
 			if err := tx.Model(&AuthSessionEntity{}).Where("id = ?", sessionID).Update("last_granted_at", seenAt).Error; err != nil {
 				return err
 			}
-			if err := tx.Model(&AuthSessionEntity{}).Where("id = ? AND expired_at IS NOT NULL", sessionID).
+			if err := tx.Model(&AuthSessionEntity{}).Where("id = ? AND expired_at IS NOT NULL AND auto_renewable = true AND is_temporary = false", sessionID).
 				Update("expired_at", gorm.Expr("?::timestamptz + interval '7 days'", seenAt)).Error; err != nil {
 				return err
 			}

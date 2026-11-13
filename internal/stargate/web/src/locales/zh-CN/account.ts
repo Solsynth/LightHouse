@@ -275,6 +275,7 @@ export default {
     connectedNow: '当前已连接',
     thisBrowser: '当前浏览器',
     trusted: '受信任',
+    temporary: '临时会话',
     fallbackType: '会话',
     footer: '标有“当前浏览器”的会话就是你正在使用的会话。其余会话都可以安全撤销。',
     revokeTitle: '撤销此会话？',
