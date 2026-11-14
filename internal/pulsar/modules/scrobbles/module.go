@@ -75,17 +75,18 @@ func (i *instance) submitScrobbles(c *gin.Context) {
 		return
 	}
 
-	// Support both single scrobble object and array/batch envelope
+	// Support both single scrobble object and array/batch envelope.
+	// ShouldBindBodyWith: the body can only be read once; each attempt
+	// re-parses the cached body so fallthrough works.
 	var rawData []singleScrobblePayload
 	var single singleScrobblePayload
 	var batch batchScrobblesRequest
 
-	if err := c.ShouldBindJSON(&batch); err == nil && len(batch.Scrobbles) > 0 {
+	if err := c.ShouldBindBodyWithJSON(&batch); err == nil && len(batch.Scrobbles) > 0 {
 		rawData = batch.Scrobbles
-	} else if err := c.ShouldBindJSON(&rawData); err == nil && len(rawData) > 0 {
+	} else if err := c.ShouldBindBodyWithJSON(&rawData); err == nil && len(rawData) > 0 {
 		// parsed as array directly
-	} else if err := c.ShouldBindJSON(&single); err == nil && strings.TrimSpace(single.Title) != "" {
-		rawData = []singleScrobblePayload{single}
+	} else if err := c.ShouldBindBodyWithJSON(&single); err == nil && strings.TrimSpace(single.Title) != "" {
 	} else {
 		httpx.BadRequest(c, "INVALID_BODY", "unable to parse scrobble payload")
 		return
