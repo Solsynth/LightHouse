@@ -110,11 +110,10 @@ func (s *dyProfileService) ListCloseFriends(ctx context.Context, req *gen.DyList
 	return newRelationshipRPCs(s.d).ListCloseFriends(ctx, req)
 }
 
-// ── account-status RPCs (owned by the presences module) ──────────────────
+// ── account-status RPCs ───────────────────────────────────────────────────
 //
-// The two status reads live in accountstatus.go and are owned by the presences
-// module: when it is disabled the resolver is nil and both methods report
-// Unimplemented.
+// The two status reads live in accountstatus.go: when no presence resolver is
+// configured both methods report Unimplemented.
 
 func (s *dyProfileService) GetAccountStatus(ctx context.Context, req *gen.DyGetAccountRequest) (*gen.DyAccountStatus, error) {
 	return newAccountStatusRPCs(s.d).GetAccountStatus(ctx, req)

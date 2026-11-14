@@ -21,7 +21,6 @@ import (
 	passkitmod "src.solsynth.dev/sosys/stargate/modules/passkit"
 	presenceartworksmod "src.solsynth.dev/sosys/stargate/modules/presenceartworks"
 	presenceprovidersmod "src.solsynth.dev/sosys/stargate/modules/presenceproviders"
-	"src.solsynth.dev/sosys/stargate/modules/presences"
 	"src.solsynth.dev/sosys/stargate/modules/profiles"
 	progressionmod "src.solsynth.dev/sosys/stargate/modules/progression"
 	purchasesmod "src.solsynth.dev/sosys/stargate/modules/purchases"
@@ -46,7 +45,6 @@ func Modules() []module.Factory[core.Services] {
 		accountkeysmod.Factory(),
 		accountrecordsmod.Factory(),
 		accounteventsmod.Factory(),
-		presences.Factory(),
 		presenceprovidersmod.Factory(),
 		progressionmod.Factory(),
 		relationships.Factory(),

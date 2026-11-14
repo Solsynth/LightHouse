@@ -1,7 +1,7 @@
 // Package presenceprovidersmod wires Passport's Steam and Last.fm presence
 // scanners into Stargate as a feature module: the admin scan routes belonging
 // to AccountAdminController and the three PresenceUpdateJob stages. It owns no
-// tables; sessions are written through the presences module's activity store.
+// tables; sessions are written through the shared account-status store.
 package presenceprovidersmod
 
 import (
@@ -23,7 +23,7 @@ func Factory() module.Factory[core.Services] {
 		ID:             presenceproviders.ModuleID,
 		Kind:           module.KindFeature,
 		DefaultEnabled: true,
-		Requires:       []string{"app.solian.id.accounts", "app.solian.id.presences"},
+		Requires:       []string{"app.solian.id.accounts"},
 		Capabilities: []string{
 			"accounts.presences.steam",
 			"accounts.presences.lastfm",

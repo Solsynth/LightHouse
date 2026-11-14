@@ -101,7 +101,7 @@ var passportTables = []string{
 	"nfc_tags",
 	"apple_passes",
 	"apple_pass_registrations",
-	// Account statuses and presence activities (app.solian.id.presences).
+	// Account statuses and presence activities (core migration 0014).
 	// Catalog items precede their tag rows, activities precede theirs.
 	"account_statuses",
 	"presence_catalog_items",

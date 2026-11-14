@@ -1,4 +1,4 @@
-package presences_test
+package profiles_test
 
 import (
 	"context"

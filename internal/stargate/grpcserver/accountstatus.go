@@ -4,10 +4,9 @@
 // Messager contact rows and Realm member lists all read a member's status
 // through these two calls.
 //
-// This file deliberately does not live in profile.go: the profile service is
-// mounted by the profiles module, while these RPCs belong to the presences
-// module. profile.go's dyProfileService delegates here, so a disabled presences
-// module leaves them Unimplemented.
+// This file deliberately does not live in profile.go: profile.go's
+// dyProfileService delegates here. Without a configured presence resolver the
+// two methods answer Unimplemented.
 package grpcserver
 
 import (
@@ -32,7 +31,7 @@ func newAccountStatusRPCs(d Deps) *accountStatusRPCs {
 	return &accountStatusRPCs{d: d}
 }
 
-// available reports whether the presences module is mounted.
+// available reports whether the status read path is configured.
 func (r *accountStatusRPCs) available() bool {
 	return r != nil && r.d.Store != nil && r.d.PresenceResolver != nil
 }

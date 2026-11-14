@@ -277,7 +277,7 @@ startup.
 | `app.solian.id.auth` | feature | `/api/auth/**`, auth gRPC, registration routes | — | core tables |
 | `app.solian.id.accounts` | feature | `/api/{identity,factors,sessions,devices,contacts,api-keys,connections}`, account/bot/authorized-app gRPC | auth | core tables |
 | `app.solian.id.keys` | feature | `/api/keys/{ssh,pgp}`, `GET /api/accounts/{name}/keys`, `DyAccountKeyService` validators | accounts | `account_ssh_keys`, `account_pgp_keys` |
-| `app.solian.id.profiles` | feature | `/api/accounts/**` profile/public routes, profile gRPC | accounts | core tables |
+| `app.solian.id.profiles` | feature | `/api/accounts/**` profile/public routes, `/api/accounts/{me,:name}/statuses`, `/api/activities/**`, profile gRPC, account-status reads | accounts | core tables, account-status/presence tables |
 | `app.solian.id.relationships` | feature | `/api/relationships/**`, `/api/friends/overview`, followers/following, `GET /api/accounts/{name}/relationships` (anonymous totals; `mutual_friends` with a session), the six `DyProfileService` relationship RPCs | profiles | `account_relationships` |
 | `app.solian.id.spells` | feature | `/api/spells/**` | accounts | `magic_spells` |
 | `app.solian.id.social` | feature | `/api/auth/login/{provider}`, callbacks | auth, accounts | none |
@@ -286,7 +286,7 @@ startup.
 | `app.solian.id.progression` | feature | `/api/accounts/me/progression/**`, `/api/admin/progression/**`, `/.well-known/badges`, action-log consumer | auth, accounts | `achievement_definitions`, `quest_definitions`, `account_achievements`, `account_quest_progresses`, `progress_reward_grants`, `progress_event_receipts` |
 | `app.solian.id.domaintrust` | feature | `/api/domain-blocks/**` (rule CRUD, public `validate`/`check`, metrics), `DyDomainBlockService` | auth | `domain_blocks`, `domain_validation_metrics` |
 | `app.solian.id.accountrecords` | feature | `/api/accounts/me/{actions,badges,leveling,credits,connections,board}`, public badge/board/credit routes, admin badge/board/credit/verification routes, `DyExperienceService`, `DySocialCreditService`; provides `badges`/`verification`/`boards` | auth, accounts | `experience_records`, `social_credit_records`, `badges`, `account_board_items` |
-| `app.solian.id.accountevents` | feature | `/api/accounts/me/{check-in,calendar/**}`, public account calendar/timeline, `/api/notable-days/**`, `/api/fortune*` | accounts, accountrecords, presences | `account_check_in_results`, `user_calendar_events`, `calendar_event_subscriptions`, `notable_days` |
+| `app.solian.id.accountevents` | feature | `/api/accounts/me/{check-in,calendar/**}`, public account calendar/timeline, `/api/notable-days/**`, `/api/fortune*` | accounts, accountrecords | `account_check_in_results`, `user_calendar_events`, `calendar_event_subscriptions`, `notable_days` |
 | `app.solian.id.tickets` | feature | `/api/tickets/**`, `/api/admin/tickets/on-call/**` | accounts | `tickets`, `ticket_messages`, `ticket_on_call_admins` |
 | `app.solian.id.purchases` | feature | `/api/affiliations/**`, `/api/accounts/me/name-change-card/**` | accounts | `affiliation_spells`, `affiliation_results`, `affiliation_spell_purchases`, `name_change_card_purchases` |
 | `app.solian.id.nfc` | feature | `/api/nfc/**`, `/api/admin/nfc/**`, `DyNfcService`; provides `nfcTokens` | auth, accounts | `nfc_tags` |
@@ -295,7 +295,7 @@ startup.
 | `app.solian.id.ipcheck` | feature | `/api/ip-check`, `/api/ip-check/geo` | — | none |
 | `app.solian.id.rewind` | feature | `/api/rewind/**` | accounts, accountevents | `rewind_points` |
 | `app.solian.id.wellbeing` | feature | `/api/admin/stats`, `/api/admin/accounts/metrics/activity`, night-owl test/job | accounts, profiles | none |
-| `app.solian.id.presenceproviders` | feature | `/api/admin/accounts/presences/steam/**`, Steam/Last.fm scan jobs | accounts, presences, files/presence optional | none |
+| `app.solian.id.presenceproviders` | feature | `/api/admin/accounts/presences/steam/**`, Steam/Last.fm scan jobs | accounts, files/presence optional | none |
 | `app.solian.e2ee` | feature | `/api/e2ee/**`, MLS gRPC | accounts | `e2ee_*`, `mls_*` (later phase) |
 | `app.solian.admin` | feature | `/api/admin/**`, actions/punishments | accounts | core tables |
 | `app.solian.wellknown` | feature | `/.well-known/*` docs | — | none |

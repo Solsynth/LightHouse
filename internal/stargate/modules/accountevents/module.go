@@ -35,7 +35,6 @@ func Factory() module.Factory[core.Services] {
 		Requires: []string{
 			"app.solian.id.accounts",
 			"app.solian.id.accountrecords",
-			"app.solian.id.presences",
 		},
 		Capabilities: []string{
 			"accounts.check-in",
