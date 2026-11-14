@@ -21,7 +21,7 @@ FS_GO := GOWORK=off GOTOOLCHAIN=go1.26.2 go
 	web-stargate web-stargate-check web-stargate-dev web-stargate-test \
 	web-filesystem web-filesystem-check web-filesystem-dev web-filesystem-test \
 	test test-sphere test-pulsar test-stargate test-metoer test-blade test-filesystem lint tidy fmt \
-	migrate-sphere migrate-messager migrate-stargate migrate-filesystem-legacy \
+	migrate-sphere migrate-messager migrate-stargate migrate-pulsar-presence migrate-filesystem-legacy \
 	stargate-hash-password stargate-module-import
 
 all: build
@@ -38,6 +38,9 @@ build-messager:
 
 build-pulsar:
 	go build -o $(BIN_DIR)/pulsar ./internal/pulsar/cmd/pulsar
+
+build-pulsar-migrate:
+	go build -o $(BIN_DIR)/pulsar-migrate ./internal/pulsar/cmd/pulsar-migrate
 
 build-stargate:
 	cd internal/stargate && go build -o ../../$(BIN_DIR)/stargate ./cmd/stargate
@@ -159,6 +162,9 @@ migrate-messager:
 
 migrate-stargate:
 	cd internal/stargate && go run ./cmd/stargate-migrate
+
+migrate-pulsar-presence:
+	go run ./internal/pulsar/cmd/pulsar-migrate
 
 # Imports the legacy C# drive database; set LEGACY_DATABASE_DSN.
 migrate-filesystem-legacy:
