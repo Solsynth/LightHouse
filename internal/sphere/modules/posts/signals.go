@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
+	"src.solsynth.dev/sosys/lighthouse/internal/sphere/ports"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
 )
 
@@ -36,6 +37,11 @@ func (p *signalsPort) IncrementViews(ctx context.Context, postID, accountID stri
 		unique = p.h.claimUniqueView(ctx, id, account)
 	}
 	p.h.enqueueViewSignal(id, account, unique)
+	visitor := ports.AnalyticsVisitor{}
+	if account != uuid.Nil {
+		visitor.AccountID = account.String()
+	}
+	p.h.recordPostEvent(ctx, id, "view", visitor)
 	return nil
 }
 

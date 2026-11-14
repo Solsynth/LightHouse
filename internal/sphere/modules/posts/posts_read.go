@@ -31,6 +31,7 @@ func (h *handler) registerPostReadRoutes(host *module.Host[core.Services]) {
 	api.GET("/posts/sponsor/leaderboard", h.getSponsorLeaderboard)
 	api.GET("/posts/:id/sponsor", h.getPostSponsorship)
 	api.GET("/posts/:id/sponsor/history", authn.RequireAuth(), h.getPostSponsorHistory)
+	api.GET("/posts/:id/analytics", authn.RequireAuth(), h.getPostAnalytics)
 	api.GET("/posts/drafts", authn.RequireAuth(), host.Core.Auth.RequirePermission("posts.view"), h.listDrafts)
 	api.GET("/posts/bookmarks", authn.RequireAuth(), host.Core.Auth.RequirePermission("posts.bookmark"), h.listBookmarks)
 	api.GET("/posts", h.listPosts)
@@ -686,7 +687,7 @@ func (h *handler) respondDetail(c *gin.Context, id uuid.UUID) {
 		httpx.Fail(c, apiErr)
 		return
 	}
-	h.enqueueView(ent.ID, v)
+	h.enqueueView(ctx, ent.ID, v)
 	if v.authed() {
 		h.enqueueInterest(v.accountID, ent.ID, 0.2, "view")
 	}
@@ -1355,7 +1356,7 @@ func (h *handler) getThread(c *gin.Context) {
 		descendants = descendants[:take]
 	}
 
-	h.enqueueView(ent.ID, v)
+	h.enqueueView(ctx, ent.ID, v)
 	if v.authed() {
 		h.enqueueInterest(v.accountID, ent.ID, 0.2, "view")
 	}
@@ -1521,4 +1522,47 @@ func (h *handler) listForwards(c *gin.Context) {
 	}
 	posts = h.filterVisible(ctx, posts, v, info, true)
 	httpx.List(c, posts, total)
+}
+
+// getPostAnalytics returns the recorded views and engagement of one post. Only
+// the post's publisher members (or superusers) may read it.
+func (h *handler) getPostAnalytics(c *gin.Context) {
+	ctx := c.Request.Context()
+	v := h.newViewer(c)
+	if !v.authed() {
+		httpx.Unauthorized(c)
+		return
+	}
+	id, ok := parseUUID(c.Param("id"))
+	if !ok {
+		httpx.NotFound(c, "Post not found.")
+		return
+	}
+	var ent store.PostEntity
+	if err := h.db.WithContext(ctx).Where("id = ?", id).First(&ent).Error; err != nil {
+		httpx.NotFound(c, "Post not found.")
+		return
+	}
+	if !v.superuser && !h.isMemberWithRole(ctx, ent.PublisherID, v.accountID, int(model.PublisherRoleEditor)) {
+		httpx.Forbidden(c, "You are not allowed to read this post's analytics.")
+		return
+	}
+	analytics := h.analytics()
+	if analytics == nil {
+		httpx.Fail(c, errs.New("SERVICE_UNAVAILABLE", "The analytics service is unavailable.", http.StatusServiceUnavailable))
+		return
+	}
+	days := 30
+	if raw := strings.TrimSpace(c.Query("days")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			days = parsed
+		}
+	}
+	summary, err := analytics.Summary(ctx, "post", id.String(), days)
+	if err != nil {
+		h.log.Warn("posts: read post analytics failed", "post", id, "error", err)
+		httpx.Internal(c)
+		return
+	}
+	httpx.OK(c, summary)
 }

@@ -35,6 +35,7 @@ func Factory() module.Factory[core.Services] {
 			{ID: "subscriptions", Optional: true},
 			{ID: "realms", Optional: true},
 			{ID: "federation", Optional: true},
+			{ID: ports.PortAnalytics, Optional: true},
 		},
 		Provides: []module.PortID{ports.PortPostSignals},
 		Models: []any{

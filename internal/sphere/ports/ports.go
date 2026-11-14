@@ -25,6 +25,7 @@ const (
 	PortPayments      = "payments"
 	PortSubscriptions = "subscriptions"
 	PortDomains       = "domains"
+	PortAnalytics     = "analytics"
 )
 
 // Accounts resolves accounts and relationships from Stargate.

@@ -56,6 +56,21 @@ disabled = []
 searchEngineDefault = "semantic"
 autoChainWindowMinutes = 5
 
+[analytics]
+# Events are buffered in memory and written in batches. The buffer bounds the
+# memory used when the database is slower than inbound traffic; overflow is
+# dropped and logged.
+bufferSize = 8192
+flushIntervalSeconds = 10
+batchSize = 500
+# -1 keeps events forever.
+retentionDays = 180
+# Hash pepper for stored client IPs. Set a private value in production so the
+# stored ip_hash values cannot be reversed with a rainbow table.
+ipPepper = ""
+# Anonymous visitors carry this long-lived cookie so repeat visits deduplicate.
+visitorCookie = "sol_visitor"
+
 [activityPub]
 domain = "solian.app"
 fileBaseUrl = "https://solian.app/files"

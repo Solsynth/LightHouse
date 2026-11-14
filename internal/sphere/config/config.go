@@ -18,6 +18,17 @@ type Config struct {
 		AutoChainWindowMinutes int    `toml:"autoChainWindowMinutes"`
 	} `toml:"posts"`
 
+	// Analytics controls the append-only event pipeline (views, engagement)
+	// and its read-side aggregation.
+	Analytics struct {
+		BufferSize    int    `toml:"bufferSize"`
+		FlushInterval int    `toml:"flushIntervalSeconds"`
+		BatchSize     int    `toml:"batchSize"`
+		RetentionDays int    `toml:"retentionDays"`
+		IPPepper      string `toml:"ipPepper"`
+		VisitorCookie string `toml:"visitorCookie"`
+	} `toml:"analytics"`
+
 	// ActivityPub is the federation identity of this deployment.
 	ActivityPub struct {
 		Domain        string `toml:"domain"`
@@ -115,6 +126,25 @@ func applyDefaults(cfg *Config) {
 	if cfg.ActivityPubDelivery.ConsumerCount <= 0 {
 		cfg.ActivityPubDelivery.ConsumerCount = 4
 	}
+	if cfg.Analytics.BufferSize <= 0 {
+		cfg.Analytics.BufferSize = 8192
+	}
+	if cfg.Analytics.FlushInterval <= 0 {
+		cfg.Analytics.FlushInterval = 10
+	}
+	if cfg.Analytics.BatchSize <= 0 {
+		cfg.Analytics.BatchSize = 500
+	}
+	// A negative retention keeps events forever; zero is the 180-day default.
+	if cfg.Analytics.RetentionDays < 0 {
+		cfg.Analytics.RetentionDays = -1
+	}
+	if cfg.Analytics.RetentionDays == 0 {
+		cfg.Analytics.RetentionDays = 180
+	}
+	if cfg.Analytics.VisitorCookie == "" {
+		cfg.Analytics.VisitorCookie = "sol_visitor"
+	}
 }
 
 func applyEnv(cfg *Config) {
@@ -153,6 +183,12 @@ func applyEnv(cfg *Config) {
 	config.SetStr("SPHERE_DISCOVERY_GRPC_ENDPOINT", &cfg.Discovery.GrpcEndpoint)
 	config.SetList("SPHERE_MODULES_ENABLED", &cfg.Modules.Enabled)
 	config.SetList("SPHERE_MODULES_DISABLED", &cfg.Modules.Disabled)
+	config.SetInt("SPHERE_ANALYTICS_BUFFERSIZE", &cfg.Analytics.BufferSize)
+	config.SetInt("SPHERE_ANALYTICS_FLUSHINTERVAL", &cfg.Analytics.FlushInterval)
+	config.SetInt("SPHERE_ANALYTICS_BATCHSIZE", &cfg.Analytics.BatchSize)
+	config.SetInt("SPHERE_ANALYTICS_RETENTIONDAYS", &cfg.Analytics.RetentionDays)
+	config.SetStr("SPHERE_ANALYTICS_IP_PEPPER", &cfg.Analytics.IPPepper)
+	config.SetStr("SPHERE_ANALYTICS_VISITORCOOKIE", &cfg.Analytics.VisitorCookie)
 }
 
 func validate(cfg *Config) error {

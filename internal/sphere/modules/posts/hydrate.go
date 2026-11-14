@@ -157,7 +157,7 @@ func (h *handler) hydrate(ctx context.Context, ents []store.PostEntity, v *viewe
 			truncatePost(&post)
 		}
 		if trackViews {
-			h.enqueueView(ent.ID, v)
+			h.enqueueView(ctx, ent.ID, v)
 		}
 		out = append(out, post)
 	}
@@ -951,9 +951,11 @@ func escapeHeadings(post *model.Post) {
 // View buffering
 // ---------------------------------------------------------------------------
 
-func (h *handler) enqueueView(postID uuid.UUID, v *viewer) {
+func (h *handler) enqueueView(ctx context.Context, postID uuid.UUID, v *viewer) {
 	h.viewMu.Lock()
-	defer h.viewMu.Unlock()
+	if h.views == nil {
+		h.views = map[uuid.UUID]*viewBucket{}
+	}
 	bucket, ok := h.views[postID]
 	if !ok {
 		bucket = &viewBucket{unique: map[string]struct{}{}}
@@ -963,6 +965,12 @@ func (h *handler) enqueueView(postID uuid.UUID, v *viewer) {
 	if v != nil && v.authed() {
 		bucket.unique[v.accountID.String()] = struct{}{}
 	}
+	h.viewMu.Unlock()
+	visitor := ports.AnalyticsVisitor{}
+	if v != nil {
+		visitor = v.visitor
+	}
+	h.recordPostEvent(ctx, postID, "view", visitor)
 }
 
 func (h *handler) flushViews(ctx context.Context) error {

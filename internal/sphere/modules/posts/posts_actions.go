@@ -13,8 +13,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/accountjson"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/authn"
@@ -155,6 +155,7 @@ func (h *handler) reactPost(c *gin.Context) {
 		if !isSelfReact {
 			h.adjustPostVotes(ctx, &ent, existing.Attitude, false)
 			h.enqueueInterest(accountID, ent.ID, float64(-reactionWeight(existing.Attitude)), "reaction")
+			h.recordPostEvent(ctx, ent.ID, "reaction.remove", v.visitor)
 		}
 		httpx.NoContent(c)
 		return
@@ -175,6 +176,7 @@ func (h *handler) reactPost(c *gin.Context) {
 	if !isSelfReact {
 		h.adjustPostVotes(ctx, &ent, request.Attitude, true)
 		h.enqueueInterest(accountID, ent.ID, float64(reactionWeight(request.Attitude)), "reaction")
+		h.recordPostEvent(ctx, ent.ID, "reaction.add", v.visitor)
 		go h.notifyReaction(context.WithoutCancel(ctx), &ent, account, request.Symbol, request.Attitude)
 	}
 	created := postReactionToModel(&reaction)
@@ -322,6 +324,7 @@ func (h *handler) bookmarkPost(c *gin.Context) {
 		httpx.Internal(c)
 		return
 	}
+	h.recordPostEvent(ctx, id, "bookmark.add", v.visitor)
 	httpx.OK(c, postBookmarkToModel(&bookmark))
 }
 
@@ -347,6 +350,7 @@ func (h *handler) unbookmarkPost(c *gin.Context) {
 		httpx.Internal(c)
 		return
 	}
+	h.recordPostEvent(ctx, id, "bookmark.remove", h.visitorFor(c))
 	httpx.NoContent(c)
 }
 
@@ -513,8 +517,13 @@ func (h *handler) settleAward(ctx context.Context, postID, accountID uuid.UUID, 
 	if attitude != attitudePositive {
 		delta = -amount
 	}
-	return h.db.WithContext(ctx).Model(&store.PostEntity{}).Where("id = ?", postID).
+	err := h.db.WithContext(ctx).Model(&store.PostEntity{}).Where("id = ?", postID).
 		UpdateColumn("awarded_score", gormExpr("awarded_score + ?", delta)).Error
+	if err != nil {
+		return err
+	}
+	h.recordPostEvent(ctx, postID, "award", ports.AnalyticsVisitor{AccountID: accountID.String()})
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -798,6 +807,7 @@ func (h *handler) boostPost(c *gin.Context) {
 		UpdateColumn("boost_count", gormExpr("boost_count + 1")).Error; err != nil {
 		h.log.Warn("posts: increment boost count failed", "error", err)
 	}
+	h.recordPostEvent(ctx, ent.ID, "boost.add", v.visitor)
 	httpx.OK(c, boostToModel(&boost))
 }
 
@@ -832,6 +842,7 @@ func (h *handler) unboostPost(c *gin.Context) {
 		UpdateColumn("boost_count", gormExpr("GREATEST(0, boost_count - 1)")).Error; err != nil {
 		h.log.Warn("posts: decrement boost count failed", "error", err)
 	}
+	h.recordPostEvent(ctx, id, "boost.remove", v.visitor)
 	httpx.NoContent(c)
 }
 

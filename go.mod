@@ -10,6 +10,7 @@ require (
 	github.com/aws/smithy-go v1.28.7
 	github.com/gin-gonic/gin v1.10.1
 	github.com/google/uuid v1.6.0
+	github.com/mssola/useragent v1.0.0
 	golang.org/x/net v0.60.0
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.11

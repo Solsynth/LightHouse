@@ -6,6 +6,7 @@ package standard
 import (
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
+	"src.solsynth.dev/sosys/lighthouse/internal/sphere/modules/analytics"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/modules/autocomplete"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/modules/automod"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/modules/fediverse"
@@ -27,6 +28,10 @@ func Modules() []module.Factory[core.Services] {
 		// Ecosystem adapters publish their ports before any feature module
 		// configures, so consumers can resolve them regardless of order.
 		integrations.Factory(),
+
+		// Cross-cutting services. The analytics module provides the port the
+		// content features record views and engagement through.
+		analytics.Factory(),
 
 		// Content features.
 		publishers.Factory(),

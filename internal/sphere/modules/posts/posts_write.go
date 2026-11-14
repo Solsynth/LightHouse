@@ -441,6 +441,7 @@ func (h *handler) createPost(c *gin.Context) {
 
 	if ent.RepliedPostID != nil {
 		h.enqueueInterest(accountID, *ent.RepliedPostID, 1.5, "reply")
+		h.recordPostEvent(ctx, *ent.RepliedPostID, "reply", h.visitorFor(c))
 	}
 
 	if len(request.CollectionIDs) > 0 {

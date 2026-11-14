@@ -45,12 +45,55 @@ returns the track, a stale push is rejected, a delete shows up under
 `removed.track`, a `limit=2` page over four tracks splits at the boundary, and
 `/status` reports distinct devices.
 
+## Analytics (Sphere module)
+
+`internal/sphere/modules/analytics` (`app.solian.sphere.analytics`) is a
+general-purpose, append-only event pipeline, not a C# port. Sibling modules
+record events through `ports.Analytics`; browsers can post to
+`POST /api/analytics/events`. Event identity is the account when signed in,
+otherwise the `sol_visitor` cookie, plus the client address and user agent.
+
+- One table, `analytics_events` (`kind`, `resource_id`, `event`, `account_id`,
+  `visitor_id`, `ip_hash`, `user_agent`, `client_class`, `client_name`,
+  `platform`, `is_mobile`, `referrer`, `created_at`), indexed on
+  `(kind, resource_id, event, created_at)`, `created_at`, `account_id` and
+  `visitor_id`.
+- `Record` never blocks a request: events enter a bounded in-memory buffer
+  (`analytics.bufferSize`) and the flush job writes them in batches
+  (`batchSize`, `flushIntervalSeconds`). Overflow drops events and logs the
+  count; a failed batch is logged and the still-buffered events stay queued.
+- User agents are classified on the flush goroutine: a crawler/preview/HTTP
+  client marker table, then `mssola/useragent`, producing
+  human/bot/unknown plus browser, platform and mobile. Empty user agents count
+  as bots.
+- Client addresses are stored as a truncated keyed SHA-256 digest
+  (`analytics.ipPepper`); `retentionDays` (default 180, `-1` forever) is swept
+  nightly in bounded delete batches.
+- Posts records `view`, `reaction.add`/`.remove`, `bookmark.add`/`.remove`,
+  `boost.add`/`.remove`, `reply` and `award` events from its read/write paths;
+  a disabled analytics module degrades to no-ops.
+- `GET /api/posts/:id/analytics?days=30` returns per-event totals, the
+  human/bot split, unique visitors and a daily series to publisher editors and
+  owners (superusers bypass the check). Read endpoints deliberately live in the
+  module that owns the resource, so ownership is never checked by the generic
+  analytics module.
+
+Verified: `go build ./...`, `go vet ./internal/sphere/...`,
+`go test ./internal/sphere/...` (classification table, enqueue→flush→summary
+over sqlite, ingest endpoint + cookie issuance, retention sweep, posts event
+recording, owner/outsider/anonymous authorization, and a module wiring test
+that mounts both modules on one gin engine, ingests an event, waits for the
+scheduled flush and reads it back through the port).
+No live PostgreSQL run yet: the batch insert, `DELETE … LIMIT` retention and
+summary SQL were exercised on sqlite only.
+
 ## Verification performed
 
 - `go build ./...`, `go vet ./...`, `go test ./...` pass.
-- Both binaries start on a **fresh** database: Sphere creates 45 tables,
-  Messager 9, with `uuid`/`timestamptz`/`numeric`/`jsonb` column types matching
-  the C# EF schema.
+- Both binaries start on a **fresh** database: Sphere creates 46 tables (one
+  more with the analytics module), Messager 9, with
+  `uuid`/`timestamptz`/`numeric`/`jsonb` column types matching the C# EF
+  schema.
 - `GET /health`, `/alive`, `/api/modules`, the JSON 404 and the canonical
   `ApiError` bodies behave as documented.
 - Anonymous reads answer: posts list/detail/replies/reactions, categories, tags,

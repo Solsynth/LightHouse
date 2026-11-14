@@ -116,6 +116,8 @@ type viewer struct {
 	account   *gen.DyAccount
 	superuser bool
 
+	visitor ports.AnalyticsVisitor
+
 	memberPubs map[uuid.UUID]struct{}
 	friends    map[uuid.UUID]bool
 	close      map[uuid.UUID]bool
@@ -137,6 +139,9 @@ func (h *handler) newViewer(c *gin.Context) *viewer {
 		friends:    map[uuid.UUID]bool{},
 		close:      map[uuid.UUID]bool{},
 	}
+	if h.analytics() != nil {
+		v.visitor = h.visitorFor(c)
+	}
 	account := authn.CurrentUser(c)
 	if account == nil {
 		return v
@@ -150,6 +155,62 @@ func (h *handler) newViewer(c *gin.Context) *viewer {
 	v.superuser = account.GetIsSuperuser()
 	v.memberPubs = h.memberPublisherSet(c.Request.Context(), id)
 	return v
+}
+
+// visitorFor collects the analytics identity of a request without loading
+// publisher memberships, for handlers that only record events.
+func (h *handler) visitorFor(c *gin.Context) ports.AnalyticsVisitor {
+	return ports.VisitorFromRequest(c, authn.AccountID(c), h.visitorOptions())
+}
+
+func (h *handler) visitorOptions() ports.VisitorOptions {
+	opts := ports.VisitorOptions{CookieName: "sol_visitor", TrustedProxyHops: 1}
+	if h.core == nil || h.core.Config == nil {
+		return opts
+	}
+	cfg := h.core.Config
+	if cfg.Analytics.VisitorCookie != "" {
+		opts.CookieName = cfg.Analytics.VisitorCookie
+	}
+	opts.Secure = strings.HasPrefix(cfg.SiteUrl, "https")
+	if cfg.Security.TrustedProxyHops > 0 {
+		opts.TrustedProxyHops = cfg.Security.TrustedProxyHops
+	}
+	return opts
+}
+
+// analytics resolves the analytics port; nil when the module is disabled or
+// not registered.
+func (h *handler) analytics() ports.Analytics {
+	if h == nil || h.ports == nil {
+		return nil
+	}
+	analytics, ok := module.Get[ports.Analytics](h.ports, ports.PortAnalytics)
+	if !ok {
+		return nil
+	}
+	return analytics
+}
+
+// recordPostEvent queues one analytics event for a post. A missing analytics
+// module degrades to a no-op.
+func (h *handler) recordPostEvent(ctx context.Context, postID uuid.UUID, event string, visitor ports.AnalyticsVisitor) {
+	if postID == uuid.Nil {
+		return
+	}
+	analytics := h.analytics()
+	if analytics == nil {
+		return
+	}
+	err := analytics.Record(ctx, ports.AnalyticsEvent{
+		Kind:       "post",
+		ResourceID: postID.String(),
+		Event:      event,
+		Visitor:    visitor,
+	})
+	if err != nil && h.log != nil {
+		h.log.Debug("posts: record analytics event failed", "post", postID, "event", event, "error", err)
+	}
 }
 
 func (h *handler) memberPublisherSet(ctx context.Context, accountID uuid.UUID) map[uuid.UUID]struct{} {
