@@ -2,13 +2,9 @@
 // scanners (Account/Presences/SteamPresenceService.cs and
 // LastFmPresenceService.cs) together with their three Quartz stages.
 //
-// Passport wrote the resulting activities to Stargate over
-// RemotePresenceService. Stargate now owns the activity rows, so the scanners
-// live here and write through store.Start/End-equivalent helpers implemented in
-// session.go. The helpers reproduce the semantics of Stargate's
-// POST /api/activities/sessions/{start,end} handlers (get-or-create catalog,
-// refresh the open session in place, renew the lease) because the store only
-// exposes the row-level primitives.
+// The scanners still live in Stargate because account connections and the
+// activity stages are identity data. They no longer own activity rows: every
+// start/end is published to Pulsar, which stores and broadcasts the session.
 package presenceproviders
 
 import (
@@ -24,8 +20,8 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"src.solsynth.dev/sosys/stargate/broadcast"
 	"src.solsynth.dev/sosys/stargate/model"
+	stargatenats "src.solsynth.dev/sosys/stargate/nats"
 	"src.solsynth.dev/sosys/stargate/ports"
 	"src.solsynth.dev/sosys/stargate/presence"
 	"src.solsynth.dev/sosys/stargate/store"
@@ -96,7 +92,7 @@ type Options struct {
 	DB           *gorm.DB
 	Presence     *presence.Resolver
 	PresencePort ports.Presence
-	Broadcast    *broadcast.Broadcaster
+	NATS         *stargatenats.Client
 	Log          *slog.Logger
 	Settings     Settings
 
@@ -113,7 +109,7 @@ type Service struct {
 	db           *gorm.DB
 	resolver     *presence.Resolver
 	presencePort ports.Presence
-	broadcast    *broadcast.Broadcaster
+	nats         *stargatenats.Client
 	log          *slog.Logger
 	settings     Settings
 
@@ -158,7 +154,7 @@ func New(opts Options) *Service {
 		db:            opts.DB,
 		resolver:      opts.Presence,
 		presencePort:  opts.PresencePort,
-		broadcast:     opts.Broadcast,
+		nats:          opts.NATS,
 		log:           logger,
 		settings:      opts.Settings,
 		httpClient:    client,
@@ -344,17 +340,6 @@ func (s *Service) accountsForStage(ctx context.Context, stage Stage, providers [
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
 	return out, nil
-}
-
-// broadcastActivities publishes the friends-only update Stargate's activity
-// handlers emit after every session write. Best-effort, like those handlers.
-func (s *Service) broadcastActivities(ctx context.Context, accountID uuid.UUID) {
-	if s == nil || s.broadcast == nil {
-		return
-	}
-	if err := s.broadcast.ActivitiesChanged(ctx, accountID); err != nil && s.log != nil {
-		s.log.Warn("broadcast presence activities", "account", accountID, "error", err)
-	}
 }
 
 // ─────────────────────────── jobs ───────────────────────────

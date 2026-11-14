@@ -162,6 +162,7 @@ func Run[C any](parent context.Context, log *slog.Logger, opts Options[C]) error
 
 	clients, err := grpcclient.NewWithResolver(grpcclient.Targets{
 		Stargate: base.Services.Stargate.GRPC,
+		Pulsar:   base.Services.Pulsar.GRPC,
 		Sphere:   base.Services.Sphere.GRPC,
 		Messager: base.Services.Messager.GRPC,
 		Ring:     base.Services.Ring.GRPC,

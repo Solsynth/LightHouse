@@ -29,9 +29,10 @@ websocketPushSubject = "websocket_push"
 # The address here is only the fallback until the sibling registers, and the
 # target may be left empty to use discovery alone.
 [services]
-# Stargate serves auth, permissions, accounts, action logs, presence, MLS,
-# profiles, realms and domain blocks.
+# Stargate serves auth, permissions, accounts, action logs, MLS, profiles,
+# realms and domain blocks. Pulsar serves live presence activities.
 stargate = { grpc = "" }
+pulsar = { grpc = "" }
 ring = { grpc = "" }
 drive = { grpc = "" }
 wallet = { grpc = "" }

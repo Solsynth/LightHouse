@@ -86,9 +86,12 @@ type Base struct {
 		// usable when discovery is enabled.
 		// Stargate is the identity endpoint: DyAuthService,
 		// DyPermissionService, DyAccountService, DyActionLogService,
-		// DyPresenceService, DyMlsService, plus the ported DyProfileService,
-		// DyRealmService and DyDomainBlockService.
+		// DyMlsService, plus the ported DyProfileService, DyRealmService and
+		// DyDomainBlockService.
 		Stargate ServiceTarget `toml:"stargate"`
+		// Pulsar owns DyPresenceService (live activities) and the playback
+		// APIs. The gRPC listener is plaintext on the internal network.
+		Pulsar   ServiceTarget `toml:"pulsar"`
 		Sphere   ServiceTarget `toml:"sphere"`
 		Messager ServiceTarget `toml:"messager"`
 		Ring     ServiceTarget `toml:"ring"`

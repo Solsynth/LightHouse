@@ -23,7 +23,6 @@ func Factory() module.Factory[core.Services] {
 		Requires:       []string{"app.solian.id.accounts"},
 		Capabilities: []string{
 			"accounts.profile", "accounts.connections", "accounts.statuses",
-			"presences.activities", "presences.catalog", "presences.stats",
 		},
 		Ports: []module.PortRequirement{
 			{ID: ports.PortFiles, Optional: true},

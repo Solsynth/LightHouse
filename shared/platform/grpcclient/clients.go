@@ -93,6 +93,7 @@ type Clients struct {
 // Targets is the [services] configuration a caller passes in.
 type Targets struct {
 	Stargate string
+	Pulsar   string
 	Sphere   string
 	Messager string
 	Ring     string
@@ -158,12 +159,18 @@ func NewWithResolver(targets Targets, resolver *discovery.Resolver) (*Clients, e
 		clients.Permission = gen.NewDyPermissionServiceClient(conn)
 		clients.ActionLog = gen.NewDyActionLogServiceClient(conn)
 		clients.Mls = gen.NewDyMlsServiceClient(conn)
-		clients.Presence = gen.NewDyPresenceServiceClient(conn)
 		// Stargate also owns the profile, realm and domain-block services the
 		// fleet used to dial Passport for.
 		clients.Profile = gen.NewDyProfileServiceClient(conn)
 		clients.Realm = gen.NewDyRealmServiceClient(conn)
 		clients.DomainBlock = gen.NewDyDomainBlockServiceClient(conn)
+	}
+	// Pulsar owns live presence activities. Its gRPC listener is h2c inside the
+	// fleet network, so the transport is explicit rather than the TLS default.
+	if conn, err := dial("pulsar", targets.Pulsar, false); err != nil {
+		return nil, err
+	} else if conn != nil {
+		clients.Presence = gen.NewDyPresenceServiceClient(conn)
 	}
 	if conn, err := dial("ring", targets.Ring, true); err != nil {
 		return nil, err

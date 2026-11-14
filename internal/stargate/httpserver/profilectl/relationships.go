@@ -131,51 +131,15 @@ func (d Deps) getFriendsOverview(c *gin.Context) {
 		accounts[i].Profile = profiles[accounts[i].Id]
 	}
 
-	// Live activities, one batch query for every friend (C#
-	// GetActiveActivitiesBatch). A friend with none gets an empty array.
-	var activitiesByAccount map[uuid.UUID][]model.PresenceActivity
-	if d.Clients != nil && d.Clients.PulsarPresence != nil && len(uuids) > 0 {
-		reqIDs := make([]string, 0, len(uuids))
-		for _, u := range uuids {
-			reqIDs = append(reqIDs, u.String())
-		}
-		res, err := d.Clients.PulsarPresence.ListFriendsActivities(ctx, &gen.DyListFriendsActivitiesRequest{
-			AccountIds: reqIDs,
-			Take:       int32(len(uuids) * 5),
-		})
-		if err == nil && res != nil {
-			activitiesByAccount = make(map[uuid.UUID][]model.PresenceActivity, len(uuids))
-			for _, act := range res.Activities {
-				accID, parseErr := uuid.Parse(act.AccountId)
-				if parseErr == nil {
-					activitiesByAccount[accID] = append(activitiesByAccount[accID], model.ProtoToPresenceActivity(act))
-				}
-			}
-		}
-	}
-	if activitiesByAccount == nil {
-		var err error
-		activitiesByAccount, err = d.Store.GetActiveActivitiesBatch(ctx, uuids)
-		if err != nil {
-			internalError(c, err)
-			return
-		}
-	}
-
 	now := time.Now()
 	items := make([]friendOverviewItem, 0, len(accounts))
 	for _, account := range accounts {
 		a := account          // copy for pointer
 		a.IsSuperuser = false // strip admin flag
-		friendID, _ := uuid.Parse(a.Id)
-		activities := activitiesByAccount[friendID]
-		if activities == nil {
-			activities = []model.PresenceActivity{}
-		}
 		items = append(items, friendOverviewItem{
 			Account:    &a,
 			Status:     buildOverviewStatus(a.Id, account.Profile, now),
-			Activities: activities,
+			Activities: []model.PresenceActivity{},
 		})
 	}
 

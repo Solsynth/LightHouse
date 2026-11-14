@@ -40,23 +40,6 @@ type DataStore interface {
 	CreateStatus(ctx context.Context, status *model.AccountStatus) error
 	ClearStatus(ctx context.Context, accountID, statusID uuid.UUID) error
 	UpdateStatus(ctx context.Context, status *model.AccountStatus) error
-
-	GetActiveActivities(ctx context.Context, accountID uuid.UUID) ([]model.PresenceActivity, error)
-	GetActiveActivitiesBatch(ctx context.Context, accountIDs []uuid.UUID) (map[uuid.UUID][]model.PresenceActivity, error)
-	ListActivities(ctx context.Context, accountID uuid.UUID, filter store.ActivityFilter) ([]model.PresenceActivity, int, error)
-	InsertActivity(ctx context.Context, activity *model.PresenceActivity) error
-	UpdateActivity(ctx context.Context, activity *model.PresenceActivity) error
-	GetActivityByID(ctx context.Context, accountID, activityID uuid.UUID) (*model.PresenceActivity, error)
-	GetActivityByManualID(ctx context.Context, accountID uuid.UUID, manualID string) (*model.PresenceActivity, error)
-	GetActiveSessionByManualID(ctx context.Context, accountID uuid.UUID, manualID string) (*model.PresenceActivity, error)
-	DeleteActivity(ctx context.Context, accountID, activityID uuid.UUID) error
-	EndActivitySession(ctx context.Context, accountID uuid.UUID, manualID string) (*model.PresenceActivity, error)
-
-	GetCatalogItems(ctx context.Context, accountID uuid.UUID, tags []string, provider, query string, isActive *bool, offset, take int) ([]model.PresenceCatalogItem, error)
-	GetCatalogItemByKey(ctx context.Context, accountID uuid.UUID, provider *string, catalogKey string) (*model.PresenceCatalogItem, error)
-	GetCatalogStats(ctx context.Context, accountID uuid.UUID, from, to *time.Time, tags []string) (map[string]int64, error)
-	GetTagStats(ctx context.Context, accountID uuid.UUID, from, to *time.Time) (map[string]int64, error)
-	UpsertCatalogItem(ctx context.Context, item *model.PresenceCatalogItem) (*model.PresenceCatalogItem, error)
 }
 
 var _ DataStore = (*store.Store)(nil)
@@ -72,11 +55,9 @@ type Presence interface {
 
 var _ Presence = (*presence.Resolver)(nil)
 
-// Broadcaster pushes the post-write presence notifications Passport published
-// from its service layer. It is nil when the presence module is not built.
+// Broadcaster pushes the post-write status notifications.
 type Broadcaster interface {
 	StatusChanged(ctx context.Context, accountID uuid.UUID, deviceID string, previous *model.AccountStatus, at time.Time) error
-	ActivitiesChanged(ctx context.Context, accountID uuid.UUID) error
 }
 
 // Deps is the dependency set the status/activity controllers need.
@@ -94,7 +75,6 @@ type Deps struct {
 // Register mounts the account-status routes and the activity tree.
 func Register(api *gin.RouterGroup, d Deps) {
 	registerStatuses(api, d)
-	registerActivities(api, d)
 }
 
 // Loader reads statuses with presence applied; it is the Go port of

@@ -1,7 +1,7 @@
-// Package presenceprovidersmod wires Passport's Steam and Last.fm presence
-// scanners into Stargate as a feature module: the admin scan routes belonging
-// to AccountAdminController and the three PresenceUpdateJob stages. It owns no
-// tables; sessions are written through the shared account-status store.
+// Package presenceprovidersmod wires the Steam and Last.fm provider scanners
+// into Stargate as a feature module: the admin scan routes and the three
+// PresenceUpdateJob stages. It owns no activity tables; scanner output is
+// published to Pulsar, which owns live presence sessions.
 package presenceprovidersmod
 
 import (
@@ -56,7 +56,7 @@ func (i *instance) Configure(ctx context.Context, host *module.Host[core.Service
 		DB:           host.Core.DB,
 		Presence:     host.Core.PresenceResolver,
 		PresencePort: set.Presence,
-		Broadcast:    host.Core.Broadcast,
+		NATS:         host.Core.NATS,
 		Log:          log,
 		Settings:     resolveSettings(host),
 	})
