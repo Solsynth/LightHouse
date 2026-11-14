@@ -157,12 +157,21 @@ func TestNowPlayingHttpEndpoints(t *testing.T) {
 	grpcSrv := newPresenceServer(services)
 	now := time.Now().UTC()
 	_ = services.DB.Create(&model.ActiveSession{
+		AccountID:      testAcc,
+		Domain:         model.DomainMusic,
+		ManualID:       "grpc:test",
+		Title:          "Miracle",
+		LeaseExpiresAt: now.Add(5 * time.Minute),
+		StartedAt:      now,
+	})
+	_ = services.DB.Create(&model.Scrobble{
 		AccountID:       testAcc,
 		Domain:          model.DomainMusic,
-		ManualID:        "grpc:test",
-		Title:           "Miracle",
-		LeaseExpiresAt:  now.Add(5 * time.Minute),
-		StartedAt:       now,
+		ClientName:      "test",
+		Title:           "Scrobbled",
+		PlayedAt:        now.Add(-time.Hour),
+		DurationSeconds: 200,
+		CreatedAt:       now.Add(-time.Hour),
 	})
 
 	resp, err := grpcSrv.ListFriendsActivities(context.Background(), &gen.DyListFriendsActivitiesRequest{
@@ -171,10 +180,79 @@ func TestNowPlayingHttpEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error from ListFriendsActivities: %v", err)
 	}
-	if len(resp.GetActivities()) == 0 {
-		t.Fatalf("expected at least 1 activity in gRPC response")
+	if len(resp.GetActivities()) < 2 {
+		t.Fatalf("expected the live session and the scrobble, got %d", len(resp.GetActivities()))
 	}
 	if resp.GetActivities()[0].GetTitle() != "Miracle" {
 		t.Fatalf("expected activity title 'Miracle', got '%s'", resp.GetActivities()[0].GetTitle())
+	}
+	for _, act := range resp.GetActivities() {
+		if act.GetLeaseExpiresAt() == nil {
+			t.Fatalf("activity %q has no lease expiry; the legacy presence shape requires one", act.GetManualId())
+		}
+	}
+}
+
+func TestBatchPresenceReturnsOnlyActiveSessions(t *testing.T) {
+	accountOne, accountTwo := uuid.New(), uuid.New()
+	router, services := setupTestRouter(t, accountOne)
+	now := time.Now().UTC()
+
+	for _, session := range []model.ActiveSession{
+		{
+			ID:             uuid.New(),
+			AccountID:      accountOne,
+			Domain:         model.DomainMusic,
+			ManualID:       "batch:one",
+			Title:          "One",
+			LeaseExpiresAt: now.Add(5 * time.Minute),
+			StartedAt:      now,
+		},
+		{
+			AccountID:      accountTwo,
+			ID:             uuid.New(),
+			Domain:         model.DomainGaming,
+			ManualID:       "batch:two",
+			Title:          "Two",
+			LeaseExpiresAt: now.Add(5 * time.Minute),
+			StartedAt:      now,
+		},
+		{
+			AccountID:      accountTwo,
+			Domain:         model.DomainMusic,
+			ID:             uuid.New(),
+			ManualID:       "batch:expired",
+			Title:          "Expired",
+			LeaseExpiresAt: now.Add(-time.Minute),
+			StartedAt:      now.Add(-time.Hour),
+		},
+	} {
+		if err := services.DB.Create(&session).Error; err != nil {
+			t.Fatalf("seed session: %v", err)
+		}
+	}
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(
+		http.MethodGet,
+		"/api/presence/activities?account_ids="+accountOne.String()+","+accountTwo.String(),
+		nil,
+	)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var sessions []model.ActiveSession
+	if err := json.Unmarshal(w.Body.Bytes(), &sessions); err != nil {
+		t.Fatalf("decode sessions: %v", err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("sessions = %d, want 2 active sessions", len(sessions))
+	}
+	for _, session := range sessions {
+		if session.AccountID == accountTwo && session.Title == "Expired" {
+			t.Fatalf("expired session leaked into batch response")
+		}
 	}
 }

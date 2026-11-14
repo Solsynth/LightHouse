@@ -43,6 +43,10 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 
 	// User public now-playing endpoint
 	host.API.GET("/users/:identifier/now-playing", i.getUserNowPlaying)
+	// Batch read for clients that render a friend list: one request instead of
+	// one per account. Only active sessions, matching the public now-playing
+	// endpoint.
+	host.API.GET("/presence/activities", i.batchPresence)
 
 	// gRPC DyPresenceServiceServer
 	if host.GRPC != nil {
@@ -218,8 +222,8 @@ func (i *instance) reportPause(c *gin.Context) {
 }
 
 type endSessionRequest struct {
-	ManualID   string `json:"manual_id"`
-	AutoScrobble bool `json:"auto_scrobble"`
+	ManualID     string `json:"manual_id"`
+	AutoScrobble bool   `json:"auto_scrobble"`
 }
 
 func (i *instance) endSession(c *gin.Context) {
@@ -293,6 +297,49 @@ func (i *instance) getUserNowPlaying(c *gin.Context) {
 	}
 
 	sessions, err := i.core.Store.GetActiveSessionsForAccount(c.Request.Context(), accountID)
+	if err != nil {
+		httpx.Internal(c)
+		return
+	}
+	httpx.OK(c, sessions)
+}
+
+// batchPresence serves GET /api/presence/activities?account_ids=… and returns
+// the active sessions for those accounts. It is the HTTP equivalent of the
+// first half of DyPresenceService.ListFriendsActivities for clients that need
+// to paint a friend list without one round trip per account.
+func (i *instance) batchPresence(c *gin.Context) {
+	raw := append(c.QueryArray("account_ids"), c.QueryArray("accountIds")...)
+	ids := make([]uuid.UUID, 0, len(raw))
+	seen := make(map[uuid.UUID]struct{}, len(raw))
+	for _, chunk := range raw {
+		for _, part := range strings.Split(chunk, ",") {
+			id, err := uuid.Parse(strings.TrimSpace(part))
+			if err != nil {
+				continue
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		httpx.OK(c, []model.ActiveSession{})
+		return
+	}
+	if len(ids) > 200 {
+		httpx.BadRequest(c, "INVALID_ARGUMENT", "at most 200 accounts per request")
+		return
+	}
+
+	var sessions []model.ActiveSession
+	err := i.core.DB.WithContext(c.Request.Context()).
+		Preload("CatalogItem").
+		Where("account_id IN ? AND lease_expires_at > ?", ids, time.Now().UTC()).
+		Order("updated_at DESC").
+		Find(&sessions).Error
 	if err != nil {
 		httpx.Internal(c)
 		return

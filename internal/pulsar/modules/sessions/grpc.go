@@ -173,6 +173,7 @@ func scrobbleToProto(scrobble *model.Scrobble) *gen.DyPresenceActivity {
 	domain := scrobble.Domain
 	title := scrobble.Title
 	manualID := "scrobble:" + scrobble.ID.String()
+	endedAt := scrobble.PlayedAt.Add(time.Duration(scrobble.DurationSeconds) * time.Second)
 
 	proto := &gen.DyPresenceActivity{
 		Id:         scrobble.ID.String(),
@@ -185,10 +186,14 @@ func scrobbleToProto(scrobble *model.Scrobble) *gen.DyPresenceActivity {
 		LargeImage: scrobble.ArtworkURL,
 		IsActive:   false,
 		StartedAt:  timestamppb.New(scrobble.PlayedAt),
-		EndedAt:    timestamppb.New(scrobble.PlayedAt.Add(time.Duration(scrobble.DurationSeconds) * time.Second)),
-		CreatedAt:  timestamppb.New(scrobble.CreatedAt),
-		UpdatedAt:  timestamppb.New(scrobble.CreatedAt),
-		Visibility: gen.DyPresenceVisibility_DY_PRESENCE_VISIBILITY_PUBLIC,
+		EndedAt:    timestamppb.New(endedAt),
+		// A scrobble is already finished. The legacy presence shape requires a
+		// lease timestamp even for inactive entries, so report the playback end
+		// instead of leaving the field unset (clients parse it as non-null).
+		LeaseExpiresAt: timestamppb.New(endedAt),
+		CreatedAt:      timestamppb.New(scrobble.CreatedAt),
+		UpdatedAt:      timestamppb.New(scrobble.CreatedAt),
+		Visibility:     gen.DyPresenceVisibility_DY_PRESENCE_VISIBILITY_PUBLIC,
 	}
 
 	if scrobble.CatalogID != nil {

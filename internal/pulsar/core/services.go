@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/config"
@@ -19,12 +20,14 @@ type Services struct {
 	Store  *store.Store
 }
 
-// PublishSessionUpdate pushes live playback session changes to WebSocket clients via Blade.
+// PublishSessionUpdate pushes live playback session changes to WebSocket
+// clients via Blade. The actor receives the update for its own UI; friends
+// need it too because their presence strips and toasts are invalidated by the
+// same packet.
 func (s *Services) PublishSessionUpdate(ctx context.Context, accountID uuid.UUID, session *model.ActiveSession) {
 	if s.NATS == nil || !s.NATS.Enabled() {
 		return
 	}
-	// Broadcast event compatible with Blade & Stargate's activity listeners
 	payload := map[string]any{
 		"account_id": accountID.String(),
 		"session":    session,
@@ -33,6 +36,42 @@ func (s *Services) PublishSessionUpdate(ctx context.Context, accountID uuid.UUID
 		if s.Log != nil {
 			s.Log.Warn("failed to push session update via websocket", "account_id", accountID, "error", err)
 		}
+	}
+	s.publishSessionToFriends(ctx, accountID, payload)
+}
+
+// publishSessionToFriends resolves the social graph in Stargate and fans the
+// same packet out to each friend. Missing relationship RPCs only disable the
+// realtime fan-out; the account's own push above still lands.
+func (s *Services) publishSessionToFriends(ctx context.Context, accountID uuid.UUID, payload map[string]any) {
+	if s.Clients == nil || s.Clients.Profile == nil {
+		return
+	}
+	callCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	resp, err := s.Clients.Profile.ListFriends(callCtx, &gen.DyListRelationshipSimpleRequest{
+		RelationIdentifier: &gen.DyListRelationshipSimpleRequest_AccountId{
+			AccountId: accountID.String(),
+		},
+	})
+	if err != nil {
+		if s.Log != nil {
+			s.Log.Warn("failed to resolve friends for presence push", "account_id", accountID, "error", err)
+		}
+		return
+	}
+	if len(resp.GetAccountsId()) == 0 {
+		return
+	}
+	if err := s.NATS.PublishWSToAccounts(
+		callCtx,
+		resp.GetAccountsId(),
+		"account.presence.activities.updated",
+		payload,
+		"",
+	); err != nil && s.Log != nil {
+		s.Log.Warn("failed to push session update to friends", "account_id", accountID, "error", err)
 	}
 }
 
