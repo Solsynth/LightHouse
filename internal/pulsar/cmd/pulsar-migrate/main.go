@@ -67,15 +67,62 @@ func main() {
 		log.Fatalf("connect target: %v", err)
 	}
 
-	catalogs, err := migrateCatalogs(ctx, source, target)
+	catalogTags, err := loadCatalogTags(ctx, source)
+	if err != nil {
+		log.Fatalf("catalog tags: %v", err)
+	}
+	activityTags, err := loadActivityTags(ctx, source)
+	if err != nil {
+		log.Fatalf("activity tags: %v", err)
+	}
+	catalogs, err := migrateCatalogs(ctx, source, target, catalogTags)
 	if err != nil {
 		log.Fatalf("catalogs: %v", err)
 	}
-	active, scrobbles, skipped, err := migrateActivities(ctx, source, target)
+	active, scrobbles, skipped, err := migrateActivities(ctx, source, target, activityTags)
 	if err != nil {
 		log.Fatalf("activities: %v", err)
 	}
 	log.Printf("catalogs=%d active=%d scrobbles=%d skipped=%d", catalogs, active, scrobbles, skipped)
+}
+
+func loadCatalogTags(ctx context.Context, source *pgxpool.Pool) (map[string][]string, error) {
+	rows, err := source.Query(ctx, `SELECT catalog_id::text, slug FROM presence_catalog_tags ORDER BY slug`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	tags := make(map[string][]string)
+	for rows.Next() {
+		var catalogID, slug string
+		if err := rows.Scan(&catalogID, &slug); err != nil {
+			return nil, err
+		}
+		tags[catalogID] = append(tags[catalogID], slug)
+	}
+	return tags, rows.Err()
+}
+
+func loadActivityTags(ctx context.Context, source *pgxpool.Pool) (map[string][]map[string]any, error) {
+	rows, err := source.Query(ctx, `SELECT activity_id::text, slug, name FROM presence_activity_tags ORDER BY slug`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	tags := make(map[string][]map[string]any)
+	for rows.Next() {
+		var activityID, slug string
+		var name *string
+		if err := rows.Scan(&activityID, &slug, &name); err != nil {
+			return nil, err
+		}
+		tag := map[string]any{"slug": slug}
+		if name != nil {
+			tag["name"] = *name
+		}
+		tags[activityID] = append(tags[activityID], tag)
+	}
+	return tags, rows.Err()
 }
 
 type catalogRow struct {
@@ -96,7 +143,7 @@ type catalogRow struct {
 	UpdatedAt   *time.Time
 }
 
-func migrateCatalogs(ctx context.Context, source *pgxpool.Pool, target *gorm.DB) (int, error) {
+func migrateCatalogs(ctx context.Context, source *pgxpool.Pool, target *gorm.DB, tags map[string][]string) (int, error) {
 	rows, err := source.Query(ctx, `
 		SELECT id::text, account_id::text, name, subtitle, caption, catalog_key,
 		       provider, reference_id, large_image, small_image, title_url,
@@ -145,6 +192,9 @@ func migrateCatalogs(ctx context.Context, source *pgxpool.Pool, target *gorm.DB)
 			CreatedAt:   valueOrNow(row.CreatedAt),
 			UpdatedAt:   valueOrNow(row.UpdatedAt),
 		}
+		if slugs := tags[row.ID]; len(slugs) > 0 {
+			item.Genres = model.ToJSON(slugs)
+		}
 		result := target.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(item)
 		if result.Error != nil {
 			return count, result.Error
@@ -181,7 +231,7 @@ type activityRow struct {
 	SubtitleURL    *string
 }
 
-func migrateActivities(ctx context.Context, source *pgxpool.Pool, target *gorm.DB) (active, scrobbles, skipped int, err error) {
+func migrateActivities(ctx context.Context, source *pgxpool.Pool, target *gorm.DB, tags map[string][]map[string]any) (active, scrobbles, skipped int, err error) {
 	rows, err := source.Query(ctx, `
 		SELECT id::text, account_id::text, catalog_id::text, type, manual_id,
 		       title, subtitle, caption, large_image, small_image, provider,
@@ -225,6 +275,9 @@ func migrateActivities(ctx context.Context, source *pgxpool.Pool, target *gorm.D
 			}
 		}
 		meta := decodeMeta(row.Meta)
+		if legacyTags := tags[row.ID]; len(legacyTags) > 0 {
+			meta["tags"] = legacyTags
+		}
 		putMeta(meta, "provider", row.Provider)
 		putMeta(meta, "reference_id", row.ReferenceID)
 		putMeta(meta, "queryable_terms", decodeAny(row.QueryableTerms))
