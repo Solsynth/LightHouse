@@ -28,11 +28,16 @@ func New(db *gorm.DB) *Store {
 // FindOrCreateCatalogItem looks up a catalog item by provider & provider_key, or domain + title + subtitle,
 // or creates it if not found.
 func (s *Store) FindOrCreateCatalogItem(ctx context.Context, item *model.CatalogItem) (*model.CatalogItem, error) {
+	return findOrCreateCatalogItem(s.DB.WithContext(ctx), item)
+}
+
+// findOrCreateCatalogItem is FindOrCreateCatalogItem over a caller's handle,
+// so a transaction can resolve catalog records without opening a second
+// connection — SQLite and Postgres both refuse that inside a write.
+func findOrCreateCatalogItem(db *gorm.DB, item *model.CatalogItem) (*model.CatalogItem, error) {
 	if item == nil {
 		return nil, errors.New("nil catalog item")
 	}
-
-	db := s.DB.WithContext(ctx)
 
 	// If provider & provider_key are supplied, probe on that unique tuple first.
 	if item.Provider != "" && item.ProviderKey != "" {
@@ -357,7 +362,119 @@ func (s *Store) AddCollectionItem(ctx context.Context, item *model.CollectionIte
 	return s.DB.WithContext(ctx).Create(item).Error
 }
 
-// RemoveCollectionItem removes an item from a collection.
+// EnsureFavouritesCollection returns the account's favourites collection for
+// a domain, creating it on first use. There is one per account and domain:
+// a second would split the account's taste in two.
+func (s *Store) EnsureFavouritesCollection(ctx context.Context, accountID uuid.UUID, domain string) (*model.Collection, error) {
+	db := s.DB.WithContext(ctx)
+
+	var existing model.Collection
+	err := db.Where("account_id = ? AND domain = ? AND kind = ?", accountID, domain, model.KindFavorites).
+		First(&existing).Error
+	if err == nil {
+		return &existing, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	coll := &model.Collection{
+		AccountID: accountID,
+		Domain:    domain,
+		Kind:      model.KindFavorites,
+		Name:      "Favourites",
+		IsPublic:  false,
+	}
+	if err := s.CreateCollection(ctx, coll); err != nil {
+		return nil, err
+	}
+	return coll, nil
+}
+
+// ReplacementItem is one entry of a replace request, before catalog
+// resolution.
+type ReplacementItem struct {
+	CatalogID       *uuid.UUID
+	Title           string
+	Subtitle        *string
+	Caption         *string
+	ArtworkURL      *string
+	Provider        string
+	ProviderKey     string
+	DurationSeconds int
+}
+
+// ReplaceCollectionItems makes the collection hold exactly the given items,
+// in order. It is the write a client uses to upload or re-sync a playlist:
+// the client's list is the truth, so an item it no longer names is removed,
+// and the ones it keeps stay at their position.
+//
+// Every item is resolved to a catalog record first — find-or-create on the
+// caller's provider tuple, so a re-sync updates nothing it already knows.
+func (s *Store) ReplaceCollectionItems(ctx context.Context, collectionID uuid.UUID, items []ReplacementItem) ([]model.CollectionItem, error) {
+	db := s.DB.WithContext(ctx)
+
+	var coll model.Collection
+	if err := db.Where("id = ?", collectionID).First(&coll).Error; err != nil {
+		return nil, err
+	}
+
+	saved := make([]model.CollectionItem, 0, len(items))
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("collection_id = ?", collectionID).Delete(&model.CollectionItem{}).Error; err != nil {
+			return err
+		}
+
+		for index, entry := range items {
+			catalogID := entry.CatalogID
+			if catalogID == nil && strings.TrimSpace(entry.Title) != "" {
+				catItem := &model.CatalogItem{
+					Domain:          coll.Domain,
+					Provider:        strings.TrimSpace(entry.Provider),
+					ProviderKey:     strings.TrimSpace(entry.ProviderKey),
+					Title:           strings.TrimSpace(entry.Title),
+					Subtitle:        entry.Subtitle,
+					Caption:         entry.Caption,
+					ArtworkURL:      entry.ArtworkURL,
+					DurationSeconds: entry.DurationSeconds,
+				}
+				resolved, err := findOrCreateCatalogItem(tx, catItem)
+				if err != nil {
+					return err
+				}
+				catalogID = &resolved.ID
+			}
+			if catalogID == nil {
+				// A row with neither an id nor a title names nothing; keeping
+				// it would put a blank in the playlist.
+				continue
+			}
+
+			now := time.Now().UTC()
+			row := model.CollectionItem{
+				ID:           uuid.New(),
+				CollectionID: collectionID,
+				CatalogID:    catalogID,
+				Position:     index + 1,
+				CreatedAt:    now,
+				UpdatedAt:    now,
+			}
+			if err := tx.Create(&row).Error; err != nil {
+				return err
+			}
+			saved = append(saved, row)
+		}
+
+		return tx.Model(&model.Collection{}).
+			Where("id = ?", collectionID).
+			Update("updated_at", time.Now().UTC()).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return saved, nil
+}
+
 func (s *Store) RemoveCollectionItem(ctx context.Context, collectionID, itemID uuid.UUID) error {
 	res := s.DB.WithContext(ctx).Where("collection_id = ? AND id = ?", collectionID, itemID).Delete(&model.CollectionItem{})
 	if res.Error != nil {
@@ -381,15 +498,15 @@ type TopEntity struct {
 
 // MediaStats aggregates listening, gaming, or watching statistics.
 type MediaStats struct {
-	AccountID       uuid.UUID            `json:"account_id"`
-	Domain          string               `json:"domain,omitempty"`
-	TotalScrobbles  int64                `json:"total_scrobbles"`
-	TotalSeconds    int64                `json:"total_seconds"`
-	TopItems        []TopEntity          `json:"top_items"`
-	TopCreators     []TopEntity          `json:"top_creators"`
-	DomainBreakdown map[string]int64     `json:"domain_breakdown"`
-	DaysActive      int64                `json:"days_active"`
-	MostProductive  *TopEntity           `json:"most_active_day,omitempty"`
+	AccountID       uuid.UUID        `json:"account_id"`
+	Domain          string           `json:"domain,omitempty"`
+	TotalScrobbles  int64            `json:"total_scrobbles"`
+	TotalSeconds    int64            `json:"total_seconds"`
+	TopItems        []TopEntity      `json:"top_items"`
+	TopCreators     []TopEntity      `json:"top_creators"`
+	DomainBreakdown map[string]int64 `json:"domain_breakdown"`
+	DaysActive      int64            `json:"days_active"`
+	MostProductive  *TopEntity       `json:"most_active_day,omitempty"`
 }
 
 // GetMediaStats aggregates playback statistics for an account over an interval.
@@ -508,4 +625,72 @@ func (s *Store) GetMediaStats(ctx context.Context, accountID uuid.UUID, domain s
 	}
 
 	return stats, nil
+}
+
+// AddFavourite puts one track into the favourites collection, and reports
+// whether it was new. Idempotent on the catalog record: the same track sent
+// twice is one entry, which is what lets a client re-sync freely.
+func (s *Store) AddFavourite(ctx context.Context, collectionID uuid.UUID, domain string, entry ReplacementItem) (*model.CollectionItem, bool, error) {
+	catalogID := entry.CatalogID
+	if catalogID == nil {
+		if strings.TrimSpace(entry.Title) == "" {
+			return nil, false, errors.New("catalog id or title is required")
+		}
+		catItem := &model.CatalogItem{
+			Domain:          domain,
+			Provider:        strings.TrimSpace(entry.Provider),
+			ProviderKey:     strings.TrimSpace(entry.ProviderKey),
+			Title:           strings.TrimSpace(entry.Title),
+			Subtitle:        entry.Subtitle,
+			Caption:         entry.Caption,
+			ArtworkURL:      entry.ArtworkURL,
+			DurationSeconds: entry.DurationSeconds,
+		}
+		resolved, err := s.FindOrCreateCatalogItem(ctx, catItem)
+		if err != nil {
+			return nil, false, err
+		}
+		catalogID = &resolved.ID
+	}
+
+	var existing model.CollectionItem
+	err := s.DB.WithContext(ctx).
+		Where("collection_id = ? AND catalog_id = ?", collectionID, *catalogID).
+		First(&existing).Error
+	if err == nil {
+		return &existing, false, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, false, err
+	}
+
+	now := time.Now().UTC()
+	// Favourites lead with the newest, so a new one takes position 0 and the
+	// list is already in decision order.
+	row := model.CollectionItem{
+		ID:           uuid.New(),
+		CollectionID: collectionID,
+		CatalogID:    catalogID,
+		Position:     0,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := s.DB.WithContext(ctx).Create(&row).Error; err != nil {
+		return nil, false, err
+	}
+	return &row, true, nil
+}
+
+// RemoveFavourite drops one track from the favourites collection.
+func (s *Store) RemoveFavourite(ctx context.Context, collectionID, catalogID uuid.UUID) error {
+	res := s.DB.WithContext(ctx).
+		Where("collection_id = ? AND catalog_id = ?", collectionID, catalogID).
+		Delete(&model.CollectionItem{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }

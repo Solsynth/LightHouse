@@ -226,3 +226,177 @@ func TestCollections(t *testing.T) {
 		t.Fatalf("expected 0 items after remove, got len=%d err=%v", len(loadedAfter.Items), err)
 	}
 }
+
+// TestCatalogProviderKeyScoping covers the identity every client writes:
+// a provider_key names one recording inside one source, so two libraries
+// handing out the same numeric id must never collapse into one page, and a
+// repeat write of the same tuple must not duplicate the row.
+func TestCatalogProviderKeyScoping(t *testing.T) {
+	s := setupTestDB(t)
+	ctx := context.Background()
+
+	artist := "Aoi Tada"
+	first := &model.CatalogItem{
+		Domain:          model.DomainMusic,
+		Provider:        "groovybox",
+		ProviderKey:     "subsonic:home:tr-77",
+		Title:           "Brave Song",
+		Subtitle:        &artist,
+		DurationSeconds: 185,
+	}
+	saved, err := s.FindOrCreateCatalogItem(ctx, first)
+	if err != nil {
+		t.Fatalf("FindOrCreateCatalogItem failed: %v", err)
+	}
+	if saved.DurationSeconds != 185 {
+		t.Fatalf("expected duration 185, got %d", saved.DurationSeconds)
+	}
+
+	// The same tuple is the same record, even from a second share.
+	again, err := s.FindOrCreateCatalogItem(ctx, first)
+	if err != nil {
+		t.Fatalf("repeat FindOrCreateCatalogItem failed: %v", err)
+	}
+	if again.ID != saved.ID {
+		t.Fatalf("expected same catalog id, got %s and %s", saved.ID, again.ID)
+	}
+
+	// Another source's track 77 is a different recording, not an alias.
+	other := &model.CatalogItem{
+		Domain:      model.DomainMusic,
+		Provider:    "groovybox",
+		ProviderKey: "jellyfin:cloud:tr-77",
+		Title:       "Unrelated Track",
+		Subtitle:    &artist,
+	}
+	moved, err := s.FindOrCreateCatalogItem(ctx, other)
+	if err != nil {
+		t.Fatalf("FindOrCreateCatalogItem for second source failed: %v", err)
+	}
+	if moved.ID == saved.ID {
+		t.Fatalf("two sources collapsed onto one catalog item %s", moved.ID)
+	}
+}
+
+func TestReplaceCollectionItemsIsTheClientList(t *testing.T) {
+	s := setupTestDB(t)
+	ctx := context.Background()
+
+	accountID := uuid.New()
+	coll := &model.Collection{
+		AccountID: accountID,
+		Domain:    model.DomainMusic,
+		Kind:      model.KindPlaylist,
+		Name:      "Uploaded",
+		IsPublic:  true,
+	}
+	if err := s.CreateCollection(ctx, coll); err != nil {
+		t.Fatalf("CreateCollection failed: %v", err)
+	}
+
+	sub := "Porter Robinson"
+	first := []ReplacementItem{
+		{Title: "Cheerleader", Subtitle: &sub, Provider: "groovybox", ProviderKey: "subsonic:home:a", DurationSeconds: 200},
+		{Title: "Knock Yourself Out XD", Subtitle: &sub, Provider: "groovybox", ProviderKey: "subsonic:home:b", DurationSeconds: 210},
+	}
+	saved, err := s.ReplaceCollectionItems(ctx, coll.ID, first)
+	if err != nil {
+		t.Fatalf("ReplaceCollectionItems failed: %v", err)
+	}
+	if len(saved) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(saved))
+	}
+	if saved[0].Position != 1 || saved[1].Position != 2 {
+		t.Fatalf("expected positions 1,2 got %d,%d", saved[0].Position, saved[1].Position)
+	}
+
+	// A re-sync with one track dropped and one added removes the absent one.
+	second := []ReplacementItem{
+		{Title: "Knock Yourself Out XD", Subtitle: &sub, Provider: "groovybox", ProviderKey: "subsonic:home:b", DurationSeconds: 210},
+		{Title: "Russian Roulette", Subtitle: &sub, Provider: "groovybox", ProviderKey: "subsonic:home:c", DurationSeconds: 190},
+	}
+	saved2, err := s.ReplaceCollectionItems(ctx, coll.ID, second)
+	if err != nil {
+		t.Fatalf("second ReplaceCollectionItems failed: %v", err)
+	}
+	if len(saved2) != 2 {
+		t.Fatalf("expected 2 items after re-sync, got %d", len(saved2))
+	}
+
+	loaded, err := s.GetCollection(ctx, coll.ID)
+	if err != nil {
+		t.Fatalf("GetCollection failed: %v", err)
+	}
+	if len(loaded.Items) != 2 {
+		t.Fatalf("expected 2 stored items, got %d", len(loaded.Items))
+	}
+	got := map[string]bool{}
+	for _, item := range loaded.Items {
+		if item.CatalogItem != nil {
+			got[item.CatalogItem.Title] = true
+		}
+	}
+	if got["Cheerleader"] || !got["Russian Roulette"] || !got["Knock Yourself Out XD"] {
+		t.Fatalf("re-sync left the wrong tracks: %+v", got)
+	}
+}
+
+func TestFavouritesAreIdempotentAndOnePerDomain(t *testing.T) {
+	s := setupTestDB(t)
+	ctx := context.Background()
+
+	accountID := uuid.New()
+	coll, err := s.EnsureFavouritesCollection(ctx, accountID, model.DomainMusic)
+	if err != nil {
+		t.Fatalf("EnsureFavouritesCollection failed: %v", err)
+	}
+	if coll.Kind != model.KindFavorites {
+		t.Fatalf("expected kind favourites, got %s", coll.Kind)
+	}
+
+	// Asking twice returns the same collection, not a second one.
+	again, err := s.EnsureFavouritesCollection(ctx, accountID, model.DomainMusic)
+	if err != nil {
+		t.Fatalf("second EnsureFavouritesCollection failed: %v", err)
+	}
+	if again.ID != coll.ID {
+		t.Fatalf("expected one favourites collection, got %s and %s", coll.ID, again.ID)
+	}
+
+	sub := "Aoi Tada"
+	entry := ReplacementItem{
+		Title:       "Brave Song",
+		Subtitle:    &sub,
+		Provider:    "groovybox",
+		ProviderKey: "subsonic:home:tr-77",
+	}
+	first, created, err := s.AddFavourite(ctx, coll.ID, coll.Domain, entry)
+	if err != nil {
+		t.Fatalf("AddFavourite failed: %v", err)
+	}
+	if !created {
+		t.Fatalf("expected the first favourite to be new")
+	}
+
+	twice, createdAgain, err := s.AddFavourite(ctx, coll.ID, coll.Domain, entry)
+	if err != nil {
+		t.Fatalf("second AddFavourite failed: %v", err)
+	}
+	if createdAgain {
+		t.Fatalf("expected the repeat to be idempotent")
+	}
+	if twice.ID != first.ID {
+		t.Fatalf("expected the same entry, got %s and %s", first.ID, twice.ID)
+	}
+
+	if err := s.RemoveFavourite(ctx, coll.ID, *first.CatalogID); err != nil {
+		t.Fatalf("RemoveFavourite failed: %v", err)
+	}
+	loaded, err := s.GetCollection(ctx, coll.ID)
+	if err != nil {
+		t.Fatalf("GetCollection failed: %v", err)
+	}
+	if len(loaded.Items) != 0 {
+		t.Fatalf("expected no favourites left, got %d", len(loaded.Items))
+	}
+}
