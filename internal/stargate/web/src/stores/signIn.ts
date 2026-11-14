@@ -56,6 +56,20 @@ export const useSignInStore = defineStore('signIn', () => {
     await loadFactors()
   }
 
+  /**
+   * Adopts a challenge a dedicated-factor endpoint already advanced. A risky
+   * passkey login can settle one step and leave the rest owed; the ordinary
+   * picker then settles what remains instead of redeeming an unfinished
+   * challenge.
+   */
+  async function adopt(next: AuthChallenge) {
+    generation += 1
+    usedFactorIds.value = []
+    challenge.value = next
+    factors.value = []
+    if (next.step_remain > 0) await loadFactors()
+  }
+
   /** Loads the factors this challenge accepts, skipping the ones already used. */
   async function loadFactors() {
     const current = challenge.value
@@ -140,6 +154,7 @@ export const useSignInStore = defineStore('signIn', () => {
     start,
     resume,
     loadFactors,
+    adopt,
     requestCode,
     submitFactor,
     exchange,

@@ -9,7 +9,7 @@ import { useSessionStore } from '@/stores/session'
 import { useNoticeStore } from '@/stores/notice'
 import { signInApi, authApi } from '@/lib/api'
 import { StargateError } from '@/lib/api/client'
-import type { AuthFactor } from '@/lib/api/types'
+import type { AuthChallenge, AuthFactor } from '@/lib/api/types'
 import { codeRequestFactorTypes, factorTypeDescription, factorTypeLabel } from '@/lib/enums'
 import { remaining } from '@/lib/format'
 import { getAssertion, passkeyFailure, passkeysSupported } from '@/lib/webauthn'
@@ -210,7 +210,8 @@ async function passkeyDiscoverable() {
       timeout: start.timeout,
       userVerification: start.user_verification,
     })
-    await signInApi.passkeyDiscoverableComplete(start.auth_challenge_id, assertion)
+    const next = await signInApi.passkeyDiscoverableComplete(start.auth_challenge_id, assertion)
+    if (await continuePasskey(next)) return
     await signInApi.exchange(start.auth_challenge_id)
     await session.load()
     notice.ok(t('signIn.noticePasskey'))
@@ -235,13 +236,32 @@ async function passkeyBound() {
       timeout: start.timeout,
       userVerification: start.user_verification,
     })
-    await signInApi.passkeyComplete(signIn.challenge.id, assertion)
+    const next = await signInApi.passkeyComplete(signIn.challenge.id, assertion)
+    if (await continuePasskey(next)) return
     await finish()
   } catch (caught) {
     notice.fail(caught instanceof StargateError ? messageOf(caught) : passkeyFailure(caught))
   } finally {
     busy.value = false
   }
+}
+
+/**
+ * Adopts the challenge a passkey assertion advanced. A risky login can still
+ * owe steps after the assertion, so its answer is not necessarily settled: the
+ * ordinary factor picker finishes what remains instead of redeeming a
+ * challenge the server still counts unfinished.
+ *
+ * Returns true when steps are still owed and the picker took over.
+ */
+async function continuePasskey(next: AuthChallenge): Promise<boolean> {
+  if (next.step_remain === 0) return false
+  await signIn.adopt(next)
+  started.value = true
+  passkeyFactor.value = null
+  selectedFactorId.value = null
+  await autoSelect()
+  return true
 }
 
 /** Picks the factor the person will satisfy, and issues a code when the
