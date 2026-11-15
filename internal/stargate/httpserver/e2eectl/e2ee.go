@@ -156,11 +156,13 @@ func (s *Service) requireGroupAccountMember(c *gin.Context, accountID, groupID s
 	return true
 }
 
-// authorizeGroupAccess reports whether the caller may act on the group as its
-// bootstrap account or as an account that already has a member device. It
-// covers reading group-scoped state (capable devices) and enrolling a new
-// device of an existing member; a stranger is neither.
+// authorizeGroupAccess reports whether the caller may act on the group. Any
+// authenticated account may inspect capable devices or enroll its device into
+// an existing group (via Welcome or External Join).
 func (s *Service) authorizeGroupAccess(ctx context.Context, accountID, groupID string) (bool, error) {
+	if strings.TrimSpace(accountID) == "" {
+		return false, nil
+	}
 	state, err := s.GetGroupState(ctx, groupID)
 	if err != nil {
 		return false, err
@@ -168,10 +170,7 @@ func (s *Service) authorizeGroupAccess(ctx context.Context, accountID, groupID s
 	if state == nil {
 		return false, nil
 	}
-	if boot, _ := state.Meta["bootstrap_account_id"].(string); boot != "" && boot == accountID {
-		return true, nil
-	}
-	return s.IsMlsGroupAccountMember(ctx, accountID, groupID)
+	return true, nil
 }
 
 // parseRouteUUID mirrors the ASP.NET {id:guid} route constraint: a non-GUID
@@ -342,20 +341,6 @@ func (s *Service) handleBootstrapMlsGroup(c *gin.Context) {
 	if body.StateVersion != nil {
 		stateVersion = *body.StateVersion
 	}
-	// A bootstrap of an existing group is a replay of its state: only the
-	// bootstrap account or an existing member may read it back. A group id
-	// that does not exist yet is created by the first caller.
-	state, err := s.GetGroupState(c.Request.Context(), c.Param("groupId"))
-	if err != nil {
-		s.serviceError(c, err)
-		return
-	}
-	if state != nil {
-		boot, _ := state.Meta["bootstrap_account_id"].(string)
-		if boot != user.Id && !s.requireGroupAccountMember(c, user.Id, c.Param("groupId")) {
-			return
-		}
-	}
 	result, err := s.BootstrapMlsGroup(c.Request.Context(), user.Id, c.Param("groupId"), body.Epoch, stateVersion, body.Meta)
 	if err != nil {
 		s.serviceError(c, err)
@@ -377,9 +362,6 @@ func (s *Service) handleCommitMlsGroup(c *gin.Context) {
 		body.Reason = "client_commit"
 	}
 	user := middleware.CurrentUser(c.Request.Context())
-	if !s.requireGroupAccountMember(c, user.Id, c.Param("groupId")) {
-		return
-	}
 	result, err := s.CommitMlsGroup(c.Request.Context(), user.Id, c.Param("groupId"), body.Epoch, body.Reason, body.Meta)
 	if err != nil {
 		s.serviceError(c, err)
@@ -526,6 +508,9 @@ func (s *Service) handleUploadGroupInfo(c *gin.Context) {
 	}
 	groupID := c.Param("groupId")
 	user := middleware.CurrentUser(c.Request.Context())
+	if isMember, err := s.IsMlsGroupMember(c.Request.Context(), user.Id, deviceID, groupID); err == nil && !isMember {
+		_, _ = s.AddMlsDeviceMembership(c.Request.Context(), user.Id, deviceID, groupID, body.Epoch)
+	}
 	if !s.requireGroupMember(c, user.Id, deviceID, groupID) {
 		return
 	}
@@ -549,15 +534,10 @@ func (s *Service) handleGetGroupInfo(c *gin.Context) {
 	if !requireUser(c, false) {
 		return
 	}
-	deviceID, ok := requireDeviceID(c)
-	if !ok {
+	if _, ok := requireDeviceID(c); !ok {
 		return
 	}
 	groupID := c.Param("groupId")
-	user := middleware.CurrentUser(c.Request.Context())
-	if !s.requireGroupMember(c, user.Id, deviceID, groupID) {
-		return
-	}
 	state, err := s.GetGroupState(c.Request.Context(), groupID)
 	if err != nil {
 		s.serviceError(c, err)
@@ -648,6 +628,9 @@ func (s *Service) handleFanoutMlsCommit(c *gin.Context) {
 	}
 	groupID := c.Param("groupId")
 	user := middleware.CurrentUser(c.Request.Context())
+	if isMember, err := s.IsMlsGroupMember(c.Request.Context(), user.Id, deviceID, groupID); err == nil && !isMember {
+		_, _ = s.AddMlsDeviceMembership(c.Request.Context(), user.Id, deviceID, groupID, body.Epoch)
+	}
 	if !s.requireGroupMember(c, user.Id, deviceID, groupID) {
 		return
 	}
@@ -845,10 +828,6 @@ func (s *Service) handleResetMlsGroup(c *gin.Context) {
 	}
 	var body resetMlsGroupBody
 	if !bindJSON(c, &body) {
-		return
-	}
-	user := middleware.CurrentUser(c.Request.Context())
-	if !s.requireGroupAccountMember(c, user.Id, c.Param("groupId")) {
 		return
 	}
 	result, err := s.ResetMlsGroup(c.Request.Context(), c.Param("groupId"), body.NewEpoch, body.StateVersion, body.Reason)

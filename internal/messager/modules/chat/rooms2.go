@@ -72,6 +72,15 @@ func (i *instance) createChatRoom(c *gin.Context) {
 	if request.E2eePolicy != nil {
 		room.E2eePolicy = store.ToJSON(request.E2eePolicy)
 	}
+	if mode == int(model.ChatEncryptionE2eeMls) {
+		groupID := "room:" + room.ID.String()
+		room.MLSGroupID = &groupID
+		policy := jsonMap(room.E2eePolicy)
+		if policy["ciphersuite"] == nil {
+			policy["ciphersuite"] = defaultMlsCiphersuite
+		}
+		room.E2eePolicy = store.ToJSON(policy)
+	}
 	if request.RealmID != nil && *request.RealmID != "" {
 		realmID, err := uuid.Parse(*request.RealmID)
 		if err != nil {
@@ -216,6 +225,17 @@ func (i *instance) updateChatRoom(c *gin.Context) {
 	}
 	if request.E2eePolicy != nil {
 		room.E2eePolicy = store.ToJSON(request.E2eePolicy)
+	}
+	if room.EncryptionMode == int(model.ChatEncryptionE2eeMls) {
+		if room.MLSGroupID == nil || strings.TrimSpace(*room.MLSGroupID) == "" {
+			groupID := "room:" + room.ID.String()
+			room.MLSGroupID = &groupID
+		}
+		policy := jsonMap(room.E2eePolicy)
+		if policy["ciphersuite"] == nil {
+			policy["ciphersuite"] = defaultMlsCiphersuite
+		}
+		room.E2eePolicy = store.ToJSON(policy)
 	}
 	if request.Slug != nil {
 		if room.Type != int(model.ChatRoomGroup) {

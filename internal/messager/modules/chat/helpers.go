@@ -522,6 +522,13 @@ func (i *instance) hydrateRooms(ctx context.Context, rooms []*store.ChatRoomEnti
 		}
 	}
 	for _, room := range rooms {
+		if room.EncryptionMode == int(model.ChatEncryptionE2eeMls) && (room.MLSGroupID == nil || strings.TrimSpace(*room.MLSGroupID) == "") {
+			groupID := "room:" + room.ID.String()
+			room.MLSGroupID = &groupID
+			_ = i.db.WithContext(ctx).Model(&store.ChatRoomEntity{}).
+				Where("id = ?", room.ID).
+				Update("mls_group_id", groupID).Error
+		}
 		mapped := store.RoomToModel(room)
 		if room.RealmID != nil {
 			if realm, ok := realms[room.RealmID.String()]; ok {

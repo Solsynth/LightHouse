@@ -762,6 +762,22 @@ func (s *Store) BootstrapMlsGroup(ctx context.Context, accountID, groupID string
 		}
 		if len(entities) > 0 {
 			existing := mlsGroupStateFromEntity(&entities[0])
+			if len(existing.GroupInfo) == 0 && len(existing.Meta) == 0 && len(meta) > 0 {
+				if err := tx.Model(&MLSGroupStateEntity{}).
+					Where("id = ?", existing.Id).
+					Updates(map[string]any{
+						"epoch":          epoch,
+						"last_commit_at": now,
+						"meta":           jsonMapPtr(meta),
+						"updated_at":     now,
+					}).Error; err != nil {
+					return err
+				}
+				existing.Epoch = epoch
+				existing.LastCommitAt = &now
+				existing.Meta = meta
+				existing.UpdatedAt = now
+			}
 			state = &existing
 			return nil
 		}

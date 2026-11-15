@@ -185,7 +185,7 @@ func TestServiceSmoke(t *testing.T) {
 	// payload shape.
 	var envelopePush bool
 	for _, p := range bus.pushes {
-		if p.event == packetType && p.target == deviceB {
+		if p.event == packetType && (p.target == bob || p.target == deviceB) {
 			envelopePush = true
 			if _, ok := p.payload.(envelopePushPayload); !ok {
 				t.Fatalf("unexpected push payload type %T", p.payload)

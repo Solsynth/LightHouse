@@ -93,7 +93,14 @@ func (i *instance) ensureMlsEpoch(ctx context.Context, c *gin.Context, room *sto
 	if room.EncryptionMode != int(model.ChatEncryptionE2eeMls) {
 		return true
 	}
-	if room.MLSGroupID == nil || strings.TrimSpace(*room.MLSGroupID) == "" || epoch == nil {
+	if room.MLSGroupID == nil || strings.TrimSpace(*room.MLSGroupID) == "" {
+		groupID := "room:" + room.ID.String()
+		room.MLSGroupID = &groupID
+		_ = i.db.WithContext(ctx).Model(&store.ChatRoomEntity{}).
+			Where("id = ?", room.ID).
+			Update("mls_group_id", groupID).Error
+	}
+	if epoch == nil {
 		failConflict(c, "chat.mls_payload_required", "MLS rooms require a configured group and encryption epoch.")
 		return false
 	}

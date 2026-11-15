@@ -22,7 +22,7 @@ const (
 	kpDepletedPacketType        = "e2ee.kp.depleted"
 	groupResetPacketType        = "e2ee.group.reset"
 	wsNamespace                 = "dev.solsynth.solian"
-	mlsKeyPackageDailyLimit     = 10
+	mlsKeyPackageDailyLimit     = 200
 	mlsKeyPackageRetentionDays  = 30
 	maxFanoutPayloadsPerRequest = 1000
 	minKeyPackagesPerDevice     = 3
@@ -724,12 +724,11 @@ func (s *Service) deliverEnvelope(ctx context.Context, env *store.E2eeEnvelope) 
 		LegacyAccountScoped: env.LegacyAccountScoped,
 		CreatedAt:           env.CreatedAt,
 	}
-	var err error
-	if env.RecipientDeviceId != nil {
-		err = s.events.PublishWS(ctx, *env.RecipientDeviceId, packetType, payload)
-	} else {
-		err = s.events.PublishWS(ctx, env.RecipientAccountId, packetType, payload)
+	target := env.RecipientAccountId
+	if target == "" && env.RecipientDeviceId != nil {
+		target = *env.RecipientDeviceId
 	}
+	err := s.events.PublishWS(ctx, target, packetType, payload)
 	if err != nil {
 		s.logf().Warn("push realtime e2ee envelope",
 			"envelope", env.Id, "recipient", env.RecipientAccountId, "error", err)
@@ -740,23 +739,36 @@ func (s *Service) deliverEnvelope(ctx context.Context, env *store.E2eeEnvelope) 
 	}
 }
 
-// checkWebsocketConnected mirrors
-// RemoteWebSocketService.GetWebsocketConnectionStatus (device-scoped for
-// device envelopes, account-scoped otherwise).
+// checkWebsocketConnected checks whether the recipient account (or device) has
+// an active WebSocket connection on Blade.
 func (s *Service) checkWebsocketConnected(ctx context.Context, env *store.E2eeEnvelope) (bool, error) {
-	req := &gen.DyGetWebsocketConnectionStatusRequest{Namespace: wsNamespace}
-	if env.RecipientDeviceId != nil {
-		req.Id = &gen.DyGetWebsocketConnectionStatusRequest_DeviceId{DeviceId: *env.RecipientDeviceId}
-	} else {
-		req.Id = &gen.DyGetWebsocketConnectionStatusRequest_UserId{UserId: env.RecipientAccountId}
-	}
 	checkCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
-	resp, err := s.blade.GetWebsocketConnectionStatus(checkCtx, req)
-	if err != nil {
-		return false, err
+	if env.RecipientAccountId != "" {
+		req := &gen.DyGetWebsocketConnectionStatusRequest{
+			Namespace: wsNamespace,
+			Id:        &gen.DyGetWebsocketConnectionStatusRequest_UserId{UserId: env.RecipientAccountId},
+		}
+		resp, err := s.blade.GetWebsocketConnectionStatus(checkCtx, req)
+		if err == nil && resp != nil && resp.IsConnected {
+			return true, nil
+		}
+		if env.RecipientDeviceId == nil {
+			return false, err
+		}
 	}
-	return resp != nil && resp.IsConnected, nil
+	if env.RecipientDeviceId != nil {
+		req := &gen.DyGetWebsocketConnectionStatusRequest{
+			Namespace: wsNamespace,
+			Id:        &gen.DyGetWebsocketConnectionStatusRequest_DeviceId{DeviceId: *env.RecipientDeviceId},
+		}
+		resp, err := s.blade.GetWebsocketConnectionStatus(checkCtx, req)
+		if err != nil {
+			return false, err
+		}
+		return resp != nil && resp.IsConnected, nil
+	}
+	return false, nil
 }
 
 // --- Wire conversion helpers ---

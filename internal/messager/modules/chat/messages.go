@@ -421,8 +421,8 @@ func (i *instance) deleteMessage(c *gin.Context) {
 	}
 	e2ee := room.EncryptionMode != int(model.ChatEncryptionNone)
 	mls := room.EncryptionMode == int(model.ChatEncryptionE2eeMls)
-	if e2ee {
-		if mls && (request.EncryptionMeta == nil || request.EncryptionMeta.Scheme != mlsEncryptionScheme || request.EncryptionMeta.Epoch == nil) {
+	if e2ee && request.EncryptionMeta != nil {
+		if mls && (request.EncryptionMeta.Scheme != mlsEncryptionScheme || request.EncryptionMeta.Epoch == nil) {
 			failConflict(c, "chat.mls_payload_required", "MLS rooms require scheme chat.mls.v2 and encryption_epoch.")
 			return
 		}

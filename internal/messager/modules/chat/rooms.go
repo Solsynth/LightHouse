@@ -290,6 +290,13 @@ func (i *instance) createDirectMessage(c *gin.Context) {
 		E2eePolicy:     nil,
 		Background:     store.ToJSON(nil),
 	}
+	if requestedMode == int(model.ChatEncryptionE2eeMls) {
+		groupID := "room:" + room.ID.String()
+		room.MLSGroupID = &groupID
+		room.E2eePolicy = store.ToJSON(map[string]any{
+			"ciphersuite": defaultMlsCiphersuite,
+		})
+	}
 	members := []*store.ChatMemberEntity{
 		{
 			ID:          uuid.New(),

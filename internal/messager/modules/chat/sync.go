@@ -967,8 +967,11 @@ func (i *instance) deviceJoined(c *gin.Context) {
 		return
 	}
 	if room.MLSGroupID == nil || strings.TrimSpace(*room.MLSGroupID) == "" {
-		failBadRequest(c, "CHAT_DEVICE_MLS_GROUP_REQUIRED", "Room does not have MLS group configured.")
-		return
+		groupID := "room:" + room.ID.String()
+		room.MLSGroupID = &groupID
+		_ = i.db.WithContext(ctx).Model(&store.ChatRoomEntity{}).
+			Where("id = ?", room.ID).
+			Update("mls_group_id", groupID).Error
 	}
 	var request deviceJoinedRequest
 	if !httpx.BindJSON(c, &request) {
