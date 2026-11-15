@@ -82,7 +82,7 @@ func (i *instance) Configure(ctx context.Context, host *module.Host[core.Service
 	}
 	service := accountevents.NewService(accountevents.Deps{
 		Store:    store,
-		Accounts: host.Core.Store,
+		Accounts: newTimelineAccounts(host.Core.Store, presenceClient(host.Core), log),
 		Rewards:  experienceAdapter{store: accountrecords.NewStore(host.Core.DB)},
 		Perks:    set.Perks,
 		Creditor: creditorPort(set.Payments),

@@ -1,7 +1,8 @@
 // Package grpcclient holds the outbound gRPC clients Stargate uses to call
 // sibling services (wallet for perks, develop for OIDC clients, drive for
 // files, pass for profiles + NFC token validation, blade for websocket pushes,
-// ring for notifications). Targets come from the [services] config section;
+// ring for notifications, pulsar for presence sessions and playback history).
+// Targets come from the [services] config section;
 // an empty target leaves the corresponding provider nil unless Blade discovery
 // is enabled, in which case the service name is resolved from the registry.
 // A missing target degrades gracefully (nil/empty results), matching the C#
@@ -70,7 +71,11 @@ type Clients struct {
 	Nfc     gen.DyNfcServiceClient
 	Blade   gen.WebSocketServiceClient
 	Ring    gen.DyRingServiceClient
-	conns   []*grpc.ClientConn
+	// PulsarPresence reads live sessions and playback history from Pulsar,
+	// which owns presence activities. The account timeline merges it with the
+	// legacy presence rows Stargate still stores.
+	PulsarPresence gen.DyPresenceServiceClient
+	conns          []*grpc.ClientConn
 }
 
 // Available reports whether a named optional outbound service was configured
@@ -98,6 +103,8 @@ func (c *Clients) Available(service string) bool {
 		return c.Blade != nil
 	case "ring":
 		return c.Ring != nil
+	case "pulsar":
+		return c.PulsarPresence != nil
 	default:
 		return false
 	}
@@ -186,6 +193,11 @@ func NewClientsWithResolver(cfg *config.Config, resolver *shareddiscovery.Resolv
 	}
 	if conn := dial("ring", cfg.Services.Ring.GRPC, false); conn != nil {
 		c.Ring = gen.NewDyRingServiceClient(conn)
+	}
+	// Pulsar's gRPC listener is h2c inside the fleet network, unlike the TLS
+	// default the other targets use.
+	if conn := dial("pulsar", cfg.Services.Pulsar.GRPC, true); conn != nil {
+		c.PulsarPresence = gen.NewDyPresenceServiceClient(conn)
 	}
 	return c, nil
 }

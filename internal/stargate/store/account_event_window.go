@@ -9,9 +9,9 @@ import (
 	"src.solsynth.dev/sosys/stargate/model"
 )
 
-// Read-only status and presence-activity windows used by the accountevents
-// module (calendar aggregation and the public account timeline). These are
-// plain additive reads over the core tables; no module writes them.
+// Read-only status windows used by the accountevents module (calendar
+// aggregation and the public account timeline). Presence activities live in
+// Pulsar and are read over gRPC, not from this database.
 
 // ListStatusesBetween returns every status the account created inside
 // [from, to), oldest first. Unlike GetCurrentStatus it does not filter on
@@ -43,16 +43,4 @@ func (s *Store) ListStatusesForTimeline(ctx context.Context, accountID uuid.UUID
 		statuses = append(statuses, *statusFromEntity(&entities[i]))
 	}
 	return statuses, nil
-}
-
-// ListActivitiesForTimeline returns every activity of the account with its
-// tags, newest first.
-func (s *Store) ListActivitiesForTimeline(ctx context.Context, accountID uuid.UUID) ([]model.PresenceActivity, error) {
-	var entities []PresenceActivityEntity
-	if err := s.DB.WithContext(ctx).
-		Where("account_id = ?", accountID).
-		Order("created_at DESC").Find(&entities).Error; err != nil {
-		return nil, err
-	}
-	return s.attachActivityTags(ctx, entities)
 }
