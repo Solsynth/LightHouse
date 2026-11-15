@@ -42,11 +42,11 @@ func (p *MusicBrainzProvider) Name() string   { return "musicbrainz" }
 func (p *MusicBrainzProvider) Domain() string { return model.DomainMusic }
 
 type mbRecordingResponse struct {
-	ID           string `json:"id"`
-	Title        string `json:"title"`
-	Length       int    `json:"length"` // ms
+	ID             string `json:"id"`
+	Title          string `json:"title"`
+	Length         int    `json:"length"` // ms
 	Disambiguation string `json:"disambiguation"`
-	ArtistCredit []struct {
+	ArtistCredit   []struct {
 		Name   string `json:"name"`
 		Artist struct {
 			ID   string `json:"id"`
@@ -93,11 +93,14 @@ func (p *MusicBrainzProvider) FetchByProviderKey(ctx context.Context, mbid strin
 		return nil, err
 	}
 
-	// Extract artists
+	// Extract artists, both for the display subtitle and as structured
+	// creator credits the engine can organize by.
+	artists := make([]model.CreatorCredit, 0, len(rec.ArtistCredit))
 	artistNames := make([]string, 0, len(rec.ArtistCredit))
 	for _, ac := range rec.ArtistCredit {
 		if ac.Name != "" {
 			artistNames = append(artistNames, ac.Name)
+			artists = append(artists, model.CreatorCredit{Name: ac.Name, Role: model.RoleArtist})
 		}
 	}
 	artistStr := strings.Join(artistNames, ", ")
@@ -160,6 +163,7 @@ func (p *MusicBrainzProvider) FetchByProviderKey(ctx context.Context, mbid strin
 		DurationSeconds: durationSec,
 		ReleaseDate:     releaseDate,
 		Genres:          genres,
+		Creators:        artists,
 		ExternalIDs:     externalIDs,
 		ExternalLinks:   links,
 	}, nil
@@ -218,10 +222,12 @@ func (p *MusicBrainzProvider) Search(ctx context.Context, query string, limit in
 	results := make([]UnifiedMedia, 0, limit)
 	for i := 0; i < limit; i++ {
 		rec := searchResp.Recordings[i]
-		artists := make([]string, 0, len(rec.ArtistCredit))
+		credits := make([]model.CreatorCredit, 0, len(rec.ArtistCredit))
+		artistNames := make([]string, 0, len(rec.ArtistCredit))
 		for _, ac := range rec.ArtistCredit {
 			if ac.Name != "" {
-				artists = append(artists, ac.Name)
+				artistNames = append(artistNames, ac.Name)
+				credits = append(credits, model.CreatorCredit{Name: ac.Name, Role: model.RoleArtist})
 			}
 		}
 		album := ""
@@ -232,17 +238,17 @@ func (p *MusicBrainzProvider) Search(ctx context.Context, query string, limit in
 		}
 
 		results = append(results, UnifiedMedia{
-			URN:             fmt.Sprintf("pulsar:music:mbid:%s", rec.ID),
-			Domain:          model.DomainMusic,
-			Slug:            fmt.Sprintf("mbid-%s", rec.ID),
-			Title:           rec.Title,
-			Subtitle:        strings.Join(artists, ", "),
-			Caption:         album,
-			ArtworkURL:      artURL,
-			DurationSeconds: rec.Length / 1000,
+			URN:        fmt.Sprintf("pulsar:music:mbid:%s", rec.ID),
+			Domain:     model.DomainMusic,
+			Slug:       fmt.Sprintf("mbid-%s", rec.ID),
+			Title:      rec.Title,
+			Subtitle:   strings.Join(artistNames, ", "),
+			Caption:    album,
+			ArtworkURL: artURL,
 			ExternalIDs: map[string]string{
 				"musicbrainz": rec.ID,
 			},
+			Creators: credits,
 			ExternalLinks: []ExternalLink{
 				{
 					Platform: "musicbrainz",

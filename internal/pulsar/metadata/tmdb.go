@@ -40,22 +40,22 @@ func (p *TMDbProvider) Domain() string { return model.DomainVideo }
 
 type tmdbFindResponse struct {
 	MovieResults []struct {
-		ID           int      `json:"id"`
-		Title        string   `json:"title"`
-		Overview     string   `json:"overview"`
-		PosterPath   string   `json:"poster_path"`
-		BackdropPath string   `json:"backdrop_path"`
-		ReleaseDate  string   `json:"release_date"`
-		GenreIDs     []int    `json:"genre_ids"`
+		ID           int    `json:"id"`
+		Title        string `json:"title"`
+		Overview     string `json:"overview"`
+		PosterPath   string `json:"poster_path"`
+		BackdropPath string `json:"backdrop_path"`
+		ReleaseDate  string `json:"release_date"`
+		GenreIDs     []int  `json:"genre_ids"`
 	} `json:"movie_results"`
 	TVResults []struct {
-		ID           int      `json:"id"`
-		Name         string   `json:"name"`
-		Overview     string   `json:"overview"`
-		PosterPath   string   `json:"poster_path"`
-		BackdropPath string   `json:"backdrop_path"`
-		FirstAirDate string   `json:"first_air_date"`
-		GenreIDs     []int    `json:"genre_ids"`
+		ID           int    `json:"id"`
+		Name         string `json:"name"`
+		Overview     string `json:"overview"`
+		PosterPath   string `json:"poster_path"`
+		BackdropPath string `json:"backdrop_path"`
+		FirstAirDate string `json:"first_air_date"`
+		GenreIDs     []int  `json:"genre_ids"`
 	} `json:"tv_results"`
 }
 
@@ -103,6 +103,7 @@ func (p *TMDbProvider) FetchByProviderKey(ctx context.Context, key string) (*Uni
 						ArtworkURL:  poster,
 						BannerURL:   backdrop,
 						ReleaseDate: m.ReleaseDate,
+						Creators:    p.movieDirectors(ctx, m.ID),
 						ExternalIDs: map[string]string{
 							"imdb": key,
 							"tmdb": fmt.Sprintf("%d", m.ID),
@@ -165,12 +166,12 @@ func (p *TMDbProvider) Search(ctx context.Context, query string, limit int) ([]U
 
 	var searchResp struct {
 		Results []struct {
-			ID          int    `json:"id"`
-			MediaType   string `json:"media_type"`
-			Title       string `json:"title"`
-			Name        string `json:"name"`
-			PosterPath  string `json:"poster_path"`
-			ReleaseDate string `json:"release_date"`
+			ID           int    `json:"id"`
+			MediaType    string `json:"media_type"`
+			Title        string `json:"title"`
+			Name         string `json:"name"`
+			PosterPath   string `json:"poster_path"`
+			ReleaseDate  string `json:"release_date"`
 			FirstAirDate string `json:"first_air_date"`
 		} `json:"results"`
 	}
@@ -218,4 +219,46 @@ func (p *TMDbProvider) Search(ctx context.Context, query string, limit int) ([]U
 		})
 	}
 	return results, nil
+}
+
+// movieDirectors fetches the credited directors of one TMDb movie. Credits
+// are a nice-to-have on top of the find payload, so any failure returns
+// nothing rather than failing the resolve.
+func (p *TMDbProvider) movieDirectors(ctx context.Context, tmdbID int) []model.CreatorCredit {
+	if p.apiKey == "" {
+		return nil
+	}
+	reqURL := fmt.Sprintf("%s/movie/%d/credits?api_key=%s", p.baseURL, tmdbID, p.apiKey)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("User-Agent", p.userAgent)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+
+	var creditsResp struct {
+		Crew []struct {
+			Name string `json:"name"`
+			Job  string `json:"job"`
+		} `json:"crew"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&creditsResp); err != nil {
+		return nil
+	}
+
+	credits := make([]model.CreatorCredit, 0)
+	for _, member := range creditsResp.Crew {
+		if member.Job == "Director" && member.Name != "" {
+			credits = append(credits, model.CreatorCredit{Name: member.Name, Role: model.RoleDirector})
+		}
+	}
+	return credits
 }

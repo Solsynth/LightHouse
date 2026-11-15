@@ -37,6 +37,8 @@ func TestMetadataEngine(t *testing.T) {
 		&model.CatalogItem{},
 		&model.ActiveSession{},
 		&model.Scrobble{},
+		&model.Creator{},
+		&model.CatalogCreator{},
 	)
 
 	engine := NewEngine(db, "https://solian.live")
@@ -108,5 +110,64 @@ func TestMetadataEngine(t *testing.T) {
 	}
 	if withStats.ScrobbleCount != 1 {
 		t.Fatalf("expected ScrobbleCount=1, got %d", withStats.ScrobbleCount)
+	}
+}
+
+// TestMetadataEngineCreators walks the creator path a resolve uses: provider
+// credits become linked Creator records, resolve hands them back, and search
+// finds items by a creator's name — the "everything by X" query.
+func TestMetadataEngineCreators(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open sqlite test db: %v", err)
+	}
+	_ = db.AutoMigrate(
+		&model.CatalogItem{},
+		&model.Creator{},
+		&model.CatalogCreator{},
+	)
+
+	engine := NewEngine(db, "https://solian.live")
+	engine.RegisterProvider(&mockProvider{
+		name:   "steam",
+		domain: model.DomainGaming,
+		media: &UnifiedMedia{
+			URN:    "pulsar:gaming:steam:440",
+			Domain: model.DomainGaming,
+			Slug:   "steam-440",
+			Title:  "Team Fortress 2",
+			Creators: []model.CreatorCredit{
+				{Name: "Valve", Role: model.RoleDeveloper},
+				{Name: "Valve", Role: model.RolePublisher},
+			},
+		},
+	})
+
+	ctx := context.Background()
+	resolved, err := engine.Resolve(ctx, "steam:440")
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	// Both roles point at one Creator record, and resolve carries them back.
+	if len(resolved.Creators) != 2 {
+		t.Fatalf("expected 2 credits on resolved media, got %d", len(resolved.Creators))
+	}
+	var creators []model.Creator
+	if err := db.Find(&creators).Error; err != nil {
+		t.Fatalf("list creators: %v", err)
+	}
+	if len(creators) != 1 || creators[0].Name != "Valve" || creators[0].Domain != model.DomainGaming {
+		t.Fatalf("expected one Valve creator in gaming, got %+v", creators)
+	}
+
+	// Searching by the creator's name finds the item, like an
+	// "everything by Valve" browse.
+	found, err := engine.Search(ctx, model.DomainGaming, "Valve", 10)
+	if err != nil {
+		t.Fatalf("search by creator: %v", err)
+	}
+	if len(found) != 1 || found[0].Title != "Team Fortress 2" {
+		t.Fatalf("expected Team Fortress 2 via creator search, got %+v", found)
 	}
 }

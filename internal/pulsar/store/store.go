@@ -404,6 +404,14 @@ type ReplacementItem struct {
 	DurationSeconds int
 }
 
+// CollectionItemUpdate names the fields a caller wants to move on one
+// collection item; nil leaves a field alone.
+type CollectionItemUpdate struct {
+	Note   *string
+	Rating *int
+	Status *string
+}
+
 // ReplaceCollectionItems makes the collection hold exactly the given items,
 // in order. It is the write a client uses to upload or re-sync a playlist:
 // the client's list is the truth, so an item it no longer names is removed,
@@ -484,6 +492,31 @@ func (s *Store) RemoveCollectionItem(ctx context.Context, collectionID, itemID u
 		return gorm.ErrRecordNotFound
 	}
 	return nil
+}
+
+// UpdateCollectionItem edits one item's note, rating, or status in place, so
+// marking progress on a watchlist entry does not mean re-uploading the whole
+// list. Only the caller-set fields move; the rest stay.
+func (s *Store) UpdateCollectionItem(ctx context.Context, collectionID, itemID uuid.UUID, req CollectionItemUpdate) (*model.CollectionItem, error) {
+	var item model.CollectionItem
+	if err := s.DB.WithContext(ctx).
+		Where("collection_id = ? AND id = ?", collectionID, itemID).
+		First(&item).Error; err != nil {
+		return nil, err
+	}
+	if req.Status != nil {
+		item.Status = req.Status
+	}
+	if req.Note != nil {
+		item.Note = req.Note
+	}
+	if req.Rating != nil {
+		item.Rating = req.Rating
+	}
+	if err := s.DB.WithContext(ctx).Save(&item).Error; err != nil {
+		return nil, err
+	}
+	return &item, nil
 }
 
 // ─────────────────────────── Statistics & Rewind ───────────────────────────

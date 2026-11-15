@@ -100,6 +100,13 @@ func (p *SteamProvider) FetchByProviderKey(ctx context.Context, appIDStr string)
 	}
 
 	data := appResp.Data
+	credits := make([]model.CreatorCredit, 0, len(data.Developers)+len(data.Publishers))
+	for _, name := range data.Developers {
+		credits = append(credits, model.CreatorCredit{Name: name, Role: model.RoleDeveloper})
+	}
+	for _, name := range data.Publishers {
+		credits = append(credits, model.CreatorCredit{Name: name, Role: model.RolePublisher})
+	}
 	subtitle := ""
 	if len(data.Developers) > 0 {
 		subtitle = strings.Join(data.Developers, ", ")
@@ -131,6 +138,7 @@ func (p *SteamProvider) FetchByProviderKey(ctx context.Context, appIDStr string)
 		BannerURL:   banner,
 		ReleaseDate: data.ReleaseDate.Date,
 		Genres:      genres,
+		Creators:    credits,
 		ExternalIDs: map[string]string{
 			"steam": strconv.Itoa(appID),
 		},
@@ -152,8 +160,8 @@ func (p *SteamProvider) FetchByProviderKey(ctx context.Context, appIDStr string)
 type steamStoreSearchResponse struct {
 	Total int `json:"total"`
 	Items []struct {
-		ID   int    `json:"id"`
-		Name string `json:"name"`
+		ID        int    `json:"id"`
+		Name      string `json:"name"`
 		TinyImage string `json:"tiny_image"`
 	} `json:"items"`
 }

@@ -72,16 +72,16 @@ query ($id: Int, $search: String) {
 type aniListResponse struct {
 	Data struct {
 		Media *struct {
-			ID          int    `json:"id"`
-			IDMal       *int   `json:"idMal"`
-			Format      string `json:"format"`
-			Status      string `json:"status"`
-			Description string `json:"description"`
-			SeasonYear  *int   `json:"seasonYear"`
-			Episodes    *int   `json:"episodes"`
-			Duration    *int   `json:"duration"`
+			ID          int      `json:"id"`
+			IDMal       *int     `json:"idMal"`
+			Format      string   `json:"format"`
+			Status      string   `json:"status"`
+			Description string   `json:"description"`
+			SeasonYear  *int     `json:"seasonYear"`
+			Episodes    *int     `json:"episodes"`
+			Duration    *int     `json:"duration"`
 			Genres      []string `json:"genres"`
-			BannerImage string `json:"bannerImage"`
+			BannerImage string   `json:"bannerImage"`
 			CoverImage  struct {
 				ExtraLarge string `json:"extraLarge"`
 				Large      string `json:"large"`
@@ -154,6 +154,12 @@ func (p *AniListProvider) FetchByProviderKey(ctx context.Context, idStr string) 
 		title = media.Title.Native
 	}
 
+	credits := make([]model.CreatorCredit, 0, len(media.Studios.Nodes))
+	for _, studio := range media.Studios.Nodes {
+		if studio.Name != "" {
+			credits = append(credits, model.CreatorCredit{Name: studio.Name, Role: model.RoleStudio})
+		}
+	}
 	subtitle := ""
 	if len(media.Studios.Nodes) > 0 {
 		subtitle = media.Studios.Nodes[0].Name
@@ -209,7 +215,7 @@ func (p *AniListProvider) FetchByProviderKey(ctx context.Context, idStr string) 
 		DurationSeconds: durationSec,
 		Genres:          media.Genres,
 		ExternalIDs:     extIDs,
-		ExternalLinks:   links,
+		Creators:        credits,
 	}, nil
 }
 
@@ -260,6 +266,12 @@ func (p *AniListProvider) Search(ctx context.Context, query string, limit int) (
 	if title == "" {
 		title = media.Title.Romaji
 	}
+	credits := make([]model.CreatorCredit, 0, len(media.Studios.Nodes))
+	for _, studio := range media.Studios.Nodes {
+		if studio.Name != "" {
+			credits = append(credits, model.CreatorCredit{Name: studio.Name, Role: model.RoleStudio})
+		}
+	}
 
 	coverArt := media.CoverImage.ExtraLarge
 	if coverArt == "" {
@@ -278,6 +290,7 @@ func (p *AniListProvider) Search(ctx context.Context, query string, limit int) (
 			ExternalIDs: map[string]string{
 				"anilist": strconv.Itoa(media.ID),
 			},
+			Creators: credits,
 			ExternalLinks: []ExternalLink{
 				{
 					Platform: "anilist",

@@ -37,6 +37,23 @@ const (
 	StatusDropped     = "dropped"
 )
 
+// Creator roles on catalog items.
+const (
+	RoleArtist    = "artist"
+	RoleAuthor    = "author"
+	RoleDirector  = "director"
+	RoleDeveloper = "developer"
+	RolePublisher = "publisher"
+	RoleStudio    = "studio"
+)
+
+// CreatorCredit names one creator of a media item and their role, like the
+// artist of a track or the director of a film.
+type CreatorCredit struct {
+	Name string `json:"name"`
+	Role string `json:"role"`
+}
+
 // CatalogItem is a canonical entry across media domains (track, game, anime, video, book).
 type CatalogItem struct {
 	ID              uuid.UUID      `gorm:"type:uuid;primaryKey" json:"id"`
@@ -84,7 +101,6 @@ func (c *CatalogItem) GetExternalIDs() map[string]string {
 	_ = json.Unmarshal(c.ExternalIDs, &res)
 	return res
 }
-
 
 // ActiveSession represents real-time now-playing or live gaming/media playback.
 type ActiveSession struct {
@@ -159,20 +175,59 @@ func (Collection) TableName() string { return "collections" }
 
 // CollectionItem links a media item to a playlist or watchlist.
 type CollectionItem struct {
-	ID           uuid.UUID      `gorm:"type:uuid;primaryKey" json:"id"`
-	CollectionID uuid.UUID      `gorm:"type:uuid;not null;index:ix_coll_item_coll" json:"collection_id"`
-	CatalogID    *uuid.UUID     `gorm:"type:uuid;index:ix_coll_item_catalog" json:"catalog_id,omitempty"`
-	Position     int            `gorm:"not null;default:0" json:"position"`
-	Note         *string        `gorm:"type:text" json:"note,omitempty"`
-	Rating       *int           `json:"rating,omitempty"`
-	Status       *string        `gorm:"type:varchar(32)" json:"status,omitempty"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
+	ID           uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	CollectionID uuid.UUID  `gorm:"type:uuid;not null;index:ix_coll_item_coll" json:"collection_id"`
+	CatalogID    *uuid.UUID `gorm:"type:uuid;index:ix_coll_item_catalog" json:"catalog_id,omitempty"`
+	Position     int        `gorm:"not null;default:0" json:"position"`
+	Note         *string    `gorm:"type:text" json:"note,omitempty"`
+	Rating       *int       `json:"rating,omitempty"`
+	Status       *string    `gorm:"type:varchar(32)" json:"status,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 
 	CatalogItem *CatalogItem `gorm:"foreignKey:CatalogID" json:"catalog_item,omitempty"`
 }
 
 func (CollectionItem) TableName() string { return "collection_items" }
+
+// Review is an account's comment and rating on one catalog item. One review
+// per account per item: an update overwrites, it never appends.
+type Review struct {
+	ID        uuid.UUID      `gorm:"type:uuid;primaryKey" json:"id"`
+	AccountID uuid.UUID      `gorm:"type:uuid;not null;uniqueIndex:ix_review_acc_catalog" json:"account_id"`
+	CatalogID uuid.UUID      `gorm:"type:uuid;not null;uniqueIndex:ix_review_acc_catalog;index:ix_review_catalog" json:"catalog_id"`
+	Rating    *int           `gorm:"type:int" json:"rating,omitempty"`
+	Body      *string        `gorm:"type:text" json:"body,omitempty"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+func (Review) TableName() string { return "reviews" }
+
+// Creator is a person or organisation behind catalog items — an artist,
+// author, director, developer, studio, or publisher. Names match per domain,
+// so the same name in two domains stays two creators.
+type Creator struct {
+	ID        uuid.UUID      `gorm:"type:uuid;primaryKey" json:"id"`
+	Domain    string         `gorm:"type:varchar(32);not null;uniqueIndex:ix_creator_domain_name" json:"domain"`
+	Name      string         `gorm:"type:varchar(512);not null;uniqueIndex:ix_creator_domain_name" json:"name"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+func (Creator) TableName() string { return "creators" }
+
+// CatalogCreator links a catalog item to one of its creators with a role.
+type CatalogCreator struct {
+	CatalogID uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:ix_cat_creator" json:"catalog_id"`
+	CreatorID uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:ix_cat_creator;index:ix_cat_creator_creator" json:"creator_id"`
+	Role      string    `gorm:"type:varchar(32);not null;uniqueIndex:ix_cat_creator" json:"role"`
+	Position  int       `gorm:"not null;default:0" json:"position"`
+}
+
+func (CatalogCreator) TableName() string { return "catalog_creators" }
 
 // ExternalSyncConnection configures background syncing with Last.fm, Steam, Spotify, AniList, etc.
 type ExternalSyncConnection struct {
@@ -202,4 +257,3 @@ func ToJSON(v any) datatypes.JSON {
 	}
 	return datatypes.JSON(b)
 }
-

@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/model"
+	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/store"
 )
 
 // Engine orchestrates metadata resolution, caching, and upstream querying.
@@ -162,7 +163,18 @@ func (e *Engine) persistUpstream(ctx context.Context, providerName, key string, 
 	if err != nil {
 		return nil, err
 	}
+	e.attachCreators(ctx, item.ID, item.Domain, m.Creators)
 	return item, nil
+}
+
+// attachCreators resolves the unified media's creator credits into linked
+// Creator records. Credits organize the catalog but never fail a resolve.
+func (e *Engine) attachCreators(ctx context.Context, catalogID uuid.UUID, domain string, credits []model.CreatorCredit) {
+	st := store.New(e.db)
+	if err := st.AttachCatalogCreators(ctx, catalogID, domain, credits); err != nil {
+		// Credits organize the catalog but never fail a resolve.
+		return
+	}
 }
 
 func (e *Engine) itemToUnified(ctx context.Context, item *model.CatalogItem) *UnifiedMedia {
@@ -217,9 +229,19 @@ func (e *Engine) itemToUnified(ctx context.Context, item *model.CatalogItem) *Un
 		ExternalIDs:         item.GetExternalIDs(),
 		ExternalLinks:       extLinks,
 		ShareURL:            e.FormatShareURL(slug),
+		Creators:            e.catalogCreators(ctx, item.ID),
 		ScrobbleCount:       scrobbleCount,
 		ActiveListenerCount: activeCount,
 	}
+}
+
+// catalogCreators reads one catalog item's creator credits, in credit order.
+func (e *Engine) catalogCreators(ctx context.Context, catalogID uuid.UUID) []model.CreatorCredit {
+	var credits []model.CreatorCredit
+	e.db.WithContext(ctx).
+		Raw(`SELECT c.name, cc.role FROM catalog_creators cc JOIN creators c ON c.id = cc.creator_id WHERE cc.catalog_id = ? ORDER BY cc.position, cc.role`, catalogID).
+		Scan(&credits)
+	return credits
 }
 
 // Search searches local items and upstream providers for matching media.
@@ -234,7 +256,10 @@ func (e *Engine) Search(ctx context.Context, domain, query string, limit int) ([
 		dbQuery = dbQuery.Where("domain = ?", domain)
 	}
 	term := "%" + strings.ToLower(strings.TrimSpace(query)) + "%"
-	dbQuery = dbQuery.Where("LOWER(title) LIKE ? OR LOWER(subtitle) LIKE ?", term, term)
+	dbQuery = dbQuery.Where(
+		"LOWER(title) LIKE ? OR LOWER(subtitle) LIKE ? OR id IN (SELECT cc.catalog_id FROM catalog_creators cc JOIN creators c ON c.id = cc.creator_id WHERE LOWER(c.name) LIKE ?)",
+		term, term, term,
+	)
 	_ = dbQuery.Limit(limit).Find(&localItems).Error
 
 	results := make([]UnifiedMedia, 0, limit)

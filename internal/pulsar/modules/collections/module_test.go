@@ -204,3 +204,54 @@ func TestUploadRejectsAnotherAccountsPlaylist(t *testing.T) {
 		t.Fatalf("expected 403 for a foreign collection, got %d: %s", recorder.Code, recorder.Body.String())
 	}
 }
+
+// TestUpdateItemStatus marks progress on one item without touching the rest
+// of the list, and rejects statuses the domain does not know.
+func TestUpdateItemStatus(t *testing.T) {
+	engine, inst, account := testInstance(t)
+
+	coll := &model.Collection{
+		AccountID: account,
+		Domain:    model.DomainVideo,
+		Kind:      model.KindWatchlist,
+		Name:      "Evenings",
+		IsPublic:  true,
+	}
+	if err := inst.core.Store.CreateCollection(nil, coll); err != nil {
+		t.Fatalf("create collection: %v", err)
+	}
+	catalogID := uuid.New()
+	if err := inst.core.Store.DB.Create(&model.CatalogItem{
+		ID: catalogID, Domain: model.DomainVideo, Provider: "test", Title: "A Film",
+	}).Error; err != nil {
+		t.Fatalf("seed catalog: %v", err)
+	}
+	item := &model.CollectionItem{CollectionID: coll.ID, CatalogID: &catalogID, Position: 0, Status: &[]string{model.StatusPlanToWatch}[0]}
+	if err := inst.core.Store.AddCollectionItem(nil, item); err != nil {
+		t.Fatalf("add item: %v", err)
+	}
+
+	recorder := call(t, engine, http.MethodPatch, "/api/collections/"+coll.ID.String()+"/items/"+item.ID.String(), map[string]any{
+		"status": model.StatusWatching,
+	})
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("patch status = %d, body %s", recorder.Code, recorder.Body.String())
+	}
+
+	var updated model.CollectionItem
+	if err := json.Unmarshal(recorder.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("decode patch: %v", err)
+	}
+	if updated.Status == nil || *updated.Status != model.StatusWatching {
+		t.Fatalf("expected status watching, got %v", updated.Status)
+	}
+
+	// The other items of the list are untouched, and unknown statuses are
+	// refused before they reach the store.
+	recorder = call(t, engine, http.MethodPatch, "/api/collections/"+coll.ID.String()+"/items/"+item.ID.String(), map[string]any{
+		"status": "binged",
+	})
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("unknown status status = %d, body %s", recorder.Code, recorder.Body.String())
+	}
+}

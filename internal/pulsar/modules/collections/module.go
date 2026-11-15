@@ -41,7 +41,7 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 	r.DELETE("/:id", authn.RequireAuth(), i.deleteCollection)
 	r.POST("/:id/items", authn.RequireAuth(), i.addItem)
 	r.PUT("/:id/items", authn.RequireAuth(), i.replaceItems)
-	r.DELETE("/:id/items/:itemId", authn.RequireAuth(), i.removeItem)
+	r.PATCH("/:id/items/:itemId", authn.RequireAuth(), i.updateItem)
 
 	// The account's favourites are a collection of their own, kind
 	// favorites: one per account and domain, made on first use. They are
@@ -345,6 +345,77 @@ func (i *instance) removeItem(c *gin.Context) {
 	}
 
 	httpx.NoContent(c)
+}
+
+type updateItemRequest struct {
+	Note   *string `json:"note,omitempty"`
+	Rating *int    `json:"rating,omitempty"`
+	Status *string `json:"status,omitempty"`
+}
+
+// updateItem marks progress on one collection item — status, rating, or
+// note — without re-uploading the whole list.
+func (i *instance) updateItem(c *gin.Context) {
+	accountID, ok := ownerOf(c, i)
+	if !ok {
+		return
+	}
+
+	collIDStr := c.Param("id")
+	collID, err := uuid.Parse(collIDStr)
+	if err != nil {
+		httpx.BadRequest(c, "INVALID_ID", "invalid collection id")
+		return
+	}
+
+	coll, err := i.core.Store.GetCollection(c.Request.Context(), collID)
+	if err != nil {
+		httpx.NotFound(c, "collection not found")
+		return
+	}
+	if coll.AccountID != accountID {
+		httpx.Forbidden(c, "not the owner of this collection")
+		return
+	}
+
+	itemIDStr := c.Param("itemId")
+	itemID, err := uuid.Parse(itemIDStr)
+	if err != nil {
+		httpx.BadRequest(c, "INVALID_ID", "invalid item id")
+		return
+	}
+
+	var req updateItemRequest
+	if !httpx.BindJSON(c, &req) {
+		return
+	}
+
+	if req.Status != nil && !validCollectionStatus(*req.Status) {
+		httpx.BadRequest(c, "INVALID_ARGUMENT", "unknown status "+*req.Status)
+		return
+	}
+
+	item, err := i.core.Store.UpdateCollectionItem(c.Request.Context(), collID, itemID, store.CollectionItemUpdate{
+		Note:   req.Note,
+		Rating: req.Rating,
+		Status: req.Status,
+	})
+	if err != nil {
+		httpx.NotFound(c, "collection item not found")
+		return
+	}
+
+	httpx.OK(c, item)
+}
+
+// validCollectionStatus accepts the statuses a client may set on an item.
+func validCollectionStatus(status string) bool {
+	switch status {
+	case model.StatusPlanToWatch, model.StatusWatching, model.StatusCompleted,
+		model.StatusOnHold, model.StatusDropped:
+		return true
+	}
+	return false
 }
 
 // replaceItemsRequest is a playlist upload or re-sync: the caller's list is
