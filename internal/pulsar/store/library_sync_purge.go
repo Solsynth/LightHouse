@@ -24,10 +24,10 @@ func PurgeLibrarySyncTombstones(ctx context.Context, db *gorm.DB, retention time
 		model any
 		table string
 	}{
-		{&model.LibrarySyncTrack{}, "pulsar_library_tracks"},
-		{&model.LibrarySyncLink{}, "pulsar_library_links"},
-		{&model.LibrarySyncLyrics{}, "pulsar_library_lyrics"},
-		{&model.LibrarySyncPlay{}, "pulsar_library_plays"},
+		{&model.LibrarySyncTrack{}, "library_tracks"},
+		{&model.LibrarySyncLink{}, "library_links"},
+		{&model.LibrarySyncLyrics{}, "library_lyrics"},
+		{&model.LibrarySyncPlay{}, "library_plays"},
 	} {
 		result := db.WithContext(ctx).
 			Where("deleted_at IS NOT NULL AND deleted_at < ?", cutoff).

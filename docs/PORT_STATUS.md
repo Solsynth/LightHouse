@@ -12,9 +12,9 @@ library so a second device can adopt it. It is a Pulsar feature module
 now-playing stay with their own modules, and the mirror shares Pulsar's
 database, auth and jobs.
 
-Seven tables (`pulsar_library_cursors`, `pulsar_library_tracks`,
-`pulsar_library_links`, `pulsar_library_lyrics`, `pulsar_library_plays`,
-`pulsar_library_session`, `pulsar_library_settings`), a monotone
+Seven tables (`library_cursors`, `library_tracks`, `library_links`,
+`library_lyrics`, `library_plays`, `library_session`, `library_settings`), a
+monotone
 `(account_id, rev)` cursor per account, and three endpoints —
 `POST /api/library/push`, `GET /api/library/pull`, `GET /api/library/status` —
 gated on the `library.sync` permission key.

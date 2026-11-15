@@ -81,7 +81,7 @@ func (s *Services) PublishScrobbleCreated(ctx context.Context, accountID uuid.UU
 		return
 	}
 	subject := "pulsar.scrobble.created"
-	if err := s.NATS.Publish(ctx, subject, "pulsar_scrobbles", scrobble); err != nil {
+	if err := s.NATS.Publish(ctx, subject, "scrobbles", scrobble); err != nil {
 		if s.Log != nil {
 			s.Log.Warn("failed to publish scrobble event", "scrobble_id", scrobble.ID, "error", err)
 		}

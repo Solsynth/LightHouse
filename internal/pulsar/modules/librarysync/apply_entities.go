@@ -472,7 +472,7 @@ func (a *applier) applyDocument(entity string, rev int64, clock time.Time, docum
 
 func documentTable(entity string) string {
 	if entity == EntitySettings {
-		return "pulsar_library_settings"
+		return "library_settings"
 	}
-	return "pulsar_library_session"
+	return "library_session"
 }

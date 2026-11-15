@@ -25,12 +25,12 @@ func Factory() module.Factory[core.Services] {
 		Capabilities:   []string{"library", "library.sync"},
 		SQL: []module.SchemaHook{module.DDL(
 			// Partial indexes keep tombstones cheap to find for the purge job.
-			`CREATE INDEX IF NOT EXISTS ix_pulsar_library_tracks_deleted
-				ON pulsar_library_tracks (account_id, deleted_at) WHERE deleted_at IS NOT NULL`,
-			`CREATE INDEX IF NOT EXISTS ix_pulsar_library_links_deleted
-				ON pulsar_library_links (account_id, deleted_at) WHERE deleted_at IS NOT NULL`,
-			`CREATE INDEX IF NOT EXISTS ix_pulsar_library_lyrics_deleted
-				ON pulsar_library_lyrics (account_id, deleted_at) WHERE deleted_at IS NOT NULL`,
+			`CREATE INDEX IF NOT EXISTS ix_library_tracks_deleted
+				ON library_tracks (account_id, deleted_at) WHERE deleted_at IS NOT NULL`,
+			`CREATE INDEX IF NOT EXISTS ix_library_links_deleted
+				ON library_links (account_id, deleted_at) WHERE deleted_at IS NOT NULL`,
+			`CREATE INDEX IF NOT EXISTS ix_library_lyrics_deleted
+				ON library_lyrics (account_id, deleted_at) WHERE deleted_at IS NOT NULL`,
 		)},
 		New: func() module.Instance[core.Services] { return &instance{} },
 	}

@@ -198,12 +198,12 @@ func (h *handler) status(c *gin.Context) {
 	var devices []string
 	if err := h.store.DB.Raw(`
 		SELECT DISTINCT device_id FROM (
-			SELECT device_id, account_id FROM pulsar_library_tracks
-			UNION ALL SELECT device_id, account_id FROM pulsar_library_links
-			UNION ALL SELECT device_id, account_id FROM pulsar_library_lyrics
-			UNION ALL SELECT device_id, account_id FROM pulsar_library_plays
-			UNION ALL SELECT device_id, account_id FROM pulsar_library_session
-			UNION ALL SELECT device_id, account_id FROM pulsar_library_settings
+			SELECT device_id, account_id FROM library_tracks
+			UNION ALL SELECT device_id, account_id FROM library_links
+			UNION ALL SELECT device_id, account_id FROM library_lyrics
+			UNION ALL SELECT device_id, account_id FROM library_plays
+			UNION ALL SELECT device_id, account_id FROM library_session
+			UNION ALL SELECT device_id, account_id FROM library_settings
 		) AS account_devices WHERE account_id = ?`, accountID).Scan(&devices).Error; err != nil {
 		h.fail(c, err)
 		return
@@ -212,12 +212,12 @@ func (h *handler) status(c *gin.Context) {
 
 	if err := h.store.DB.Raw(`
 		SELECT device_id FROM (
-			SELECT device_id, rev, account_id FROM pulsar_library_tracks
-			UNION ALL SELECT device_id, rev, account_id FROM pulsar_library_links
-			UNION ALL SELECT device_id, rev, account_id FROM pulsar_library_lyrics
-			UNION ALL SELECT device_id, rev, account_id FROM pulsar_library_plays
-			UNION ALL SELECT device_id, rev, account_id FROM pulsar_library_session
-			UNION ALL SELECT device_id, rev, account_id FROM pulsar_library_settings
+			SELECT device_id, rev, account_id FROM library_tracks
+			UNION ALL SELECT device_id, rev, account_id FROM library_links
+			UNION ALL SELECT device_id, rev, account_id FROM library_lyrics
+			UNION ALL SELECT device_id, rev, account_id FROM library_plays
+			UNION ALL SELECT device_id, rev, account_id FROM library_session
+			UNION ALL SELECT device_id, rev, account_id FROM library_settings
 		) AS rows_by_device
 		WHERE account_id = ?
 		ORDER BY rev DESC

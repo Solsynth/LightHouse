@@ -31,7 +31,7 @@ type LibrarySyncCursor struct {
 	LibrarySyncBase
 }
 
-func (LibrarySyncCursor) TableName() string { return "pulsar_library_cursors" }
+func (LibrarySyncCursor) TableName() string { return "library_cursors" }
 
 // LibrarySyncTrack is one row per (account, fingerprint).
 type LibrarySyncTrack struct {
@@ -49,13 +49,13 @@ type LibrarySyncTrack struct {
 	Mbid        *string   `gorm:"type:varchar(1024)" json:"mbid,omitempty"`
 	// Clock is the last-write-wins key: UpdatedAt for a live row, DeletedAt for
 	// a tombstone.
-	Clock    time.Time `gorm:"not null;index:ix_pulsar_library_tracks_clock" json:"clock"`
-	Rev      int64     `gorm:"not null;index:ix_pulsar_library_tracks_rev" json:"rev"`
+	Clock    time.Time `gorm:"not null;index:ix_library_tracks_clock" json:"clock"`
+	Rev      int64     `gorm:"not null;index:ix_library_tracks_rev" json:"rev"`
 	DeviceID string    `gorm:"type:varchar(64);not null" json:"device_id"`
 	LibrarySyncBase
 }
 
-func (LibrarySyncTrack) TableName() string { return "pulsar_library_tracks" }
+func (LibrarySyncTrack) TableName() string { return "library_tracks" }
 
 // LibrarySyncLink is one row per (account, source_id, external_id). Local-file
 // links never reach this table: they name a path on one device.
@@ -69,13 +69,13 @@ type LibrarySyncLink struct {
 	ArtID            *string   `gorm:"type:varchar(1024)" json:"art_id,omitempty"`
 	LinkedAt         time.Time `gorm:"not null" json:"linked_at"`
 	// Clock is LastSeenAt for a live row, the tombstone time for a deletion.
-	Clock    time.Time `gorm:"not null;index:ix_pulsar_library_links_rev" json:"clock"`
+	Clock    time.Time `gorm:"not null;index:ix_library_links_rev" json:"clock"`
 	Rev      int64     `gorm:"not null" json:"rev"`
 	DeviceID string    `gorm:"type:varchar(64);not null" json:"device_id"`
 	LibrarySyncBase
 }
 
-func (LibrarySyncLink) TableName() string { return "pulsar_library_links" }
+func (LibrarySyncLink) TableName() string { return "library_links" }
 
 // LibrarySyncLyrics is one row per (account, track_fingerprint).
 type LibrarySyncLyrics struct {
@@ -89,13 +89,13 @@ type LibrarySyncLyrics struct {
 	FetchedAt           time.Time `gorm:"not null" json:"fetched_at"`
 	TranslationLanguage *string   `gorm:"type:varchar(64)" json:"translation_language,omitempty"`
 	// Clock is FetchedAt for a live row, the tombstone time for a deletion.
-	Clock    time.Time `gorm:"not null;index:ix_pulsar_library_lyrics_rev" json:"clock"`
+	Clock    time.Time `gorm:"not null;index:ix_library_lyrics_rev" json:"clock"`
 	Rev      int64     `gorm:"not null" json:"rev"`
 	DeviceID string    `gorm:"type:varchar(64);not null" json:"device_id"`
 	LibrarySyncBase
 }
 
-func (LibrarySyncLyrics) TableName() string { return "pulsar_library_lyrics" }
+func (LibrarySyncLyrics) TableName() string { return "library_lyrics" }
 
 // LibrarySyncPlay is one row per (account, track_fingerprint, started_at).
 // A play is append-only: it has no tombstone.
@@ -107,38 +107,38 @@ type LibrarySyncPlay struct {
 	ListenedMs       int64     `gorm:"not null;default:0" json:"listened_ms"`
 	PositionMs       int64     `gorm:"not null;default:0" json:"position_ms"`
 	Completed        bool      `gorm:"not null;default:false" json:"completed"`
-	Rev              int64     `gorm:"not null;index:ix_pulsar_library_plays_rev" json:"rev"`
+	Rev              int64     `gorm:"not null;index:ix_library_plays_rev" json:"rev"`
 	DeviceID         string    `gorm:"type:varchar(64);not null" json:"device_id"`
 	LibrarySyncBase
 }
 
-func (LibrarySyncPlay) TableName() string { return "pulsar_library_plays" }
+func (LibrarySyncPlay) TableName() string { return "library_plays" }
 
 // LibrarySyncSession is the account's playback-session document: one row per
 // account, last-write-wins on Clock.
 type LibrarySyncSession struct {
 	AccountID uuid.UUID      `gorm:"type:uuid;primaryKey" json:"account_id"`
 	Data      datatypes.JSON `gorm:"type:jsonb;not null" json:"data"`
-	Clock     time.Time      `gorm:"not null;index:ix_pulsar_library_session_rev" json:"clock"`
+	Clock     time.Time      `gorm:"not null;index:ix_library_session_rev" json:"clock"`
 	Rev       int64          `gorm:"not null" json:"rev"`
 	DeviceID  string         `gorm:"type:varchar(64);not null" json:"device_id"`
 	LibrarySyncBase
 }
 
-func (LibrarySyncSession) TableName() string { return "pulsar_library_session" }
+func (LibrarySyncSession) TableName() string { return "library_session" }
 
 // LibrarySyncSettings is the account's settings document: one row per account,
 // last-write-wins on Clock.
 type LibrarySyncSettings struct {
 	AccountID uuid.UUID      `gorm:"type:uuid;primaryKey" json:"account_id"`
 	Data      datatypes.JSON `gorm:"type:jsonb;not null" json:"data"`
-	Clock     time.Time      `gorm:"not null;index:ix_pulsar_library_settings_rev" json:"clock"`
+	Clock     time.Time      `gorm:"not null;index:ix_library_settings_rev" json:"clock"`
 	Rev       int64          `gorm:"not null" json:"rev"`
 	DeviceID  string         `gorm:"type:varchar(64);not null" json:"device_id"`
 	LibrarySyncBase
 }
 
-func (LibrarySyncSettings) TableName() string { return "pulsar_library_settings" }
+func (LibrarySyncSettings) TableName() string { return "library_settings" }
 
 // LibrarySyncModels is every table the library sync module owns, for
 // AutoMigrate.

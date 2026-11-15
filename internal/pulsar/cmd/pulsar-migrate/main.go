@@ -1,9 +1,9 @@
 // pulsar-migrate copies the legacy Stargate presence tables into Pulsar's
 // canonical playback tables:
 //
-//	presence_catalog_items -> pulsar_catalog_items
-//	presence_activities    -> pulsar_active_sessions (open rows)
-//	                          pulsar_scrobbles       (ended rows)
+//	presence_catalog_items -> catalog_items
+//	presence_activities    -> active_sessions (open rows)
+//	                          scrobbles         (ended rows)
 //
 // Rows keep their UUIDs, so catalog references and client history stay stable.
 // The copy is idempotent: existing ids and open (account_id, manual_id)
