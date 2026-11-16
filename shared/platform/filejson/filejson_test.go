@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
 )
 
 // legacyAttachments is the attachments column of a chat_messages row written
@@ -278,6 +280,39 @@ func TestReferenceToleratesEmptyInstants(t *testing.T) {
 	}
 	if reference.CreatedAt == nil || !reference.CreatedAt.Time().IsZero() {
 		t.Errorf("created_at = %v, want the zero instant for an empty object", reference.CreatedAt)
+	}
+}
+
+func TestFileValueNormalizesLegacyRow(t *testing.T) {
+	value := FileValue([]byte(legacyRealmArtwork))
+	reference, ok := value.(*models.SnCloudFileReferenceObject)
+	if !ok {
+		t.Fatalf("value = %T, want *models.SnCloudFileReferenceObject", value)
+	}
+	if reference.Id != "iibOlcZz2wWs9SyMsX4Tw" || reference.MimeType != "image/webp" {
+		t.Errorf("id/mime_type = %q/%q", reference.Id, reference.MimeType)
+	}
+	// The legacy fleet stored NodaTime Instants as {} — wire that as null
+	// (omitted) instead of leaking the raw object or a zero date.
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(encoded, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if _, present := wire["created_at"]; present {
+		t.Errorf("wire created_at = %v, want omitted for a legacy empty instant", wire["created_at"])
+	}
+}
+
+func TestFileValueEmptyColumn(t *testing.T) {
+	if value := FileValue(nil); value != nil {
+		t.Errorf("value = %v, want nil", value)
+	}
+	if value := FileValue([]byte(`null`)); value != nil {
+		t.Errorf("value = %v, want nil", value)
 	}
 }
 

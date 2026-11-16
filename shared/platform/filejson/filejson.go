@@ -97,6 +97,29 @@ func Unmarshal(raw []byte, destination any) error {
 	return Decode(normalize(raw), destination)
 }
 
+// FileValue decodes a file-reference jsonb column for a wire field typed as
+// any. It is the typed counterpart of Value: the column is decoded through
+// Reference, so legacy C# rows (NodaTime Instants stored as {}) normalize to
+// the fleet wire shape — snake_case keys and RFC3339 timestamps — instead of
+// passing the raw jsonb through. An empty or unusable column yields nil
+// (wire null).
+func FileValue(raw []byte) any {
+	reference := Reference(raw)
+	if reference == nil {
+		return nil
+	}
+	if reference.CreatedAt != nil && reference.CreatedAt.Time().IsZero() {
+		reference.CreatedAt = nil
+	}
+	if reference.UpdatedAt != nil && reference.UpdatedAt.Time().IsZero() {
+		reference.UpdatedAt = nil
+	}
+	if reference.DeletedAt != nil && reference.DeletedAt.Time().IsZero() {
+		reference.DeletedAt = nil
+	}
+	return reference
+}
+
 // Value decodes a typed jsonb object for a wire field typed as any, keeping the
 // column an object with snake_case keys. It serves file references and other
 // legacy value objects (for example posts.embed_view), which the C# fleet
