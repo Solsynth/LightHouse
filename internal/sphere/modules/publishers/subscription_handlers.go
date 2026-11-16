@@ -462,7 +462,7 @@ func liveStreamModel(entity *store.LiveStreamEntity, publishers map[string]*stor
 		PeakViewerCount:      entity.PeakViewerCount,
 		TotalAwardScore:      entity.TotalAwardScore,
 		DistributedAward:     entity.DistributedAwardAmount,
-		Thumbnail:            filejson.Value(entity.Thumbnail),
+		Thumbnail:            filejson.FileValue(entity.Thumbnail),
 		Metadata:             store.JSONValue(entity.Metadata),
 		PublisherID:          store.UUIDPtrString(entity.PublisherID),
 		CreatedAt:            model.NewTime(entity.CreatedAt),

@@ -191,8 +191,8 @@ func PublisherToModel(entity *PublisherEntity) model.Publisher {
 		Name:                   entity.Name,
 		Nick:                   entity.Nick,
 		Bio:                    entity.Bio,
-		Picture:                filejson.Value(entity.Picture),
-		Background:             filejson.Value(entity.Background),
+		Picture:                filejson.FileValue(entity.Picture),
+		Background:             filejson.FileValue(entity.Background),
 		Meta:                   JSONValue(entity.Meta),
 		Metadata:               JSONValue(entity.Metadata),
 		AccountID:              UUIDPtrString(entity.AccountID),
@@ -325,7 +325,7 @@ func StickerToModel(entity *StickerEntity) model.Sticker {
 		ID:                 entity.ID.String(),
 		Slug:               entity.Slug,
 		Name:               entity.Name,
-		Image:              filejson.Value(entity.Image),
+		Image:              filejson.FileValue(entity.Image),
 		Size:               entity.Size,
 		Mode:               entity.Mode,
 		Order:              entity.Order,
@@ -341,7 +341,7 @@ func StickerToModel(entity *StickerEntity) model.Sticker {
 func StickerPackToModel(entity *StickerPackEntity) model.StickerPack {
 	return model.StickerPack{
 		ID:          entity.ID.String(),
-		Icon:        filejson.Value(entity.Icon),
+		Icon:        filejson.FileValue(entity.Icon),
 		Name:        entity.Name,
 		Description: entity.Description,
 		Prefix:      entity.Prefix,

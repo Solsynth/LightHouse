@@ -223,7 +223,7 @@ func (i *instance) leaderboardEntries(c *gin.Context) ([]leaderboardEntry, error
 			PublisherID: row.ID.String(),
 			Name:        row.Name,
 			Nick:        row.Nick,
-			Picture:     filejson.Value(row.Picture),
+			Picture:     filejson.FileValue(row.Picture),
 			Rating:      row.Rating,
 			Rank:        currentRank,
 			Percentile:  math.Round(percentile*10) / 10,
