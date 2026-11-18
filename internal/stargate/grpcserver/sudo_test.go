@@ -81,8 +81,8 @@ func TestValidateSudoRPC(t *testing.T) {
 	svc := auth.NewAuthService(st, rc, config.Default(), nil, nil, nil, nil, nil, sudoGrpcLogger())
 	client := startSudoGrpcServer(t, Deps{Store: st, Auth: svc})
 
-	// A session whose account has a pickable password factor, so the
-	// hint is non-empty.
+	// An account whose only factor is a password (Trustworthy 1) cannot
+	// elevate, so the hint is empty: such a session is treated as lifted.
 	now := time.Now().UTC()
 	accountID := uuid.New()
 	sessionID := uuid.New()
@@ -109,8 +109,8 @@ func TestValidateSudoRPC(t *testing.T) {
 		if resp.GetValid() {
 			t.Fatal("valid = true for an unelevated session")
 		}
-		if got := resp.GetFactorTypes(); len(got) != 1 || got[0] != "password" {
-			t.Fatalf("factor_types = %v, want [password]", got)
+		if got := resp.GetFactorTypes(); len(got) != 0 {
+			t.Fatalf("factor_types = %v, want empty (password cannot elevate)", got)
 		}
 	})
 
@@ -125,8 +125,8 @@ func TestValidateSudoRPC(t *testing.T) {
 		if !resp.GetValid() {
 			t.Fatal("valid = false for an elevated session")
 		}
-		if got := resp.GetFactorTypes(); len(got) != 1 || got[0] != "password" {
-			t.Fatalf("factor_types = %v, want [password]", got)
+		if got := resp.GetFactorTypes(); len(got) != 0 {
+			t.Fatalf("factor_types = %v, want empty (password cannot elevate)", got)
 		}
 		svc.ClearSudo(ctx, sessionID.String())
 	})

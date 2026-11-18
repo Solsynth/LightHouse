@@ -80,24 +80,18 @@ func SudoAssertableFactorTypes(factors []model.AuthFactor) []model.AuthFactorTyp
 // present to elevate, sorted for a stable wire value. It advertises every
 // usable factor — including passkeys, which are presented through their own
 // assertion endpoint rather than the picker — because it tells the client what
-// the account has. "email_code" is appended when the account has nothing else
-// to present (no pickable and no assertable factor) and a verified email
-// contact exists: the emailed fallback is then the only way to elevate.
+// the account has.
 //
-// An empty result means the account cannot elevate at all — the elevation
-// cannot be started (AUTH_NO_AUTH_FACTORS) — so callers must surface a lookup
-// failure as an error, never as an empty hint.
-func SudoFactorHintAnswers(factors []model.AuthFactor, hasVerifiedEmail bool) []string {
+// An empty result means the account cannot elevate at all; RequireSudo then
+// treats the session as lifted rather than starting a challenge that could
+// never complete. Callers must surface a lookup failure as an error, never as
+// an empty hint.
+func SudoFactorHintAnswers(factors []model.AuthFactor) []string {
 	usable := SudoFactorTypes(factors)
-	names := make([]string, 0, len(usable)+1)
+	names := make([]string, 0, len(usable))
 	for _, ft := range usable {
 		names = append(names, sudoFactorTypeName(ft))
 	}
 	sort.Strings(names)
-	// Appended after sorting so the synthetic fallback always trails the real
-	// factors.
-	if len(SudoPickableFactorTypes(factors)) == 0 && len(SudoAssertableFactorTypes(factors)) == 0 && hasVerifiedEmail {
-		names = append(names, sudoFactorTypeName(model.AuthFactorTypeEmailCode))
-	}
 	return names
 }

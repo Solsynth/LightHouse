@@ -147,9 +147,6 @@ type AuthChallenge struct {
 	// SessionId binds an elevation challenge to the session that requested
 	// it. Never on the wire.
 	SessionId *string `json:"-"`
-	// ExtraFactorType, when set, marks the synthetic emailed fallback step of
-	// an elevation challenge (typed as an AuthFactorType). Never on the wire.
-	ExtraFactorType *int `json:"-"`
 
 	// Origin names the sign-in path that opened the challenge (see the
 	// ChallengeOrigin* constants). RiskScore/RiskSignals snapshot the scoring

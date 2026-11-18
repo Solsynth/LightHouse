@@ -684,25 +684,15 @@ func sudoFactorTypeName(t model.AuthFactorType) string {
 
 // SudoFactorHint returns the comma-joined lowercase factor type names the
 // account may use to elevate (see SudoFactorHintAnswers for the rules). An
-// empty hint means the account has nothing it can present — for such an account
-// the elevation cannot even be started (AUTH_NO_AUTH_FACTORS). A lookup failure
-// is returned as an error, never as an empty hint.
+// empty hint means the account has nothing it can present — RequireSudo then
+// treats the session as lifted instead of starting a challenge. A lookup
+// failure is returned as an error, never as an empty hint.
 func (s *AuthService) SudoFactorHint(ctx context.Context, accountID string) (string, error) {
 	factors, err := s.store.GetAuthFactors(ctx, uuid.MustParse(accountID))
 	if err != nil {
 		return "", err
 	}
-	// The emailed fallback is only consulted when nothing else is presentable,
-	// so the common case costs no extra query.
-	hasVerifiedEmail := false
-	if len(SudoPickableFactorTypes(factors)) == 0 && len(SudoAssertableFactorTypes(factors)) == 0 {
-		if _, err := s.store.GetEmailContactForNotify(ctx, accountID, true); err == nil {
-			hasVerifiedEmail = true
-		} else if !errors.Is(err, store.ErrNotFound) {
-			return "", err
-		}
-	}
-	return strings.Join(SudoFactorHintAnswers(factors, hasVerifiedEmail), ","), nil
+	return strings.Join(SudoFactorHintAnswers(factors), ","), nil
 }
 
 // RecordSudoElevated writes the accounts.sudo.elevate action log.

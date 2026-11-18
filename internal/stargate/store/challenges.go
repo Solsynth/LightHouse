@@ -48,7 +48,6 @@ func challengeFromEntity(entity *ChallengeEntity) *model.AuthChallenge {
 		Purpose:             derefString(entity.Purpose),
 		SessionId:           uuidPtrStr(entity.SessionID),
 		SudoUntil:           timePtr(entity.SudoUntil),
-		ExtraFactorType:     entity.ExtraFactorType,
 		Origin:              derefString(entity.Origin),
 		RiskScore:           entity.RiskScore,
 		IsTemporary:         entity.IsTemporary,
@@ -279,7 +278,6 @@ func (s *Store) CreateAuthChallenge(ctx context.Context, ch *model.AuthChallenge
 		Purpose:          optionalString(ch.Purpose),
 		SessionID:        boundSession,
 		SudoUntil:        timeValue(ch.SudoUntil),
-		ExtraFactorType:  ch.ExtraFactorType,
 		Origin:           optionalString(ch.Origin),
 		RiskScore:        ch.RiskScore,
 		RiskSignals:      riskSignals,
@@ -366,13 +364,12 @@ func (s *Store) UpdateAuthChallenge(ctx context.Context, ch *model.AuthChallenge
 			"purpose":                optionalString(ch.Purpose),
 			"session_id":             boundSession,
 			"sudo_until":             timeValue(ch.SudoUntil),
-			"extra_factor_type":      ch.ExtraFactorType,
 			// Set once the account behind an anonymous passkey challenge (or
 			// the risk behind a re-scored one) is known; trail is never
 			// written here, see AppendChallengeEvent.
-			"origin":       optionalString(ch.Origin),
-			"risk_score":   ch.RiskScore,
-			"risk_signals": riskSignalsJSON(ch.RiskSignals),
+			"origin":         optionalString(ch.Origin),
+			"risk_score":     ch.RiskScore,
+			"risk_signals":   riskSignalsJSON(ch.RiskSignals),
 			"is_temporary":   ch.IsTemporary,
 			"auto_renewable": ch.AutoRenewable,
 		}).Error

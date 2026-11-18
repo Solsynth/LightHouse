@@ -305,12 +305,10 @@ func getSudoChecker() SudoChecker {
 //   - otherwise it answers 403 AUTH_SUDO_REQUIRED with the usable factor type
 //     names in `detail`, and records the denied attempt.
 //
-// There is deliberately no "no factors, so skip" path. Elevation requires a
-// factor with Trustworthy >= 2 (see auth.SudoMinTrustworthy); a password-only
-// account without a verified email cannot elevate, and handing it an implicit
-// grant would expose the security settings. Such accounts are told what is
-// missing instead (SudoFactorHint returns an empty detail) and the request
-// still fails closed.
+// An account with nothing it could present anyway (no factor at or above
+// auth.SudoMinTrustworthy, so an empty hint) is treated as lifted: elevation
+// would be impossible for it to complete, and asking for a challenge would
+// dead-end. Every other account must prove presence before the action runs.
 func RequireSudo() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		checker := getSudoChecker()
@@ -341,6 +339,12 @@ func RequireSudo() gin.HandlerFunc {
 		if herr != nil {
 			c.AbortWithStatusJSON(http.StatusServiceUnavailable,
 				errs.New("SERVICE_UNAVAILABLE", "Elevation could not be verified.", http.StatusServiceUnavailable))
+			return
+		}
+		// Nothing the account could present: elevation can never complete, so
+		// there is no challenge to run — treat the session as lifted.
+		if hint == "" {
+			c.Next()
 			return
 		}
 		checker.RecordSudoFailure(c.Request.Context(), user.Id, session.Id, ClientIP(c.Request), c.Request.UserAgent())

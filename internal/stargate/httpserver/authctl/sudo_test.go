@@ -317,48 +317,6 @@ func decodeChallenge(t *testing.T, rec *httptest.ResponseRecorder) *model.AuthCh
 	return &ch
 }
 
-// TestSudoPasswordOnlyFallsBackToEmail pins (a): a password (Trustworthy 1)
-// cannot satisfy sudo. With a verified email the emailed fallback (trust 2) is
-// armed as the single step, and a crafted password submission is rejected.
-func TestSudoPasswordOnlyFallsBackToEmail(t *testing.T) {
-	sh := newSudoHarness(t, sudoSeed{
-		verifiedEmail: true,
-		factors:       []sudoFactorSeed{sudoPasswordSeed(t, model.AuthFactorTypePassword, sudoTestPassword, 1)},
-	})
-	ch := sh.createSudo(t)
-	if ch.Purpose != model.AuthChallengePurposeSudo {
-		t.Fatalf("purpose = %q, want sudo", ch.Purpose)
-	}
-	if ch.StepTotal != 1 || ch.StepRemain != 1 {
-		t.Fatalf("step %d/%d, want 1/1", ch.StepRemain, ch.StepTotal)
-	}
-
-	// The password is below the floor, so the picker offers only the synthetic
-	// emailed fallback (its id is the challenge id).
-	rec := sh.request(t, http.MethodGet, "/auth/challenge/"+ch.Id+"/factors", nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("factors: %d %s", rec.Code, rec.Body.String())
-	}
-	var factors []model.AuthFactor
-	if err := json.Unmarshal(rec.Body.Bytes(), &factors); err != nil {
-		t.Fatalf("decode factors: %v", err)
-	}
-	if len(factors) != 1 || factors[0].Id != ch.Id || model.AuthFactorType(factors[0].Type) != model.AuthFactorTypeEmailCode {
-		t.Fatalf("factors = %+v, want only the emailed fallback", factors)
-	}
-
-	rec = sh.submitFactor(t, ch.Id, sh.factorID(t, model.AuthFactorTypePassword), sudoTestPassword)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("password step: got %d, want 400 (body %s)", rec.Code, rec.Body.String())
-	}
-	if code := responseErrorCode(t, rec); code != "AUTH_FACTOR_NOT_TRUSTWORTHY" {
-		t.Fatalf("code = %q, want AUTH_FACTOR_NOT_TRUSTWORTHY", code)
-	}
-	if sh.isElevated(t) {
-		t.Fatal("password elevated the session")
-	}
-}
-
 // TestSudoStrongFactorCountsAsOneStep pins (b): one factor at or above
 // SudoMinTrustworthy satisfies the challenge, regardless of how many strong
 // factors the account has. The picker hides the password it would reject.
@@ -468,79 +426,21 @@ func TestSudoRejectsPinAndRecoveryCode(t *testing.T) {
 	}
 }
 
-// TestSudoNoFactorFailsClosed pins (e): an account with nothing to present —
-// no pickable factor and no verified email for the emailed fallback — cannot
-// even start an elevation. Registration always seeds a password, so this is the
-// broken/half-provisioned account, which must fail closed rather than be handed
-// an elevation it never proved.
-func TestSudoNoFactorFailsClosed(t *testing.T) {
-	sh := newSudoHarness(t, sudoSeed{})
-	// The harness seeds a password (every real account has one); drop it so the
-	// account is left with nothing to present.
-	if _, err := sh.pool.Exec(sh.ctx, `DELETE FROM account_auth_factors WHERE account_id = $1`, sh.accountID); err != nil {
-		t.Fatalf("delete factors: %v", err)
-	}
-	rec := sh.request(t, http.MethodPost, "/auth/sudo", nil)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("got %d, want 403 (body %s)", rec.Code, rec.Body.String())
-	}
-	if code := responseErrorCode(t, rec); code != "AUTH_NO_AUTH_FACTORS" {
-		t.Fatalf("code = %q, want AUTH_NO_AUTH_FACTORS", code)
-	}
-}
-
-// TestSudoEmailFallbackEndToEnd pins (f): an account with nothing presentable
-// but a verified email has the emailed fallback armed as its single step. It
-// sends a code through the spell service, stores it in Redis, settles that step
-// and grants the elevation; a resend while a live code exists is refused.
-func TestSudoEmailFallbackEndToEnd(t *testing.T) {
-	sh := newSudoHarness(t, sudoSeed{verifiedEmail: true})
-	// The harness seeds a password; drop it so nothing but the email is left.
-	if _, err := sh.pool.Exec(sh.ctx, `DELETE FROM account_auth_factors WHERE account_id = $1`, sh.accountID); err != nil {
-		t.Fatalf("delete factors: %v", err)
-	}
-	ch := sh.createSudo(t)
-	if ch.StepTotal != 1 || ch.StepRemain != 1 {
-		t.Fatalf("step %d/%d, want 1/1 (emailed fallback is the sole step)", ch.StepRemain, ch.StepTotal)
-	}
-
-	// Requesting the fallback code emails it through the fake Ring.
-	rec := sh.request(t, http.MethodPost, "/auth/challenge/"+ch.Id+"/factors/"+ch.Id, nil)
+// TestSudoNoPresentableFactorTreatedAsLifted pins (e): an account with nothing
+// presentable — no factor at or above SudoMinTrustworthy, verified email or
+// not — never gets a challenge: RequireSudo treats the session as lifted and
+// lets gated actions through without a re-authentication round trip.
+func TestSudoNoPresentableFactorTreatedAsLifted(t *testing.T) {
+	sh := newSudoHarness(t, sudoSeed{
+		verifiedEmail: true,
+		factors:       []sudoFactorSeed{sudoPasswordSeed(t, model.AuthFactorTypePassword, sudoTestPassword, 1)},
+	})
+	rec := sh.request(t, http.MethodGet, "/gated", nil)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("request fallback code: %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("gated (password-only): got %d, want 200 (body %s)", rec.Code, rec.Body.String())
 	}
-	if len(sh.ring.emails) != 1 {
-		t.Fatalf("emails sent = %d, want 1", len(sh.ring.emails))
-	}
-	var code string
-	found, err := sh.rc.Cache.Get(sh.ctx, "authsudo:"+ch.Id+":code", &code)
-	if err != nil || !found || len(code) != 6 {
-		t.Fatalf("fallback code not stored (found=%v err=%v code=%q)", found, err, code)
-	}
-
-	// A live code refuses a resend.
-	rec = sh.request(t, http.MethodPost, "/auth/challenge/"+ch.Id+"/factors/"+ch.Id, nil)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("resend: got %d, want 400 (body %s)", rec.Code, rec.Body.String())
-	}
-	if ec := responseErrorCode(t, rec); ec != "AUTH_FACTOR_SEND_FAILED" {
-		t.Fatalf("resend code = %q, want AUTH_FACTOR_SEND_FAILED", ec)
-	}
-
-	// Verifying the code settles the challenge's single step.
-	rec = sh.submitFactor(t, ch.Id, ch.Id, code)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("verify fallback: %d %s", rec.Code, rec.Body.String())
-	}
-	got := decodeChallenge(t, rec)
-	if got.StepRemain != 0 || got.SudoUntil == nil {
-		t.Fatalf("fallback did not complete the elevation: %+v", got)
-	}
-	if !sh.isElevated(t) {
-		t.Fatal("email fallback did not elevate the session")
-	}
-	if found, _ := sh.rc.Cache.Get(sh.ctx, "authsudo:"+ch.Id+":code", &code); found {
-		t.Fatal("fallback code was not consumed")
+	if sh.isElevated(t) {
+		t.Fatal("lifted-by-default must not mint an elevation grant")
 	}
 }
 

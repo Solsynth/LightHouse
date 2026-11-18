@@ -207,17 +207,16 @@ type ChallengeEntity struct {
 	StepTotal           int             `gorm:"column:step_total"`
 	UserAgent           *string         `gorm:"column:user_agent"`
 	// Elevation ("sudo") challenge columns: NULL for ordinary challenges.
-	Purpose         *string    `gorm:"column:purpose"`
-	SessionID       *uuid.UUID `gorm:"column:session_id"`
-	SudoUntil       *time.Time `gorm:"column:sudo_until"`
-	ExtraFactorType *int       `gorm:"column:extra_factor_type"`
+	Purpose   *string    `gorm:"column:purpose"`
+	SessionID *uuid.UUID `gorm:"column:session_id"`
+	SudoUntil *time.Time `gorm:"column:sudo_until"`
 	// Forensic trail (see migrate/0015_auth_challenge_trail.sql).
-	Origin      *string         `gorm:"column:origin"`
-	RiskScore   *float64        `gorm:"column:risk_score"`
-	RiskSignals *datatypes.JSON `gorm:"column:risk_signals;type:jsonb"`
-	Trail       datatypes.JSON  `gorm:"column:trail;type:jsonb"`
-	IsTemporary   bool          `gorm:"column:is_temporary"`
-	AutoRenewable bool          `gorm:"column:auto_renewable"`
+	Origin        *string         `gorm:"column:origin"`
+	RiskScore     *float64        `gorm:"column:risk_score"`
+	RiskSignals   *datatypes.JSON `gorm:"column:risk_signals;type:jsonb"`
+	Trail         datatypes.JSON  `gorm:"column:trail;type:jsonb"`
+	IsTemporary   bool            `gorm:"column:is_temporary"`
+	AutoRenewable bool            `gorm:"column:auto_renewable"`
 }
 
 func (ChallengeEntity) TableName() string { return "auth_challenges" }

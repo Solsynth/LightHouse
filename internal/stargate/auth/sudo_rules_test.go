@@ -64,10 +64,9 @@ func TestSudoPickableFactorTypes(t *testing.T) {
 
 func TestSudoFactorHintAnswers(t *testing.T) {
 	for _, tc := range []struct {
-		name     string
-		factors  []model.AuthFactor
-		hasEmail bool
-		want     []string
+		name    string
+		factors []model.AuthFactor
+		want    []string
 	}{
 		{
 			name:    "password is below the sudo floor",
@@ -75,26 +74,12 @@ func TestSudoFactorHintAnswers(t *testing.T) {
 			want:    []string{"timed_code"},
 		},
 		{
-			name:    "password only arms the email fallback",
-			factors: []model.AuthFactor{enabledFactor(model.AuthFactorTypePassword, 1)},
-			// The password cannot elevate, so the verified email is the only
-			// remaining path.
-			hasEmail: true,
-			want:     []string{"email_code"},
-		},
-		{
-			name:    "password only without a verified email",
+			name:    "password only cannot elevate",
 			factors: []model.AuthFactor{enabledFactor(model.AuthFactorTypePassword, 1)},
 			want:    []string{},
 		},
 		{
-			name:     "passkey only needs no emailed fallback",
-			factors:  []model.AuthFactor{enabledFactor(model.AuthFactorTypePasskey, 4)},
-			hasEmail: true,
-			want:     []string{"passkey"},
-		},
-		{
-			name:    "passkey only without a verified email",
+			name:    "passkey only",
 			factors: []model.AuthFactor{enabledFactor(model.AuthFactorTypePasskey, 4)},
 			want:    []string{"passkey"},
 		},
@@ -105,7 +90,7 @@ func TestSudoFactorHintAnswers(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := SudoFactorHintAnswers(tc.factors, tc.hasEmail)
+			got := SudoFactorHintAnswers(tc.factors)
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("hint = %v, want %v", got, tc.want)
 			}

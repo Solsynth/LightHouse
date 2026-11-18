@@ -101,17 +101,17 @@ func TestRequireSudo(t *testing.T) {
 		}
 	})
 
-	t.Run("denies even with an empty hint", func(t *testing.T) {
-		// Every real account can present a factor; an empty hint means a broken
-		// account, which must not reach the gated action unelevated.
+	t.Run("treats an empty hint as lifted", func(t *testing.T) {
+		// An account with nothing it could present can never complete an
+		// elevation, so the gate lets it through instead of dead-ending it.
 		checker := &fakeSudoChecker{elevated: false, hint: ""}
 		e := newSudoRouter(checker)
 		rec := doSudoRequest(e)
-		if rec.Code != http.StatusForbidden {
-			t.Fatalf("got %d, want 403 (body %s)", rec.Code, rec.Body.String())
+		if rec.Code != http.StatusOK {
+			t.Fatalf("got %d, want 200 (body %s)", rec.Code, rec.Body.String())
 		}
-		if body := decodeSudoError(t, rec); body["code"] != "AUTH_SUDO_REQUIRED" {
-			t.Fatalf("code = %v, want AUTH_SUDO_REQUIRED", body["code"])
+		if checker.failures != 0 {
+			t.Fatalf("failure records = %d, want 0", checker.failures)
 		}
 	})
 

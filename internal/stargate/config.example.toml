@@ -394,7 +394,7 @@ trustedSessionMaxGap = "720h"
 # elevation challenge (POST /api/auth/sudo). Auth-critical mutations require a
 # live grant. Default "5m".
 sudoModeLifetime = "5m"
-# How long an elevation challenge (and its emailed fallback code) stays valid.
+# How long an elevation challenge stays valid.
 # Default "10m".
 sudoChallengeLifetime = "10m"
 
