@@ -38,17 +38,27 @@ export function driveFileUrl(id?: string | null, variant?: string): string {
   return variant ? `${base}?${variant}=true` : base
 }
 
+/** Absolute URLs carry a scheme or are protocol-relative; the rest are paths. */
+const ABSOLUTE_URL = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i
+
 /**
- * Resolves a CloudFileRef to a loadable URL. Prefers the reference's own `url`
- * if present, and otherwise derives `/drive/files/{id}` using `driveFileUrl`.
+ * Resolves a CloudFileRef to a loadable URL.
+ *
+ * Only an absolute `url` is used as-is. The API may otherwise answer with a
+ * root-relative drive path (`/drive/files/{id}`), which means "on the drive
+ * origin" — but the console and the drive are different hosts, so the browser
+ * would look for it on the console and get the SPA shell instead of a picture.
+ * File ids therefore always re-derive through `driveFileUrl`, which targets
+ * the configured drive origin.
  */
 export function resolveFileUrl(
   file?: { id?: string | null; url?: string | null } | null,
   variant?: string,
 ): string {
   if (!file) return ''
-  if (file.url) return file.url
-  return driveFileUrl(file.id, variant)
+  if (file.url && ABSOLUTE_URL.test(file.url)) return file.url
+  if (file.id) return driveFileUrl(file.id, variant)
+  return file.url ?? ''
 }
 
 /**
