@@ -2,6 +2,8 @@ package metadata
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -10,6 +12,7 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/metadata"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/model"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/authn"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/httpx"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
@@ -42,16 +45,22 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 	engine := metadata.NewEngine(host.Core.DB, siteURL)
 
 	// Register built-in upstream metadata providers
-	engine.RegisterProvider(metadata.NewSteamProvider("", ""))
-	engine.RegisterProvider(metadata.NewMusicBrainzProvider("", "", ""))
-	engine.RegisterProvider(metadata.NewAniListProvider("", ""))
-	engine.RegisterProvider(metadata.NewTMDbProvider("", "", ""))
+	music := metadata.NewMusicBrainzSet("", "", "")
+	engine.RegisterProvider(music.Recording)
+	engine.RegisterProvider(music.Artist)
+	engine.RegisterProvider(music.Album)
 
 	i.engine = engine
 
 	// API routes (under /api)
 	host.API.GET("/metadata/:id", i.getMetadata)
 	host.API.GET("/metadata/search", i.searchMetadata)
+	// The entity endpoints the client's artist and album pages read: a name —
+	// the only handle every connected library shares — in, one cached catalog
+	// record out. They cannot be /metadata/:id because a library has no
+	// MusicBrainz id to ask with.
+	host.API.GET("/metadata/artist", i.getArtistMetadata)
+	host.API.GET("/metadata/album", i.getAlbumMetadata)
 	host.API.GET("/m/:id", i.getMetadata) // shorthand endpoint
 	host.API.GET("/metadata/:id/scrobbles", i.getMediaScrobbles)
 	host.API.PUT("/scrobbles/:id/link", authn.RequireAuth(), i.linkScrobble)
@@ -74,6 +83,61 @@ func (i *instance) getMetadata(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, media)
+}
+
+// getArtistMetadata answers an artist page: the fleet's record for the act,
+// resolved and cached once. The key is the name a library gives it, plus the
+// reader's language, so a description comes back in the interface's own
+// language when Wikipedia has the article.
+func (i *instance) getArtistMetadata(c *gin.Context) {
+	name := strings.TrimSpace(c.Query("name"))
+	if name == "" {
+		name = strings.TrimSpace(c.Query("q"))
+	}
+	if name == "" {
+		httpx.BadRequest(c, "INVALID_ARGUMENT", "artist name is required")
+		return
+	}
+	ctx := metadata.ContextWithReaderLang(c.Request.Context(), c.Query("lang"))
+	media, err := i.engine.ResolveArtist(ctx, name)
+	if err != nil {
+		metadataFailure(c, err)
+		return
+	}
+	httpx.OK(c, media)
+}
+
+// getAlbumMetadata answers an album page from a title and its artist — the
+// pair every library spells, since none of them shares MusicBrainz's ids.
+func (i *instance) getAlbumMetadata(c *gin.Context) {
+	title := strings.TrimSpace(c.Query("title"))
+	if title == "" {
+		title = strings.TrimSpace(c.Query("name"))
+	}
+	if title == "" {
+		httpx.BadRequest(c, "INVALID_ARGUMENT", "album title is required")
+		return
+	}
+	ctx := metadata.ContextWithReaderLang(c.Request.Context(), c.Query("lang"))
+	media, err := i.engine.ResolveAlbum(ctx, title, c.Query("artist"))
+	if err != nil {
+		metadataFailure(c, err)
+		return
+	}
+	httpx.OK(c, media)
+}
+
+// metadataFailure maps an entity resolve failure onto the status it means:
+// an upstream that is throttling or down is a 503 the client can retry, not a
+// 404 telling the user the artist does not exist — the two send a reader to
+// very different conclusions about their own library.
+func metadataFailure(c *gin.Context, err error) {
+	var busy metadata.BusyError
+	if errors.As(err, &busy) {
+		httpx.Fail(c, errs.New("UPSTREAM_BUSY", "The metadata service is busy; try again shortly.", http.StatusServiceUnavailable))
+		return
+	}
+	httpx.NotFound(c, err.Error())
 }
 
 func (i *instance) searchMetadata(c *gin.Context) {

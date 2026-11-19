@@ -23,6 +23,12 @@ type Engine struct {
 	siteURL   string
 	providers map[string]Provider
 	mu        sync.RWMutex
+	// entities coalesces and remembers name-keyed resolves: an artist by
+	// name is one upstream pass per process, not one per page open.
+	entities *entityCache
+	// trackProviders is the subset of providers the generic search asks: the
+	// ones that answer with tracks.
+	trackProviders []Provider
 }
 
 // NewEngine constructs a metadata resolution engine.
@@ -31,6 +37,7 @@ func NewEngine(db *gorm.DB, siteURL string) *Engine {
 		db:        db,
 		siteURL:   strings.TrimRight(siteURL, "/"),
 		providers: make(map[string]Provider),
+		entities:  newEntityCache(),
 	}
 }
 
@@ -39,6 +46,13 @@ func (e *Engine) RegisterProvider(p Provider) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.providers[strings.ToLower(p.Name())] = p
+	// An artist or album provider answers for one entity, not a track query:
+	// the generic search is a track search, and asking these as well would
+	// triple every search's upstream cost to return rows of the wrong kind.
+	// The entity endpoints reach them by kind instead.
+	if typed, ok := p.(TypedProvider); !ok || typed.Kind() == KindTrack {
+		e.trackProviders = append(e.trackProviders, p)
+	}
 }
 
 // GetProvider retrieves an upstream provider by name.
@@ -56,10 +70,18 @@ func (e *Engine) Resolve(ctx context.Context, identifier string) (*UnifiedMedia,
 		return nil, errors.New("empty identifier")
 	}
 
-	// 1. Try local database lookup first
-	item, err := e.lookupLocal(ctx, identifier)
-	if err == nil && item != nil {
-		return e.itemToUnified(ctx, item), nil
+	// 1. A catalog row is the answer, and an entity page reads it: that is
+	// what keeps the second open of an artist off MusicBrainz. A row written
+	// before the entity providers existed carries a name and nothing else, so
+	// it is enriched once instead of staying blank for as long as it lives.
+	if item, err := e.lookupLocal(ctx, identifier); err == nil && item != nil {
+		media := e.itemToUnified(ctx, item)
+		if kind, ok := entityKindOf(identifier); ok && isBareEntity(media, kind) {
+			if enriched, enrichErr := e.refreshEntity(ctx, kind, item); enrichErr == nil {
+				media = enriched
+			}
+		}
+		return media, nil
 	}
 
 	// 2. Parse provider and key from identifier
@@ -78,7 +100,6 @@ func (e *Engine) Resolve(ctx context.Context, identifier string) (*UnifiedMedia,
 	if err != nil {
 		return nil, fmt.Errorf("upstream provider %s error: %w", providerName, err)
 	}
-
 	if domain != "" && upstream.Domain == "" {
 		upstream.Domain = domain
 	}
@@ -91,9 +112,12 @@ func (e *Engine) Resolve(ctx context.Context, identifier string) (*UnifiedMedia,
 		return upstream, nil
 	}
 
+	// A resolve that knows the answer is durable: the description, cover and
+	// tracklist go into the catalog row so the next read — a share page,
+	// another client, this device tomorrow — costs nothing upstream.
+	e.enrichEntity(ctx, saved, upstream)
 	return e.itemToUnified(ctx, saved), nil
 }
-
 func (e *Engine) lookupLocal(ctx context.Context, probe string) (*model.CatalogItem, error) {
 	db := e.db.WithContext(ctx)
 
@@ -153,10 +177,13 @@ func (e *Engine) persistUpstream(ctx context.Context, providerName, key string, 
 		DurationSeconds: m.DurationSeconds,
 		ReleaseDate:     nullableString(m.ReleaseDate),
 		Genres:          datatypes.JSON(genresBytes),
-		ExternalIDs:     datatypes.JSON(extIDsBytes),
-		ExternalLinks:   datatypes.JSON(extLinksBytes),
-		CreatedAt:       time.Now().UTC(),
-		UpdatedAt:       time.Now().UTC(),
+		// The entity payload travels with the row from the first write, so a
+		// cached artist or album page costs exactly one upstream pass ever.
+		Metadata:      entityPayload(m),
+		ExternalIDs:   datatypes.JSON(extIDsBytes),
+		ExternalLinks: datatypes.JSON(extLinksBytes),
+		CreatedAt:     time.Now().UTC(),
+		UpdatedAt:     time.Now().UTC(),
 	}
 
 	err := e.db.WithContext(ctx).Create(item).Error
@@ -211,6 +238,9 @@ func (e *Engine) itemToUnified(ctx context.Context, item *model.CatalogItem) *Un
 	e.db.WithContext(ctx).Model(&model.ActiveSession{}).
 		Where("catalog_id = ? AND lease_expires_at > ?", item.ID, time.Now().UTC()).
 		Count(&activeCount)
+	// The rich payload the entity endpoints stored at resolve time: a cached
+	// artist or album page is answered from this row, with no upstream call.
+	artist, tracks, albums, bio, bioSource := entityMetadata(item)
 
 	return &UnifiedMedia{
 		ID:                  item.ID,
@@ -228,8 +258,14 @@ func (e *Engine) itemToUnified(ctx context.Context, item *model.CatalogItem) *Un
 		Genres:              item.GetGenres(),
 		ExternalIDs:         item.GetExternalIDs(),
 		ExternalLinks:       extLinks,
-		ShareURL:            e.FormatShareURL(slug),
 		Creators:            e.catalogCreators(ctx, item.ID),
+		Artist:              artist,
+		Tracks:              tracks,
+		Albums:              albums,
+		ReleaseGroupCount:   len(albums),
+		Bio:                 bio,
+		BioSource:           bioSource,
+		ShareURL:            e.FormatShareURL(slug),
 		ScrobbleCount:       scrobbleCount,
 		ActiveListenerCount: activeCount,
 	}
@@ -274,7 +310,7 @@ func (e *Engine) Search(ctx context.Context, domain, query string, limit int) ([
 	// If fewer than limit, search upstream providers for domain
 	if len(results) < limit {
 		e.mu.RLock()
-		for _, prov := range e.providers {
+		for _, prov := range e.trackProviders {
 			if domain != "" && prov.Domain() != domain {
 				continue
 			}
