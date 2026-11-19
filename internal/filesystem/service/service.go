@@ -349,6 +349,67 @@ func (s *FileService) GetFiles(ids []string) ([]database.CloudFile, error) {
 	return files, nil
 }
 
+// FavoriteFile bookmarks one file for an account. It is idempotent: a second
+// call for the same pair leaves the original row and its creation time alone.
+func (s *FileService) FavoriteFile(accountID uuid.UUID, fileID string) (*database.CloudFileFavorite, error) {
+	fileID = strings.TrimSpace(fileID)
+	if fileID == "" {
+		return nil, fmt.Errorf("file id is required")
+	}
+	favorite := database.CloudFileFavorite{AccountID: accountID, FileID: fileID}
+	if err := s.db.Where("account_id = ? AND file_id = ?", accountID, fileID).
+		FirstOrCreate(&favorite).Error; err != nil {
+		return nil, err
+	}
+	return &favorite, nil
+}
+
+// UnfavoriteFile removes the bookmark, if any. Deleting nothing is success so
+// a client that retries an unfavorite stays idempotent.
+func (s *FileService) UnfavoriteFile(accountID uuid.UUID, fileID string) error {
+	fileID = strings.TrimSpace(fileID)
+	if fileID == "" {
+		return fmt.Errorf("file id is required")
+	}
+	return s.db.Where("account_id = ? AND file_id = ?", accountID, fileID).
+		Delete(&database.CloudFileFavorite{}).Error
+}
+
+// FavoriteFiles lists the account's bookmarked files, newest bookmark first.
+// Soft-deleted files drop out: a favorite names a live file or nothing.
+func (s *FileService) FavoriteFiles(accountID uuid.UUID) ([]database.CloudFile, error) {
+	var favorites []database.CloudFileFavorite
+	if err := s.db.Where("account_id = ?", accountID).
+		Order("created_at DESC").Find(&favorites).Error; err != nil {
+		return nil, err
+	}
+	if len(favorites) == 0 {
+		return []database.CloudFile{}, nil
+	}
+	ids := make([]string, 0, len(favorites))
+	for _, favorite := range favorites {
+		ids = append(ids, favorite.FileID)
+	}
+	var files []database.CloudFile
+	if err := s.db.Preload("Object").Where("id IN ?", ids).Find(&files).Error; err != nil {
+		return nil, err
+	}
+	if err := s.populateFilesMetadata(files); err != nil {
+		return nil, err
+	}
+	byID := make(map[string]database.CloudFile, len(files))
+	for _, file := range files {
+		byID[file.ID] = file
+	}
+	ordered := make([]database.CloudFile, 0, len(files))
+	for _, favorite := range favorites {
+		if file, ok := byID[favorite.FileID]; ok {
+			ordered = append(ordered, file)
+		}
+	}
+	return ordered, nil
+}
+
 // GetFilesInWorkspace fetches metadata only from the selected namespace.
 // Passing nil deliberately means personal files (workspace_id IS NULL), never
 // an unrestricted lookup.

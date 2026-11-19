@@ -22,6 +22,7 @@ func Core() module.Factory {
 		Models: []any{
 			&database.FilePool{}, &database.FileObject{}, &database.CloudFile{},
 			&database.FilePermission{}, &database.PoolPermission{}, &database.FileLock{},
+			&database.CloudFileFavorite{},
 		},
 		New: func() module.Instance { return &instance{} },
 	}

@@ -36,5 +36,6 @@ func Models() []any {
 	return []any{
 		&FilePool{}, &FileObject{}, &CloudFile{}, &FilePermission{}, &PoolPermission{},
 		&PersistentTask{}, &UploadChunk{}, &FileLock{}, &WebDAVToken{}, &StorageNode{}, &S3Token{},
+		&CloudFileFavorite{},
 	}
 }

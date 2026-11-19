@@ -1453,6 +1453,109 @@ func setSensitiveMarks(c *gin.Context, files *service.FileService) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// favoriteFile bookmarks a file the caller can read for its own account.
+// Favorite rows are account bookmarks, not grants: the file's ACL still
+// decides what listing them back reveals, so a favorite can outlive access
+// without leaking the file.
+// @Summary Favorite a file
+// @Tags files
+// @Param id path string true "File ID"
+// @Success 200 {object} database.CloudFileFavorite
+// @Router /api/files/{id}/favorite [post]
+func favoriteFile(c *gin.Context, files *service.FileService, quota *service.QuotaService) {
+	result, _, ok := auth.GetAuth(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	file, err := getRequestedFile(c, files, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	if !canReadFile(c, files, quota, result.Account, result.Session, file) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	accountID, err := uuid.Parse(result.Account.GetId())
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid account"})
+		return
+	}
+	favorite, err := files.FavoriteFile(accountID, file.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, favorite)
+}
+
+// unfavoriteFile drops the caller's bookmark. It is a no-op when the file was
+// never favorited, so a client may retry it freely.
+// @Summary Unfavorite a file
+// @Tags files
+// @Param id path string true "File ID"
+// @Success 200 {object} map[string]any
+// @Router /api/files/{id}/favorite [delete]
+func unfavoriteFile(c *gin.Context, files *service.FileService) {
+	result, _, ok := auth.GetAuth(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	accountID, err := uuid.Parse(result.Account.GetId())
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid account"})
+		return
+	}
+	if err := files.UnfavoriteFile(accountID, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// listFavoriteFiles returns the caller's bookmarked files, newest first. Files
+// the caller may no longer read are dropped rather than exposed.
+// @Summary List favorited files
+// @Tags files
+// @Param workspace_id query string false "Workspace id; omit for personal files"
+// @Success 200 {array} database.CloudFile
+// @Router /api/files/favorites [get]
+func listFavoriteFiles(c *gin.Context, files *service.FileService, quota *service.QuotaService) {
+	result, _, ok := auth.GetAuth(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	accountID, err := uuid.Parse(result.Account.GetId())
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid account"})
+		return
+	}
+	items, err := files.FavoriteFiles(accountID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	workspaceID := optionalStringPtr(c.Query("workspace_id"))
+	authorized := make([]database.CloudFile, 0, len(items))
+	for _, item := range items {
+		if workspaceID == nil && item.WorkspaceID != nil {
+			continue
+		}
+		if workspaceID != nil && (item.WorkspaceID == nil || *item.WorkspaceID != *workspaceID) {
+			continue
+		}
+		if !canReadFile(c, files, quota, result.Account, result.Session, &item) {
+			continue
+		}
+		authorized = append(authorized, item)
+	}
+	c.Header("X-Total", strconv.Itoa(len(authorized)))
+	c.JSON(http.StatusOK, authorized)
+}
+
 func patchFileContent(c *gin.Context, files *service.FileService, bus *eventbus.Bus, dispatcher dispatch.Dispatcher) {
 	result, _, ok := auth.GetAuth(c)
 	if !ok {

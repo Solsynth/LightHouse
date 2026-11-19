@@ -288,6 +288,24 @@ type FilePermission struct {
 	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
+// CloudFileFavorite is an account's bookmark onto one file, personal or
+// workspace-owned. The file itself carries the workspace, so a favorite row
+// only has to name the account and the file; workspace scoping follows the
+// file it points at.
+type CloudFileFavorite struct {
+	ID        string    `gorm:"primaryKey;size:36" json:"id"`
+	AccountID uuid.UUID `gorm:"uniqueIndex:idx_cloud_file_favorites_account_file,priority:1" json:"account_id"`
+	FileID    string    `gorm:"size:36;uniqueIndex:idx_cloud_file_favorites_account_file,priority:2;index" json:"file_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (f *CloudFileFavorite) BeforeCreate(tx *gorm.DB) error {
+	if f.ID == "" {
+		f.ID = NewID()
+	}
+	return nil
+}
+
 type FileLock struct {
 	ID        string         `gorm:"primaryKey;size:36" json:"id"`
 	FileID    string         `gorm:"size:36;index" json:"file_id"`
