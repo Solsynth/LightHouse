@@ -16,6 +16,7 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
+	"src.solsynth.dev/sosys/lighthouse/internal/messager/localization"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/ports"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/store"
@@ -452,8 +453,32 @@ func (i *instance) deliverMessage(ctx context.Context, room *store.ChatRoomEntit
 		return
 	}
 	senderAccount := i.account(ctx, sender.AccountID.String())
+	if len(entity.EncryptionMeta) > 0 {
+		i.sendEncryptedMessagePush(ctx, accountIDs, room, entity, sender, senderAccount)
+		return
+	}
 	title, body, meta := chatPushPayload(room, entity, sender, senderAccount)
 	i.sendPush(ctx, accountIDs, "messages.new", title, body, meta)
+}
+
+// sendEncryptedMessagePush groups recipients by account language so the
+// placeholder body is localized per recipient, mirroring C#
+// SendPushNotificationsAsync's grouping by language.
+func (i *instance) sendEncryptedMessagePush(ctx context.Context, accountIDs []string, room *store.ChatRoomEntity, entity *store.ChatMessageEntity, sender *store.ChatMemberEntity, senderAccount *gen.DyAccount) {
+	accounts := i.accountsByID(ctx, accountIDs)
+	groups := make(map[string][]string, 2)
+	for _, id := range accountIDs {
+		language := ""
+		if account := accounts[id]; account != nil {
+			language = account.GetLanguage()
+		}
+		locale := localization.NormalizeLocale(language)
+		groups[locale] = append(groups[locale], id)
+	}
+	for locale, ids := range groups {
+		title, body, meta := chatPushPayloadForLanguage(room, entity, sender, senderAccount, locale)
+		i.sendPush(ctx, ids, "messages.new", title, body, meta)
+	}
 }
 
 // suppressedPushAccountIDs mirrors SendPushNotificationsAsync's suppression
@@ -546,6 +571,12 @@ func filterPushRecipients(accountIDs []string, suppressed map[string]bool) []str
 // room subject, and images/image feed the media attachments, mirroring the C#
 // BuildNotification/BuildNotificationMeta contract.
 func chatPushPayload(room *store.ChatRoomEntity, entity *store.ChatMessageEntity, sender *store.ChatMemberEntity, senderAccount *gen.DyAccount) (string, string, map[string]any) {
+	return chatPushPayloadForLanguage(room, entity, sender, senderAccount, "")
+}
+
+// chatPushPayloadForLanguage renders the same payload with the encrypted-message
+// body resolved for the recipient's locale.
+func chatPushPayloadForLanguage(room *store.ChatRoomEntity, entity *store.ChatMessageEntity, sender *store.ChatMemberEntity, senderAccount *gen.DyAccount, language string) (string, string, map[string]any) {
 	roomSubject := "Unknown"
 	if room.Type == int(model.ChatRoomDirectMessage) && room.Name == nil {
 		roomSubject = "DM"
@@ -554,7 +585,9 @@ func chatPushPayload(room *store.ChatRoomEntity, entity *store.ChatMessageEntity
 	}
 	attachments := notificationAttachments(entity)
 	body := ""
-	if entity.Content != nil {
+	if len(entity.EncryptionMeta) > 0 {
+		body = localization.Localize(language, "chatEncryptedMessageBody", nil)
+	} else if entity.Content != nil {
 		body = *entity.Content
 		if len(body) > 100 {
 			body = body[:100]

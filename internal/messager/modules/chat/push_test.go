@@ -251,3 +251,88 @@ func TestPushSuppression(t *testing.T) {
 		t.Fatalf("filterPushRecipients = %v, want [%s]", got, plain.AccountID.String())
 	}
 }
+
+type stubAccounts struct {
+	byID map[string]*gen.DyAccount
+}
+
+func (s stubAccounts) GetAccount(_ context.Context, id string) (*gen.DyAccount, error) {
+	return s.byID[id], nil
+}
+
+func (s stubAccounts) GetAccounts(_ context.Context, ids []string) ([]*gen.DyAccount, error) {
+	out := make([]*gen.DyAccount, 0, len(ids))
+	for _, id := range ids {
+		if account := s.byID[id]; account != nil {
+			out = append(out, account)
+		}
+	}
+	return out, nil
+}
+
+func (stubAccounts) LookupAccounts(context.Context, []string) ([]*gen.DyAccount, error) {
+	return nil, nil
+}
+
+func (stubAccounts) HasRelationship(context.Context, string, string) (bool, error) {
+	return false, nil
+}
+
+type sentPush struct {
+	ids   []string
+	title string
+	body  string
+}
+
+type stubNotify struct {
+	sent []sentPush
+}
+
+func (s *stubNotify) SendPush(ctx context.Context, accountID, topic, title, body string, meta map[string]any) error {
+	return s.SendPushToAccounts(ctx, []string{accountID}, topic, title, body, meta)
+}
+
+func (s *stubNotify) SendPushToAccounts(_ context.Context, accountIDs []string, _, title, body string, _ map[string]any) error {
+	s.sent = append(s.sent, sentPush{ids: append([]string(nil), accountIDs...), title: title, body: body})
+	return nil
+}
+
+// TestEncryptedPushBodyLocalized pins the C# encrypted-message notification:
+// every recipient is notified, with the placeholder body in their language.
+func TestEncryptedPushBodyLocalized(t *testing.T) {
+	room := &store.ChatRoomEntity{ID: uuid.New(), Type: int(model.ChatRoomDirectMessage)}
+	sender := &store.ChatMemberEntity{ID: uuid.New(), AccountID: uuid.New()}
+	entity := &store.ChatMessageEntity{
+		ID:             uuid.New(),
+		ChatRoomID:     room.ID,
+		SenderID:       sender.ID,
+		EncryptionMeta: store.ToJSON(map[string]any{"scheme": "chat.mls.v2"}),
+	}
+	english := &gen.DyAccount{Id: uuid.NewString(), Language: "en-US"}
+	chinese := &gen.DyAccount{Id: uuid.NewString(), Language: "zh-CN"}
+	notify := &stubNotify{}
+	i := &instance{
+		accounts: stubAccounts{byID: map[string]*gen.DyAccount{
+			english.Id: english,
+			chinese.Id: chinese,
+		}},
+		notify: notify,
+		log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	i.sendEncryptedMessagePush(context.Background(), []string{english.Id, chinese.Id}, room, entity, sender, nil)
+
+	if len(notify.sent) != 2 {
+		t.Fatalf("sent %d pushes, want 2", len(notify.sent))
+	}
+	got := map[string][]string{}
+	for _, push := range notify.sent {
+		got[push.body] = push.ids
+	}
+	if ids := got["You've received a message"]; len(ids) != 1 || ids[0] != english.Id {
+		t.Errorf("English push ids = %v, want [%s]", ids, english.Id)
+	}
+	if ids := got["您收到了一条消息"]; len(ids) != 1 || ids[0] != chinese.Id {
+		t.Errorf("Chinese push ids = %v, want [%s]", ids, chinese.Id)
+	}
+}

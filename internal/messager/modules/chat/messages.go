@@ -170,7 +170,7 @@ func (i *instance) sendMessage(c *gin.Context) {
 		Where("id = ?", member.ID).
 		Update("last_read_at", entity.CreatedAt).Error
 
-	i.deliverMessage(ctx, room, member, entity, "messages.new", !e2ee)
+	i.deliverMessage(ctx, room, member, entity, "messages.new", true)
 	messages := i.hydrateMessages(ctx, []*store.ChatMessageEntity{entity}, member.AccountID.String())
 	httpx.OK(c, messages[0])
 }
