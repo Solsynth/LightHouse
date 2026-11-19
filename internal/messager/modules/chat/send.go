@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -445,12 +446,98 @@ func (i *instance) deliverMessage(ctx context.Context, room *store.ChatRoomEntit
 		}
 		accountIDs = append(accountIDs, member.AccountID.String())
 	}
+	suppressed := i.suppressedPushAccountIDs(ctx, room.ID, members, sender.AccountID.String())
+	accountIDs = filterPushRecipients(accountIDs, suppressed)
 	if len(accountIDs) == 0 {
 		return
 	}
 	senderAccount := i.account(ctx, sender.AccountID.String())
 	title, body, meta := chatPushPayload(room, entity, sender, senderAccount)
 	i.sendPush(ctx, accountIDs, "messages.new", title, body, meta)
+}
+
+// suppressedPushAccountIDs mirrors SendPushNotificationsAsync's suppression
+// rules: members holding a live room subscription already see the message in
+// the open client, and accounts hidden by a block or mute relationship with
+// the sender never receive the push.
+func (i *instance) suppressedPushAccountIDs(ctx context.Context, roomID uuid.UUID, members []*store.ChatMemberEntity, senderAccountID string) map[string]bool {
+	suppressed := map[string]bool{}
+	subs := i.roomSubscriptions(ctx, roomID)
+	for _, member := range members {
+		if len(activeDevices(subs[member.ID.String()])) == 0 {
+			continue
+		}
+		suppressed[member.AccountID.String()] = true
+	}
+	for id := range i.hiddenAccountIDs(ctx, senderAccountID) {
+		suppressed[id] = true
+	}
+	return suppressed
+}
+
+// hiddenAccountIDs resolves the accounts the sender blocked or muted, plus the
+// accounts that blocked the sender (ListAllBlockedAccountIds). The three
+// relationship reads run concurrently like the C# Task.WhenAll; a failed read
+// only drops its own list.
+func (i *instance) hiddenAccountIDs(ctx context.Context, accountID string) map[string]bool {
+	hidden := map[string]bool{}
+	if accountID == "" || i.host == nil || i.host.Core == nil || i.host.Core.Clients == nil || i.host.Core.Clients.Profile == nil {
+		return hidden
+	}
+	profile := i.host.Core.Clients.Profile
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		results [][]string
+	)
+	collect := func(label string, call func() (*gen.DyListRelationshipSimpleResponse, error)) {
+		defer wg.Done()
+		resp, err := call()
+		if err != nil {
+			i.log.Warn("chat: resolving push suppression failed", "account_id", accountID, "relationship", label, "error", err)
+			return
+		}
+		mu.Lock()
+		results = append(results, resp.GetAccountsId())
+		mu.Unlock()
+	}
+	wg.Add(3)
+	go collect("blocked", func() (*gen.DyListRelationshipSimpleResponse, error) {
+		return profile.ListBlocked(ctx, &gen.DyListRelationshipSimpleRequest{
+			RelationIdentifier: &gen.DyListRelationshipSimpleRequest_AccountId{AccountId: accountID},
+		})
+	})
+	go collect("blocked_by", func() (*gen.DyListRelationshipSimpleResponse, error) {
+		return profile.ListBlocked(ctx, &gen.DyListRelationshipSimpleRequest{
+			RelationIdentifier: &gen.DyListRelationshipSimpleRequest_RelatedId{RelatedId: accountID},
+		})
+	})
+	go collect("muted", func() (*gen.DyListRelationshipSimpleResponse, error) {
+		return profile.ListMuted(ctx, &gen.DyListRelationshipSimpleRequest{
+			RelationIdentifier: &gen.DyListRelationshipSimpleRequest_AccountId{AccountId: accountID},
+		})
+	})
+	wg.Wait()
+	for _, ids := range results {
+		for _, id := range ids {
+			hidden[id] = true
+		}
+	}
+	return hidden
+}
+
+// filterPushRecipients drops suppressed accounts from a caller-owned slice.
+func filterPushRecipients(accountIDs []string, suppressed map[string]bool) []string {
+	if len(suppressed) == 0 {
+		return accountIDs
+	}
+	kept := accountIDs[:0]
+	for _, id := range accountIDs {
+		if !suppressed[id] {
+			kept = append(kept, id)
+		}
+	}
+	return kept
 }
 
 // chatPushPayload renders the title, body and meta of a `messages.new` push.

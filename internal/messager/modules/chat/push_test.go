@@ -1,14 +1,24 @@
 package chat
 
 import (
+	"context"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/cache"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
+	"src.solsynth.dev/sosys/lighthouse/internal/messager/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/messager/store"
+	platformapp "src.solsynth.dev/sosys/lighthouse/shared/platform/app"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpcclient"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 )
 
 func TestChatPushPayloadDirectMessage(t *testing.T) {
@@ -179,5 +189,65 @@ func TestChatPushPayloadAttachments(t *testing.T) {
 	}
 	if _, body, _ := chatPushPayload(room, single, sender, nil); body != "1 attachment" {
 		t.Fatalf("singular body = %q", body)
+	}
+}
+
+type stubProfileClient struct {
+	gen.DyProfileServiceClient
+	blocked   []string
+	blockedBy []string
+	muted     []string
+}
+
+func (s *stubProfileClient) ListBlocked(_ context.Context, req *gen.DyListRelationshipSimpleRequest, _ ...grpc.CallOption) (*gen.DyListRelationshipSimpleResponse, error) {
+	if req.GetRelatedId() != "" {
+		return &gen.DyListRelationshipSimpleResponse{AccountsId: s.blockedBy}, nil
+	}
+	return &gen.DyListRelationshipSimpleResponse{AccountsId: s.blocked}, nil
+}
+
+func (s *stubProfileClient) ListMuted(_ context.Context, _ *gen.DyListRelationshipSimpleRequest, _ ...grpc.CallOption) (*gen.DyListRelationshipSimpleResponse, error) {
+	return &gen.DyListRelationshipSimpleResponse{AccountsId: s.muted}, nil
+}
+
+// TestPushSuppression pins the two C# SendPushNotificationsAsync filters: a
+// live room subscription and a block/mute relationship both drop the account.
+func TestPushSuppression(t *testing.T) {
+	ctx := context.Background()
+	roomID := uuid.New()
+	subscribed := &store.ChatMemberEntity{ID: uuid.New(), AccountID: uuid.New(), ChatRoomID: roomID}
+	plain := &store.ChatMemberEntity{ID: uuid.New(), AccountID: uuid.New(), ChatRoomID: roomID}
+	blocked, blockedBy, muted := uuid.NewString(), uuid.NewString(), uuid.NewString()
+
+	redis := cache.NewMemoryCacheService(64)
+	subs := map[string][]cachedDevice{
+		subscribed.ID.String(): {{DeviceToken: "device-1", ExpiresAt: utcNow().Add(time.Minute)}},
+	}
+	if err := redis.Set(ctx, subscriptionKey(roomID), subs, time.Minute); err != nil {
+		t.Fatalf("seed subscriptions: %v", err)
+	}
+	i := &instance{
+		host: &module.Host[core.Services]{Core: &core.Services{Env: &platformapp.Env{
+			Redis: redis,
+			Clients: &grpcclient.Clients{Profile: &stubProfileClient{
+				blocked: []string{blocked}, blockedBy: []string{blockedBy}, muted: []string{muted},
+			}},
+		}}},
+		log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	suppressed := i.suppressedPushAccountIDs(ctx, roomID, []*store.ChatMemberEntity{subscribed, plain}, uuid.NewString())
+	for _, id := range []string{subscribed.AccountID.String(), blocked, blockedBy, muted} {
+		if !suppressed[id] {
+			t.Errorf("suppressed[%s] = false, want true", id)
+		}
+	}
+	if suppressed[plain.AccountID.String()] {
+		t.Errorf("unsubscribed, unrelated member was suppressed")
+	}
+
+	got := filterPushRecipients([]string{subscribed.AccountID.String(), plain.AccountID.String(), blocked, blockedBy, muted}, suppressed)
+	if len(got) != 1 || got[0] != plain.AccountID.String() {
+		t.Fatalf("filterPushRecipients = %v, want [%s]", got, plain.AccountID.String())
 	}
 }
