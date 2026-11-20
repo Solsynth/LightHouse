@@ -1065,7 +1065,7 @@ func TestWorkspaceMembersCanReadWorkspaceFiles(t *testing.T) {
 	}
 	derivedID := database.NewID()
 	derivedKind := "system.thumbnail"
-	if err := db.Create(&database.CloudFile{ID: derivedID, Name: "shared.png", AccountID: uploaderID, ParentID: &fileID, ObjectID: &objectID, StorageKey: &objectID, ApplicationType: &derivedKind}).Error; err != nil {
+	if err := db.Create(&database.CloudFile{ID: derivedID, Name: "shared.png", AccountID: uploaderID, DerivedFromID: &fileID, ObjectID: &objectID, StorageKey: &objectID, ApplicationType: &derivedKind}).Error; err != nil {
 		t.Fatalf("create workspace derivative: %v", err)
 	}
 
@@ -1313,8 +1313,19 @@ func TestListFilesMetadataHidesFreshlyUploadedFileFromOtherAccount(t *testing.T)
 // CanAccessFile requires for callers that are not the owner.
 func publishFile(t *testing.T, db *gorm.DB, fileID string) {
 	t.Helper()
-	if err := db.Create(&database.FilePermission{ID: database.NewID(), FileID: fileID, SubjectType: "public", SubjectID: "", Permission: "read"}).Error; err != nil {
-		t.Fatalf("create public permission: %v", err)
+	if err := db.Create(&database.FileACLEntry{
+		ID:          database.NewID(),
+		FileID:      fileID,
+		SubjectType: service.ACLSubjectPublic,
+		SubjectID:   "",
+		Effect:      service.ACLEffectAllow,
+		Permissions: uint32(service.PermRead),
+		Inheritable: true,
+	}).Error; err != nil {
+		t.Fatalf("create public acl entry: %v", err)
+	}
+	if err := db.Model(&database.CloudFile{}).Where("id = ?", fileID).Update("has_acl", true).Error; err != nil {
+		t.Fatalf("mark has_acl: %v", err)
 	}
 }
 
@@ -1327,10 +1338,19 @@ func openHandlerTestDB(t *testing.T, values ...any) *gorm.DB {
 	if err := db.AutoMigrate(values...); err != nil {
 		t.Fatalf("AutoMigrate() error = %v", err)
 	}
+	if db.Migrator().HasTable(&database.CloudFile{}) {
+		if err := db.AutoMigrate(&database.FileACLEntry{}); err != nil {
+			t.Fatalf("AutoMigrate(FileACLEntry) error = %v", err)
+		}
+	}
+	// The in-memory shared-cache database uses table-level locks; a single
+	// connection keeps the background worker and the polling test from
+	// deadlocking on "database table is locked".
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("db.DB() error = %v", err)
 	}
+	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() {
 		_ = sqlDB.Close()
 	})
@@ -2041,6 +2061,11 @@ func TestPrepareDirectUploadMultipartResumesByHash(t *testing.T) {
 		t.Fatalf("create pool: %v", err)
 	}
 
+	otherParent := database.CloudFile{ID: database.NewID(), Name: "other", AccountID: accountID, Indexed: true, IsFolder: true}
+	if err := db.Create(&otherParent).Error; err != nil {
+		t.Fatalf("create destination folder: %v", err)
+	}
+
 	r := gin.New()
 	r.Use(testAuthMiddleware(accountID))
 	RegisterRoutes(r, Deps{Config: &config.Config{}, Files: files, Tasks: tasks, Quota: quota})
@@ -2106,7 +2131,7 @@ func TestPrepareDirectUploadMultipartResumesByHash(t *testing.T) {
 	}
 
 	// Same hash to a different destination must get its own task.
-	otherBody := fmt.Sprintf(`{"file_name":"big.bin","file_size":%d,"content_type":"application/octet-stream","multipart":true,"pool_id":%q,"hash":%q,"parent_id":%q}`, fileSize, poolID, hash, database.NewID())
+	otherBody := fmt.Sprintf(`{"file_name":"big.bin","file_size":%d,"content_type":"application/octet-stream","multipart":true,"pool_id":%q,"hash":%q,"parent_id":%q}`, fileSize, poolID, hash, otherParent.ID)
 	req := httptest.NewRequest(http.MethodPost, "/api/files/upload/prepare", strings.NewReader(otherBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

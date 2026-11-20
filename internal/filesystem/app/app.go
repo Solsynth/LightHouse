@@ -117,6 +117,7 @@ func New(ctx context.Context, cfg *config.Config, mode string, factories []modul
 	if redisClient != nil {
 		quota.SetCache(sharedcache.NewRedisCacheService(redisClient))
 	}
+	files.SetWorkspaceACLResolver(quota)
 	tasks := service.NewTaskService(db)
 
 	if cfg.Workspace.Target != "" {

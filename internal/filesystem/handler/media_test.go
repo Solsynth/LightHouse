@@ -311,7 +311,7 @@ func TestOpenFileTransformDisabledWhenMediaOff(t *testing.T) {
 	if err := db.Create(&database.FileObject{ID: thumbObjectID, Size: int64(len(jpeg)), MimeType: "image/jpeg", StorageKey: &thumbKey}).Error; err != nil {
 		t.Fatalf("create thumb object: %v", err)
 	}
-	if err := db.Create(&database.CloudFile{ID: database.NewID(), Name: "photo.jpg", AccountID: uuid.New(), ObjectID: &thumbObjectID, ParentID: &fileID, StorageKey: &thumbKey, ApplicationType: &thumbType, Indexed: false}).Error; err != nil {
+	if err := db.Create(&database.CloudFile{ID: database.NewID(), Name: "photo.jpg", AccountID: uuid.New(), ObjectID: &thumbObjectID, DerivedFromID: &fileID, StorageKey: &thumbKey, ApplicationType: &thumbType, Indexed: false}).Error; err != nil {
 		t.Fatalf("create thumb file: %v", err)
 	}
 	if err := stor.Put(context.Background(), thumbKey, bytes.NewReader(jpeg), int64(len(jpeg)), "image/jpeg"); err != nil {

@@ -206,7 +206,7 @@ func (b *MasterBackend) GetObject(ctx context.Context, bucket, key string) (io.R
 	if !b.isBucketAllowed(ctx, bucket) {
 		return nil, ObjectInfo{}, fmt.Errorf("access denied to bucket %s", bucket)
 	}
-	file, err := b.resolveFile(ctx, bucket, key)
+	file, err := b.resolveFile(ctx, bucket, key, service.PermRead)
 	if err != nil {
 		return nil, ObjectInfo{}, err
 	}
@@ -276,7 +276,7 @@ func (b *MasterBackend) DeleteObject(ctx context.Context, bucket, key string) er
 	if !b.isBucketAllowed(ctx, bucket) {
 		return fmt.Errorf("access denied to bucket %s", bucket)
 	}
-	file, err := b.resolveFile(ctx, bucket, key)
+	file, err := b.resolveFile(ctx, bucket, key, service.PermDelete)
 	if err != nil {
 		return err
 	}
@@ -287,7 +287,7 @@ func (b *MasterBackend) StatObject(ctx context.Context, bucket, key string) (Obj
 	if !b.isBucketAllowed(ctx, bucket) {
 		return ObjectInfo{}, fmt.Errorf("access denied to bucket %s", bucket)
 	}
-	file, err := b.resolveFile(ctx, bucket, key)
+	file, err := b.resolveFile(ctx, bucket, key, service.PermRead)
 	if err != nil {
 		return ObjectInfo{}, err
 	}
@@ -308,7 +308,7 @@ func (b *MasterBackend) SignedURL(ctx context.Context, bucket, key string, ttl t
 	if !b.isBucketAllowed(ctx, bucket) {
 		return "", fmt.Errorf("access denied to bucket %s", bucket)
 	}
-	file, err := b.resolveFile(ctx, bucket, key)
+	file, err := b.resolveFile(ctx, bucket, key, service.PermRead)
 	if err != nil {
 		return "", err
 	}
@@ -323,7 +323,7 @@ func (b *MasterBackend) SignedURL(ctx context.Context, bucket, key string, ttl t
 	return backend.SignedURL(ctx, storageKey, ttl, filename, download)
 }
 
-func (b *MasterBackend) resolveFile(ctx context.Context, bucket, key string) (*database.CloudFile, error) {
+func (b *MasterBackend) resolveFile(ctx context.Context, bucket, key string, required service.PermissionMask) (*database.CloudFile, error) {
 	accountID := b.accountFromContext(ctx)
 	file, err := b.files.GetFile(key)
 	if err != nil {
@@ -342,6 +342,10 @@ func (b *MasterBackend) resolveFile(ctx context.Context, bucket, key string) (*d
 		if file.PoolID == nil || *file.PoolID != bucket {
 			return nil, fmt.Errorf("file not found in pool %s", bucket)
 		}
+	}
+	caller := service.NewPrincipalSet(&gen.DyAccount{Id: accountID.String()}, nil)
+	if !b.files.CanAccessFileMask(ctx, caller, file, required) {
+		return nil, fmt.Errorf("file not found in bucket %s", bucket)
 	}
 	return file, nil
 }

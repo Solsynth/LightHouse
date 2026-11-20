@@ -3,10 +3,12 @@ import { computed, ref } from 'vue'
 
 import { DriveError } from '@/lib/api/client'
 import { driveApi, thumbnailUrl } from '@/lib/api/drive'
+import { PERM_READ } from '@/lib/api/types'
 import type {
+  ACLEntryInput,
   CloudFile,
+  FileACLDetail,
   FileOrder,
-  FilePermission,
   FilePool,
   KindFilter,
   QuotaSummary,
@@ -18,7 +20,7 @@ import { translate } from '@/lib/i18n'
 
 import { useNoticeStore } from './notice'
 
-export type BrowsingMode = 'drive' | 'unindexed' | 'recycle'
+export type BrowsingMode = 'drive' | 'unindexed' | 'recycle' | 'shared'
 
 export interface Crumb {
   id: string | null
@@ -302,7 +304,6 @@ export const useVaultStore = defineStore('vault', () => {
       is_folder: kind.value === 'folders' ? true : kind.value === 'files' ? false : undefined,
     }
     if (mode.value === 'recycle') return { ...options, recycled: true }
-    if (mode.value === 'unindexed') return { ...options, recycled: false }
     return { ...options, recycled: false }
   }
 
@@ -310,6 +311,7 @@ export const useVaultStore = defineStore('vault', () => {
     const options = buildOptions(offset)
     if (mode.value === 'recycle') return driveApi.owned(options, signal)
     if (mode.value === 'unindexed') return driveApi.unindexed(options, signal)
+    if (mode.value === 'shared') return driveApi.sharedWithMe(options, signal)
     return folderId.value
       ? driveApi.children(folderId.value, options, signal)
       : driveApi.root(options, signal)
@@ -477,7 +479,13 @@ export const useVaultStore = defineStore('vault', () => {
       crumbs.value = [
         {
           id: null,
-          name: translate(nextMode === 'unindexed' ? 'nav.unindexed' : 'nav.recycle'),
+          name: translate(
+            nextMode === 'unindexed'
+              ? 'nav.unindexed'
+              : nextMode === 'shared'
+                ? 'nav.shared'
+                : 'nav.recycle',
+          ),
         },
       ]
       await load()
@@ -732,29 +740,22 @@ export const useVaultStore = defineStore('vault', () => {
     }
   }
 
-  async function permissionsFor(file: CloudFile): Promise<FilePermission[]> {
-    return driveApi.permissions(file.id)
+  async function aclFor(file: CloudFile): Promise<FileACLDetail> {
+    return driveApi.acl(file.id)
   }
 
-  async function setVisibility(file: CloudFile, isPublic: boolean) {
-    actionBusy.value = 'visibility'
+  /** Replaces the file's direct ACL entries and inheritance flag. */
+  async function saveACL(
+    file: CloudFile,
+    detail: { inherit_acl: boolean; entries: ACLEntryInput[] },
+  ): Promise<FileACLDetail> {
+    actionBusy.value = 'permissions'
     try {
-      const current = await permissionsFor(file)
-      const next = current.filter(
-        (permission) =>
-          permission.subject_type !== 'public' && permission.subject_type !== 'private',
-      )
-      next.push({
-        id: undefined,
-        file_id: file.id,
-        subject_type: isPublic ? 'public' : 'private',
-        subject_id: '',
-        permission: 'read',
-      })
-      await driveApi.setPermissions(file.id, next)
+      const saved = await driveApi.saveACL(file.id, detail)
       invalidateChildren()
-      notice.ok(translate(isPublic ? 'notice.published' : 'notice.unpublished'))
+      notice.ok(translate('notice.permissionsUpdated'))
       await load()
+      return saved
     } catch (caught) {
       notice.error(errorMessage(caught))
       throw caught
@@ -763,13 +764,31 @@ export const useVaultStore = defineStore('vault', () => {
     }
   }
 
-  /** Replaces the file's access rules with the edited set. */
-  async function savePermissions(file: CloudFile, items: FilePermission[]) {
-    actionBusy.value = 'permissions'
+  /** Adds or removes the anonymous read grant without touching other rules. */
+  async function setVisibility(file: CloudFile, isPublic: boolean) {
+    actionBusy.value = 'visibility'
     try {
-      await driveApi.setPermissions(file.id, items)
+      const detail = await driveApi.acl(file.id)
+      const entries: ACLEntryInput[] = detail.direct
+        .filter((entry) => entry.subject_type !== 'public')
+        .map((entry) => ({
+          subject_type: entry.subject_type,
+          subject_id: entry.subject_id,
+          effect: entry.effect,
+          permissions: entry.permissions,
+          inheritable: entry.inheritable,
+          expires_at: entry.expires_at ?? null,
+        }))
+      entries.push({
+        subject_type: 'public',
+        subject_id: '',
+        effect: isPublic ? 'allow' : 'deny',
+        permissions: PERM_READ,
+        inheritable: true,
+      })
+      await driveApi.saveACL(file.id, { inherit_acl: detail.inherit_acl, entries })
       invalidateChildren()
-      notice.ok(translate('notice.permissionsUpdated'))
+      notice.ok(translate(isPublic ? 'notice.published' : 'notice.unpublished'))
       await load()
     } catch (caught) {
       notice.error(errorMessage(caught))
@@ -915,8 +934,8 @@ export const useVaultStore = defineStore('vault', () => {
     recycle,
     restore,
     purge,
-    permissionsFor,
-    savePermissions,
+    aclFor,
+    saveACL,
     setVisibility,
     listFolders,
     listChildren,

@@ -7,6 +7,7 @@ import {
   FolderAdd16,
   FolderOpen16,
   Search16,
+  Share16,
   TrashCan16,
   Upload16,
   WarningAlt16,
@@ -32,10 +33,12 @@ const dragging = ref(false)
 let dragDepth = 0
 
 // Preview and storage are separate routes with their own views, so this view
-// only ever browses the three listing modes.
+// only ever browses the listing modes.
 const mode = computed<BrowsingMode>(() => {
   const current = route.meta.mode
-  return current === 'unindexed' || current === 'recycle' ? current : 'drive'
+  return current === 'unindexed' || current === 'recycle' || current === 'shared'
+    ? current
+    : 'drive'
 })
 const folderParam = computed(() => (typeof route.params.id === 'string' ? route.params.id : null))
 const onDrive = computed(() => mode.value === 'drive')
@@ -46,6 +49,7 @@ const viewKey = computed(() => `${route.fullPath}:${vault.viewMode}`)
 const pageTitle = computed(() => {
   if (mode.value === 'recycle') return t('nav.recycle')
   if (mode.value === 'unindexed') return t('nav.unindexed')
+  if (mode.value === 'shared') return t('nav.shared')
   const last = vault.crumbs[vault.crumbs.length - 1]
   if (last && last.id !== null) return last.name
   return t('nav.drive')
@@ -80,6 +84,13 @@ const emptyState = computed(() => {
       icon: WarningAlt16,
     }
   }
+  if (mode.value === 'shared') {
+    return {
+      title: t('empty.sharedEmpty'),
+      body: t('empty.sharedBody'),
+      icon: Share16,
+    }
+  }
   return {
     title: t('empty.folder'),
     body: t('empty.folderBody'),
@@ -90,7 +101,7 @@ const emptyState = computed(() => {
 watch(
   [mode, folderParam],
   ([nextMode, nextFolder]) => {
-    if (nextMode === 'unindexed' && vault.viewMode === 'column') vault.storeView('list')
+    if (nextMode !== 'drive' && vault.viewMode === 'column') vault.storeView('list')
     void vault.open(nextMode, nextFolder)
   },
   { immediate: true },

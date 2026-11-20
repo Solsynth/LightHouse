@@ -108,7 +108,7 @@ func TestDirectUploadImageGeneratesCompressionDerivative(t *testing.T) {
 	var parent database.CloudFile
 	for time.Now().Before(deadline) {
 		var children []database.CloudFile
-		if err := db.Preload("Object").Where("parent_id = ? AND application_type = ?", completed.ID, "system.compression.low").Find(&children).Error; err != nil {
+		if err := db.Preload("Object").Where("derived_from_id = ? AND application_type = ?", completed.ID, "system.compression.low").Find(&children).Error; err != nil {
 			t.Fatalf("query derived children: %v", err)
 		}
 		if len(children) > 0 {
@@ -121,7 +121,7 @@ func TestDirectUploadImageGeneratesCompressionDerivative(t *testing.T) {
 		var task database.PersistentTask
 		_ = db.First(&task, "task_id = ?", prepared.TaskID).Error
 		var children []database.CloudFile
-		_ = db.Where("parent_id = ?", completed.ID).Find(&children).Error
+		_ = db.Where("derived_from_id = ?", completed.ID).Find(&children).Error
 		var file database.CloudFile
 		_ = db.Preload("Object").First(&file, "id = ?", completed.ID).Error
 		mime := ""
@@ -254,7 +254,7 @@ func TestDirectUploadVideoGeneratesThumbnailDerivative(t *testing.T) {
 	var derived *database.CloudFile
 	for time.Now().Before(deadline) {
 		var children []database.CloudFile
-		if err := db.Preload("Object").Where("parent_id = ? AND application_type = ?", completed.ID, "system.thumbnail").Find(&children).Error; err != nil {
+		if err := db.Preload("Object").Where("derived_from_id = ? AND application_type = ?", completed.ID, "system.thumbnail").Find(&children).Error; err != nil {
 			t.Fatalf("query thumbnail children: %v", err)
 		}
 		if len(children) > 0 {
@@ -366,7 +366,7 @@ func TestDirectUploadMultipartImageGeneratesCompressionDerivative(t *testing.T) 
 	var derived *database.CloudFile
 	for time.Now().Before(deadline) {
 		var children []database.CloudFile
-		if err := db.Preload("Object").Where("parent_id = ? AND application_type = ?", completed.ID, "system.compression.low").Find(&children).Error; err != nil {
+		if err := db.Preload("Object").Where("derived_from_id = ? AND application_type = ?", completed.ID, "system.compression.low").Find(&children).Error; err != nil {
 			t.Fatalf("query derived children: %v", err)
 		}
 		if len(children) > 0 {
@@ -490,7 +490,7 @@ func TestDirectUploadClientMediaSkipsSourceAnalysis(t *testing.T) {
 		t.Fatal("client-assisted upload did not queue a background source reanalysis")
 	}
 	var children []database.CloudFile
-	if err := db.Preload("Object").Where("parent_id = ? AND application_type = ?", completed.ID, "system.thumbnail").Find(&children).Error; err != nil {
+	if err := db.Preload("Object").Where("derived_from_id = ? AND application_type = ?", completed.ID, "system.thumbnail").Find(&children).Error; err != nil {
 		t.Fatalf("query thumbnail children: %v", err)
 	}
 	if len(children) != 1 || children[0].Object == nil {
@@ -507,7 +507,7 @@ func TestDirectUploadClientMediaSkipsSourceAnalysis(t *testing.T) {
 		t.Fatalf("task status = %v, want completed", task.UploadStatus)
 	}
 	var compressions []database.CloudFile
-	if err := db.Where("parent_id = ? AND application_type = ?", completed.ID, "system.compression.low").Find(&compressions).Error; err != nil {
+	if err := db.Where("derived_from_id = ? AND application_type = ?", completed.ID, "system.compression.low").Find(&compressions).Error; err != nil {
 		t.Fatalf("query unexpected compression children: %v", err)
 	}
 	if len(compressions) != 0 {
@@ -599,14 +599,14 @@ func TestDirectUploadClientImageCompressionSkipsSourceAnalysis(t *testing.T) {
 		t.Fatalf("parent status/object = %v/%#v, want completed with compression and thumbnail", parent.UploadStatus, parent.Object)
 	}
 	var children []database.CloudFile
-	if err := db.Where("parent_id = ? AND application_type = ?", completed.ID, "system.compression.low").Find(&children).Error; err != nil {
+	if err := db.Where("derived_from_id = ? AND application_type = ?", completed.ID, "system.compression.low").Find(&children).Error; err != nil {
 		t.Fatalf("query compression child: %v", err)
 	}
 	if len(children) != 1 {
 		t.Fatalf("compression children = %d, want 1", len(children))
 	}
 	var thumbnails []database.CloudFile
-	if err := db.Where("parent_id = ? AND application_type = ?", completed.ID, "system.thumbnail").Find(&thumbnails).Error; err != nil {
+	if err := db.Where("derived_from_id = ? AND application_type = ?", completed.ID, "system.thumbnail").Find(&thumbnails).Error; err != nil {
 		t.Fatalf("query thumbnail child: %v", err)
 	}
 	if len(thumbnails) != 1 {
@@ -699,7 +699,7 @@ func TestDirectUploadJpegCompressionDerivative(t *testing.T) {
 		t.Fatalf("parent object = %#v, want HasCompression", parent.Object)
 	}
 	var children []database.CloudFile
-	if err := db.Preload("Object").Where("parent_id = ? AND application_type = ?", completed.ID, "system.compression.low").Find(&children).Error; err != nil {
+	if err := db.Preload("Object").Where("derived_from_id = ? AND application_type = ?", completed.ID, "system.compression.low").Find(&children).Error; err != nil {
 		t.Fatalf("query compression child: %v", err)
 	}
 	if len(children) != 1 {

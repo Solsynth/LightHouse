@@ -3,7 +3,14 @@ import { useI18n } from 'vue-i18n'
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { Component } from 'vue'
-import { CircleDash16, Folder16, StoragePool16, TrashCan16, WarningAlt16 } from '@carbon/icons-vue'
+import {
+  CircleDash16,
+  Folder16,
+  Share16,
+  StoragePool16,
+  TrashCan16,
+  WarningAlt16,
+} from '@carbon/icons-vue'
 
 import { formatBytes, formatCount } from '@/lib/format'
 import { useUiStore } from '@/stores/ui'
@@ -32,6 +39,7 @@ const nav = computed<NavItem[]>(() => [
     badge: vault.fileCount > 0 ? formatCount(vault.fileCount) : undefined,
   },
   { label: t('nav.unindexed'), to: '/unindexed', icon: WarningAlt16, match: '/unindexed' },
+  { label: t('nav.shared'), to: '/shared', icon: Share16, match: '/shared' },
   { label: t('nav.recycle'), to: '/recycle', icon: TrashCan16, match: '/recycle' },
 ])
 

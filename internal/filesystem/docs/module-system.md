@@ -94,7 +94,7 @@ Feature modules:
 
 | ID | Surface | Requires | Schema |
 |---|---|---|---|
-| `app.solian.files.core` | shared file, pool, permission and lock tables | — | `file_pools`, `file_objects`, `cloud_files`, `file_permissions`, `pool_permissions`, `file_locks` |
+| `app.solian.files.core` | shared file, pool, permission and lock tables | — | `file_pools`, `file_objects`, `cloud_files`, `file_acl_entries`, `file_permissions` (legacy), `pool_permissions`, `file_locks` |
 | `app.solian.files.auth` | request authentication; synthesized identity when Stargate is absent | core | none |
 | `app.solian.files.files` | `/api/files` read, listing, lifecycle | core | none |
 | `app.solian.files.uploads` | `/api/files/upload` | core | `persistent_tasks`, `upload_chunks` |

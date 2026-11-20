@@ -121,6 +121,7 @@ type FileService struct {
 	defaultPoolID     string
 	accessSecret      string
 	permissionChecker PermissionChecker
+	workspaceACL      WorkspaceACLResolver
 	failureLog        *ServerFailureLog
 }
 
@@ -434,39 +435,39 @@ func (s *FileService) GetFilesInWorkspace(ids []string, workspaceID *string) ([]
 }
 
 func (s *FileService) GetBreadcrumb(fileID string) ([]database.CloudFile, error) {
-	ids, err := s.loadAncestorIDs(fileID)
-	if err != nil {
+	var target database.CloudFile
+	if err := s.db.Where("id = ? AND deleted_at IS NULL", strings.TrimSpace(fileID)).First(&target).Error; err != nil {
 		return nil, err
 	}
-	if len(ids) == 0 {
-		return nil, gorm.ErrRecordNotFound
+	ancIDs := AncestorIDsFromPath(target.Path)
+	if len(ancIDs) == 0 {
+		return []database.CloudFile{target}, nil
 	}
 
-	var files []database.CloudFile
-	if err := s.db.Where("id IN ? AND deleted_at IS NULL", ids).Find(&files).Error; err != nil {
+	var ancestors []database.CloudFile
+	if err := s.db.Where("id IN ? AND deleted_at IS NULL", ancIDs).Find(&ancestors).Error; err != nil {
 		return nil, err
 	}
-
-	filesByID := make(map[string]database.CloudFile, len(files))
-	for _, file := range files {
-		filesByID[file.ID] = file
+	byID := make(map[string]database.CloudFile, len(ancestors))
+	for _, f := range ancestors {
+		byID[f.ID] = f
 	}
 
-	breadcrumb := make([]database.CloudFile, 0, len(ids))
-	for i := len(ids) - 1; i >= 0; i-- {
-		file, ok := filesByID[ids[i]]
+	breadcrumb := make([]database.CloudFile, 0, len(ancIDs)+1)
+	for _, id := range ancIDs {
+		f, ok := byID[id]
 		if !ok {
 			return nil, gorm.ErrRecordNotFound
 		}
-		breadcrumb = append(breadcrumb, file)
+		breadcrumb = append(breadcrumb, f)
 	}
-
+	breadcrumb = append(breadcrumb, target)
 	return breadcrumb, nil
 }
 
 func (s *FileService) GetChildren(parentID string) ([]database.CloudFile, error) {
 	var files []database.CloudFile
-	if err := s.db.Preload("Object").Where("parent_id = ?", parentID).Where("deleted_at IS NULL").Find(&files).Error; err != nil {
+	if err := s.db.Preload("Object").Where("parent_id = ? AND derived_from_id IS NULL", parentID).Where("deleted_at IS NULL").Find(&files).Error; err != nil {
 		return nil, err
 	}
 	if err := s.populateFilesMetadata(files); err != nil {
@@ -494,7 +495,7 @@ func (s *FileService) GetFileInWorkspace(id string, workspaceID *string) (*datab
 }
 
 func (s *FileService) GetChildrenInWorkspace(parentID string, workspaceID *string) ([]database.CloudFile, error) {
-	query := s.db.Preload("Object").Where("parent_id = ?", parentID).Where("deleted_at IS NULL")
+	query := s.db.Preload("Object").Where("parent_id = ? AND derived_from_id IS NULL", parentID).Where("deleted_at IS NULL")
 	if workspaceID == nil || strings.TrimSpace(*workspaceID) == "" {
 		query = query.Where("workspace_id IS NULL")
 	} else {
@@ -663,12 +664,49 @@ func (s *FileService) ListPoolPermissions(poolID string) ([]database.PoolPermiss
 	return perms, nil
 }
 
+// ListFilePermissions is a compatibility shim that projects FileACLEntry rows
+// into the legacy FilePermission shape for older clients.
 func (s *FileService) ListFilePermissions(fileID string) ([]database.FilePermission, error) {
-	var perms []database.FilePermission
-	if err := s.db.Where("file_id = ?", fileID).Find(&perms).Error; err != nil {
+	var entries []database.FileACLEntry
+	if err := s.db.Where("file_id = ?", fileID).Order("created_at ASC, id ASC").Find(&entries).Error; err != nil {
 		return nil, err
 	}
-	return perms, nil
+	out := make([]database.FilePermission, 0, len(entries))
+	for _, e := range entries {
+		if e.Effect == ACLEffectDeny && e.SubjectType == ACLSubjectPublic {
+			out = append(out, database.FilePermission{
+				ID:          e.ID,
+				FileID:      e.FileID,
+				SubjectType: "private",
+				SubjectID:   "",
+				Permission:  "read",
+				CreatedAt:   e.CreatedAt,
+				UpdatedAt:   e.UpdatedAt,
+			})
+			continue
+		}
+		if e.Effect != ACLEffectAllow {
+			continue
+		}
+		perm := "read"
+		mask := PermissionMask(e.Permissions)
+		switch {
+		case mask&PermManage != 0:
+			perm = "manage"
+		case mask&PermWrite != 0:
+			perm = "write"
+		}
+		out = append(out, database.FilePermission{
+			ID:          e.ID,
+			FileID:      e.FileID,
+			SubjectType: e.SubjectType,
+			SubjectID:   e.SubjectID,
+			Permission:  perm,
+			CreatedAt:   e.CreatedAt,
+			UpdatedAt:   e.UpdatedAt,
+		})
+	}
+	return out, nil
 }
 
 func (s *FileService) UpdatePoolPermissions(poolID string, perms []database.PoolPermission) error {
@@ -683,19 +721,59 @@ func (s *FileService) UpdatePoolPermissions(poolID string, perms []database.Pool
 	})
 }
 
+// UpdateFilePermissions is a compatibility shim that translates legacy
+// FilePermission payloads into FileACLEntry rows on fileID.
 func (s *FileService) UpdateFilePermissions(fileID string, perms []database.FilePermission) error {
-	if err := s.db.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("file_id = ?", fileID).Delete(&database.FilePermission{}).Error; err != nil {
-			return err
+	var file database.CloudFile
+	if err := s.db.First(&file, "id = ?", fileID).Error; err != nil {
+		// Preserve legacy behavior for callers/tests that update permissions by
+		// ID without pre-creating the CloudFile row.
+		file = database.CloudFile{ID: fileID}
+	}
+	inputs := make([]ACLEntryInput, 0, len(perms))
+	hasPrivate := false
+	hasPublic := false
+	for _, p := range perms {
+		st := strings.ToLower(strings.TrimSpace(p.SubjectType))
+		mask, err := ParsePermissionMask(p.Permission)
+		if err != nil {
+			mask = PermRead
 		}
-		if len(perms) == 0 {
-			return nil
+		switch st {
+		case "public":
+			hasPublic = true
+			inputs = append(inputs, ACLEntryInput{
+				SubjectType: ACLSubjectPublic,
+				Effect:      ACLEffectAllow,
+				Permissions: uint32(mask),
+			})
+		case "private":
+			hasPrivate = true
+		case "account", "scope", "authenticated", "workspace", "workspace_role", "workspace_group", "link":
+			inputs = append(inputs, ACLEntryInput{
+				SubjectType: st,
+				SubjectID:   strings.TrimSpace(p.SubjectID),
+				Effect:      ACLEffectAllow,
+				Permissions: uint32(mask),
+			})
 		}
-		return tx.Create(&perms).Error
-	}); err != nil {
+	}
+	var inheritACL *bool
+	if hasPrivate && !hasPublic {
+		inputs = append(inputs, ACLEntryInput{
+			SubjectType: ACLSubjectPublic,
+			Effect:      ACLEffectDeny,
+			Permissions: uint32(PermRead),
+		})
+		f := false
+		inheritACL = &f
+	} else if hasPublic {
+		t := true
+		inheritACL = &t
+	}
+	if err := s.ReplaceFileACL(context.Background(), &file, inheritACL, inputs, nil); err != nil {
 		return err
 	}
-	s.InvalidateFilePermissionCache(context.Background(), fileID)
 	return nil
 }
 
@@ -852,313 +930,12 @@ func (s *FileService) ValidateStorageConfig(cfg PoolStorageConfig) error {
 	return nil
 }
 
-type cachedFilePermissionLookup struct {
-	HasSource bool                      `json:"has_source"`
-	SourceID  string                    `json:"source_id"`
-	Perms     []database.FilePermission `json:"perms"`
-}
-
-func (s *FileService) filePermissionCacheKey(fileID, permission string) string {
-	return fmt.Sprintf("fs:file-perm:%s:%s", fileID, permission)
-}
-
-func (s *FileService) filePermissionGroupKey(fileID string) string {
-	return "fs:file-perm-group:" + fileID
-}
-
+// InvalidateFilePermissionCache is retained as a no-op hook for callers; the
+// materialized-path ACL engine evaluates directly against indexed rows without
+// per-file ancestor cache invalidation storms.
 func (s *FileService) InvalidateFilePermissionCache(ctx context.Context, fileID string) {
-	if s == nil || s.cache == nil || strings.TrimSpace(fileID) == "" {
-		return
-	}
-	_ = s.cache.RemoveGroup(ctx, s.filePermissionGroupKey(fileID))
-}
-
-func (s *FileService) loadAncestorIDs(fileID string) ([]string, error) {
-	const query = `WITH RECURSIVE ancestors AS (
-		SELECT id, parent_id, 0 AS depth
-		FROM cloud_files
-		WHERE id = ? AND deleted_at IS NULL
-
-		UNION ALL
-
-		SELECT cf.id, cf.parent_id, ancestors.depth + 1
-		FROM cloud_files cf
-		JOIN ancestors ON cf.id = ancestors.parent_id
-		WHERE cf.deleted_at IS NULL
-	)
-	SELECT id FROM ancestors ORDER BY depth`
-
-	rows, err := s.db.DB.Raw(query, fileID).Rows()
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	ids := make([]string, 0, 8)
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, nil
-}
-
-func (s *FileService) loadAncestorIDsBatch(fileIDs []string) (map[string][]string, error) {
-	fileIDs = normalizeFileIDs(fileIDs)
-	if len(fileIDs) == 0 {
-		return map[string][]string{}, nil
-	}
-
-	const query = `WITH RECURSIVE ancestors AS (
-		SELECT id AS file_id, id AS ancestor_id, parent_id, 0 AS depth
-		FROM cloud_files
-		WHERE id IN ? AND deleted_at IS NULL
-
-		UNION ALL
-
-		SELECT ancestors.file_id, cf.id AS ancestor_id, cf.parent_id, ancestors.depth + 1
-		FROM cloud_files cf
-		JOIN ancestors ON cf.id = ancestors.parent_id
-		WHERE cf.deleted_at IS NULL
-	)
-	SELECT file_id, ancestor_id
-	FROM ancestors
-	ORDER BY file_id, depth`
-
-	type ancestorRow struct {
-		FileID     string
-		AncestorID string
-	}
-
-	var rows []ancestorRow
-	if err := s.db.DB.Raw(query, fileIDs).Scan(&rows).Error; err != nil {
-		return nil, err
-	}
-
-	ancestorsByFile := make(map[string][]string, len(fileIDs))
-	for _, row := range rows {
-		if strings.TrimSpace(row.FileID) == "" || strings.TrimSpace(row.AncestorID) == "" {
-			continue
-		}
-		ancestorsByFile[row.FileID] = append(ancestorsByFile[row.FileID], row.AncestorID)
-	}
-	return ancestorsByFile, nil
-}
-
-func (s *FileService) loadInheritedFilePermissions(fileID, permission string) (cachedFilePermissionLookup, error) {
-	const sourceQuery = `WITH RECURSIVE ancestors AS (
-		SELECT id, parent_id, 0 AS depth
-		FROM cloud_files
-		WHERE id = ? AND deleted_at IS NULL
-
-		UNION ALL
-
-		SELECT cf.id, cf.parent_id, ancestors.depth + 1
-		FROM cloud_files cf
-		JOIN ancestors ON cf.id = ancestors.parent_id
-		WHERE cf.deleted_at IS NULL
-	)
-	SELECT id
-	FROM ancestors a
-	WHERE EXISTS (
-		SELECT 1
-		FROM file_permissions fp
-		WHERE fp.file_id = a.id
-		  AND fp.permission = ?
-		  AND fp.deleted_at IS NULL
-	)
-	ORDER BY depth
-	LIMIT 1`
-
-	var sourceID string
-	if err := s.db.DB.Raw(sourceQuery, fileID, permission).Scan(&sourceID).Error; err != nil {
-		return cachedFilePermissionLookup{}, err
-	}
-	if strings.TrimSpace(sourceID) == "" {
-		return cachedFilePermissionLookup{HasSource: false}, nil
-	}
-
-	var perms []database.FilePermission
-	if err := s.db.Where("file_id = ? AND permission = ?", sourceID, permission).Find(&perms).Error; err != nil {
-		return cachedFilePermissionLookup{}, err
-	}
-	return cachedFilePermissionLookup{HasSource: true, SourceID: sourceID, Perms: perms}, nil
-}
-
-func (s *FileService) loadInheritedFilePermissionsBatch(fileIDs []string, permission string) (map[string]cachedFilePermissionLookup, error) {
-	fileIDs = normalizeFileIDs(fileIDs)
-	if len(fileIDs) == 0 {
-		return map[string]cachedFilePermissionLookup{}, nil
-	}
-
-	lookups := make(map[string]cachedFilePermissionLookup, len(fileIDs))
-	missingFileIDs := make([]string, 0, len(fileIDs))
-	if s.cache != nil {
-		for _, fileID := range fileIDs {
-			var cached cachedFilePermissionLookup
-			ok, err := s.cache.GetData(context.Background(), s.filePermissionCacheKey(fileID, permission), &cached, "FilePermissionLookup")
-			if err == nil && ok {
-				lookups[fileID] = cached
-				continue
-			}
-			missingFileIDs = append(missingFileIDs, fileID)
-		}
-	} else {
-		missingFileIDs = append(missingFileIDs, fileIDs...)
-	}
-	if len(missingFileIDs) == 0 {
-		return lookups, nil
-	}
-
-	const sourceQuery = `WITH RECURSIVE ancestors AS (
-		SELECT id AS file_id, id AS ancestor_id, parent_id, 0 AS depth
-		FROM cloud_files
-		WHERE id IN ? AND deleted_at IS NULL
-
-		UNION ALL
-
-		SELECT ancestors.file_id, cf.id AS ancestor_id, cf.parent_id, ancestors.depth + 1
-		FROM cloud_files cf
-		JOIN ancestors ON cf.id = ancestors.parent_id
-		WHERE cf.deleted_at IS NULL
-	), ranked_sources AS (
-		SELECT a.file_id, a.ancestor_id AS source_id,
-			ROW_NUMBER() OVER (PARTITION BY a.file_id ORDER BY a.depth) AS rn
-		FROM ancestors a
-		JOIN file_permissions fp ON fp.file_id = a.ancestor_id
-		WHERE fp.permission = ?
-		  AND fp.deleted_at IS NULL
-	)
-	SELECT file_id, source_id
-	FROM ranked_sources
-	WHERE rn = 1`
-
-	type permissionSourceRow struct {
-		FileID   string
-		SourceID string
-	}
-
-	var sourceRows []permissionSourceRow
-	if err := s.db.DB.Raw(sourceQuery, missingFileIDs, permission).Scan(&sourceRows).Error; err != nil {
-		return nil, err
-	}
-
-	if len(sourceRows) == 0 {
-		for _, fileID := range missingFileIDs {
-			lookups[fileID] = cachedFilePermissionLookup{HasSource: false}
-		}
-		s.cacheInheritedFilePermissionsBatch(context.Background(), missingFileIDs, permission, lookups)
-		return lookups, nil
-	}
-
-	sourceIDs := make([]string, 0, len(sourceRows))
-	sourceToFileIDs := make(map[string][]string, len(sourceRows))
-	for _, row := range sourceRows {
-		if strings.TrimSpace(row.FileID) == "" || strings.TrimSpace(row.SourceID) == "" {
-			continue
-		}
-		if _, ok := sourceToFileIDs[row.SourceID]; !ok {
-			sourceIDs = append(sourceIDs, row.SourceID)
-		}
-		sourceToFileIDs[row.SourceID] = append(sourceToFileIDs[row.SourceID], row.FileID)
-		lookups[row.FileID] = cachedFilePermissionLookup{HasSource: true, SourceID: row.SourceID}
-	}
-
-	var perms []database.FilePermission
-	if err := s.db.Where("file_id IN ? AND permission = ?", sourceIDs, permission).Find(&perms).Error; err != nil {
-		return nil, err
-	}
-
-	permsBySource := make(map[string][]database.FilePermission, len(sourceIDs))
-	for _, perm := range perms {
-		permsBySource[perm.FileID] = append(permsBySource[perm.FileID], perm)
-	}
-
-	for sourceID, fileIDs := range sourceToFileIDs {
-		for _, fileID := range fileIDs {
-			lookup := lookups[fileID]
-			lookup.Perms = permsBySource[sourceID]
-			lookups[fileID] = lookup
-		}
-	}
-
-	for _, fileID := range missingFileIDs {
-		if _, ok := lookups[fileID]; !ok {
-			lookups[fileID] = cachedFilePermissionLookup{HasSource: false}
-		}
-	}
-	s.cacheInheritedFilePermissionsBatch(context.Background(), missingFileIDs, permission, lookups)
-
-	return lookups, nil
-}
-
-func (s *FileService) cacheInheritedFilePermissionsBatch(ctx context.Context, fileIDs []string, permission string, lookups map[string]cachedFilePermissionLookup) {
-	if s == nil || s.cache == nil || len(fileIDs) == 0 {
-		return
-	}
-
-	ancestorsByFile, err := s.loadAncestorIDsBatch(fileIDs)
-	if err != nil {
-		return
-	}
-
-	for _, fileID := range fileIDs {
-		lookup, ok := lookups[fileID]
-		if !ok {
-			continue
-		}
-		ancestors := ancestorsByFile[fileID]
-		groups := make([]string, 0, len(ancestors))
-		for _, ancestorID := range ancestors {
-			groups = append(groups, s.filePermissionGroupKey(ancestorID))
-		}
-		s.cacheFilePermissionLookup(ctx, s.filePermissionCacheKey(fileID, permission), lookup, groups)
-	}
-}
-
-func (s *FileService) cacheFilePermissionLookup(ctx context.Context, key string, lookup cachedFilePermissionLookup, groups []string) {
-	if s == nil || s.cache == nil || strings.TrimSpace(key) == "" {
-		return
-	}
-	if err := s.cache.SetData(ctx, key, lookup, "FilePermissionLookup", 5*time.Minute); err != nil {
-		return
-	}
-	for _, group := range groups {
-		if strings.TrimSpace(group) == "" {
-			continue
-		}
-		_ = s.cache.AddToGroup(ctx, key, group)
-	}
-}
-
-func (s *FileService) resolveInheritedFilePermissions(ctx context.Context, fileID, permission string) (cachedFilePermissionLookup, error) {
-	key := s.filePermissionCacheKey(fileID, permission)
-	if s.cache != nil {
-		var cached cachedFilePermissionLookup
-		if ok, err := s.cache.GetData(ctx, key, &cached, "FilePermissionLookup"); err == nil && ok {
-			return cached, nil
-		}
-	}
-
-	lookup, err := s.loadInheritedFilePermissions(fileID, permission)
-	if err != nil {
-		return cachedFilePermissionLookup{}, err
-	}
-
-	if s.cache != nil {
-		groups := []string{}
-		if ancestors, err := s.loadAncestorIDs(fileID); err == nil {
-			groups = make([]string, 0, len(ancestors))
-			for _, ancestorID := range ancestors {
-				groups = append(groups, s.filePermissionGroupKey(ancestorID))
-			}
-		}
-		s.cacheFilePermissionLookup(ctx, key, lookup, groups)
-	}
-
-	return lookup, nil
+	_ = ctx
+	_ = fileID
 }
 
 // effectivePoolID resolves the pool a file's bytes live in, falling back to the
@@ -1252,42 +1029,12 @@ func (s *FileService) CanAccessFile(account *gen.DyAccount, session *gen.DyAuthS
 	if file == nil {
 		return false
 	}
-	if account != nil && account.GetIsSuperuser() {
-		return true
-	}
-	if account != nil && file.AccountID.String() == account.GetId() {
-		return true
-	}
-	lookup, err := s.resolveInheritedFilePermissions(context.Background(), file.ID, permission)
+	required, err := ParsePermissionMask(permission)
 	if err != nil {
 		return false
 	}
-	// No permission row anywhere in the ancestor chain: the file falls back to
-	// the default of the pool holding it. A shared (account-less) pool is
-	// fleet-wide storage whose contents stay readable by everyone; any other
-	// pool keeps the file owner-only.
-	if !lookup.HasSource {
-		return permission == "read" && s.isSharedPoolFile(file)
-	}
-	for _, perm := range lookup.Perms {
-		switch perm.SubjectType {
-		case "account":
-			if account != nil && perm.SubjectID == account.GetId() {
-				return true
-			}
-		case "scope":
-			if session != nil {
-				for _, scope := range session.GetScopes() {
-					if scope == perm.SubjectID {
-						return true
-					}
-				}
-			}
-		case "public":
-			return true
-		}
-	}
-	return false
+	caller := NewPrincipalSet(account, session)
+	return s.CanAccessFileMask(context.Background(), caller, file, required)
 }
 
 func (s *FileService) ValidatePoolUsage(ctx AccessContext, poolID *string, fileSize int64, contentType string) error {
@@ -1530,19 +1277,29 @@ func (s *FileService) CreateFolder(accountID uuid.UUID, name string, parentID *s
 
 func (s *FileService) CreateWorkspaceFolder(accountID uuid.UUID, workspaceID *string, name string, parentID *string) (*database.CloudFile, error) {
 	workspaceID = firstNonEmptyPtr(workspaceID)
-	if err := s.ensureParentWorkspace(parentID, workspaceID); err != nil {
+	parentID = firstNonEmptyPtr(parentID)
+	path, depth, err := s.resolveParentLocation(s.db.DB, parentID, workspaceID)
+	if err != nil {
 		return nil, err
 	}
-	file := &database.CloudFile{ID: database.NewID(), Name: name, AccountID: accountID, WorkspaceID: workspaceID, Indexed: true, IsFolder: true, ParentID: parentID}
+	file := &database.CloudFile{
+		ID:          database.NewID(),
+		Name:        name,
+		AccountID:   accountID,
+		WorkspaceID: workspaceID,
+		Indexed:     true,
+		IsFolder:    true,
+		ParentID:    parentID,
+		Path:        path,
+		Depth:       depth,
+		InheritACL:  true,
+		HasACL:      false,
+	}
 	if err := s.db.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(file).Error; err != nil {
 			return err
 		}
-		if parentID != nil && strings.TrimSpace(*parentID) != "" {
-			return nil
-		}
-		perm := database.FilePermission{ID: database.NewID(), FileID: file.ID, SubjectType: "private", SubjectID: "", Permission: "read"}
-		return tx.Create(&perm).Error
+		return s.seedSharedPoolFolderPrivacy(tx, file)
 	}); err != nil {
 		return nil, err
 	}
@@ -1550,25 +1307,13 @@ func (s *FileService) CreateWorkspaceFolder(accountID uuid.UUID, workspaceID *st
 }
 
 func (s *FileService) ensureParentWorkspace(parentID, workspaceID *string) error {
-	if parentID == nil || strings.TrimSpace(*parentID) == "" {
-		return nil
-	}
-	var parent database.CloudFile
-	if err := s.db.Select("workspace_id", "is_folder").First(&parent, "id = ? AND deleted_at IS NULL", strings.TrimSpace(*parentID)).Error; err != nil {
-		return fmt.Errorf("load parent folder: %w", err)
-	}
-	if !parent.IsFolder {
-		return errors.New("parent must be a folder")
-	}
-	if firstNonEmptyString(parent.WorkspaceID) != firstNonEmptyString(workspaceID) {
-		return errors.New("parent and file must belong to the same workspace")
-	}
-	return nil
+	_, _, err := s.resolveParentLocation(s.db.DB, parentID, workspaceID)
+	return err
 }
 
 func (s *FileService) countChildren(parentID string) int {
 	var count int64
-	_ = s.db.Model(&database.CloudFile{}).Where("parent_id = ? AND deleted_at IS NULL", parentID).Count(&count).Error
+	_ = s.db.Model(&database.CloudFile{}).Where("parent_id = ? AND derived_from_id IS NULL AND deleted_at IS NULL", parentID).Count(&count).Error
 	return int(count)
 }
 
@@ -1586,7 +1331,7 @@ func (s *FileService) countChildrenBatch(parentIDs []string) (map[string]int, er
 	var rows []childCountRow
 	if err := s.db.Model(&database.CloudFile{}).
 		Select("parent_id, COUNT(*) AS count").
-		Where("parent_id IN ? AND deleted_at IS NULL", parentIDs).
+		Where("parent_id IN ? AND derived_from_id IS NULL AND deleted_at IS NULL", parentIDs).
 		Group("parent_id").
 		Scan(&rows).Error; err != nil {
 		return nil, err
@@ -1598,97 +1343,41 @@ func (s *FileService) countChildrenBatch(parentIDs []string) (map[string]int, er
 	return counts, nil
 }
 
-func permissionStatusFromLookup(lookup cachedFilePermissionLookup) database.PermissionStatus {
-	if !lookup.HasSource {
-		// Without a permission row the file is owner-only, matching
-		// CanAccessFile's default-deny.
-		return database.PermissionStatus{Readable: false, Visibility: "private"}
-	}
-	visibility := "restricted"
-	readable := false
-	for _, perm := range lookup.Perms {
-		switch perm.SubjectType {
-		case "public":
-			visibility = "public"
-			readable = true
-		case "private":
-			visibility = "private"
-		case "account", "scope":
-			readable = true
-		}
-	}
-	status := database.PermissionStatus{
-		Readable:   readable || visibility == "public",
-		Writable:   false,
-		Manageable: false,
-		Visibility: visibility,
-	}
-	if strings.TrimSpace(lookup.SourceID) != "" {
-		status.InheritedFrom = &lookup.SourceID
-	}
-	return status
-}
-
 func (s *FileService) populateFilesMetadata(files []database.CloudFile) error {
-	if len(files) == 0 {
-		return nil
-	}
-
-	ids := make([]string, 0, len(files))
-	for i := range files {
-		if strings.TrimSpace(files[i].ID) != "" {
-			ids = append(ids, files[i].ID)
-		}
-	}
-
-	childCounts, err := s.countChildrenBatch(ids)
-	if err != nil {
-		return err
-	}
-	permissionLookups, err := s.loadInheritedFilePermissionsBatch(ids, "read")
-	if err != nil {
-		return err
-	}
-
-	sharedPools, err := s.sharedPoolFiles(files)
-	if err != nil {
-		return err
-	}
-
-	for i := range files {
-		files[i].ChildrenCount = childCounts[files[i].ID]
-		lookup, ok := permissionLookups[files[i].ID]
-		if !ok {
-			lookup = cachedFilePermissionLookup{HasSource: false}
-		}
-		if !lookup.HasSource && sharedPools[files[i].ID] {
-			files[i].PermissionStatus = database.PermissionStatus{Readable: true, Visibility: "public"}
-			continue
-		}
-		files[i].PermissionStatus = permissionStatusFromLookup(lookup)
-	}
-
-	return nil
+	return s.PopulateFilesMetadataForCaller(context.Background(), nil, files)
 }
 
 func (s *FileService) permissionStatus(file *database.CloudFile) database.PermissionStatus {
 	if file == nil {
 		return database.PermissionStatus{Readable: false, Visibility: "private"}
 	}
-	lookup, err := s.resolveInheritedFilePermissions(context.Background(), file.ID, "read")
+	eval, err := s.EvaluateFile(context.Background(), nil, file)
 	if err != nil {
 		return database.PermissionStatus{Readable: false, Visibility: "private"}
 	}
-	// Same shared-pool default as populateFilesMetadata: without an explicit
-	// ACL row the pool decides, and a shared pool means world-readable.
-	if !lookup.HasSource && s.isSharedPoolFile(file) {
-		return database.PermissionStatus{Readable: true, Visibility: "public"}
-	}
-	return permissionStatusFromLookup(lookup)
+	return eval.ToPermissionStatus()
 }
 
 func (s *FileService) CreateFile(accountID uuid.UUID, name string, objectID string, parentID *string, appType *string) (*database.CloudFile, error) {
-	file := &database.CloudFile{ID: database.NewID(), Name: name, AccountID: accountID, ObjectID: &objectID, ParentID: parentID, Indexed: true, ApplicationType: appType, FileMeta: datatypes.JSON([]byte(`{}`)), UserMeta: datatypes.JSON([]byte(`{}`))}
+	parentID = firstNonEmptyPtr(parentID)
+	path, depth, err := s.resolveParentLocation(s.db.DB, parentID, nil)
+	if err != nil {
+		return nil, err
+	}
+	file := &database.CloudFile{
+		ID:              database.NewID(),
+		Name:            name,
+		AccountID:       accountID,
+		ObjectID:        &objectID,
+		ParentID:        parentID,
+		Path:            path,
+		Depth:           depth,
+		InheritACL:      true,
+		Indexed:         true,
+		ApplicationType: appType,
+		FileMeta:        datatypes.JSON([]byte(`{}`)),
+		UserMeta:        datatypes.JSON([]byte(`{}`)),
+	}
 	if err := s.db.Create(file).Error; err != nil {
 		return nil, err
 	}
@@ -1701,7 +1390,7 @@ func (s *FileService) MarkDerived(parentID string, kind string) error {
 		return err
 	}
 	var count int64
-	if err := s.db.Model(&database.CloudFile{}).Where("parent_id = ? and application_type = ?", parentID, kind).Count(&count).Error; err != nil {
+	if err := s.db.Model(&database.CloudFile{}).Where("derived_from_id = ? and application_type = ?", parentID, kind).Count(&count).Error; err != nil {
 		return err
 	}
 	if kind == "system.thumbnail" {
@@ -1721,7 +1410,7 @@ func (s *FileService) MarkDerived(parentID string, kind string) error {
 
 func (s *FileService) DeleteFile(id string) error {
 	var file database.CloudFile
-	if err := s.db.Select("id", "parent_id", "application_type").First(&file, "id = ?", id).Error; err != nil {
+	if err := s.db.Select("id", "parent_id", "derived_from_id", "application_type").First(&file, "id = ?", id).Error; err != nil {
 		return err
 	}
 	affectedIDs, err := s.loadDescendantIDs([]string{id})
@@ -1734,7 +1423,6 @@ func (s *FileService) DeleteFile(id string) error {
 	if err := s.touchDerivedParentFlags(&file); err != nil {
 		return err
 	}
-	s.invalidatePermissionCaches(context.Background(), affectedIDs)
 	return nil
 }
 
@@ -1795,8 +1483,13 @@ func (s *FileService) PurgeFile(id string) error {
 		if err := s.touchDerivedParentFlagsTx(tx, &file); err != nil {
 			return err
 		}
-		if err := tx.Unscoped().Delete(&database.FilePermission{}, "file_id IN ?", affectedIDs).Error; err != nil {
+		if err := tx.Unscoped().Delete(&database.FileACLEntry{}, "file_id IN ?", affectedIDs).Error; err != nil {
 			return err
+		}
+		if tx.Migrator().HasTable(&database.FilePermission{}) {
+			if err := tx.Unscoped().Delete(&database.FilePermission{}, "file_id IN ?", affectedIDs).Error; err != nil {
+				return err
+			}
 		}
 		seenObjectIDs := make(map[string]struct{}, len(files))
 		for _, descendant := range files {
@@ -1819,7 +1512,6 @@ func (s *FileService) PurgeFile(id string) error {
 	}); err != nil {
 		return err
 	}
-	s.invalidatePermissionCaches(context.Background(), affectedIDs)
 	return nil
 }
 
@@ -1846,26 +1538,31 @@ func (s *FileService) touchDerivedParentFlags(file *database.CloudFile) error {
 }
 
 func (s *FileService) touchDerivedParentFlagsTx(tx *gorm.DB, file *database.CloudFile) error {
-	if tx == nil || file == nil || file.ParentID == nil || file.ApplicationType == nil {
+	if tx == nil || file == nil || file.ApplicationType == nil {
 		return nil
 	}
 	kind := strings.TrimSpace(*file.ApplicationType)
 	if kind != "system.thumbnail" && !strings.HasPrefix(kind, "system.compression") {
 		return nil
 	}
-	parentID := strings.TrimSpace(*file.ParentID)
-	if parentID == "" {
+	sourceID := ""
+	if file.DerivedFromID != nil && strings.TrimSpace(*file.DerivedFromID) != "" {
+		sourceID = strings.TrimSpace(*file.DerivedFromID)
+	} else if file.ParentID != nil && strings.TrimSpace(*file.ParentID) != "" {
+		sourceID = strings.TrimSpace(*file.ParentID)
+	}
+	if sourceID == "" {
 		return nil
 	}
 	var thumb, comp int64
-	if err := tx.Model(&database.CloudFile{}).Where("parent_id = ? and application_type = ?", parentID, "system.thumbnail").Count(&thumb).Error; err != nil {
+	if err := tx.Model(&database.CloudFile{}).Where("derived_from_id = ? and application_type = ?", sourceID, "system.thumbnail").Count(&thumb).Error; err != nil {
 		return err
 	}
-	if err := tx.Model(&database.CloudFile{}).Where("parent_id = ? and application_type LIKE ?", parentID, "system.compression%").Count(&comp).Error; err != nil {
+	if err := tx.Model(&database.CloudFile{}).Where("derived_from_id = ? and application_type LIKE ?", sourceID, "system.compression%").Count(&comp).Error; err != nil {
 		return err
 	}
 	return tx.Model(&database.FileObject{}).
-		Where("id = (SELECT object_id FROM cloud_files WHERE id = ?)", parentID).
+		Where("id = (SELECT object_id FROM cloud_files WHERE id = ?)", sourceID).
 		Updates(map[string]any{"has_thumbnail": thumb > 0, "has_compression": comp > 0}).Error
 }
 
@@ -1881,110 +1578,102 @@ func (s *FileService) MoveBatch(ids []string, parentID *string, indexed *bool) (
 			resolvedParentID = &trimmed
 		}
 	}
+
+	var moved []database.CloudFile
+	if err := s.db.Where("id IN ? AND deleted_at IS NULL", ids).Find(&moved).Error; err != nil {
+		return 0, err
+	}
+	if len(moved) == 0 {
+		return 0, nil
+	}
+
+	destPath := "/"
+	destDepth := 0
 	if resolvedParentID != nil {
-		descendantIDs, err := s.loadDescendantIDs(ids)
-		if err != nil {
-			return 0, err
+		var dest database.CloudFile
+		if err := s.db.Select("id", "path", "depth", "workspace_id", "is_folder", "derived_from_id").
+			First(&dest, "id = ? AND deleted_at IS NULL", *resolvedParentID).Error; err != nil {
+			return 0, fmt.Errorf("load parent folder: %w", err)
 		}
-		for _, descendantID := range descendantIDs {
-			if descendantID == *resolvedParentID {
+		if !dest.IsFolder {
+			return 0, errors.New("parent must be a folder")
+		}
+		if dest.DerivedFromID != nil && strings.TrimSpace(*dest.DerivedFromID) != "" {
+			return 0, errors.New("parent cannot be a derived file")
+		}
+		destFullPath := SubtreePrefix(&dest)
+		// O(1) in-memory cycle check using materialized path (zero recursive CTEs).
+		for i := range moved {
+			if moved[i].ID == dest.ID || strings.Contains(destFullPath, "/"+moved[i].ID+"/") {
 				return 0, fmt.Errorf("parent_id cannot reference a moved file or its descendant")
 			}
+			if firstNonEmptyString(dest.WorkspaceID) != firstNonEmptyString(moved[i].WorkspaceID) {
+				return 0, errors.New("parent and file must belong to the same workspace")
+			}
 		}
+		destPath = destFullPath
+		destDepth = dest.Depth + 1
 	}
+
 	var parentValue any
 	if resolvedParentID != nil {
 		parentValue = *resolvedParentID
 	}
-	updates := map[string]any{"parent_id": parentValue}
-	if indexed != nil {
-		updates["indexed"] = *indexed
+
+	var affected int64
+	if err := s.db.DB.Transaction(func(tx *gorm.DB) error {
+		for i := range moved {
+			node := &moved[i]
+			oldPrefix := SubtreePrefix(node)
+			newPrefix := destPath + node.ID + "/"
+			depthDelta := destDepth - node.Depth
+
+			updates := map[string]any{
+				"parent_id": parentValue,
+				"path":      destPath,
+				"depth":     destDepth,
+			}
+			if indexed != nil {
+				updates["indexed"] = *indexed
+			}
+			res := tx.Model(&database.CloudFile{}).Where("id = ?", node.ID).Updates(updates)
+			if res.Error != nil {
+				return res.Error
+			}
+			affected += res.RowsAffected
+
+			// Reparent the whole folder subtree in one indexed UPDATE. REPLACE
+			// rewrites the shared prefix without binding a position argument
+			// whose integer width differs between SQLite and PostgreSQL; the
+			// prefix is unique to this subtree, so no unrelated path matches.
+			if node.IsFolder && oldPrefix != newPrefix {
+				if err := tx.Exec(
+					`UPDATE cloud_files SET path = REPLACE(path, ?, ?), depth = depth + ? WHERE path LIKE ?`,
+					oldPrefix, newPrefix, depthDelta, oldPrefix+"%",
+				).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}); err != nil {
+		return affected, err
 	}
-	tx := s.db.Model(&database.CloudFile{}).Where("id IN ?", ids).Updates(updates)
-	if tx.Error != nil {
-		return tx.RowsAffected, tx.Error
-	}
-	descendantIDs, err := s.loadDescendantIDs(ids)
-	if err != nil {
-		return tx.RowsAffected, err
-	}
-	s.invalidatePermissionCaches(context.Background(), descendantIDs)
-	return tx.RowsAffected, nil
+	return affected, nil
 }
 
 func (s *FileService) loadDescendantIDs(fileIDs []string) ([]string, error) {
-	return s.loadDescendantIDsWithDeleted(fileIDs, false)
+	return s.loadSubtreeIDs(fileIDs, false)
 }
 
 func (s *FileService) loadDescendantIDsIncludingDeleted(fileIDs []string) ([]string, error) {
-	return s.loadDescendantIDsWithDeleted(fileIDs, true)
+	return s.loadSubtreeIDs(fileIDs, true)
 }
 
 // LoadDescendantIDsIncludingDeleted returns [fileIDs] plus every nested child,
 // including soft-deleted rows (used by batch purge root filtering).
 func (s *FileService) LoadDescendantIDsIncludingDeleted(fileIDs []string) ([]string, error) {
-	return s.loadDescendantIDsIncludingDeleted(fileIDs)
-}
-
-func (s *FileService) loadDescendantIDsWithDeleted(fileIDs []string, includeDeleted bool) ([]string, error) {
-	fileIDs = normalizeFileIDs(fileIDs)
-	if len(fileIDs) == 0 {
-		return []string{}, nil
-	}
-
-	recursiveFilter := "WHERE cf.deleted_at IS NULL"
-	if includeDeleted {
-		recursiveFilter = ""
-	}
-	query := `WITH RECURSIVE descendants AS (
-		SELECT id, parent_id
-		FROM cloud_files
-		WHERE id IN ?
-
-		UNION
-
-		SELECT cf.id, cf.parent_id
-		FROM cloud_files cf
-		JOIN descendants d ON cf.parent_id = d.id
-		` + recursiveFilter + `
-	)
-	SELECT DISTINCT id
-	FROM descendants`
-
-	type descendantRow struct {
-		ID string
-	}
-
-	var rows []descendantRow
-	if err := s.db.DB.Raw(query, fileIDs).Scan(&rows).Error; err != nil {
-		return nil, err
-	}
-	ids := make([]string, 0, len(rows))
-	for _, row := range rows {
-		if strings.TrimSpace(row.ID) == "" {
-			continue
-		}
-		ids = append(ids, row.ID)
-	}
-	return ids, nil
-}
-
-func (s *FileService) invalidatePermissionCaches(ctx context.Context, fileIDs []string) {
-	if s == nil || s.cache == nil {
-		return
-	}
-	seen := make(map[string]struct{}, len(fileIDs))
-	for _, fileID := range fileIDs {
-		fileID = strings.TrimSpace(fileID)
-		if fileID == "" {
-			continue
-		}
-		if _, ok := seen[fileID]; ok {
-			continue
-		}
-		seen[fileID] = struct{}{}
-		s.InvalidateFilePermissionCache(ctx, fileID)
-	}
+	return s.loadSubtreeIDs(fileIDs, true)
 }
 
 func (s *FileService) purgeObjectIfDereferenced(tx *gorm.DB, file *database.CloudFile, objectID string) error {
@@ -2009,7 +1698,7 @@ func (s *FileService) purgeObjectIfDereferenced(tx *gorm.DB, file *database.Clou
 
 	storageKey := firstNonEmptyPtr(object.StorageKey, file.StorageKey, file.ObjectID)
 	if storageKey != nil && strings.TrimSpace(*storageKey) != "" {
-		backend, err := s.backendForStorageTarget(file.PoolID)
+		backend, err := s.backendForStorageTargetTx(tx, file.PoolID)
 		if err != nil {
 			// Metadata purge should still succeed if the storage target is gone.
 			logging.Log.Warn().Err(err).Str("objectId", objectID).Msg("storage backend unavailable during purge")
@@ -2047,6 +1736,20 @@ func (s *FileService) backendForStorageTarget(poolID *string) (storage.Backend, 
 	return s.stor, nil
 }
 
+// backendForStorageTargetTx is backendForStorageTarget for a caller that
+// already holds a transaction: the pool row is read through tx so the
+// transaction never competes for a second connection.
+func (s *FileService) backendForStorageTargetTx(tx *gorm.DB, poolID *string) (storage.Backend, error) {
+	if tx == nil || poolID == nil || strings.TrimSpace(*poolID) == "" {
+		return s.backendForStorageTarget(poolID)
+	}
+	var pool database.FilePool
+	if err := tx.First(&pool, "id = ?", strings.TrimSpace(*poolID)).Error; err != nil {
+		return nil, err
+	}
+	return backendFromPoolStorage(poolsToServicePool(pool).StorageConfig, s.stor)
+}
+
 func (s *FileService) PurgeRecycleBin(accountID uuid.UUID) (int64, error) {
 	tx := s.db.Where("account_id = ? AND is_marked_recycle = true", accountID).Delete(&database.CloudFile{})
 	return tx.RowsAffected, tx.Error
@@ -2068,10 +1771,10 @@ func (s *FileService) TouchCompatibilityFlags(fileID string) error {
 		return nil
 	}
 	var thumb, comp int64
-	if err := s.db.Model(&database.CloudFile{}).Where("parent_id = ? and application_type = ?", fileID, "system.thumbnail").Count(&thumb).Error; err != nil {
+	if err := s.db.Model(&database.CloudFile{}).Where("derived_from_id = ? and application_type = ?", fileID, "system.thumbnail").Count(&thumb).Error; err != nil {
 		return err
 	}
-	if err := s.db.Model(&database.CloudFile{}).Where("parent_id = ? and application_type LIKE ?", fileID, "system.compression%").Count(&comp).Error; err != nil {
+	if err := s.db.Model(&database.CloudFile{}).Where("derived_from_id = ? and application_type LIKE ?", fileID, "system.compression%").Count(&comp).Error; err != nil {
 		return err
 	}
 	if err := s.db.Model(&database.FileObject{}).Where("id = ?", *file.ObjectID).Updates(map[string]any{"has_thumbnail": thumb > 0, "has_compression": comp > 0}).Error; err != nil {
@@ -2670,9 +2373,18 @@ func (s *FileService) imageVariantRepairReason(file *database.CloudFile) string 
 	return strings.Join(reasons, ", ")
 }
 
+// GetDerivedChildren returns all active system derivatives attached to sourceID.
+func (s *FileService) GetDerivedChildren(sourceID string) ([]database.CloudFile, error) {
+	var children []database.CloudFile
+	if err := s.db.Preload("Object").Where("derived_from_id = ? AND deleted_at IS NULL", sourceID).Find(&children).Error; err != nil {
+		return nil, err
+	}
+	return children, nil
+}
+
 func (s *FileService) getDerivedChild(parentID, kind string) (*database.CloudFile, error) {
 	var child database.CloudFile
-	if err := s.db.Preload("Object").First(&child, "parent_id = ? and application_type = ? and deleted_at IS NULL", parentID, kind).Error; err != nil {
+	if err := s.db.Preload("Object").First(&child, "derived_from_id = ? and application_type = ? and deleted_at IS NULL", parentID, kind).Error; err != nil {
 		return nil, err
 	}
 	return &child, nil
@@ -3099,36 +2811,43 @@ func (s *FileService) CreateWorkspaceUploadedFile(accountID uuid.UUID, workspace
 			return nil, fmt.Errorf("hidden pools are internal-only; not usable for user uploads")
 		}
 	}
+	parentID = firstNonEmptyPtr(parentID)
+	path, depth, err := s.resolveParentLocation(s.db.DB, parentID, workspaceID)
+	if err != nil {
+		return nil, err
+	}
 	finalIndexed := indexed
-	if !finalIndexed && parentID != nil && strings.TrimSpace(*parentID) != "" {
+	if !finalIndexed && parentID != nil {
 		var parent database.CloudFile
-		if err := s.db.Select("indexed").First(&parent, "id = ? AND deleted_at IS NULL", strings.TrimSpace(*parentID)).Error; err == nil && parent.Indexed {
+		if err := s.db.Select("indexed").First(&parent, "id = ? AND deleted_at IS NULL", *parentID).Error; err == nil && parent.Indexed {
 			finalIndexed = true
 		}
 	}
-	file := &database.CloudFile{ID: database.NewID(), Name: name, Description: firstNonEmptyPtr(description), AccountID: accountID, WorkspaceID: workspaceID, PoolID: resolvedPoolID, ObjectID: &objectID, ParentID: firstNonEmptyPtr(parentID), Indexed: finalIndexed, ApplicationType: appType, StorageKey: storageKey, UserMeta: datatypes.JSON([]byte(`{}`)), ExpiredAt: expiredAt, Usage: usage, UploadStatus: database.UploadStatusCompleted}
+	file := &database.CloudFile{
+		ID:              database.NewID(),
+		Name:            name,
+		Description:     firstNonEmptyPtr(description),
+		AccountID:       accountID,
+		WorkspaceID:     workspaceID,
+		PoolID:          resolvedPoolID,
+		ObjectID:        &objectID,
+		ParentID:        parentID,
+		Path:            path,
+		Depth:           depth,
+		InheritACL:      true,
+		HasACL:          false,
+		Indexed:         finalIndexed,
+		ApplicationType: appType,
+		StorageKey:      storageKey,
+		UserMeta:        datatypes.JSON([]byte(`{}`)),
+		ExpiredAt:       expiredAt,
+		Usage:           usage,
+		UploadStatus:    database.UploadStatusCompleted,
+	}
 	if hash != nil && strings.TrimSpace(*hash) != "" {
 		file.FileMeta = datatypes.JSON([]byte(fmt.Sprintf(`{"hash":%q}`, strings.TrimSpace(*hash))))
 	}
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(file).Error; err != nil {
-			return err
-		}
-		// Root-level uploads seed their own access-control row, mirroring
-		// CreateWorkspaceFolder: without one the file's access state is
-		// implicit and the file is owner-only. Children inherit this private
-		// grant through the ancestor chain instead of carrying their own row.
-		// Files in a shared (account-less) pool need no row: the pool default
-		// already keeps them readable by everyone.
-		if parentID != nil && strings.TrimSpace(*parentID) != "" {
-			return nil
-		}
-		if s.isSharedPoolFile(file) {
-			return nil
-		}
-		perm := database.FilePermission{ID: database.NewID(), FileID: file.ID, SubjectType: "private", SubjectID: "", Permission: "read"}
-		return tx.Create(&perm).Error
-	}); err != nil {
+	if err := s.db.Create(file).Error; err != nil {
 		return nil, err
 	}
 	return file, nil
@@ -3185,12 +2904,15 @@ func (s *FileService) OverwriteFile(fileID string, objectID string, storageKey *
 		}
 
 		var derived []database.CloudFile
-		if err := tx.Preload("Object").Where("parent_id = ? AND deleted_at IS NULL", file.ID).Find(&derived).Error; err != nil {
+		if err := tx.Preload("Object").Where("derived_from_id = ? AND deleted_at IS NULL", file.ID).Find(&derived).Error; err != nil {
 			return err
 		}
 		for i := range derived {
 			child := derived[i]
-			if err := tx.Delete(&database.CloudFile{}, "id = ?", child.ID).Error; err != nil {
+			// Derivatives are owned by their source and never recycled, so
+			// drop the row outright: a soft-deleted row would keep its object
+			// counted as referenced and leak the blob.
+			if err := tx.Unscoped().Delete(&database.CloudFile{}, "id = ?", child.ID).Error; err != nil {
 				return err
 			}
 			if err := s.touchDerivedParentFlagsTx(tx, &child); err != nil {
@@ -3286,7 +3008,7 @@ func (s *FileService) FastOverwriteFile(fileID, sourcePath string, analysis *Sou
 		if storageKey == nil || strings.TrimSpace(*storageKey) == "" {
 			return fmt.Errorf("storage key missing")
 		}
-		backend, err := s.BackendForFile(&file)
+		backend, err := s.backendForStorageTargetTx(tx, file.PoolID)
 		if err != nil {
 			return err
 		}
@@ -3320,12 +3042,14 @@ func (s *FileService) FastOverwriteFile(fileID, sourcePath string, analysis *Sou
 		}
 
 		var derived []database.CloudFile
-		if err := tx.Preload("Object").Where("parent_id = ? AND deleted_at IS NULL", file.ID).Find(&derived).Error; err != nil {
+		if err := tx.Preload("Object").Where("derived_from_id = ? AND deleted_at IS NULL", file.ID).Find(&derived).Error; err != nil {
 			return err
 		}
 		for i := range derived {
 			child := derived[i]
-			if err := tx.Delete(&database.CloudFile{}, "id = ?", child.ID).Error; err != nil {
+			// See OverwriteFile: derivatives must be removed outright or the
+			// object purge below sees its own soft-deleted row.
+			if err := tx.Unscoped().Delete(&database.CloudFile{}, "id = ?", child.ID).Error; err != nil {
 				return err
 			}
 			if err := s.touchDerivedParentFlagsTx(tx, &child); err != nil {
@@ -3353,16 +3077,32 @@ func (s *FileService) FastOverwriteFile(fileID, sourcePath string, analysis *Sou
 }
 
 func (s *FileService) CreateDerivedFile(accountID uuid.UUID, parentID string, name string, objectID string, appType string, storageKey *string) (*database.CloudFile, error) {
-	pt := parentID
+	sourceID := parentID
 	typeName := appType
 	var file *database.CloudFile
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		var parent database.CloudFile
-		if err := tx.Select("pool_id").First(&parent, "id = ?", parentID).Error; err != nil {
+		if err := tx.Select("pool_id", "workspace_id").First(&parent, "id = ?", parentID).Error; err != nil {
 			return err
 		}
 		resolvedPoolID := s.resolvedPoolID(parent.PoolID)
-		file = &database.CloudFile{ID: database.NewID(), Name: name, AccountID: accountID, PoolID: resolvedPoolID, ObjectID: &objectID, ParentID: &pt, Indexed: false, ApplicationType: &typeName, StorageKey: storageKey, UserMeta: datatypes.JSON([]byte(`{}`))}
+		file = &database.CloudFile{
+			ID:              database.NewID(),
+			Name:            name,
+			AccountID:       accountID,
+			WorkspaceID:     parent.WorkspaceID,
+			PoolID:          resolvedPoolID,
+			ObjectID:        &objectID,
+			ParentID:        nil,
+			Path:            "/",
+			Depth:           0,
+			InheritACL:      true,
+			DerivedFromID:   &sourceID,
+			Indexed:         false,
+			ApplicationType: &typeName,
+			StorageKey:      storageKey,
+			UserMeta:        datatypes.JSON([]byte(`{}`)),
+		}
 		return tx.Create(file).Error
 	}); err != nil {
 		return nil, err
@@ -3807,12 +3547,13 @@ func (s *TaskService) CleanupOld(accountID uuid.UUID) (int64, error) {
 }
 
 type QuotaService struct {
-	db                *database.DB
-	cache             sharedcache.CacheService
-	accountClient     accountGetter
-	workspaceClient   gen.DyWorkspaceServiceClient
-	sharedQuotaClient gen.DyQuotaServiceClient
-	levelingCfg       config.LevelingQuotaConfig
+	db                    *database.DB
+	cache                 sharedcache.CacheService
+	accountClient         accountGetter
+	workspaceClient       gen.DyWorkspaceServiceClient
+	sharedQuotaClient     gen.DyQuotaServiceClient
+	workspaceGroupFetcher WorkspaceGroupFetcher
+	levelingCfg           config.LevelingQuotaConfig
 }
 
 type accountGetter interface {
@@ -3829,8 +3570,39 @@ func (s *QuotaService) SetAccountClient(client accountGetter) {
 	s.accountClient = client
 }
 
+// SetWorkspaceClient configures the Valve workspace client. Group lookups use
+// the same connection, so the ACL fetcher is installed here: a deployment that
+// can resolve workspace roles can always resolve workspace groups too.
 func (s *QuotaService) SetWorkspaceClient(client gen.DyWorkspaceServiceClient) {
 	s.workspaceClient = client
+	if client == nil {
+		s.workspaceGroupFetcher = nil
+		return
+	}
+	s.workspaceGroupFetcher = s.fetchAccountWorkspaceGroups
+}
+
+// fetchAccountWorkspaceGroups asks Valve which groups the account belongs to
+// inside the workspace. Invalid ids are treated as "no groups" rather than
+// failing every ACL evaluation that touches a malformed row.
+func (s *QuotaService) fetchAccountWorkspaceGroups(ctx context.Context, workspaceID, accountID string) ([]string, error) {
+	if s == nil || s.workspaceClient == nil {
+		return nil, nil
+	}
+	if _, err := uuid.Parse(workspaceID); err != nil {
+		return nil, nil
+	}
+	if _, err := uuid.Parse(accountID); err != nil {
+		return nil, nil
+	}
+	response, err := s.workspaceClient.GetAccountWorkspaceGroups(ctx, &gen.DyGetAccountWorkspaceGroupsRequest{
+		WorkspaceId: workspaceID,
+		AccountId:   accountID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return response.GetGroupIds(), nil
 }
 
 func (s *QuotaService) SetSharedQuotaClient(client gen.DyQuotaServiceClient) {
@@ -3996,23 +3768,77 @@ func (s *QuotaService) GetWorkspaceUsage(ctx context.Context, workspaceID, accou
 // may therefore read files that workspace owns. Membership is asked of the
 // workspace service and fails closed when that service is not configured.
 func (s *QuotaService) CanAccessWorkspace(ctx context.Context, workspaceID, accountID string) bool {
+	_, ok := s.GetWorkspaceMemberRole(ctx, workspaceID, accountID)
+	return ok
+}
+
+// GetWorkspaceMemberRole resolves the account's active workspace member role
+// (25=viewer, 50=member, 75=admin, 100=owner) via Valve's DyWorkspaceService.
+// Falls back to IsMemberWithRole if LoadMemberAccount is unavailable.
+func (s *QuotaService) GetWorkspaceMemberRole(ctx context.Context, workspaceID, accountID string) (int32, bool) {
 	if s == nil || s.workspaceClient == nil {
-		return false
+		return 0, false
 	}
 	workspaceID = strings.TrimSpace(workspaceID)
 	accountID = strings.TrimSpace(accountID)
 	if _, err := uuid.Parse(workspaceID); err != nil {
-		return false
+		return 0, false
 	}
 	if _, err := uuid.Parse(accountID); err != nil {
-		return false
+		return 0, false
+	}
+	if role, ok := s.tryLoadMemberRole(ctx, workspaceID, accountID); ok {
+		return role, true
 	}
 	member, err := s.workspaceClient.IsMemberWithRole(ctx, &gen.DyIsWorkspaceMemberWithRoleRequest{
 		WorkspaceId:   workspaceID,
 		AccountId:     accountID,
-		RequiredRoles: []int32{50},
+		RequiredRoles: []int32{WorkspaceRoleMember},
 	})
-	return err == nil && member.GetValue()
+	if err == nil && member.GetValue() {
+		return WorkspaceRoleMember, true
+	}
+	return 0, false
+}
+
+func (s *QuotaService) tryLoadMemberRole(ctx context.Context, workspaceID, accountID string) (role int32, ok bool) {
+	defer func() {
+		if recover() != nil {
+			role = 0
+			ok = false
+		}
+	}()
+	member, err := s.workspaceClient.LoadMemberAccount(ctx, &gen.DyLoadWorkspaceMemberRequest{
+		Member: &gen.DyWorkspaceMember{
+			WorkspaceId: workspaceID,
+			AccountId:   accountID,
+		},
+	})
+	if err == nil && member != nil && member.GetRole() > 0 && member.GetLeaveAt() == nil {
+		return member.GetRole(), true
+	}
+	return 0, false
+}
+
+// WorkspaceGroupFetcher fetches the workspace-scoped account group IDs an
+// account belongs to (served by Valve).
+type WorkspaceGroupFetcher func(ctx context.Context, workspaceID, accountID string) ([]string, error)
+
+// SetWorkspaceGroupFetcher configures how workspace account groups are fetched.
+func (s *QuotaService) SetWorkspaceGroupFetcher(fn WorkspaceGroupFetcher) {
+	if s == nil {
+		return
+	}
+	s.workspaceGroupFetcher = fn
+}
+
+// GetAccountWorkspaceGroups returns the workspace group IDs that accountID
+// belongs to inside workspaceID.
+func (s *QuotaService) GetAccountWorkspaceGroups(ctx context.Context, workspaceID, accountID string) ([]string, error) {
+	if s == nil || s.workspaceGroupFetcher == nil {
+		return nil, nil
+	}
+	return s.workspaceGroupFetcher(ctx, strings.TrimSpace(workspaceID), strings.TrimSpace(accountID))
 }
 
 // ChargedWorkspaceBytes returns the bytes charged to a workspace's storage

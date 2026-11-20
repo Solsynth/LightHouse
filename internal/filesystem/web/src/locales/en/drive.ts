@@ -73,6 +73,8 @@ export default {
     recycleBody: 'Files you recycle wait here until they are permanently deleted.',
     indexed: 'Everything is indexed',
     indexedBody: 'Every file in this account has a place in the drive index.',
+    sharedEmpty: 'Nothing shared with you yet',
+    sharedBody: 'Files another account grants you access to appear here.',
     noFolders: 'No folders under here.',
     noFoldersHint: 'You can still move files to this location.',
     moreInListing: 'and {n} more in this listing',

@@ -259,8 +259,8 @@ func TestCreateUploadedFilePersistsDescription(t *testing.T) {
 	}
 }
 
-func TestCreateRootUploadedFileSeedsPrivatePermission(t *testing.T) {
-	db := openTestDB(t, &database.CloudFile{}, &database.FileObject{}, &database.FilePermission{})
+func TestCreateRootUploadedFileStaysOwnerOnly(t *testing.T) {
+	db := openTestDB(t, &database.CloudFile{}, &database.FileObject{})
 	svc := NewFileService(&database.DB{DB: db}, nil)
 	ownerID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
 	otherID := uuid.MustParse("00000000-0000-0000-0000-000000000002")
@@ -275,12 +275,12 @@ func TestCreateRootUploadedFileSeedsPrivatePermission(t *testing.T) {
 		t.Fatalf("CreateUploadedFile() error = %v", err)
 	}
 
-	var perms []database.FilePermission
-	if err := db.Where("file_id = ? AND permission = ?", file.ID, "read").Find(&perms).Error; err != nil {
-		t.Fatalf("load permissions: %v", err)
+	var entries int64
+	if err := db.Model(&database.FileACLEntry{}).Where("file_id = ?", file.ID).Count(&entries).Error; err != nil {
+		t.Fatalf("count acl entries: %v", err)
 	}
-	if len(perms) != 1 || perms[0].SubjectType != "private" {
-		t.Fatalf("permissions = %+v, want a single private read row", perms)
+	if entries != 0 {
+		t.Fatalf("acl entries = %d, want 0: a root upload is private by default", entries)
 	}
 	if svc.CanAccessFile(&gen.DyAccount{Id: otherID.String()}, nil, file, "read") {
 		t.Fatal("a freshly uploaded root file must not be readable by another account")
@@ -505,7 +505,7 @@ func TestOverwriteFileSwapsObjectAndDeletesDereferencedSource(t *testing.T) {
 	if err := db.Create(&database.CloudFile{ID: fileID, Name: "doc.txt", AccountID: accountID, PoolID: ptr(poolID), ObjectID: &oldObjectID, StorageKey: &oldStorageKey, Indexed: true}).Error; err != nil {
 		t.Fatalf("create file: %v", err)
 	}
-	if err := db.Create(&database.CloudFile{ID: database.NewID(), Name: "doc.txt", AccountID: accountID, PoolID: ptr(poolID), ParentID: &fileID, ObjectID: &derivedObjectID, StorageKey: &derivedStorageKey, Indexed: false, ApplicationType: &derivedType}).Error; err != nil {
+	if err := db.Create(&database.CloudFile{ID: database.NewID(), Name: "doc.txt", AccountID: accountID, PoolID: ptr(poolID), DerivedFromID: &fileID, ObjectID: &derivedObjectID, StorageKey: &derivedStorageKey, Indexed: false, ApplicationType: &derivedType}).Error; err != nil {
 		t.Fatalf("create derived file: %v", err)
 	}
 	if err := stor.Put(context.Background(), oldStorageKey, strings.NewReader("hello"), int64(len("hello")), "text/plain"); err != nil {
@@ -532,7 +532,7 @@ func TestOverwriteFileSwapsObjectAndDeletesDereferencedSource(t *testing.T) {
 		t.Fatalf("derived object still exists, err = %v", err)
 	}
 	var derivedCount int64
-	if err := db.Model(&database.CloudFile{}).Where("parent_id = ? AND deleted_at IS NULL", fileID).Count(&derivedCount).Error; err != nil {
+	if err := db.Model(&database.CloudFile{}).Where("derived_from_id = ? AND deleted_at IS NULL", fileID).Count(&derivedCount).Error; err != nil {
 		t.Fatalf("count derived files: %v", err)
 	}
 	if derivedCount != 0 {
@@ -638,7 +638,7 @@ func TestFastOverwriteFileUpdatesExistingObject(t *testing.T) {
 	if err := db.Create(&database.CloudFile{ID: fileID, Name: "doc.txt", AccountID: accountID, PoolID: ptr(poolID), ObjectID: &objectID, StorageKey: &storageKey, Indexed: true}).Error; err != nil {
 		t.Fatalf("create file: %v", err)
 	}
-	if err := db.Create(&database.CloudFile{ID: database.NewID(), Name: "doc.txt", AccountID: accountID, PoolID: ptr(poolID), ParentID: &fileID, ObjectID: &derivedObjectID, StorageKey: &derivedStorageKey, Indexed: false, ApplicationType: &derivedType}).Error; err != nil {
+	if err := db.Create(&database.CloudFile{ID: database.NewID(), Name: "doc.txt", AccountID: accountID, PoolID: ptr(poolID), DerivedFromID: &fileID, ObjectID: &derivedObjectID, StorageKey: &derivedStorageKey, Indexed: false, ApplicationType: &derivedType}).Error; err != nil {
 		t.Fatalf("create derived file: %v", err)
 	}
 	if err := stor.Put(context.Background(), storageKey, strings.NewReader("old"), int64(len("old")), "text/plain"); err != nil {
@@ -693,7 +693,7 @@ func TestFastOverwriteFileUpdatesExistingObject(t *testing.T) {
 		t.Fatalf("body = %q, want %q", string(body), "updated body")
 	}
 	var derivedCount int64
-	if err := db.Model(&database.CloudFile{}).Where("parent_id = ? AND deleted_at IS NULL", fileID).Count(&derivedCount).Error; err != nil {
+	if err := db.Model(&database.CloudFile{}).Where("derived_from_id = ? AND deleted_at IS NULL", fileID).Count(&derivedCount).Error; err != nil {
 		t.Fatalf("count derived files: %v", err)
 	}
 	if derivedCount != 0 {
@@ -1054,6 +1054,7 @@ func TestStorageBytesFromPlanQuota(t *testing.T) {
 type stubWorkspaceClient struct {
 	workspace     *gen.DyWorkspace
 	member        bool
+	groups        []string
 	planQuota     *gen.DyWorkspacePlanQuota
 	planErr       error
 	individualErr error
@@ -1094,6 +1095,40 @@ func (s *stubWorkspaceClient) LoadMemberAccounts(context.Context, *gen.DyLoadWor
 }
 func (s *stubWorkspaceClient) ListMembers(context.Context, *gen.DyListWorkspaceMembersRequest, ...grpc.CallOption) (*gen.DyListWorkspaceMembersResponse, error) {
 	panic("unexpected call")
+}
+
+func (s *stubWorkspaceClient) GetAccountWorkspaceGroups(context.Context, *gen.DyGetAccountWorkspaceGroupsRequest, ...grpc.CallOption) (*gen.DyGetAccountWorkspaceGroupsResponse, error) {
+	return &gen.DyGetAccountWorkspaceGroupsResponse{GroupIds: s.groups}, nil
+}
+
+func TestQuotaServiceFetchesWorkspaceGroups(t *testing.T) {
+	svc := NewQuotaService(nil)
+	workspaceID := uuid.New().String()
+	accountID := uuid.New().String()
+
+	// No workspace client: groups stay empty instead of failing ACL checks.
+	if ids, err := svc.GetAccountWorkspaceGroups(context.Background(), workspaceID, accountID); err != nil || len(ids) != 0 {
+		t.Fatalf("groups without a client = %v, %v; want empty", ids, err)
+	}
+
+	svc.SetWorkspaceClient(&stubWorkspaceClient{groups: []string{"designers", "reviewers"}})
+	ids, err := svc.GetAccountWorkspaceGroups(context.Background(), workspaceID, accountID)
+	if err != nil {
+		t.Fatalf("GetAccountWorkspaceGroups() error = %v", err)
+	}
+	if len(ids) != 2 || ids[0] != "designers" || ids[1] != "reviewers" {
+		t.Fatalf("groups = %v, want the client's ids", ids)
+	}
+
+	// Malformed ids never reach the service.
+	if ids, err := svc.GetAccountWorkspaceGroups(context.Background(), "not-a-uuid", accountID); err != nil || len(ids) != 0 {
+		t.Fatalf("groups for an invalid workspace = %v, %v; want empty", ids, err)
+	}
+
+	svc.SetWorkspaceClient(nil)
+	if ids, err := svc.GetAccountWorkspaceGroups(context.Background(), workspaceID, accountID); err != nil || len(ids) != 0 {
+		t.Fatalf("groups after clearing the client = %v, %v; want empty", ids, err)
+	}
 }
 
 func TestIndividualWorkspaceUsesValveAccountQuota(t *testing.T) {
@@ -1443,8 +1478,8 @@ func TestEnrichedAccountRefreshesIncompleteCache(t *testing.T) {
 	}
 }
 
-func TestCreateFolderWithoutParentCreatesPrivatePermission(t *testing.T) {
-	db := openTestDB(t, &database.CloudFile{}, &database.FilePermission{})
+func TestCreateFolderWithoutParentStaysOwnerOnly(t *testing.T) {
+	db := openTestDB(t, &database.CloudFile{})
 	svc := NewFileService(&database.DB{DB: db}, nil)
 	accountID := uuid.New()
 	folder, err := svc.CreateFolder(accountID, "private-folder", nil)
@@ -1454,17 +1489,24 @@ func TestCreateFolderWithoutParentCreatesPrivatePermission(t *testing.T) {
 	if !folder.IsFolder || !folder.Indexed {
 		t.Fatalf("folder = %+v, want indexed folder", folder)
 	}
-	var perm database.FilePermission
-	if err := db.First(&perm, "file_id = ?", folder.ID).Error; err != nil {
-		t.Fatalf("load permission: %v", err)
+	var entries int64
+	if err := db.Model(&database.FileACLEntry{}).Where("file_id = ?", folder.ID).Count(&entries).Error; err != nil {
+		t.Fatalf("count acl entries: %v", err)
 	}
-	if perm.SubjectType != "private" || perm.Permission != "read" {
-		t.Fatalf("permission = %+v, want private read", perm)
+	if entries != 0 {
+		t.Fatalf("acl entries = %d, want 0: default-deny already keeps the folder owner-only", entries)
+	}
+	otherID := uuid.New()
+	if svc.CanAccessFile(&gen.DyAccount{Id: otherID.String()}, nil, folder, "read") {
+		t.Fatal("another account must not read a root folder")
+	}
+	if !svc.CanAccessFile(&gen.DyAccount{Id: accountID.String()}, nil, folder, "read") {
+		t.Fatal("the owner must keep read access to their own folder")
 	}
 }
 
-func TestUpdateFilePermissionsAssignsIDs(t *testing.T) {
-	db := openTestDB(t, &database.CloudFile{}, &database.FilePermission{})
+func TestUpdateFilePermissionsWritesACLEntries(t *testing.T) {
+	db := openTestDB(t, &database.CloudFile{})
 	svc := NewFileService(&database.DB{DB: db}, nil)
 	fileID := database.NewID()
 	if err := db.Create(&database.CloudFile{ID: fileID, Name: "sample", AccountID: uuid.New(), Indexed: true}).Error; err != nil {
@@ -1473,61 +1515,301 @@ func TestUpdateFilePermissionsAssignsIDs(t *testing.T) {
 	if err := svc.UpdateFilePermissions(fileID, []database.FilePermission{{FileID: fileID, SubjectType: "private", Permission: "read"}}); err != nil {
 		t.Fatalf("UpdateFilePermissions() error = %v", err)
 	}
-	var perm database.FilePermission
-	if err := db.First(&perm, "file_id = ?", fileID).Error; err != nil {
-		t.Fatalf("load permission: %v", err)
+	var entry database.FileACLEntry
+	if err := db.First(&entry, "file_id = ?", fileID).Error; err != nil {
+		t.Fatalf("load acl entry: %v", err)
 	}
-	if perm.ID == "" {
-		t.Fatalf("permission ID is empty")
+	if entry.ID == "" || entry.SubjectType != ACLSubjectPublic || entry.Effect != ACLEffectDeny || entry.Permissions&uint32(PermRead) == 0 {
+		t.Fatalf("acl entry = %+v, want a public read deny", entry)
+	}
+	var file database.CloudFile
+	if err := db.First(&file, "id = ?", fileID).Error; err != nil {
+		t.Fatalf("reload file: %v", err)
+	}
+	if !file.HasACL {
+		t.Fatal("has_acl = false, want true after writing an ACL entry")
+	}
+	perms, err := svc.ListFilePermissions(fileID)
+	if err != nil {
+		t.Fatalf("ListFilePermissions() error = %v", err)
+	}
+	if len(perms) != 1 || perms[0].SubjectType != "private" || perms[0].Permission != "read" {
+		t.Fatalf("legacy projection = %+v, want a single private read row", perms)
 	}
 }
 
-func TestLoadInheritedFilePermissionsBatchUsesCacheAndInvalidatesDescendants(t *testing.T) {
-	db := openTestDB(t, &database.CloudFile{}, &database.FilePermission{})
+func TestEvaluateFilesInheritanceAndUpdates(t *testing.T) {
+	db := openTestDB(t, &database.CloudFile{}, &database.FilePermission{}, &database.FileACLEntry{})
 	svc := NewFileService(&database.DB{DB: db}, nil)
-	svc.SetCache(sharedcache.NewMemoryCacheService(8))
 
 	accountID := uuid.New()
-	rootID := database.NewID()
-	childID := database.NewID()
-	if err := db.Create(&database.CloudFile{ID: rootID, Name: "root", AccountID: accountID, Indexed: true, IsFolder: true}).Error; err != nil {
+	otherID := uuid.New()
+	root, err := svc.CreateWorkspaceFolder(accountID, nil, "root", nil)
+	if err != nil {
 		t.Fatalf("create root: %v", err)
 	}
-	if err := db.Create(&database.CloudFile{ID: childID, Name: "child", AccountID: accountID, Indexed: true, IsFolder: true, ParentID: &rootID}).Error; err != nil {
+	child, err := svc.CreateWorkspaceFolder(accountID, nil, "child", &root.ID)
+	if err != nil {
 		t.Fatalf("create child: %v", err)
 	}
-	if err := db.Create(&database.FilePermission{ID: database.NewID(), FileID: rootID, SubjectType: "private", Permission: "read"}).Error; err != nil {
-		t.Fatalf("create permission: %v", err)
+
+	// Default private: non-owner cannot read.
+	other := NewPrincipalSet(&gen.DyAccount{Id: otherID.String()}, nil)
+	if svc.CanAccessFileMask(context.Background(), other, child, PermRead) {
+		t.Fatalf("expected default private child to deny non-owner")
 	}
 
-	lookups, err := svc.loadInheritedFilePermissionsBatch([]string{childID}, "read")
-	if err != nil {
-		t.Fatalf("first loadInheritedFilePermissionsBatch() error = %v", err)
-	}
-	if lookup := lookups[childID]; !lookup.HasSource || lookup.SourceID != rootID || len(lookup.Perms) != 1 || lookup.Perms[0].SubjectType != "private" {
-		t.Fatalf("first lookup = %+v, want inherited private permission from root", lookup)
-	}
-
-	if err := db.Where("file_id = ?", rootID).Delete(&database.FilePermission{}).Error; err != nil {
-		t.Fatalf("delete permission directly: %v", err)
-	}
-	lookups, err = svc.loadInheritedFilePermissionsBatch([]string{childID}, "read")
-	if err != nil {
-		t.Fatalf("second loadInheritedFilePermissionsBatch() error = %v", err)
-	}
-	if lookup := lookups[childID]; len(lookup.Perms) != 1 || lookup.Perms[0].SubjectType != "private" {
-		t.Fatalf("cached lookup = %+v, want cached private permission", lookup)
-	}
-
-	if err := svc.UpdateFilePermissions(rootID, []database.FilePermission{{FileID: rootID, SubjectType: "public", Permission: "read"}}); err != nil {
+	// Grant public read on root via legacy UpdateFilePermissions shim; child inherits it.
+	if err := svc.UpdateFilePermissions(root.ID, []database.FilePermission{{FileID: root.ID, SubjectType: "public", Permission: "read"}}); err != nil {
 		t.Fatalf("UpdateFilePermissions() error = %v", err)
 	}
-	lookups, err = svc.loadInheritedFilePermissionsBatch([]string{childID}, "read")
+	eval, err := svc.EvaluateFile(context.Background(), other, child)
 	if err != nil {
-		t.Fatalf("third loadInheritedFilePermissionsBatch() error = %v", err)
+		t.Fatalf("EvaluateFile() error = %v", err)
 	}
-	if lookup := lookups[childID]; !lookup.HasSource || lookup.SourceID != rootID || len(lookup.Perms) != 1 || lookup.Perms[0].SubjectType != "public" {
-		t.Fatalf("invalidated lookup = %+v, want refreshed public permission from root", lookup)
+	if eval.Mask&PermRead == 0 || eval.Visibility != "public" || eval.InheritedFrom == nil || *eval.InheritedFrom != root.ID {
+		t.Fatalf("inherited eval = %+v, want public read inherited from root %s", eval, root.ID)
+	}
+
+	// Explicit deny on child overrides inherited allow.
+	if _, err := svc.UpsertFileACLEntry(context.Background(), child, ACLEntryInput{
+		SubjectType: ACLSubjectAccount,
+		SubjectID:   otherID.String(),
+		Effect:      ACLEffectDeny,
+		Permissions: uint32(PermRead),
+	}, &accountID); err != nil {
+		t.Fatalf("UpsertFileACLEntry(deny) error = %v", err)
+	}
+	reloadedChild, err := svc.GetFile(child.ID)
+	if err != nil {
+		t.Fatalf("GetFile(child) error = %v", err)
+	}
+	if svc.CanAccessFileMask(context.Background(), other, reloadedChild, PermRead) {
+		t.Fatalf("expected explicit deny on child to override inherited public allow")
+	}
+}
+
+func TestMoveBatchReparentsFolderSubtree(t *testing.T) {
+	db := openTestDB(t, &database.CloudFile{})
+	svc := NewFileService(&database.DB{DB: db}, nil)
+	accountID := uuid.New()
+
+	a, err := svc.CreateWorkspaceFolder(accountID, nil, "a", nil)
+	if err != nil {
+		t.Fatalf("create a: %v", err)
+	}
+	b, err := svc.CreateWorkspaceFolder(accountID, nil, "b", &a.ID)
+	if err != nil {
+		t.Fatalf("create b: %v", err)
+	}
+	c, err := svc.CreateWorkspaceFolder(accountID, nil, "c", &b.ID)
+	if err != nil {
+		t.Fatalf("create c: %v", err)
+	}
+	dest, err := svc.CreateWorkspaceFolder(accountID, nil, "dest", nil)
+	if err != nil {
+		t.Fatalf("create dest: %v", err)
+	}
+
+	if _, err := svc.MoveBatch([]string{a.ID}, &dest.ID, nil); err != nil {
+		t.Fatalf("MoveBatch() error = %v", err)
+	}
+
+	expectPath := func(id, wantPath string, wantDepth int) {
+		t.Helper()
+		file, err := svc.GetFile(id)
+		if err != nil {
+			t.Fatalf("GetFile(%s) error = %v", id, err)
+		}
+		if file.Path != wantPath || file.Depth != wantDepth {
+			t.Fatalf("file %s path/depth = %q/%d, want %q/%d", file.Name, file.Path, file.Depth, wantPath, wantDepth)
+		}
+	}
+	expectPath(a.ID, "/"+dest.ID+"/", 1)
+	expectPath(b.ID, "/"+dest.ID+"/"+a.ID+"/", 2)
+	expectPath(c.ID, "/"+dest.ID+"/"+a.ID+"/"+b.ID+"/", 3)
+
+	breadcrumb, err := svc.GetBreadcrumb(c.ID)
+	if err != nil {
+		t.Fatalf("GetBreadcrumb() error = %v", err)
+	}
+	wantBreadcrumb := []string{dest.ID, a.ID, b.ID, c.ID}
+	if len(breadcrumb) != len(wantBreadcrumb) {
+		t.Fatalf("breadcrumb length = %d, want %d", len(breadcrumb), len(wantBreadcrumb))
+	}
+	for i, id := range wantBreadcrumb {
+		if breadcrumb[i].ID != id {
+			t.Fatalf("breadcrumb[%d] = %s, want %s", i, breadcrumb[i].ID, id)
+		}
+	}
+
+	// A folder cannot be moved into its own descendant.
+	if _, err := svc.MoveBatch([]string{a.ID}, &c.ID, nil); err == nil {
+		t.Fatal("expected moving a folder into its own descendant to fail")
+	}
+	moved, err := svc.GetFile(a.ID)
+	if err != nil {
+		t.Fatalf("GetFile(a) error = %v", err)
+	}
+	if moved.ParentID == nil || *moved.ParentID != dest.ID {
+		t.Fatalf("failed move changed the parent: %v", moved.ParentID)
+	}
+}
+
+type stubWorkspaceACLResolver struct {
+	roles  map[string]int32
+	groups map[string][]string
+}
+
+func (s *stubWorkspaceACLResolver) GetWorkspaceMemberRole(_ context.Context, workspaceID, accountID string) (int32, bool) {
+	role, ok := s.roles[workspaceID+":"+accountID]
+	return role, ok
+}
+
+func (s *stubWorkspaceACLResolver) GetAccountWorkspaceGroups(_ context.Context, workspaceID, accountID string) ([]string, error) {
+	return s.groups[workspaceID+":"+accountID], nil
+}
+
+func TestWorkspaceRolesGroupsExpiryAndHasACL(t *testing.T) {
+	db := openTestDB(t, &database.CloudFile{})
+	svc := NewFileService(&database.DB{DB: db}, nil)
+	ctx := context.Background()
+	workspaceID := database.NewID()
+	owner, viewer, member, outsider := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	svc.SetWorkspaceACLResolver(&stubWorkspaceACLResolver{
+		roles: map[string]int32{
+			workspaceID + ":" + owner.String():  WorkspaceRoleOwner,
+			workspaceID + ":" + viewer.String(): WorkspaceRoleViewer,
+			workspaceID + ":" + member.String(): WorkspaceRoleMember,
+		},
+		groups: map[string][]string{
+			workspaceID + ":" + member.String(): {"designers"},
+		},
+	})
+	principal := func(id uuid.UUID) *PrincipalSet {
+		return NewPrincipalSet(&gen.DyAccount{Id: id.String()}, nil)
+	}
+
+	root, err := svc.CreateWorkspaceFolder(owner, &workspaceID, "root", nil)
+	if err != nil {
+		t.Fatalf("create root: %v", err)
+	}
+	child, err := svc.CreateWorkspaceFolder(owner, &workspaceID, "child", &root.ID)
+	if err != nil {
+		t.Fatalf("create child: %v", err)
+	}
+
+	if !svc.CanAccessFileMask(ctx, principal(viewer), child, PermRead) {
+		t.Fatal("viewer must read workspace files through the role baseline")
+	}
+	if svc.CanAccessFileMask(ctx, principal(viewer), child, PermWrite) {
+		t.Fatal("viewer must not write workspace files")
+	}
+	if !svc.CanAccessFileMask(ctx, principal(member), child, PermWrite) {
+		t.Fatal("member must write workspace files")
+	}
+	if svc.CanAccessFileMask(ctx, principal(member), child, PermDelete) {
+		t.Fatal("member must not delete without a grant")
+	}
+	if svc.CanAccessFileMask(ctx, principal(outsider), child, PermRead) {
+		t.Fatal("non-members must not read workspace files")
+	}
+
+	if _, err := svc.UpsertFileACLEntry(ctx, child, ACLEntryInput{
+		SubjectType: ACLSubjectWorkspaceGroup,
+		SubjectID:   "designers",
+		Effect:      ACLEffectAllow,
+		Permissions: uint32(PermDelete),
+	}, &owner); err != nil {
+		t.Fatalf("UpsertFileACLEntry(group) error = %v", err)
+	}
+	if !svc.CanAccessFileMask(ctx, principal(member), child, PermRead|PermDelete) {
+		t.Fatal("group grant must extend the member's baseline")
+	}
+	if svc.CanAccessFileMask(ctx, principal(viewer), child, PermDelete) {
+		t.Fatal("group grant must not apply to non-members of the group")
+	}
+
+	personal, err := svc.CreateFolder(owner, "personal", nil)
+	if err != nil {
+		t.Fatalf("create personal folder: %v", err)
+	}
+	if _, err := svc.UpsertFileACLEntry(ctx, personal, ACLEntryInput{
+		SubjectType: ACLSubjectWorkspaceGroup,
+		SubjectID:   "designers",
+		Effect:      ACLEffectAllow,
+		Permissions: uint32(PermRead),
+	}, &owner); err == nil {
+		t.Fatal("workspace_group entries must be rejected on personal files")
+	}
+
+	past := time.Now().Add(-time.Hour)
+	if _, err := svc.UpsertFileACLEntry(ctx, child, ACLEntryInput{
+		SubjectType: ACLSubjectAccount,
+		SubjectID:   outsider.String(),
+		Effect:      ACLEffectAllow,
+		Permissions: uint32(PermRead),
+		ExpiresAt:   &past,
+	}, &owner); err != nil {
+		t.Fatalf("UpsertFileACLEntry(expired) error = %v", err)
+	}
+	if svc.CanAccessFileMask(ctx, principal(outsider), child, PermRead) {
+		t.Fatal("an expired grant must not authorize")
+	}
+	future := time.Now().Add(time.Hour)
+	if _, err := svc.UpsertFileACLEntry(ctx, child, ACLEntryInput{
+		SubjectType: ACLSubjectAccount,
+		SubjectID:   outsider.String(),
+		Effect:      ACLEffectAllow,
+		Permissions: uint32(PermRead),
+		ExpiresAt:   &future,
+	}, &owner); err != nil {
+		t.Fatalf("UpsertFileACLEntry(future) error = %v", err)
+	}
+	if !svc.CanAccessFileMask(ctx, principal(outsider), child, PermRead) {
+		t.Fatal("an unexpired grant must authorize")
+	}
+
+	// Breaking inheritance at the root stops the workspace baseline for the
+	// subtree; only explicit entries remain.
+	denyInherit := false
+	if err := svc.ReplaceFileACL(ctx, root, &denyInherit, nil, &owner); err != nil {
+		t.Fatalf("ReplaceFileACL(inherit=false) error = %v", err)
+	}
+	if svc.CanAccessFileMask(ctx, principal(member), child, PermRead) {
+		t.Fatal("inherit_acl=false on an ancestor must stop the workspace baseline")
+	}
+
+	// has_acl follows direct entries in both directions.
+	fresh, err := svc.CreateFolder(owner, "fresh", nil)
+	if err != nil {
+		t.Fatalf("create fresh folder: %v", err)
+	}
+	entry, err := svc.UpsertFileACLEntry(ctx, fresh, ACLEntryInput{
+		SubjectType: ACLSubjectAccount,
+		SubjectID:   outsider.String(),
+		Effect:      ACLEffectAllow,
+		Permissions: uint32(PermRead),
+	}, &owner)
+	if err != nil {
+		t.Fatalf("UpsertFileACLEntry() error = %v", err)
+	}
+	reloaded, err := svc.GetFile(fresh.ID)
+	if err != nil {
+		t.Fatalf("GetFile() error = %v", err)
+	}
+	if !reloaded.HasACL {
+		t.Fatal("has_acl = false after adding an entry")
+	}
+	if err := svc.DeleteFileACLEntry(ctx, fresh.ID, entry.ID); err != nil {
+		t.Fatalf("DeleteFileACLEntry() error = %v", err)
+	}
+	reloaded, err = svc.GetFile(fresh.ID)
+	if err != nil {
+		t.Fatalf("GetFile() error = %v", err)
+	}
+	if reloaded.HasACL {
+		t.Fatal("has_acl = true after removing the last entry")
 	}
 }
 
@@ -1675,15 +1957,18 @@ func TestListOwnedPagePopulatesChildrenCountAndInheritedPermissionStatus(t *test
 	rootID := database.NewID()
 	childID := database.NewID()
 
-	if err := db.Create(&database.CloudFile{ID: rootID, Name: "root", AccountID: accountID, Indexed: true}).Error; err != nil {
+	if err := db.Create(&database.CloudFile{ID: rootID, Name: "root", AccountID: accountID, Indexed: true, IsFolder: true}).Error; err != nil {
 		t.Fatalf("create root file: %v", err)
 	}
 	if err := db.Create(&database.CloudFile{ID: childID, Name: "child", AccountID: accountID, ParentID: ptr(rootID), Indexed: true}).Error; err != nil {
 		t.Fatalf("create child file: %v", err)
 	}
-	perm := database.FilePermission{ID: database.NewID(), FileID: rootID, SubjectType: "private", Permission: "read"}
-	if err := db.Create(&perm).Error; err != nil {
-		t.Fatalf("create permission: %v", err)
+	deny := database.FileACLEntry{ID: database.NewID(), FileID: rootID, SubjectType: ACLSubjectPublic, Effect: ACLEffectDeny, Permissions: uint32(PermRead), Inheritable: true}
+	if err := db.Create(&deny).Error; err != nil {
+		t.Fatalf("create acl entry: %v", err)
+	}
+	if err := db.Model(&database.CloudFile{}).Where("id = ?", rootID).Update("has_acl", true).Error; err != nil {
+		t.Fatalf("mark has_acl: %v", err)
 	}
 
 	files, total, err := svc.ListOwnedPage(accountID, FileListOptions{})
@@ -2420,13 +2705,7 @@ func TestReanalyzeStoredObjectRequiresLiveFile(t *testing.T) {
 }
 
 func TestCanAccessFileInheritsPermissionsFromAncestors(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("gorm.Open() error = %v", err)
-	}
-	if err := db.AutoMigrate(&database.CloudFile{}, &database.FilePermission{}, &database.FileObject{}); err != nil {
-		t.Fatalf("AutoMigrate() error = %v", err)
-	}
+	db := openTestDB(t, &database.CloudFile{}, &database.FileObject{})
 
 	svc := NewFileService(&database.DB{DB: db}, nil)
 	accountID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
@@ -2439,9 +2718,19 @@ func TestCanAccessFileInheritsPermissionsFromAncestors(t *testing.T) {
 	if err := db.Create(&database.CloudFile{ID: childID, Name: "child", AccountID: accountID, ParentID: ptr(parentID), Indexed: true}).Error; err != nil {
 		t.Fatalf("create child: %v", err)
 	}
-	perm := database.FilePermission{ID: database.NewID(), FileID: parentID, SubjectType: "account", SubjectID: viewerID.String(), Permission: "read"}
-	if err := db.Create(&perm).Error; err != nil {
-		t.Fatalf("create permission: %v", err)
+	if err := db.Create(&database.FileACLEntry{
+		ID:          database.NewID(),
+		FileID:      parentID,
+		SubjectType: ACLSubjectAccount,
+		SubjectID:   viewerID.String(),
+		Effect:      ACLEffectAllow,
+		Permissions: uint32(PermRead),
+		Inheritable: true,
+	}).Error; err != nil {
+		t.Fatalf("create acl entry: %v", err)
+	}
+	if err := db.Model(&database.CloudFile{}).Where("id = ?", parentID).Update("has_acl", true).Error; err != nil {
+		t.Fatalf("mark has_acl: %v", err)
 	}
 
 	child, err := svc.GetFile(childID)
@@ -2556,27 +2845,34 @@ func TestCanAccessFileKeepsOwnedPoolFilesPrivate(t *testing.T) {
 	}
 }
 
-// An explicit ACL row wins over the pool default: unpublishing a file in a
-// shared pool (a private read row) must hide it again.
-func TestCanAccessFileHonoursPrivateRowInSharedPool(t *testing.T) {
-	db := openTestDB(t, &database.CloudFile{}, &database.FilePool{}, &database.FilePermission{})
+// An explicit public deny wins over the pool default: unpublishing a file in a
+// shared pool must hide it again.
+func TestCanAccessFileHonoursPublicDenyInSharedPool(t *testing.T) {
+	db := openTestDB(t, &database.CloudFile{}, &database.FilePool{})
 	svc := NewFileService(&database.DB{DB: db}, nil)
 	ownerID := uuid.New()
 	poolID := seedPool(t, db, "shared", uuid.Nil)
 
-	file := &database.CloudFile{ID: database.NewID(), Name: "retracted.txt", AccountID: ownerID, PoolID: &poolID, Indexed: true}
+	file := &database.CloudFile{ID: database.NewID(), Name: "retracted.txt", AccountID: ownerID, PoolID: &poolID, Indexed: true, HasACL: true}
 	if err := db.Create(file).Error; err != nil {
 		t.Fatalf("create file: %v", err)
 	}
-	if err := db.Create(&database.FilePermission{ID: database.NewID(), FileID: file.ID, SubjectType: "private", SubjectID: "", Permission: "read"}).Error; err != nil {
-		t.Fatalf("create permission: %v", err)
+	if err := db.Create(&database.FileACLEntry{
+		ID:          database.NewID(),
+		FileID:      file.ID,
+		SubjectType: ACLSubjectPublic,
+		Effect:      ACLEffectDeny,
+		Permissions: uint32(PermRead),
+		Inheritable: true,
+	}).Error; err != nil {
+		t.Fatalf("create acl entry: %v", err)
 	}
 
 	if svc.CanAccessFile(nil, nil, file, "read") {
-		t.Fatal("a private row must retract a shared-pool file from anonymous readers")
+		t.Fatal("a public deny must retract a shared-pool file from anonymous readers")
 	}
 	if svc.CanAccessFile(&gen.DyAccount{Id: uuid.New().String()}, nil, file, "read") {
-		t.Fatal("a private row must retract a shared-pool file from other accounts")
+		t.Fatal("a public deny must retract a shared-pool file from other accounts")
 	}
 	if !svc.CanAccessFile(&gen.DyAccount{Id: ownerID.String()}, nil, file, "read") {
 		t.Fatal("the owner must keep access to a retracted file")
@@ -2656,22 +2952,22 @@ func TestCreateRootUploadedFileInSharedPoolSeedsNoPermission(t *testing.T) {
 	}
 
 	var count int64
-	if err := db.Model(&database.FilePermission{}).Where("file_id = ?", file.ID).Count(&count).Error; err != nil {
-		t.Fatalf("count permissions: %v", err)
+	if err := db.Model(&database.FileACLEntry{}).Where("file_id = ?", file.ID).Count(&count).Error; err != nil {
+		t.Fatalf("count acl entries: %v", err)
 	}
 	if count != 0 {
-		t.Fatalf("permission rows = %d, want 0 (the shared pool already exposes the file)", count)
+		t.Fatalf("acl entries = %d, want 0 (the shared pool already exposes the file)", count)
 	}
 	if !svc.CanAccessFile(nil, nil, file, "read") {
 		t.Fatal("a fresh upload into a shared pool must stay world-readable")
 	}
 }
 
-// Folders keep their owner-only row even in a shared pool: putting files into a
-// tree is what makes a drive private, and only root uploads inherit the pool
-// default.
+// A root folder in a shared pool carries an explicit inheritable public-read
+// deny: putting files into a tree is what makes a drive private, and only bare
+// root uploads inherit the pool default.
 func TestCreateRootFolderInSharedPoolStaysPrivate(t *testing.T) {
-	db := openTestDB(t, &database.CloudFile{}, &database.FilePool{}, &database.FilePermission{})
+	db := openTestDB(t, &database.CloudFile{}, &database.FilePool{})
 	svc := NewFileService(&database.DB{DB: db}, nil)
 	svc.defaultPoolID = seedPool(t, db, "shared", uuid.Nil)
 
@@ -2679,15 +2975,41 @@ func TestCreateRootFolderInSharedPoolStaysPrivate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateWorkspaceFolder() error = %v", err)
 	}
-	var count int64
-	if err := db.Model(&database.FilePermission{}).Where("file_id = ? AND permission = ?", folder.ID, "read").Count(&count).Error; err != nil {
-		t.Fatalf("count permissions: %v", err)
+	var entry database.FileACLEntry
+	if err := db.First(&entry, "file_id = ?", folder.ID).Error; err != nil {
+		t.Fatalf("load acl entry: %v", err)
 	}
-	if count != 1 {
-		t.Fatalf("folder permission rows = %d, want a single owner-only row", count)
+	if entry.SubjectType != ACLSubjectPublic || entry.Effect != ACLEffectDeny || !entry.Inheritable {
+		t.Fatalf("acl entry = %+v, want an inheritable public deny", entry)
+	}
+	if !folder.HasACL {
+		t.Fatal("folder.HasACL = false, want true after seeding the deny")
 	}
 	if svc.CanAccessFile(nil, nil, folder, "read") {
 		t.Fatal("a shared pool must not publish a folder tree")
+	}
+
+	// A public deny only retracts the pool default; explicit workspace grants
+	// still apply, so members keep reading a workspace folder tree.
+	workspaceID := database.NewID()
+	viewer := uuid.New()
+	owner := uuid.New()
+	svc.SetWorkspaceACLResolver(&stubWorkspaceACLResolver{
+		roles: map[string]int32{
+			workspaceID + ":" + viewer.String(): WorkspaceRoleViewer,
+			workspaceID + ":" + owner.String():  WorkspaceRoleOwner,
+		},
+	})
+	workspaceFolder, err := svc.CreateWorkspaceFolder(owner, &workspaceID, "Team", nil)
+	if err != nil {
+		t.Fatalf("create workspace folder: %v", err)
+	}
+	viewerPrincipal := NewPrincipalSet(&gen.DyAccount{Id: viewer.String()}, nil)
+	if !svc.CanAccessFileMask(context.Background(), viewerPrincipal, workspaceFolder, PermRead) {
+		t.Fatal("a viewer must still read a workspace folder whose pool default is denied")
+	}
+	if svc.CanAccessFile(nil, nil, workspaceFolder, "read") {
+		t.Fatal("anonymous readers must not see the workspace folder")
 	}
 }
 
@@ -3005,6 +3327,11 @@ func openTestDB(t *testing.T, models ...any) *gorm.DB {
 	}
 	if err := db.AutoMigrate(models...); err != nil {
 		t.Fatalf("AutoMigrate() error = %v", err)
+	}
+	if db.Migrator().HasTable(&database.CloudFile{}) {
+		if err := db.AutoMigrate(&database.FileACLEntry{}); err != nil {
+			t.Fatalf("AutoMigrate(FileACLEntry) error = %v", err)
+		}
 	}
 	return db
 }

@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 declare module 'vue-router' {
   interface RouteMeta {
-    mode?: 'drive' | 'unindexed' | 'recycle' | 'preview' | 'storage'
+    mode?: 'drive' | 'unindexed' | 'recycle' | 'shared' | 'preview' | 'storage'
     title?: string
   }
 }
@@ -34,6 +34,12 @@ const router = createRouter({
       name: 'recycle',
       component: () => import('@/views/DriveView.vue'),
       meta: { mode: 'recycle', title: 'Recycle Bin' },
+    },
+    {
+      path: '/shared',
+      name: 'shared',
+      component: () => import('@/views/DriveView.vue'),
+      meta: { mode: 'shared', title: 'Shared with me' },
     },
     {
       // Preview is a tab of its own: the file's bytes are the tab's content,

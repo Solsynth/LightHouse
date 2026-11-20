@@ -47,13 +47,31 @@ func canReadFile(
 	session *gen.DyAuthSession,
 	file *database.CloudFile,
 ) bool {
-	if files.CanAccessFile(account, session, file, "read") {
+	caller := service.NewPrincipalSet(account, session)
+	if c != nil {
+		if shareToken := strings.TrimSpace(c.Query("share_token")); shareToken != "" {
+			caller.ShareLinkID = shareToken
+		}
+	}
+	ctx := context.Background()
+	if c != nil && c.Request != nil {
+		ctx = c.Request.Context()
+	}
+	if files.CanAccessFileMask(ctx, caller, file, service.PermRead) {
 		return true
 	}
-	if account == nil {
+	if account == nil || file == nil {
 		return false
 	}
-	if file.ParentID != nil && isDerivedVariant(file) {
+	// Fallback for tests or standalone wiring where quota is passed to the
+	// handler but SetWorkspaceACLResolver was not called on FileService.
+	if file.DerivedFromID != nil && strings.TrimSpace(*file.DerivedFromID) != "" {
+		if src, err := files.GetFile(*file.DerivedFromID); err == nil && src.ID != file.ID {
+			if canReadFile(c, files, quota, account, session, src) {
+				return true
+			}
+		}
+	} else if file.ParentID != nil && isDerivedVariant(file) {
 		if parent, err := files.GetFile(*file.ParentID); err == nil && parent.ID != file.ID {
 			if canReadFile(c, files, quota, account, session, parent) {
 				return true
@@ -63,7 +81,7 @@ func canReadFile(
 	if file.WorkspaceID == nil || quota == nil {
 		return false
 	}
-	return quota.CanAccessWorkspace(c.Request.Context(), *file.WorkspaceID, account.GetId())
+	return quota.CanAccessWorkspace(ctx, *file.WorkspaceID, account.GetId())
 }
 
 // @Summary Get file info
@@ -207,7 +225,7 @@ func createEditSession(c *gin.Context, wopi *service.WOPIService, files *service
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	if !files.CanAccessFile(result.Account, result.Session, file, "read") {
+	if !hasFilePermission(c, files, file, service.PermRead) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
@@ -513,7 +531,7 @@ func isDerivedVariant(file *database.CloudFile) bool {
 }
 
 func resolveDerivedFile(files *service.FileService, parentID, kind string) (*database.CloudFile, error) {
-	children, err := files.GetChildren(parentID)
+	children, err := files.GetDerivedChildren(parentID)
 	if err != nil {
 		return nil, err
 	}
@@ -653,30 +671,29 @@ func listChildren(c *gin.Context, files *service.FileService, quota *service.Quo
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	// Workspace-scoped reads already proved membership through
-	// selectedWorkspaceID; personal-namespace reads need read access to the
-	// parent. Either way every returned child is checked individually below
-	// instead of trusting the namespace.
-	if workspaceID == nil && !files.CanAccessFile(result.Account, result.Session, parent, "read") {
+	caller := service.NewPrincipalSet(result.Account, result.Session)
+	if workspaceID == nil && !files.CanAccessFileMask(c.Request.Context(), caller, parent, service.PermRead) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
 	filters := parseListQuery(c, 0, 50)
-	items, err := files.GetChildrenInWorkspace(c.Param("id"), workspaceID)
+	items, total, err := files.ListChildrenPage(c.Param("id"), workspaceID, fileListOptions(filters))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	items = filterAndSortFiles(items, filters)
-	total := len(items)
-	items = paginateFiles(items, filters.Offset, filters.Take)
+	// Evaluate caller-accurate permissions for the entire page in one batch.
+	if err := files.PopulateFilesMetadataForCaller(c.Request.Context(), caller, items); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 	filtered := make([]database.CloudFile, 0, len(items))
 	for _, item := range items {
-		if files.CanAccessFile(result.Account, result.Session, &item, "read") {
+		if item.PermissionStatus.Readable {
 			filtered = append(filtered, item)
 		}
 	}
-	c.Header("X-Total", strconv.Itoa(total))
+	c.Header("X-Total", strconv.FormatInt(total, 10))
 	c.JSON(http.StatusOK, filtered)
 }
 
@@ -884,7 +901,7 @@ func updatePoolPermissions(c *gin.Context, files *service.FileService) {
 }
 
 func getFilePermissions(c *gin.Context, files *service.FileService) {
-	result, _, ok := auth.GetAuth(c)
+	_, _, ok := auth.GetAuth(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
@@ -894,7 +911,7 @@ func getFilePermissions(c *gin.Context, files *service.FileService) {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	if !files.CanAccessFile(result.Account, result.Session, file, "manage") {
+	if !hasFilePermission(c, files, file, service.PermManage) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
@@ -907,7 +924,7 @@ func getFilePermissions(c *gin.Context, files *service.FileService) {
 }
 
 func updateFilePermissions(c *gin.Context, files *service.FileService) {
-	result, _, ok := auth.GetAuth(c)
+	_, _, ok := auth.GetAuth(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
@@ -917,7 +934,7 @@ func updateFilePermissions(c *gin.Context, files *service.FileService) {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	if !files.CanAccessFile(result.Account, result.Session, file, "manage") {
+	if !hasFilePermission(c, files, file, service.PermManage) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
@@ -1357,6 +1374,9 @@ func createFolder(c *gin.Context, files *service.FileService, quota *service.Quo
 			return
 		}
 	}
+	if !requireParentWrite(c, files, req.ParentID, workspaceID) {
+		return
+	}
 	folder, err := files.CreateWorkspaceFolder(uuid.MustParse(result.Account.GetId()), workspaceID, req.Name, req.ParentID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -1377,7 +1397,8 @@ func patchFile(c *gin.Context, files *service.FileService) {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	if !result.Account.GetIsSuperuser() && file.AccountID.String() != result.Account.GetId() {
+	caller := service.NewPrincipalSet(result.Account, result.Session)
+	if !files.CanAccessFileMask(c.Request.Context(), caller, file, service.PermWrite) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
@@ -1426,7 +1447,8 @@ func setSensitiveMarks(c *gin.Context, files *service.FileService) {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	if !result.Account.GetIsSuperuser() && file.AccountID.String() != result.Account.GetId() {
+	caller := service.NewPrincipalSet(result.Account, result.Session)
+	if !files.CanAccessFileMask(c.Request.Context(), caller, file, service.PermWrite) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
@@ -1557,7 +1579,7 @@ func listFavoriteFiles(c *gin.Context, files *service.FileService, quota *servic
 }
 
 func patchFileContent(c *gin.Context, files *service.FileService, bus *eventbus.Bus, dispatcher dispatch.Dispatcher) {
-	result, _, ok := auth.GetAuth(c)
+	_, _, ok := auth.GetAuth(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
@@ -1569,7 +1591,7 @@ func patchFileContent(c *gin.Context, files *service.FileService, bus *eventbus.
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	if !files.CanAccessFile(result.Account, result.Session, file, "write") {
+	if !hasFilePermission(c, files, file, service.PermWrite) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
@@ -1605,7 +1627,7 @@ func patchFileContent(c *gin.Context, files *service.FileService, bus *eventbus.
 // presents the matching X-Lock-Token, so a blind overwrite cannot discard a
 // Collabora/WebDAV buffer.
 func putFileContent(c *gin.Context, files *service.FileService, bus *eventbus.Bus, dispatcher dispatch.Dispatcher) {
-	result, _, ok := auth.GetAuth(c)
+	_, _, ok := auth.GetAuth(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
@@ -1616,7 +1638,7 @@ func putFileContent(c *gin.Context, files *service.FileService, bus *eventbus.Bu
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	if !files.CanAccessFile(result.Account, result.Session, file, "write") {
+	if !hasFilePermission(c, files, file, service.PermWrite) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
@@ -1650,7 +1672,7 @@ func putFileContent(c *gin.Context, files *service.FileService, bus *eventbus.Bu
 }
 
 func deleteFile(c *gin.Context, files *service.FileService, bus *eventbus.Bus, dispatcher dispatch.Dispatcher) {
-	result, _, ok := auth.GetAuth(c)
+	_, _, ok := auth.GetAuth(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
@@ -1660,7 +1682,7 @@ func deleteFile(c *gin.Context, files *service.FileService, bus *eventbus.Bus, d
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	if !files.CanAccessFile(result.Account, result.Session, file, "delete") {
+	if !hasFilePermission(c, files, file, service.PermDelete) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
@@ -1684,7 +1706,8 @@ func recycleFile(c *gin.Context, files *service.FileService, bus *eventbus.Bus, 
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	if file.AccountID.String() != result.Account.GetId() {
+	caller := service.NewPrincipalSet(result.Account, result.Session)
+	if !files.CanAccessFileMask(c.Request.Context(), caller, file, service.PermDelete) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
@@ -1707,7 +1730,8 @@ func restoreFile(c *gin.Context, files *service.FileService, bus *eventbus.Bus, 
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
-	if file.AccountID.String() != result.Account.GetId() {
+	caller := service.NewPrincipalSet(result.Account, result.Session)
+	if !files.CanAccessFileMask(c.Request.Context(), caller, file, service.PermDelete) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
@@ -1735,7 +1759,7 @@ func batchRecycleFiles(c *gin.Context, files *service.FileService, bus *eventbus
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file_ids is required"})
 		return
 	}
-	batchFiles, err := loadBatchFilesForAccount(files, result.Account.GetId(), ids, false)
+	batchFiles, err := loadBatchFilesForCaller(c, files, ids, false, service.PermDelete)
 	if err != nil {
 		handleBatchFileLookupError(c, err)
 		return
@@ -1767,7 +1791,7 @@ func batchRestoreFiles(c *gin.Context, files *service.FileService, bus *eventbus
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file_ids is required"})
 		return
 	}
-	batchFiles, err := loadBatchFilesForAccount(files, result.Account.GetId(), ids, false)
+	batchFiles, err := loadBatchFilesForCaller(c, files, ids, false, service.PermDelete)
 	if err != nil {
 		handleBatchFileLookupError(c, err)
 		return
@@ -1799,7 +1823,7 @@ func batchDeleteFiles(c *gin.Context, files *service.FileService, bus *eventbus.
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file_ids is required"})
 		return
 	}
-	batchFiles, err := loadBatchFilesForAccount(files, result.Account.GetId(), ids, true)
+	batchFiles, err := loadBatchFilesForCaller(c, files, ids, true, service.PermDelete)
 	if err != nil {
 		handleBatchFileLookupError(c, err)
 		return
@@ -1844,10 +1868,21 @@ func batchMoveFiles(c *gin.Context, files *service.FileService, bus *eventbus.Bu
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file_ids is required"})
 		return
 	}
-	batchFiles, err := loadBatchFilesForAccount(files, result.Account.GetId(), ids, false)
+	batchFiles, err := loadBatchFilesForCaller(c, files, ids, false, service.PermDelete)
 	if err != nil {
 		handleBatchFileLookupError(c, err)
 		return
+	}
+	if req.ParentID != nil && strings.TrimSpace(*req.ParentID) != "" {
+		dest, destErr := files.GetFile(strings.TrimSpace(*req.ParentID))
+		if destErr != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": destErr.Error()})
+			return
+		}
+		if !hasFilePermission(c, files, dest, service.PermWrite) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
 	}
 	count, err := files.MoveBatch(ids, req.ParentID, req.Indexed)
 	if err != nil {
@@ -1897,7 +1932,10 @@ func (req batchMoveFilesRequest) normalizedIDs() []string {
 	return batchFileIDsRequest{FileIDs: req.FileIDs, IDs: req.IDs}.normalizedIDs()
 }
 
-func loadBatchFilesForAccount(files *service.FileService, accountID string, ids []string, includeDeleted bool) ([]database.CloudFile, error) {
+// loadBatchFilesForCaller resolves batch IDs and authorizes every row with the
+// caller's effective ACL, so multi-select cannot act on a file shared with the
+// caller without the matching grant.
+func loadBatchFilesForCaller(c *gin.Context, files *service.FileService, ids []string, includeDeleted bool, required service.PermissionMask) ([]database.CloudFile, error) {
 	query := files.DB().DB
 	if includeDeleted {
 		query = query.Unscoped()
@@ -1909,8 +1947,12 @@ func loadBatchFilesForAccount(files *service.FileService, accountID string, ids 
 	if len(batchFiles) != len(ids) {
 		return nil, errBatchFileNotFound
 	}
-	for _, file := range batchFiles {
-		if file.AccountID.String() != accountID {
+	evals, err := files.EvaluateFiles(c.Request.Context(), principalFromContext(c), batchFiles)
+	if err != nil {
+		return nil, err
+	}
+	for i := range batchFiles {
+		if evals[batchFiles[i].ID].Mask&required != required {
 			return nil, errBatchFileForbidden
 		}
 	}
@@ -2037,7 +2079,7 @@ func createUploadTask(c *gin.Context, cfg *config.Config, files *service.FileSer
 			c.JSON(http.StatusBadRequest, gin.H{"error": "cannot overwrite folder"})
 			return
 		}
-		if !result.Account.GetIsSuperuser() && target.AccountID.String() != result.Account.GetId() {
+		if !hasFilePermission(c, files, target, service.PermWrite) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}
@@ -2063,6 +2105,9 @@ func createUploadTask(c *gin.Context, cfg *config.Config, files *service.FileSer
 		// OverwriteFile keeps the file row's pool, so the staged object must be
 		// written to that same pool.
 		req.PoolID = target.PoolID
+	}
+	if req.OverwriteID == nil && !requireParentWrite(c, files, req.ParentID, optionalStringPtr(deref(req.WorkspaceID))) {
+		return
 	}
 	if strings.TrimSpace(req.FileName) == "" {
 		req.FileName = service.DefaultUploadFileName(req.ContentType)
@@ -2320,8 +2365,12 @@ func prepareDirectUpload(c *gin.Context, files *service.FileService, tasks *serv
 			c.JSON(http.StatusNotFound, gin.H{"error": targetErr.Error()})
 			return
 		}
-		if target.IsFolder || (!result.Account.GetIsSuperuser() && target.AccountID.String() != result.Account.GetId()) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "invalid overwrite target"})
+		if target.IsFolder {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "cannot overwrite folder"})
+			return
+		}
+		if !hasFilePermission(c, files, target, service.PermWrite) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}
 		req.FileName, req.Description, req.ParentID = target.Name, target.Description, target.ParentID
@@ -2332,6 +2381,9 @@ func prepareDirectUpload(c *gin.Context, files *service.FileService, tasks *serv
 		// writing to any other pool would leave the row and the bytes pointing
 		// at different buckets.
 		req.PoolID = target.PoolID
+	}
+	if req.OverwriteID == nil && !requireParentWrite(c, files, req.ParentID, req.WorkspaceID) {
+		return
 	}
 	if req.WorkspaceID != nil {
 		if err := quota.CheckWorkspaceUploadQuota(c.Request.Context(), *req.WorkspaceID, result.Account.GetId(), req.FileSize); err != nil {
@@ -2842,7 +2894,7 @@ func directUpload(c *gin.Context, cfg *config.Config, files *service.FileService
 			c.JSON(http.StatusBadRequest, gin.H{"error": "cannot overwrite folder"})
 			return
 		}
-		if !result.Account.GetIsSuperuser() && overwriteTarget.AccountID.String() != result.Account.GetId() {
+		if !hasFilePermission(c, files, overwriteTarget, service.PermWrite) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}
@@ -2858,6 +2910,9 @@ func directUpload(c *gin.Context, cfg *config.Config, files *service.FileService
 			return
 		}
 		workspaceID = overwriteTarget.WorkspaceID
+	}
+	if overwriteTarget == nil && !requireParentWrite(c, files, parentID, workspaceID) {
+		return
 	}
 
 	logQuotaCheck(result.Account, fileHeader.Size, 1.0, "direct-upload", false, nil)

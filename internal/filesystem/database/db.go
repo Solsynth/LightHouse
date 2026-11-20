@@ -34,7 +34,7 @@ func Open(cfg *config.Config) (*DB, error) {
 // and tooling can enumerate the domain in one place.
 func Models() []any {
 	return []any{
-		&FilePool{}, &FileObject{}, &CloudFile{}, &FilePermission{}, &PoolPermission{},
+		&FilePool{}, &FileObject{}, &CloudFile{}, &FilePermission{}, &FileACLEntry{}, &PoolPermission{},
 		&PersistentTask{}, &UploadChunk{}, &FileLock{}, &WebDAVToken{}, &StorageNode{}, &S3Token{},
 		&CloudFileFavorite{},
 	}

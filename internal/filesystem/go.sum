@@ -385,3 +385,5 @@ nullprogram.com/x/optparse v1.0.0/go.mod h1:KdyPE+Igbe0jQUrVfMqDMeJQIJZEuyV7pjYm
 sigs.k8s.io/yaml v1.2.0/go.mod h1:yfXDCHCao9+ENCvLSE62v9VSji2MKu5jeNfTrofGhJc=
 src.solsynth.dev/sosys/lighthouse/shared v0.2.5 h1:oo+2vCNWTSzeIxwjWrcfr6zOUYH2JwzzzYl3hRggkQY=
 src.solsynth.dev/sosys/lighthouse/shared v0.2.5/go.mod h1:boTqGRdIkm9Sd7exJ0eOSRLSfcsPLAcQv4dMBpasvJI=
+src.solsynth.dev/sosys/lighthouse/shared v0.2.9 h1:k1xhLBqmY7pIY/fyNv8iNDcgHXe3G6Fi0KjX71ywWSk=
+src.solsynth.dev/sosys/lighthouse/shared v0.2.9/go.mod h1:boTqGRdIkm9Sd7exJ0eOSRLSfcsPLAcQv4dMBpasvJI=

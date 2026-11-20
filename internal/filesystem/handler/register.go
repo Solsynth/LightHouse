@@ -38,6 +38,13 @@ func RegisterRoutes(r *gin.Engine, d Deps) {
 func RegisterFileRoutes(r *gin.Engine, d Deps) {
 	registerBusStash(r, d.Bus)
 	files, quota := d.Files, d.Quota
+	// The ACL engine resolves workspace roles and groups through the quota
+	// service. Wire it here as well as in app bootstrap so every surface that
+	// registers these routes (including tests) evaluates workspace files with
+	// the caller's role baseline.
+	if files != nil && quota != nil {
+		files.SetWorkspaceACLResolver(quota)
+	}
 	// Clean public address for shared files; the API keeps the authenticated
 	// surface at /api/files/{id}.
 	r.GET("/files/:id", func(c *gin.Context) { publicFile(c, d.Config, files, quota) })
@@ -54,6 +61,7 @@ func RegisterFileRoutes(r *gin.Engine, d Deps) {
 		f.GET("/:id/children", func(c *gin.Context) { listChildren(c, files, quota) })
 		f.POST("/folders", func(c *gin.Context) { createFolder(c, files, quota) })
 		f.GET("/me", func(c *gin.Context) { listRootOwned(c, files, quota) })
+		f.GET("/shared-with-me", func(c *gin.Context) { listSharedWithMe(c, files) })
 		f.GET("/unindexed", func(c *gin.Context) { listUnindexed(c, files, quota) })
 		f.GET("/favorites", func(c *gin.Context) { listFavoriteFiles(c, files, quota) })
 		f.POST("/:id/favorite", func(c *gin.Context) { favoriteFile(c, files, quota) })
@@ -69,6 +77,10 @@ func RegisterFileRoutes(r *gin.Engine, d Deps) {
 		f.DELETE("/recycle", func(c *gin.Context) { purgeMyRecycleBin(c, files, d.Bus, d.Dispatcher) })
 		f.POST("/:id/recycle", func(c *gin.Context) { recycleFile(c, files, d.Bus, d.Dispatcher) })
 		f.POST("/:id/restore", func(c *gin.Context) { restoreFile(c, files, d.Bus, d.Dispatcher) })
+		f.GET("/:id/acl", func(c *gin.Context) { getFileACL(c, files) })
+		f.PUT("/:id/acl", func(c *gin.Context) { replaceFileACL(c, files) })
+		f.POST("/:id/acl/entries", func(c *gin.Context) { upsertFileACLEntry(c, files) })
+		f.DELETE("/:id/acl/entries/:entryId", func(c *gin.Context) { deleteFileACLEntry(c, files) })
 		f.GET("/:id/permissions", func(c *gin.Context) { getFilePermissions(c, files) })
 		f.PUT("/:id/permissions", func(c *gin.Context) { updateFilePermissions(c, files) })
 	}

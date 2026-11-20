@@ -24,6 +24,7 @@ export default {
     drive: 'My Drive',
     unindexed: 'Unindexed',
     recycle: 'Recycle Bin',
+    shared: 'Shared with me',
     storage: 'Storage',
     locations: 'Locations',
     pools: 'Pools',

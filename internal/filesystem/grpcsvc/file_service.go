@@ -170,10 +170,12 @@ func (s *fileServiceServer) UpdateFile(_ context.Context, req *gen.DyUpdateFileR
 		updates["name"] = req.GetFile().GetName()
 	}
 	if maskIncludes(req.GetUpdateMask(), "parent_id") {
-		if parent := req.GetFile().GetParentId(); parent == "" {
-			updates["parent_id"] = nil
-		} else {
-			updates["parent_id"] = parent
+		var newParent *string
+		if parent := strings.TrimSpace(req.GetFile().GetParentId()); parent != "" {
+			newParent = &parent
+		}
+		if _, err := s.files.MoveBatch([]string{file.ID}, newParent, nil); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
 	}
 	if maskIncludes(req.GetUpdateMask(), "indexed") {
@@ -268,33 +270,23 @@ func (s *fileServiceServer) PurgeCache(_ context.Context, req *gen.DyPurgeCacheR
 	return &emptypb.Empty{}, nil
 }
 
-func (s *fileServiceServer) SetFilePublic(_ context.Context, req *gen.DySetFilePublicRequest) (*emptypb.Empty, error) {
+func (s *fileServiceServer) SetFilePublic(ctx context.Context, req *gen.DySetFilePublicRequest) (*emptypb.Empty, error) {
 	if req.GetFileId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "file_id is required")
 	}
-	if err := s.files.DB().Where("file_id = ? AND permission = ?", req.GetFileId(), "read").Delete(&database.FilePermission{}).Error; err != nil {
+	if err := s.files.SetFilePublicACL(ctx, req.GetFileId(), true); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	// Public access is an explicit grant: CanAccessFile denies files with no
-	// permission row, so publishing has to write one instead of relying on the
-	// absence of read rows.
-	perm := database.FilePermission{ID: database.NewID(), FileID: req.GetFileId(), SubjectType: "public", SubjectID: "", Permission: "read"}
-	if err := s.files.DB().Create(&perm).Error; err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	s.files.InvalidateFilePermissionCache(context.Background(), req.GetFileId())
 	return &emptypb.Empty{}, nil
 }
 
-func (s *fileServiceServer) UnsetFilePublic(_ context.Context, req *gen.DyUnsetFilePublicRequest) (*emptypb.Empty, error) {
+func (s *fileServiceServer) UnsetFilePublic(ctx context.Context, req *gen.DyUnsetFilePublicRequest) (*emptypb.Empty, error) {
 	if req.GetFileId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "file_id is required")
 	}
-	perm := database.FilePermission{ID: database.NewID(), FileID: req.GetFileId(), SubjectType: "private", SubjectID: "", Permission: "read"}
-	if err := s.files.DB().Create(&perm).Error; err != nil {
+	if err := s.files.SetFilePublicACL(ctx, req.GetFileId(), false); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	s.files.InvalidateFilePermissionCache(context.Background(), req.GetFileId())
 	return &emptypb.Empty{}, nil
 }
 

@@ -337,6 +337,166 @@ func (x *DyWorkspaceMember) GetWorkspace() *DyWorkspace {
 	return nil
 }
 
+type DyWorkspaceGroup struct {
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	Id            string                    `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	WorkspaceId   string                    `protobuf:"bytes,2,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	Name          string                    `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                    `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	CreatedAt     *timestamppb.Timestamp    `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3,oneof" json:"created_at,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp    `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3,oneof" json:"updated_at,omitempty"`
+	Members       []*DyWorkspaceGroupMember `protobuf:"bytes,7,rep,name=members,proto3" json:"members,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DyWorkspaceGroup) Reset() {
+	*x = DyWorkspaceGroup{}
+	mi := &file_workspace_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DyWorkspaceGroup) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DyWorkspaceGroup) ProtoMessage() {}
+
+func (x *DyWorkspaceGroup) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DyWorkspaceGroup.ProtoReflect.Descriptor instead.
+func (*DyWorkspaceGroup) Descriptor() ([]byte, []int) {
+	return file_workspace_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *DyWorkspaceGroup) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *DyWorkspaceGroup) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
+}
+
+func (x *DyWorkspaceGroup) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *DyWorkspaceGroup) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *DyWorkspaceGroup) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *DyWorkspaceGroup) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *DyWorkspaceGroup) GetMembers() []*DyWorkspaceGroupMember {
+	if x != nil {
+		return x.Members
+	}
+	return nil
+}
+
+type DyWorkspaceGroupMember struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	GroupId       string                 `protobuf:"bytes,2,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
+	AccountId     string                 `protobuf:"bytes,3,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	JoinedAt      *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=joined_at,json=joinedAt,proto3,oneof" json:"joined_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DyWorkspaceGroupMember) Reset() {
+	*x = DyWorkspaceGroupMember{}
+	mi := &file_workspace_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DyWorkspaceGroupMember) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DyWorkspaceGroupMember) ProtoMessage() {}
+
+func (x *DyWorkspaceGroupMember) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DyWorkspaceGroupMember.ProtoReflect.Descriptor instead.
+func (*DyWorkspaceGroupMember) Descriptor() ([]byte, []int) {
+	return file_workspace_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *DyWorkspaceGroupMember) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *DyWorkspaceGroupMember) GetGroupId() string {
+	if x != nil {
+		return x.GroupId
+	}
+	return ""
+}
+
+func (x *DyWorkspaceGroupMember) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+func (x *DyWorkspaceGroupMember) GetJoinedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.JoinedAt
+	}
+	return nil
+}
+
 type DyWorkspaceRolePermission struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	Id                 string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -355,7 +515,7 @@ type DyWorkspaceRolePermission struct {
 
 func (x *DyWorkspaceRolePermission) Reset() {
 	*x = DyWorkspaceRolePermission{}
-	mi := &file_workspace_proto_msgTypes[2]
+	mi := &file_workspace_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -367,7 +527,7 @@ func (x *DyWorkspaceRolePermission) String() string {
 func (*DyWorkspaceRolePermission) ProtoMessage() {}
 
 func (x *DyWorkspaceRolePermission) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_proto_msgTypes[2]
+	mi := &file_workspace_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -380,7 +540,7 @@ func (x *DyWorkspaceRolePermission) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyWorkspaceRolePermission.ProtoReflect.Descriptor instead.
 func (*DyWorkspaceRolePermission) Descriptor() ([]byte, []int) {
-	return file_workspace_proto_rawDescGZIP(), []int{2}
+	return file_workspace_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *DyWorkspaceRolePermission) GetId() string {
@@ -471,7 +631,7 @@ type DyWorkspaceUserPermission struct {
 
 func (x *DyWorkspaceUserPermission) Reset() {
 	*x = DyWorkspaceUserPermission{}
-	mi := &file_workspace_proto_msgTypes[3]
+	mi := &file_workspace_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -483,7 +643,7 @@ func (x *DyWorkspaceUserPermission) String() string {
 func (*DyWorkspaceUserPermission) ProtoMessage() {}
 
 func (x *DyWorkspaceUserPermission) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_proto_msgTypes[3]
+	mi := &file_workspace_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -496,7 +656,7 @@ func (x *DyWorkspaceUserPermission) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyWorkspaceUserPermission.ProtoReflect.Descriptor instead.
 func (*DyWorkspaceUserPermission) Descriptor() ([]byte, []int) {
-	return file_workspace_proto_rawDescGZIP(), []int{3}
+	return file_workspace_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *DyWorkspaceUserPermission) GetId() string {
@@ -582,7 +742,7 @@ type DyWorkspacePlanQuota struct {
 
 func (x *DyWorkspacePlanQuota) Reset() {
 	*x = DyWorkspacePlanQuota{}
-	mi := &file_workspace_proto_msgTypes[4]
+	mi := &file_workspace_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -594,7 +754,7 @@ func (x *DyWorkspacePlanQuota) String() string {
 func (*DyWorkspacePlanQuota) ProtoMessage() {}
 
 func (x *DyWorkspacePlanQuota) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_proto_msgTypes[4]
+	mi := &file_workspace_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -607,7 +767,7 @@ func (x *DyWorkspacePlanQuota) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyWorkspacePlanQuota.ProtoReflect.Descriptor instead.
 func (*DyWorkspacePlanQuota) Descriptor() ([]byte, []int) {
-	return file_workspace_proto_rawDescGZIP(), []int{4}
+	return file_workspace_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *DyWorkspacePlanQuota) GetPlan() DyWorkspacePlan {
@@ -638,7 +798,7 @@ type DyGetWorkspaceRequest struct {
 
 func (x *DyGetWorkspaceRequest) Reset() {
 	*x = DyGetWorkspaceRequest{}
-	mi := &file_workspace_proto_msgTypes[5]
+	mi := &file_workspace_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -650,7 +810,7 @@ func (x *DyGetWorkspaceRequest) String() string {
 func (*DyGetWorkspaceRequest) ProtoMessage() {}
 
 func (x *DyGetWorkspaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_proto_msgTypes[5]
+	mi := &file_workspace_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -663,7 +823,7 @@ func (x *DyGetWorkspaceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyGetWorkspaceRequest.ProtoReflect.Descriptor instead.
 func (*DyGetWorkspaceRequest) Descriptor() ([]byte, []int) {
-	return file_workspace_proto_rawDescGZIP(), []int{5}
+	return file_workspace_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *DyGetWorkspaceRequest) GetQuery() isDyGetWorkspaceRequest_Query {
@@ -716,7 +876,7 @@ type DyGetWorkspaceBatchRequest struct {
 
 func (x *DyGetWorkspaceBatchRequest) Reset() {
 	*x = DyGetWorkspaceBatchRequest{}
-	mi := &file_workspace_proto_msgTypes[6]
+	mi := &file_workspace_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -728,7 +888,7 @@ func (x *DyGetWorkspaceBatchRequest) String() string {
 func (*DyGetWorkspaceBatchRequest) ProtoMessage() {}
 
 func (x *DyGetWorkspaceBatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_proto_msgTypes[6]
+	mi := &file_workspace_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -741,7 +901,7 @@ func (x *DyGetWorkspaceBatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyGetWorkspaceBatchRequest.ProtoReflect.Descriptor instead.
 func (*DyGetWorkspaceBatchRequest) Descriptor() ([]byte, []int) {
-	return file_workspace_proto_rawDescGZIP(), []int{6}
+	return file_workspace_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *DyGetWorkspaceBatchRequest) GetIds() []string {
@@ -760,7 +920,7 @@ type DyGetWorkspaceBatchResponse struct {
 
 func (x *DyGetWorkspaceBatchResponse) Reset() {
 	*x = DyGetWorkspaceBatchResponse{}
-	mi := &file_workspace_proto_msgTypes[7]
+	mi := &file_workspace_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -772,7 +932,7 @@ func (x *DyGetWorkspaceBatchResponse) String() string {
 func (*DyGetWorkspaceBatchResponse) ProtoMessage() {}
 
 func (x *DyGetWorkspaceBatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_proto_msgTypes[7]
+	mi := &file_workspace_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -785,7 +945,7 @@ func (x *DyGetWorkspaceBatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyGetWorkspaceBatchResponse.ProtoReflect.Descriptor instead.
 func (*DyGetWorkspaceBatchResponse) Descriptor() ([]byte, []int) {
-	return file_workspace_proto_rawDescGZIP(), []int{7}
+	return file_workspace_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DyGetWorkspaceBatchResponse) GetWorkspaces() []*DyWorkspace {
@@ -804,7 +964,7 @@ type DyGetUserWorkspacesRequest struct {
 
 func (x *DyGetUserWorkspacesRequest) Reset() {
 	*x = DyGetUserWorkspacesRequest{}
-	mi := &file_workspace_proto_msgTypes[8]
+	mi := &file_workspace_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -816,7 +976,7 @@ func (x *DyGetUserWorkspacesRequest) String() string {
 func (*DyGetUserWorkspacesRequest) ProtoMessage() {}
 
 func (x *DyGetUserWorkspacesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_proto_msgTypes[8]
+	mi := &file_workspace_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -829,7 +989,7 @@ func (x *DyGetUserWorkspacesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyGetUserWorkspacesRequest.ProtoReflect.Descriptor instead.
 func (*DyGetUserWorkspacesRequest) Descriptor() ([]byte, []int) {
-	return file_workspace_proto_rawDescGZIP(), []int{8}
+	return file_workspace_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DyGetUserWorkspacesRequest) GetAccountId() string {
@@ -848,7 +1008,7 @@ type DyGetUserWorkspacesResponse struct {
 
 func (x *DyGetUserWorkspacesResponse) Reset() {
 	*x = DyGetUserWorkspacesResponse{}
-	mi := &file_workspace_proto_msgTypes[9]
+	mi := &file_workspace_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -860,7 +1020,7 @@ func (x *DyGetUserWorkspacesResponse) String() string {
 func (*DyGetUserWorkspacesResponse) ProtoMessage() {}
 
 func (x *DyGetUserWorkspacesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_proto_msgTypes[9]
+	mi := &file_workspace_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -873,7 +1033,7 @@ func (x *DyGetUserWorkspacesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyGetUserWorkspacesResponse.ProtoReflect.Descriptor instead.
 func (*DyGetUserWorkspacesResponse) Descriptor() ([]byte, []int) {
-	return file_workspace_proto_rawDescGZIP(), []int{9}
+	return file_workspace_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DyGetUserWorkspacesResponse) GetWorkspaceIds() []string {
@@ -894,7 +1054,7 @@ type DyIsWorkspaceMemberWithRoleRequest struct {
 
 func (x *DyIsWorkspaceMemberWithRoleRequest) Reset() {
 	*x = DyIsWorkspaceMemberWithRoleRequest{}
-	mi := &file_workspace_proto_msgTypes[10]
+	mi := &file_workspace_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -906,7 +1066,7 @@ func (x *DyIsWorkspaceMemberWithRoleRequest) String() string {
 func (*DyIsWorkspaceMemberWithRoleRequest) ProtoMessage() {}
 
 func (x *DyIsWorkspaceMemberWithRoleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_proto_msgTypes[10]
+	mi := &file_workspace_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -919,7 +1079,7 @@ func (x *DyIsWorkspaceMemberWithRoleRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use DyIsWorkspaceMemberWithRoleRequest.ProtoReflect.Descriptor instead.
 func (*DyIsWorkspaceMemberWithRoleRequest) Descriptor() ([]byte, []int) {
-	return file_workspace_proto_rawDescGZIP(), []int{10}
+	return file_workspace_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *DyIsWorkspaceMemberWithRoleRequest) GetWorkspaceId() string {
@@ -954,7 +1114,7 @@ type DyHasWorkspacePermissionRequest struct {
 
 func (x *DyHasWorkspacePermissionRequest) Reset() {
 	*x = DyHasWorkspacePermissionRequest{}
-	mi := &file_workspace_proto_msgTypes[11]
+	mi := &file_workspace_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -966,7 +1126,7 @@ func (x *DyHasWorkspacePermissionRequest) String() string {
 func (*DyHasWorkspacePermissionRequest) ProtoMessage() {}
 
 func (x *DyHasWorkspacePermissionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_proto_msgTypes[11]
+	mi := &file_workspace_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -979,7 +1139,7 @@ func (x *DyHasWorkspacePermissionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyHasWorkspacePermissionRequest.ProtoReflect.Descriptor instead.
 func (*DyHasWorkspacePermissionRequest) Descriptor() ([]byte, []int) {
-	return file_workspace_proto_rawDescGZIP(), []int{11}
+	return file_workspace_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DyHasWorkspacePermissionRequest) GetWorkspaceId() string {
@@ -1015,7 +1175,7 @@ type DyGetPlanQuotaRequest struct {
 
 func (x *DyGetPlanQuotaRequest) Reset() {
 	*x = DyGetPlanQuotaRequest{}
-	mi := &file_workspace_proto_msgTypes[12]
+	mi := &file_workspace_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1027,7 +1187,7 @@ func (x *DyGetPlanQuotaRequest) String() string {
 func (*DyGetPlanQuotaRequest) ProtoMessage() {}
 
 func (x *DyGetPlanQuotaRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_proto_msgTypes[12]
+	mi := &file_workspace_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1040,7 +1200,7 @@ func (x *DyGetPlanQuotaRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyGetPlanQuotaRequest.ProtoReflect.Descriptor instead.
 func (*DyGetPlanQuotaRequest) Descriptor() ([]byte, []int) {
-	return file_workspace_proto_rawDescGZIP(), []int{12}
+	return file_workspace_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *DyGetPlanQuotaRequest) GetPlan() DyWorkspacePlan {
@@ -1066,7 +1226,7 @@ type DyLoadWorkspaceMemberRequest struct {
 
 func (x *DyLoadWorkspaceMemberRequest) Reset() {
 	*x = DyLoadWorkspaceMemberRequest{}
-	mi := &file_workspace_proto_msgTypes[13]
+	mi := &file_workspace_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1078,7 +1238,7 @@ func (x *DyLoadWorkspaceMemberRequest) String() string {
 func (*DyLoadWorkspaceMemberRequest) ProtoMessage() {}
 
 func (x *DyLoadWorkspaceMemberRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_proto_msgTypes[13]
+	mi := &file_workspace_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1091,7 +1251,7 @@ func (x *DyLoadWorkspaceMemberRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyLoadWorkspaceMemberRequest.ProtoReflect.Descriptor instead.
 func (*DyLoadWorkspaceMemberRequest) Descriptor() ([]byte, []int) {
-	return file_workspace_proto_rawDescGZIP(), []int{13}
+	return file_workspace_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *DyLoadWorkspaceMemberRequest) GetMember() *DyWorkspaceMember {
@@ -1110,7 +1270,7 @@ type DyLoadWorkspaceMembersRequest struct {
 
 func (x *DyLoadWorkspaceMembersRequest) Reset() {
 	*x = DyLoadWorkspaceMembersRequest{}
-	mi := &file_workspace_proto_msgTypes[14]
+	mi := &file_workspace_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1122,7 +1282,7 @@ func (x *DyLoadWorkspaceMembersRequest) String() string {
 func (*DyLoadWorkspaceMembersRequest) ProtoMessage() {}
 
 func (x *DyLoadWorkspaceMembersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_proto_msgTypes[14]
+	mi := &file_workspace_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1135,7 +1295,7 @@ func (x *DyLoadWorkspaceMembersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyLoadWorkspaceMembersRequest.ProtoReflect.Descriptor instead.
 func (*DyLoadWorkspaceMembersRequest) Descriptor() ([]byte, []int) {
-	return file_workspace_proto_rawDescGZIP(), []int{14}
+	return file_workspace_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *DyLoadWorkspaceMembersRequest) GetMembers() []*DyWorkspaceMember {
@@ -1154,7 +1314,7 @@ type DyLoadWorkspaceMembersResponse struct {
 
 func (x *DyLoadWorkspaceMembersResponse) Reset() {
 	*x = DyLoadWorkspaceMembersResponse{}
-	mi := &file_workspace_proto_msgTypes[15]
+	mi := &file_workspace_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1166,7 +1326,7 @@ func (x *DyLoadWorkspaceMembersResponse) String() string {
 func (*DyLoadWorkspaceMembersResponse) ProtoMessage() {}
 
 func (x *DyLoadWorkspaceMembersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_proto_msgTypes[15]
+	mi := &file_workspace_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1179,7 +1339,7 @@ func (x *DyLoadWorkspaceMembersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyLoadWorkspaceMembersResponse.ProtoReflect.Descriptor instead.
 func (*DyLoadWorkspaceMembersResponse) Descriptor() ([]byte, []int) {
-	return file_workspace_proto_rawDescGZIP(), []int{15}
+	return file_workspace_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *DyLoadWorkspaceMembersResponse) GetMembers() []*DyWorkspaceMember {
@@ -1198,7 +1358,7 @@ type DyListWorkspaceMembersRequest struct {
 
 func (x *DyListWorkspaceMembersRequest) Reset() {
 	*x = DyListWorkspaceMembersRequest{}
-	mi := &file_workspace_proto_msgTypes[16]
+	mi := &file_workspace_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1210,7 +1370,7 @@ func (x *DyListWorkspaceMembersRequest) String() string {
 func (*DyListWorkspaceMembersRequest) ProtoMessage() {}
 
 func (x *DyListWorkspaceMembersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_proto_msgTypes[16]
+	mi := &file_workspace_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1223,7 +1383,7 @@ func (x *DyListWorkspaceMembersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyListWorkspaceMembersRequest.ProtoReflect.Descriptor instead.
 func (*DyListWorkspaceMembersRequest) Descriptor() ([]byte, []int) {
-	return file_workspace_proto_rawDescGZIP(), []int{16}
+	return file_workspace_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *DyListWorkspaceMembersRequest) GetWorkspaceId() string {
@@ -1242,7 +1402,7 @@ type DyListWorkspaceMembersResponse struct {
 
 func (x *DyListWorkspaceMembersResponse) Reset() {
 	*x = DyListWorkspaceMembersResponse{}
-	mi := &file_workspace_proto_msgTypes[17]
+	mi := &file_workspace_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1254,7 +1414,7 @@ func (x *DyListWorkspaceMembersResponse) String() string {
 func (*DyListWorkspaceMembersResponse) ProtoMessage() {}
 
 func (x *DyListWorkspaceMembersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_proto_msgTypes[17]
+	mi := &file_workspace_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1267,12 +1427,108 @@ func (x *DyListWorkspaceMembersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DyListWorkspaceMembersResponse.ProtoReflect.Descriptor instead.
 func (*DyListWorkspaceMembersResponse) Descriptor() ([]byte, []int) {
-	return file_workspace_proto_rawDescGZIP(), []int{17}
+	return file_workspace_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *DyListWorkspaceMembersResponse) GetMembers() []*DyWorkspaceMember {
 	if x != nil {
 		return x.Members
+	}
+	return nil
+}
+
+type DyGetAccountWorkspaceGroupsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkspaceId   string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	AccountId     string                 `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DyGetAccountWorkspaceGroupsRequest) Reset() {
+	*x = DyGetAccountWorkspaceGroupsRequest{}
+	mi := &file_workspace_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DyGetAccountWorkspaceGroupsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DyGetAccountWorkspaceGroupsRequest) ProtoMessage() {}
+
+func (x *DyGetAccountWorkspaceGroupsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DyGetAccountWorkspaceGroupsRequest.ProtoReflect.Descriptor instead.
+func (*DyGetAccountWorkspaceGroupsRequest) Descriptor() ([]byte, []int) {
+	return file_workspace_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *DyGetAccountWorkspaceGroupsRequest) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
+}
+
+func (x *DyGetAccountWorkspaceGroupsRequest) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+type DyGetAccountWorkspaceGroupsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	GroupIds      []string               `protobuf:"bytes,1,rep,name=group_ids,json=groupIds,proto3" json:"group_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DyGetAccountWorkspaceGroupsResponse) Reset() {
+	*x = DyGetAccountWorkspaceGroupsResponse{}
+	mi := &file_workspace_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DyGetAccountWorkspaceGroupsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DyGetAccountWorkspaceGroupsResponse) ProtoMessage() {}
+
+func (x *DyGetAccountWorkspaceGroupsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DyGetAccountWorkspaceGroupsResponse.ProtoReflect.Descriptor instead.
+func (*DyGetAccountWorkspaceGroupsResponse) Descriptor() ([]byte, []int) {
+	return file_workspace_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *DyGetAccountWorkspaceGroupsResponse) GetGroupIds() []string {
+	if x != nil {
+		return x.GroupIds
 	}
 	return nil
 }
@@ -1317,7 +1573,27 @@ const file_workspace_proto_rawDesc = "" +
 	"\n" +
 	"\b_accountB\f\n" +
 	"\n" +
-	"_workspace\"\xa5\x03\n" +
+	"_workspace\"\xd2\x02\n" +
+	"\x10DyWorkspaceGroup\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
+	"\fworkspace_id\x18\x02 \x01(\tR\vworkspaceId\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12>\n" +
+	"\n" +
+	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampH\x00R\tcreatedAt\x88\x01\x01\x12>\n" +
+	"\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampH\x01R\tupdatedAt\x88\x01\x01\x127\n" +
+	"\amembers\x18\a \x03(\v2\x1d.proto.DyWorkspaceGroupMemberR\amembersB\r\n" +
+	"\v_created_atB\r\n" +
+	"\v_updated_at\"\xae\x01\n" +
+	"\x16DyWorkspaceGroupMember\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
+	"\bgroup_id\x18\x02 \x01(\tR\agroupId\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x03 \x01(\tR\taccountId\x12<\n" +
+	"\tjoined_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampH\x00R\bjoinedAt\x88\x01\x01B\f\n" +
+	"\n" +
+	"_joined_at\"\xa5\x03\n" +
 	"\x19DyWorkspaceRolePermission\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fworkspace_id\x18\x02 \x01(\tR\vworkspaceId\x12\x1d\n" +
@@ -1396,7 +1672,13 @@ const file_workspace_proto_rawDesc = "" +
 	"\x1dDyListWorkspaceMembersRequest\x12!\n" +
 	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\"T\n" +
 	"\x1eDyListWorkspaceMembersResponse\x122\n" +
-	"\amembers\x18\x01 \x03(\v2\x18.proto.DyWorkspaceMemberR\amembers*3\n" +
+	"\amembers\x18\x01 \x03(\v2\x18.proto.DyWorkspaceMemberR\amembers\"f\n" +
+	"\"DyGetAccountWorkspaceGroupsRequest\x12!\n" +
+	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x02 \x01(\tR\taccountId\"B\n" +
+	"#DyGetAccountWorkspaceGroupsResponse\x12\x1b\n" +
+	"\tgroup_ids\x18\x01 \x03(\tR\bgroupIds*3\n" +
 	"\x0fDyWorkspaceType\x12\x0e\n" +
 	"\n" +
 	"INDIVIDUAL\x10\x00\x12\x10\n" +
@@ -1405,7 +1687,7 @@ const file_workspace_proto_rawDesc = "" +
 	"\x04FREE\x10\x00\x12\a\n" +
 	"\x03PRO\x10\x01\x12\x0e\n" +
 	"\n" +
-	"ENTERPRISE\x10\x022\x81\a\n" +
+	"ENTERPRISE\x10\x022\xf7\a\n" +
 	"\x12DyWorkspaceService\x12B\n" +
 	"\fGetWorkspace\x12\x1c.proto.DyGetWorkspaceRequest\x1a\x12.proto.DyWorkspace\"\x00\x12\\\n" +
 	"\x11GetWorkspaceBatch\x12!.proto.DyGetWorkspaceBatchRequest\x1a\".proto.DyGetWorkspaceBatchResponse\"\x00\x12\\\n" +
@@ -1416,7 +1698,8 @@ const file_workspace_proto_rawDesc = "" +
 	"\fGetPlanQuota\x12\x1c.proto.DyGetPlanQuotaRequest\x1a\x1b.proto.DyWorkspacePlanQuota\"\x00\x12T\n" +
 	"\x11LoadMemberAccount\x12#.proto.DyLoadWorkspaceMemberRequest\x1a\x18.proto.DyWorkspaceMember\"\x00\x12c\n" +
 	"\x12LoadMemberAccounts\x12$.proto.DyLoadWorkspaceMembersRequest\x1a%.proto.DyLoadWorkspaceMembersResponse\"\x00\x12\\\n" +
-	"\vListMembers\x12$.proto.DyListWorkspaceMembersRequest\x1a%.proto.DyListWorkspaceMembersResponse\"\x00B=Z\x1fsrc.solsynth.dev/sosys/go/proto\xaa\x02\x19DysonNetwork.Shared.Protob\x06proto3"
+	"\vListMembers\x12$.proto.DyListWorkspaceMembersRequest\x1a%.proto.DyListWorkspaceMembersResponse\"\x00\x12t\n" +
+	"\x19GetAccountWorkspaceGroups\x12).proto.DyGetAccountWorkspaceGroupsRequest\x1a*.proto.DyGetAccountWorkspaceGroupsResponse\"\x00B=Z\x1fsrc.solsynth.dev/sosys/go/proto\xaa\x02\x19DysonNetwork.Shared.Protob\x06proto3"
 
 var (
 	file_workspace_proto_rawDescOnce sync.Once
@@ -1431,77 +1714,87 @@ func file_workspace_proto_rawDescGZIP() []byte {
 }
 
 var file_workspace_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_workspace_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_workspace_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_workspace_proto_goTypes = []any{
-	(DyWorkspaceType)(0),                       // 0: proto.DyWorkspaceType
-	(DyWorkspacePlan)(0),                       // 1: proto.DyWorkspacePlan
-	(*DyWorkspace)(nil),                        // 2: proto.DyWorkspace
-	(*DyWorkspaceMember)(nil),                  // 3: proto.DyWorkspaceMember
-	(*DyWorkspaceRolePermission)(nil),          // 4: proto.DyWorkspaceRolePermission
-	(*DyWorkspaceUserPermission)(nil),          // 5: proto.DyWorkspaceUserPermission
-	(*DyWorkspacePlanQuota)(nil),               // 6: proto.DyWorkspacePlanQuota
-	(*DyGetWorkspaceRequest)(nil),              // 7: proto.DyGetWorkspaceRequest
-	(*DyGetWorkspaceBatchRequest)(nil),         // 8: proto.DyGetWorkspaceBatchRequest
-	(*DyGetWorkspaceBatchResponse)(nil),        // 9: proto.DyGetWorkspaceBatchResponse
-	(*DyGetUserWorkspacesRequest)(nil),         // 10: proto.DyGetUserWorkspacesRequest
-	(*DyGetUserWorkspacesResponse)(nil),        // 11: proto.DyGetUserWorkspacesResponse
-	(*DyIsWorkspaceMemberWithRoleRequest)(nil), // 12: proto.DyIsWorkspaceMemberWithRoleRequest
-	(*DyHasWorkspacePermissionRequest)(nil),    // 13: proto.DyHasWorkspacePermissionRequest
-	(*DyGetPlanQuotaRequest)(nil),              // 14: proto.DyGetPlanQuotaRequest
-	(*DyLoadWorkspaceMemberRequest)(nil),       // 15: proto.DyLoadWorkspaceMemberRequest
-	(*DyLoadWorkspaceMembersRequest)(nil),      // 16: proto.DyLoadWorkspaceMembersRequest
-	(*DyLoadWorkspaceMembersResponse)(nil),     // 17: proto.DyLoadWorkspaceMembersResponse
-	(*DyListWorkspaceMembersRequest)(nil),      // 18: proto.DyListWorkspaceMembersRequest
-	(*DyListWorkspaceMembersResponse)(nil),     // 19: proto.DyListWorkspaceMembersResponse
-	nil,                                        // 20: proto.DyWorkspacePlanQuota.QuotasEntry
-	(*DyCloudFile)(nil),                        // 21: proto.DyCloudFile
-	(*timestamppb.Timestamp)(nil),              // 22: google.protobuf.Timestamp
-	(*DyAccount)(nil),                          // 23: proto.DyAccount
-	(*wrapperspb.BoolValue)(nil),               // 24: google.protobuf.BoolValue
+	(DyWorkspaceType)(0),                        // 0: proto.DyWorkspaceType
+	(DyWorkspacePlan)(0),                        // 1: proto.DyWorkspacePlan
+	(*DyWorkspace)(nil),                         // 2: proto.DyWorkspace
+	(*DyWorkspaceMember)(nil),                   // 3: proto.DyWorkspaceMember
+	(*DyWorkspaceGroup)(nil),                    // 4: proto.DyWorkspaceGroup
+	(*DyWorkspaceGroupMember)(nil),              // 5: proto.DyWorkspaceGroupMember
+	(*DyWorkspaceRolePermission)(nil),           // 6: proto.DyWorkspaceRolePermission
+	(*DyWorkspaceUserPermission)(nil),           // 7: proto.DyWorkspaceUserPermission
+	(*DyWorkspacePlanQuota)(nil),                // 8: proto.DyWorkspacePlanQuota
+	(*DyGetWorkspaceRequest)(nil),               // 9: proto.DyGetWorkspaceRequest
+	(*DyGetWorkspaceBatchRequest)(nil),          // 10: proto.DyGetWorkspaceBatchRequest
+	(*DyGetWorkspaceBatchResponse)(nil),         // 11: proto.DyGetWorkspaceBatchResponse
+	(*DyGetUserWorkspacesRequest)(nil),          // 12: proto.DyGetUserWorkspacesRequest
+	(*DyGetUserWorkspacesResponse)(nil),         // 13: proto.DyGetUserWorkspacesResponse
+	(*DyIsWorkspaceMemberWithRoleRequest)(nil),  // 14: proto.DyIsWorkspaceMemberWithRoleRequest
+	(*DyHasWorkspacePermissionRequest)(nil),     // 15: proto.DyHasWorkspacePermissionRequest
+	(*DyGetPlanQuotaRequest)(nil),               // 16: proto.DyGetPlanQuotaRequest
+	(*DyLoadWorkspaceMemberRequest)(nil),        // 17: proto.DyLoadWorkspaceMemberRequest
+	(*DyLoadWorkspaceMembersRequest)(nil),       // 18: proto.DyLoadWorkspaceMembersRequest
+	(*DyLoadWorkspaceMembersResponse)(nil),      // 19: proto.DyLoadWorkspaceMembersResponse
+	(*DyListWorkspaceMembersRequest)(nil),       // 20: proto.DyListWorkspaceMembersRequest
+	(*DyListWorkspaceMembersResponse)(nil),      // 21: proto.DyListWorkspaceMembersResponse
+	(*DyGetAccountWorkspaceGroupsRequest)(nil),  // 22: proto.DyGetAccountWorkspaceGroupsRequest
+	(*DyGetAccountWorkspaceGroupsResponse)(nil), // 23: proto.DyGetAccountWorkspaceGroupsResponse
+	nil,                           // 24: proto.DyWorkspacePlanQuota.QuotasEntry
+	(*DyCloudFile)(nil),           // 25: proto.DyCloudFile
+	(*timestamppb.Timestamp)(nil), // 26: google.protobuf.Timestamp
+	(*DyAccount)(nil),             // 27: proto.DyAccount
+	(*wrapperspb.BoolValue)(nil),  // 28: google.protobuf.BoolValue
 }
 var file_workspace_proto_depIdxs = []int32{
 	0,  // 0: proto.DyWorkspace.type:type_name -> proto.DyWorkspaceType
-	21, // 1: proto.DyWorkspace.picture:type_name -> proto.DyCloudFile
-	21, // 2: proto.DyWorkspace.background:type_name -> proto.DyCloudFile
+	25, // 1: proto.DyWorkspace.picture:type_name -> proto.DyCloudFile
+	25, // 2: proto.DyWorkspace.background:type_name -> proto.DyCloudFile
 	1,  // 3: proto.DyWorkspace.plan:type_name -> proto.DyWorkspacePlan
-	22, // 4: proto.DyWorkspace.plan_expires_at:type_name -> google.protobuf.Timestamp
-	22, // 5: proto.DyWorkspaceMember.joined_at:type_name -> google.protobuf.Timestamp
-	22, // 6: proto.DyWorkspaceMember.leave_at:type_name -> google.protobuf.Timestamp
-	23, // 7: proto.DyWorkspaceMember.account:type_name -> proto.DyAccount
+	26, // 4: proto.DyWorkspace.plan_expires_at:type_name -> google.protobuf.Timestamp
+	26, // 5: proto.DyWorkspaceMember.joined_at:type_name -> google.protobuf.Timestamp
+	26, // 6: proto.DyWorkspaceMember.leave_at:type_name -> google.protobuf.Timestamp
+	27, // 7: proto.DyWorkspaceMember.account:type_name -> proto.DyAccount
 	2,  // 8: proto.DyWorkspaceMember.workspace:type_name -> proto.DyWorkspace
-	1,  // 9: proto.DyWorkspacePlanQuota.plan:type_name -> proto.DyWorkspacePlan
-	20, // 10: proto.DyWorkspacePlanQuota.quotas:type_name -> proto.DyWorkspacePlanQuota.QuotasEntry
-	2,  // 11: proto.DyGetWorkspaceBatchResponse.workspaces:type_name -> proto.DyWorkspace
-	1,  // 12: proto.DyGetPlanQuotaRequest.plan:type_name -> proto.DyWorkspacePlan
-	3,  // 13: proto.DyLoadWorkspaceMemberRequest.member:type_name -> proto.DyWorkspaceMember
-	3,  // 14: proto.DyLoadWorkspaceMembersRequest.members:type_name -> proto.DyWorkspaceMember
-	3,  // 15: proto.DyLoadWorkspaceMembersResponse.members:type_name -> proto.DyWorkspaceMember
-	3,  // 16: proto.DyListWorkspaceMembersResponse.members:type_name -> proto.DyWorkspaceMember
-	7,  // 17: proto.DyWorkspaceService.GetWorkspace:input_type -> proto.DyGetWorkspaceRequest
-	8,  // 18: proto.DyWorkspaceService.GetWorkspaceBatch:input_type -> proto.DyGetWorkspaceBatchRequest
-	10, // 19: proto.DyWorkspaceService.GetUserWorkspaces:input_type -> proto.DyGetUserWorkspacesRequest
-	10, // 20: proto.DyWorkspaceService.GetIndividualWorkspace:input_type -> proto.DyGetUserWorkspacesRequest
-	12, // 21: proto.DyWorkspaceService.IsMemberWithRole:input_type -> proto.DyIsWorkspaceMemberWithRoleRequest
-	13, // 22: proto.DyWorkspaceService.HasPermission:input_type -> proto.DyHasWorkspacePermissionRequest
-	14, // 23: proto.DyWorkspaceService.GetPlanQuota:input_type -> proto.DyGetPlanQuotaRequest
-	15, // 24: proto.DyWorkspaceService.LoadMemberAccount:input_type -> proto.DyLoadWorkspaceMemberRequest
-	16, // 25: proto.DyWorkspaceService.LoadMemberAccounts:input_type -> proto.DyLoadWorkspaceMembersRequest
-	18, // 26: proto.DyWorkspaceService.ListMembers:input_type -> proto.DyListWorkspaceMembersRequest
-	2,  // 27: proto.DyWorkspaceService.GetWorkspace:output_type -> proto.DyWorkspace
-	9,  // 28: proto.DyWorkspaceService.GetWorkspaceBatch:output_type -> proto.DyGetWorkspaceBatchResponse
-	11, // 29: proto.DyWorkspaceService.GetUserWorkspaces:output_type -> proto.DyGetUserWorkspacesResponse
-	2,  // 30: proto.DyWorkspaceService.GetIndividualWorkspace:output_type -> proto.DyWorkspace
-	24, // 31: proto.DyWorkspaceService.IsMemberWithRole:output_type -> google.protobuf.BoolValue
-	24, // 32: proto.DyWorkspaceService.HasPermission:output_type -> google.protobuf.BoolValue
-	6,  // 33: proto.DyWorkspaceService.GetPlanQuota:output_type -> proto.DyWorkspacePlanQuota
-	3,  // 34: proto.DyWorkspaceService.LoadMemberAccount:output_type -> proto.DyWorkspaceMember
-	17, // 35: proto.DyWorkspaceService.LoadMemberAccounts:output_type -> proto.DyLoadWorkspaceMembersResponse
-	19, // 36: proto.DyWorkspaceService.ListMembers:output_type -> proto.DyListWorkspaceMembersResponse
-	27, // [27:37] is the sub-list for method output_type
-	17, // [17:27] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	26, // 9: proto.DyWorkspaceGroup.created_at:type_name -> google.protobuf.Timestamp
+	26, // 10: proto.DyWorkspaceGroup.updated_at:type_name -> google.protobuf.Timestamp
+	5,  // 11: proto.DyWorkspaceGroup.members:type_name -> proto.DyWorkspaceGroupMember
+	26, // 12: proto.DyWorkspaceGroupMember.joined_at:type_name -> google.protobuf.Timestamp
+	1,  // 13: proto.DyWorkspacePlanQuota.plan:type_name -> proto.DyWorkspacePlan
+	24, // 14: proto.DyWorkspacePlanQuota.quotas:type_name -> proto.DyWorkspacePlanQuota.QuotasEntry
+	2,  // 15: proto.DyGetWorkspaceBatchResponse.workspaces:type_name -> proto.DyWorkspace
+	1,  // 16: proto.DyGetPlanQuotaRequest.plan:type_name -> proto.DyWorkspacePlan
+	3,  // 17: proto.DyLoadWorkspaceMemberRequest.member:type_name -> proto.DyWorkspaceMember
+	3,  // 18: proto.DyLoadWorkspaceMembersRequest.members:type_name -> proto.DyWorkspaceMember
+	3,  // 19: proto.DyLoadWorkspaceMembersResponse.members:type_name -> proto.DyWorkspaceMember
+	3,  // 20: proto.DyListWorkspaceMembersResponse.members:type_name -> proto.DyWorkspaceMember
+	9,  // 21: proto.DyWorkspaceService.GetWorkspace:input_type -> proto.DyGetWorkspaceRequest
+	10, // 22: proto.DyWorkspaceService.GetWorkspaceBatch:input_type -> proto.DyGetWorkspaceBatchRequest
+	12, // 23: proto.DyWorkspaceService.GetUserWorkspaces:input_type -> proto.DyGetUserWorkspacesRequest
+	12, // 24: proto.DyWorkspaceService.GetIndividualWorkspace:input_type -> proto.DyGetUserWorkspacesRequest
+	14, // 25: proto.DyWorkspaceService.IsMemberWithRole:input_type -> proto.DyIsWorkspaceMemberWithRoleRequest
+	15, // 26: proto.DyWorkspaceService.HasPermission:input_type -> proto.DyHasWorkspacePermissionRequest
+	16, // 27: proto.DyWorkspaceService.GetPlanQuota:input_type -> proto.DyGetPlanQuotaRequest
+	17, // 28: proto.DyWorkspaceService.LoadMemberAccount:input_type -> proto.DyLoadWorkspaceMemberRequest
+	18, // 29: proto.DyWorkspaceService.LoadMemberAccounts:input_type -> proto.DyLoadWorkspaceMembersRequest
+	20, // 30: proto.DyWorkspaceService.ListMembers:input_type -> proto.DyListWorkspaceMembersRequest
+	22, // 31: proto.DyWorkspaceService.GetAccountWorkspaceGroups:input_type -> proto.DyGetAccountWorkspaceGroupsRequest
+	2,  // 32: proto.DyWorkspaceService.GetWorkspace:output_type -> proto.DyWorkspace
+	11, // 33: proto.DyWorkspaceService.GetWorkspaceBatch:output_type -> proto.DyGetWorkspaceBatchResponse
+	13, // 34: proto.DyWorkspaceService.GetUserWorkspaces:output_type -> proto.DyGetUserWorkspacesResponse
+	2,  // 35: proto.DyWorkspaceService.GetIndividualWorkspace:output_type -> proto.DyWorkspace
+	28, // 36: proto.DyWorkspaceService.IsMemberWithRole:output_type -> google.protobuf.BoolValue
+	28, // 37: proto.DyWorkspaceService.HasPermission:output_type -> google.protobuf.BoolValue
+	8,  // 38: proto.DyWorkspaceService.GetPlanQuota:output_type -> proto.DyWorkspacePlanQuota
+	3,  // 39: proto.DyWorkspaceService.LoadMemberAccount:output_type -> proto.DyWorkspaceMember
+	19, // 40: proto.DyWorkspaceService.LoadMemberAccounts:output_type -> proto.DyLoadWorkspaceMembersResponse
+	21, // 41: proto.DyWorkspaceService.ListMembers:output_type -> proto.DyListWorkspaceMembersResponse
+	23, // 42: proto.DyWorkspaceService.GetAccountWorkspaceGroups:output_type -> proto.DyGetAccountWorkspaceGroupsResponse
+	32, // [32:43] is the sub-list for method output_type
+	21, // [21:32] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_workspace_proto_init() }
@@ -1513,8 +1806,10 @@ func file_workspace_proto_init() {
 	file_file_proto_init()
 	file_workspace_proto_msgTypes[0].OneofWrappers = []any{}
 	file_workspace_proto_msgTypes[1].OneofWrappers = []any{}
+	file_workspace_proto_msgTypes[2].OneofWrappers = []any{}
 	file_workspace_proto_msgTypes[3].OneofWrappers = []any{}
-	file_workspace_proto_msgTypes[5].OneofWrappers = []any{
+	file_workspace_proto_msgTypes[5].OneofWrappers = []any{}
+	file_workspace_proto_msgTypes[7].OneofWrappers = []any{
 		(*DyGetWorkspaceRequest_Id)(nil),
 		(*DyGetWorkspaceRequest_Slug)(nil),
 	}
@@ -1524,7 +1819,7 @@ func file_workspace_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workspace_proto_rawDesc), len(file_workspace_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   19,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

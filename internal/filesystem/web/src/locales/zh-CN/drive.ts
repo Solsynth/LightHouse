@@ -72,6 +72,8 @@ export default {
     recycleBody: '回收的文件会留在这里，直到被永久删除。',
     indexed: '全部已索引',
     indexedBody: '此账号中的每个文件都已纳入云盘索引。',
+    sharedEmpty: '还没有人共享给你',
+    sharedBody: '其他账号授予你访问权限的文件会显示在这里。',
     noFolders: '此位置没有文件夹。',
     noFoldersHint: '你仍然可以把文件移动到此位置。',
     moreInListing: '此列表中还有 {n} 项',

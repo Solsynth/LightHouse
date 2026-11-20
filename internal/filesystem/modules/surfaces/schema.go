@@ -21,8 +21,11 @@ func Core() module.Factory {
 		Capabilities:   []string{"files.storage", "files.objects", "files.permissions", "files.locks"},
 		Models: []any{
 			&database.FilePool{}, &database.FileObject{}, &database.CloudFile{},
-			&database.FilePermission{}, &database.PoolPermission{}, &database.FileLock{},
+			&database.FilePermission{}, &database.FileACLEntry{}, &database.PoolPermission{}, &database.FileLock{},
 			&database.CloudFileFavorite{},
+		},
+		SQL: []module.SchemaHook{
+			database.MigrateACLAndTree,
 		},
 		New: func() module.Instance { return &instance{} },
 	}

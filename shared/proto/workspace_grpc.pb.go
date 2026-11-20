@@ -20,16 +20,17 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DyWorkspaceService_GetWorkspace_FullMethodName           = "/proto.DyWorkspaceService/GetWorkspace"
-	DyWorkspaceService_GetWorkspaceBatch_FullMethodName      = "/proto.DyWorkspaceService/GetWorkspaceBatch"
-	DyWorkspaceService_GetUserWorkspaces_FullMethodName      = "/proto.DyWorkspaceService/GetUserWorkspaces"
-	DyWorkspaceService_GetIndividualWorkspace_FullMethodName = "/proto.DyWorkspaceService/GetIndividualWorkspace"
-	DyWorkspaceService_IsMemberWithRole_FullMethodName       = "/proto.DyWorkspaceService/IsMemberWithRole"
-	DyWorkspaceService_HasPermission_FullMethodName          = "/proto.DyWorkspaceService/HasPermission"
-	DyWorkspaceService_GetPlanQuota_FullMethodName           = "/proto.DyWorkspaceService/GetPlanQuota"
-	DyWorkspaceService_LoadMemberAccount_FullMethodName      = "/proto.DyWorkspaceService/LoadMemberAccount"
-	DyWorkspaceService_LoadMemberAccounts_FullMethodName     = "/proto.DyWorkspaceService/LoadMemberAccounts"
-	DyWorkspaceService_ListMembers_FullMethodName            = "/proto.DyWorkspaceService/ListMembers"
+	DyWorkspaceService_GetWorkspace_FullMethodName              = "/proto.DyWorkspaceService/GetWorkspace"
+	DyWorkspaceService_GetWorkspaceBatch_FullMethodName         = "/proto.DyWorkspaceService/GetWorkspaceBatch"
+	DyWorkspaceService_GetUserWorkspaces_FullMethodName         = "/proto.DyWorkspaceService/GetUserWorkspaces"
+	DyWorkspaceService_GetIndividualWorkspace_FullMethodName    = "/proto.DyWorkspaceService/GetIndividualWorkspace"
+	DyWorkspaceService_IsMemberWithRole_FullMethodName          = "/proto.DyWorkspaceService/IsMemberWithRole"
+	DyWorkspaceService_HasPermission_FullMethodName             = "/proto.DyWorkspaceService/HasPermission"
+	DyWorkspaceService_GetPlanQuota_FullMethodName              = "/proto.DyWorkspaceService/GetPlanQuota"
+	DyWorkspaceService_LoadMemberAccount_FullMethodName         = "/proto.DyWorkspaceService/LoadMemberAccount"
+	DyWorkspaceService_LoadMemberAccounts_FullMethodName        = "/proto.DyWorkspaceService/LoadMemberAccounts"
+	DyWorkspaceService_ListMembers_FullMethodName               = "/proto.DyWorkspaceService/ListMembers"
+	DyWorkspaceService_GetAccountWorkspaceGroups_FullMethodName = "/proto.DyWorkspaceService/GetAccountWorkspaceGroups"
 )
 
 // DyWorkspaceServiceClient is the client API for DyWorkspaceService service.
@@ -48,6 +49,7 @@ type DyWorkspaceServiceClient interface {
 	LoadMemberAccount(ctx context.Context, in *DyLoadWorkspaceMemberRequest, opts ...grpc.CallOption) (*DyWorkspaceMember, error)
 	LoadMemberAccounts(ctx context.Context, in *DyLoadWorkspaceMembersRequest, opts ...grpc.CallOption) (*DyLoadWorkspaceMembersResponse, error)
 	ListMembers(ctx context.Context, in *DyListWorkspaceMembersRequest, opts ...grpc.CallOption) (*DyListWorkspaceMembersResponse, error)
+	GetAccountWorkspaceGroups(ctx context.Context, in *DyGetAccountWorkspaceGroupsRequest, opts ...grpc.CallOption) (*DyGetAccountWorkspaceGroupsResponse, error)
 }
 
 type dyWorkspaceServiceClient struct {
@@ -158,6 +160,16 @@ func (c *dyWorkspaceServiceClient) ListMembers(ctx context.Context, in *DyListWo
 	return out, nil
 }
 
+func (c *dyWorkspaceServiceClient) GetAccountWorkspaceGroups(ctx context.Context, in *DyGetAccountWorkspaceGroupsRequest, opts ...grpc.CallOption) (*DyGetAccountWorkspaceGroupsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DyGetAccountWorkspaceGroupsResponse)
+	err := c.cc.Invoke(ctx, DyWorkspaceService_GetAccountWorkspaceGroups_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DyWorkspaceServiceServer is the server API for DyWorkspaceService service.
 // All implementations must embed UnimplementedDyWorkspaceServiceServer
 // for forward compatibility.
@@ -174,6 +186,7 @@ type DyWorkspaceServiceServer interface {
 	LoadMemberAccount(context.Context, *DyLoadWorkspaceMemberRequest) (*DyWorkspaceMember, error)
 	LoadMemberAccounts(context.Context, *DyLoadWorkspaceMembersRequest) (*DyLoadWorkspaceMembersResponse, error)
 	ListMembers(context.Context, *DyListWorkspaceMembersRequest) (*DyListWorkspaceMembersResponse, error)
+	GetAccountWorkspaceGroups(context.Context, *DyGetAccountWorkspaceGroupsRequest) (*DyGetAccountWorkspaceGroupsResponse, error)
 	mustEmbedUnimplementedDyWorkspaceServiceServer()
 }
 
@@ -213,6 +226,9 @@ func (UnimplementedDyWorkspaceServiceServer) LoadMemberAccounts(context.Context,
 }
 func (UnimplementedDyWorkspaceServiceServer) ListMembers(context.Context, *DyListWorkspaceMembersRequest) (*DyListWorkspaceMembersResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListMembers not implemented")
+}
+func (UnimplementedDyWorkspaceServiceServer) GetAccountWorkspaceGroups(context.Context, *DyGetAccountWorkspaceGroupsRequest) (*DyGetAccountWorkspaceGroupsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetAccountWorkspaceGroups not implemented")
 }
 func (UnimplementedDyWorkspaceServiceServer) mustEmbedUnimplementedDyWorkspaceServiceServer() {}
 func (UnimplementedDyWorkspaceServiceServer) testEmbeddedByValue()                            {}
@@ -415,6 +431,24 @@ func _DyWorkspaceService_ListMembers_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DyWorkspaceService_GetAccountWorkspaceGroups_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DyGetAccountWorkspaceGroupsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DyWorkspaceServiceServer).GetAccountWorkspaceGroups(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DyWorkspaceService_GetAccountWorkspaceGroups_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DyWorkspaceServiceServer).GetAccountWorkspaceGroups(ctx, req.(*DyGetAccountWorkspaceGroupsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DyWorkspaceService_ServiceDesc is the grpc.ServiceDesc for DyWorkspaceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -461,6 +495,10 @@ var DyWorkspaceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListMembers",
 			Handler:    _DyWorkspaceService_ListMembers_Handler,
+		},
+		{
+			MethodName: "GetAccountWorkspaceGroups",
+			Handler:    _DyWorkspaceService_GetAccountWorkspaceGroups_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

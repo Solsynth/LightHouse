@@ -57,14 +57,29 @@ type FileObject struct {
 }
 
 type CloudFile struct {
-	ID               string           `gorm:"primaryKey;size:36" json:"id"`
-	Name             string           `json:"name"`
-	Description      *string          `json:"description"`
-	AccountID        uuid.UUID        `gorm:"index:idx_cloud_files_unindexed_listing,priority:1;index:idx_cloud_files_root_listing,priority:1;index:idx_cloud_files_account_usage,priority:1,where:deleted_at IS NULL" json:"account_id"`
-	WorkspaceID      *string          `gorm:"size:36;index;index:idx_cloud_files_workspace_usage,priority:1,where:deleted_at IS NULL;index:idx_cloud_files_account_usage,priority:2,where:deleted_at IS NULL" json:"workspace_id,omitempty"`
-	PoolID           *string          `gorm:"size:36;index:idx_cloud_files_account_usage,priority:4,where:deleted_at IS NULL" json:"pool_id"`
-	ObjectID         *string          `gorm:"size:36;index:idx_cloud_files_workspace_usage,priority:2,where:deleted_at IS NULL;index:idx_cloud_files_account_usage,priority:3,where:deleted_at IS NULL" json:"object_id"`
-	ParentID         *string          `gorm:"size:36;index:idx_cloud_files_parent_deleted,priority:1;index:idx_cloud_files_parent_active,where:deleted_at IS NULL;index:idx_cloud_files_unindexed_listing,priority:3;index:idx_cloud_files_root_listing,priority:3" json:"parent_id"`
+	ID          string    `gorm:"primaryKey;size:36" json:"id"`
+	Name        string    `json:"name"`
+	Description *string   `json:"description"`
+	AccountID   uuid.UUID `gorm:"index:idx_cloud_files_unindexed_listing,priority:1;index:idx_cloud_files_root_listing,priority:1;index:idx_cloud_files_account_usage,priority:1,where:deleted_at IS NULL" json:"account_id"`
+	WorkspaceID *string   `gorm:"size:36;index;index:idx_cloud_files_workspace_usage,priority:1,where:deleted_at IS NULL;index:idx_cloud_files_account_usage,priority:2,where:deleted_at IS NULL" json:"workspace_id,omitempty"`
+	PoolID      *string   `gorm:"size:36;index:idx_cloud_files_account_usage,priority:4,where:deleted_at IS NULL" json:"pool_id"`
+	ObjectID    *string   `gorm:"size:36;index:idx_cloud_files_workspace_usage,priority:2,where:deleted_at IS NULL;index:idx_cloud_files_account_usage,priority:3,where:deleted_at IS NULL" json:"object_id"`
+	ParentID    *string   `gorm:"size:36;index:idx_cloud_files_parent_deleted,priority:1;index:idx_cloud_files_parent_active,where:deleted_at IS NULL;index:idx_cloud_files_unindexed_listing,priority:3;index:idx_cloud_files_root_listing,priority:3" json:"parent_id"`
+	// Path is the materialized slash-delimited ancestor ID chain ("/" for root,
+	// "/<rootID>/<subID>/" for nested nodes), eliminating recursive CTEs for
+	// breadcrumbs, subtree moves/deletes, and ACL inheritance.
+	Path string `gorm:"type:text;not null;default:'/';index:idx_cloud_files_path" json:"path"`
+	// Depth is the tree depth (0 for root, parent.Depth + 1 for children).
+	Depth int `gorm:"not null;default:0" json:"depth"`
+	// InheritACL controls whether this node inherits ACL entries from its
+	// ancestors. Setting false creates an inheritance boundary at this node.
+	InheritACL bool `gorm:"not null;default:true" json:"inherit_acl"`
+	// HasACL is a denormalized fast-path flag indicating whether this node has
+	// at least one direct row in file_acl_entries.
+	HasACL bool `gorm:"not null;default:false;index:idx_cloud_files_has_acl,where:has_acl AND deleted_at IS NULL" json:"has_acl"`
+	// DerivedFromID links system derivatives (thumbnails, compressions) to
+	// their source file outside the folder parent_id tree.
+	DerivedFromID    *string          `gorm:"size:36;index:idx_cloud_files_derived_from,where:derived_from_id IS NOT NULL AND deleted_at IS NULL" json:"derived_from_id,omitempty"`
 	Indexed          bool             `gorm:"index:idx_cloud_files_unindexed_listing,priority:2;index:idx_cloud_files_root_listing,priority:2" json:"indexed"`
 	IsFolder         bool             `json:"is_folder"`
 	IsMarkedRecycle  bool             `gorm:"index:idx_cloud_files_unindexed_listing,priority:4" json:"is_marked_recycle"`
@@ -89,8 +104,12 @@ type CloudFile struct {
 type PermissionStatus struct {
 	Readable      bool    `json:"readable"`
 	Writable      bool    `json:"writable"`
+	Deletable     bool    `json:"deletable"`
+	Shareable     bool    `json:"shareable"`
 	Manageable    bool    `json:"manageable"`
 	Visibility    string  `json:"visibility"`
+	InheritACL    bool    `json:"inherit_acl"`
+	EffectiveMask uint32  `json:"effective_mask"`
 	InheritedFrom *string `json:"inherited_from,omitempty"`
 }
 
@@ -118,6 +137,33 @@ func (f *FileObject) MarshalJSON() ([]byte, error) {
 		"updated_at":      f.UpdatedAt,
 		"deleted_at":      nullableDeletedAt(f.DeletedAt),
 	})
+}
+
+func (f *CloudFile) BeforeCreate(tx *gorm.DB) error {
+	if f.ID == "" {
+		f.ID = NewID()
+	}
+	if f.Path == "" {
+		f.Path = "/"
+	}
+	if f.ParentID != nil && *f.ParentID != "" && f.Path == "/" && tx != nil {
+		var parent struct {
+			Path  string
+			Depth int
+		}
+		if err := tx.Session(&gorm.Session{NewDB: true}).Model(&CloudFile{}).
+			Select("path, depth").
+			Where("id = ?", *f.ParentID).
+			First(&parent).Error; err == nil {
+			p := parent.Path
+			if p == "" {
+				p = "/"
+			}
+			f.Path = p + *f.ParentID + "/"
+			f.Depth = parent.Depth + 1
+		}
+	}
+	return nil
 }
 
 func (f *CloudFile) LegacyFileMeta() datatypes.JSON {
@@ -195,6 +241,10 @@ func (f *CloudFile) MarshalJSON() ([]byte, error) {
 		"object_id":           objectID,
 		"object":              object,
 		"parent_id":           f.ParentID,
+		"path":                f.Path,
+		"depth":               f.Depth,
+		"inherit_acl":         f.InheritACL,
+		"derived_from_id":     f.DerivedFromID,
 		"indexed":             f.Indexed,
 		"is_folder":           f.IsFolder,
 		"usage":               f.Usage,
@@ -277,6 +327,8 @@ func nullableDeletedAt(v gorm.DeletedAt) any {
 	return v.Time
 }
 
+// FilePermission is the legacy permission row kept for compatibility shims and
+// migrating pre-ACL databases into FileACLEntry.
 type FilePermission struct {
 	ID          string         `gorm:"primaryKey;size:36" json:"id"`
 	FileID      string         `gorm:"size:36;index;index:idx_file_permissions_file_permission_deleted,priority:1;index:idx_file_permissions_active_lookup,priority:1,where:deleted_at IS NULL" json:"file_id"`
@@ -286,6 +338,31 @@ type FilePermission struct {
 	DeletedAt   gorm.DeletedAt `gorm:"index;index:idx_file_permissions_file_permission_deleted,priority:3" json:"deleted_at"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
+}
+
+// FileACLEntry is a single Allow or Deny access-control entry attached to a
+// file or folder. Entries are hard-deleted so the unique constraint on
+// (file_id, subject_type, subject_id, effect) stays clean and index lookups
+// remain compact.
+type FileACLEntry struct {
+	ID          string     `gorm:"primaryKey;size:36" json:"id"`
+	FileID      string     `gorm:"size:36;not null;uniqueIndex:idx_file_acl_unique,priority:1;index:idx_file_acl_file" json:"file_id"`
+	SubjectType string     `gorm:"size:24;not null;uniqueIndex:idx_file_acl_unique,priority:2;index:idx_file_acl_subject,priority:1" json:"subject_type"`
+	SubjectID   string     `gorm:"size:128;not null;default:'';uniqueIndex:idx_file_acl_unique,priority:3;index:idx_file_acl_subject,priority:2" json:"subject_id"`
+	Effect      string     `gorm:"size:8;not null;uniqueIndex:idx_file_acl_unique,priority:4" json:"effect"`
+	Permissions uint32     `gorm:"not null" json:"permissions"`
+	Inheritable bool       `gorm:"not null;default:true" json:"inheritable"`
+	ExpiresAt   *time.Time `gorm:"index" json:"expires_at,omitempty"`
+	CreatedBy   *uuid.UUID `json:"created_by,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+func (e *FileACLEntry) BeforeCreate(tx *gorm.DB) error {
+	if e.ID == "" {
+		e.ID = NewID()
+	}
+	return nil
 }
 
 // CloudFileFavorite is an account's bookmark onto one file, personal or

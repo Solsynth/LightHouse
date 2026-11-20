@@ -292,7 +292,7 @@ onBeforeUnmount(() => {
               <span class="flex-1 truncate">{{ t('preview.move') }}</span>
             </button>
             <button
-              v-if="single"
+              v-if="single && file?.permission_status?.manageable"
               type="button"
               role="menuitem"
               class="menu-choice"

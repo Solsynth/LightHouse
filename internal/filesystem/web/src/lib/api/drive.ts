@@ -9,9 +9,10 @@ import {
 import { translate } from '@/lib/i18n'
 import type {
   AccountIdentity,
+  ACLEntryInput,
   BreadcrumbItem,
   CloudFile,
-  FilePermission,
+  FileACLDetail,
   FilePool,
   FileOrder,
   ListQuery,
@@ -94,13 +95,14 @@ export const driveApi = {
       body: { file_ids: fileIds },
     }),
 
-  permissions: (fileId: string) => request<FilePermission[]>(`/files/${fileId}/permissions`),
+  acl: (fileId: string, signal?: AbortSignal) =>
+    request<FileACLDetail>(`/files/${fileId}/acl`, { signal }),
 
-  setPermissions: (fileId: string, items: FilePermission[]) =>
-    request<{ ok: boolean }>(`/files/${fileId}/permissions`, {
-      method: 'PUT',
-      body: { items },
-    }),
+  saveACL: (fileId: string, body: { inherit_acl?: boolean; entries: ACLEntryInput[] }) =>
+    request<FileACLDetail>(`/files/${fileId}/acl`, { method: 'PUT', body }),
+
+  sharedWithMe: (options: ListQuery = {}, signal?: AbortSignal) =>
+    requestPage<CloudFile>('/files/shared-with-me', listQuery(options), signal),
 }
 
 export function openUrl(fileId: string, download = false): string {

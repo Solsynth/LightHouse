@@ -24,6 +24,7 @@ export default {
     drive: '我的云盘',
     unindexed: '未索引',
     recycle: '回收站',
+    shared: '与我共享',
     storage: '存储',
     locations: '位置',
     pools: '存储池',

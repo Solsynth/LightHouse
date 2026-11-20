@@ -21,6 +21,7 @@ import (
 	"src.solsynth.dev/sosys/filesystem/eventbus"
 	"src.solsynth.dev/sosys/filesystem/service"
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/auth"
+	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 )
 
 const WebDAVAccountIDKey = "webdav_account_id"
@@ -107,6 +108,39 @@ type webdavFS struct {
 	pathCache map[string]*database.CloudFile
 }
 
+// caller builds the ACL principal for the WebDAV token account. WebDAV auth
+// carries no session, so scopes and share links never apply here.
+func (fs *webdavFS) caller() *service.PrincipalSet {
+	return service.NewPrincipalSet(&gen.DyAccount{Id: fs.accountID}, nil)
+}
+
+func (fs *webdavFS) permits(ctx context.Context, file *database.CloudFile, required service.PermissionMask) bool {
+	if file == nil {
+		return false
+	}
+	return fs.files.CanAccessFileMask(ctx, fs.caller(), file, required)
+}
+
+// readableFiles drops entries the caller may not read, evaluating the whole
+// listing in one flat ACL pass.
+func (fs *webdavFS) readableFiles(ctx context.Context, files []database.CloudFile) []database.CloudFile {
+	if len(files) == 0 {
+		return files
+	}
+	evals, err := fs.files.EvaluateFiles(ctx, fs.caller(), files)
+	if err != nil {
+		log.Error().Err(err).Str("accountId", fs.accountID).Msg("webdav: ACL evaluation failed")
+		return nil
+	}
+	out := make([]database.CloudFile, 0, len(files))
+	for i := range files {
+		if evals[files[i].ID].Mask&service.PermRead != 0 {
+			out = append(out, files[i])
+		}
+	}
+	return out
+}
+
 func (fs *webdavFS) Stat(ctx context.Context, name string) (os.FileInfo, error) {
 	if isWebDAVRoot(name) {
 		return &webdavFileInfo{name: "/", isDir: true, modTime: time.Now()}, nil
@@ -125,6 +159,7 @@ func (fs *webdavFS) ReadDir(ctx context.Context, name string, _ int) ([]os.FileI
 			log.Error().Err(err).Str("accountId", fs.accountID).Msg("webdav: ListRoot failed")
 			return nil, err
 		}
+		rootFiles = fs.readableFiles(ctx, rootFiles)
 		log.Debug().Str("accountId", fs.accountID).Int("count", len(rootFiles)).Msg("webdav: ListRoot returned")
 		infos := make([]os.FileInfo, 0, len(rootFiles))
 		for i := range rootFiles {
@@ -147,6 +182,7 @@ func (fs *webdavFS) ReadDir(ctx context.Context, name string, _ int) ([]os.FileI
 	if err != nil {
 		return nil, err
 	}
+	children = fs.readableFiles(ctx, children)
 	infos := make([]os.FileInfo, 0, len(children))
 	for i := range children {
 		info, err := fs.fileToInfo(&children[i])
@@ -174,6 +210,9 @@ func (fs *webdavFS) Mkdir(ctx context.Context, name string, _ os.FileMode) error
 		if !parent.IsFolder {
 			return os.ErrInvalid
 		}
+		if !fs.permits(ctx, parent, service.PermWrite) {
+			return os.ErrPermission
+		}
 		parentID = &parent.ID
 	}
 	_, err := fs.files.CreateWorkspaceFolder(
@@ -200,6 +239,7 @@ func (fs *webdavFS) openForRead(ctx context.Context, name string) (webdav.File, 
 		if err != nil {
 			return nil, err
 		}
+		rootFiles = fs.readableFiles(ctx, rootFiles)
 		infos := make([]os.FileInfo, 0, len(rootFiles))
 		for i := range rootFiles {
 			info, err := fs.fileToInfo(&rootFiles[i])
@@ -256,6 +296,7 @@ func (fs *webdavFS) openForWrite(ctx context.Context, name string, flag int) (we
 	}
 
 	var parentID *string
+	var parentFile *database.CloudFile
 	if !isWebDAVRoot(parentPath) {
 		parent, err := fs.resolvePath(ctx, strings.TrimSuffix(parentPath, "/"))
 		if err != nil {
@@ -264,6 +305,7 @@ func (fs *webdavFS) openForWrite(ctx context.Context, name string, flag int) (we
 		if !parent.IsFolder {
 			return nil, os.ErrInvalid
 		}
+		parentFile = parent
 		parentID = &parent.ID
 	}
 
@@ -277,6 +319,14 @@ func (fs *webdavFS) openForWrite(ctx context.Context, name string, flag int) (we
 
 	if existingFile != nil && existingFile.IsFolder {
 		return nil, os.ErrInvalid
+	}
+
+	if existingFile != nil {
+		if !fs.permits(ctx, existingFile, service.PermWrite) {
+			return nil, os.ErrPermission
+		}
+	} else if parentFile != nil && !fs.permits(ctx, parentFile, service.PermWrite) {
+		return nil, os.ErrPermission
 	}
 
 	tempFile, err := os.CreateTemp("", "dysonfs-webdav-*")
@@ -307,6 +357,9 @@ func (fs *webdavFS) RemoveAll(ctx context.Context, name string) error {
 	if err != nil {
 		return os.ErrNotExist
 	}
+	if !fs.permits(ctx, f, service.PermDelete) {
+		return os.ErrPermission
+	}
 	return fs.files.DeleteFile(f.ID)
 }
 
@@ -318,9 +371,11 @@ func (fs *webdavFS) Rename(ctx context.Context, oldName, newName string) error {
 
 	cleanDst := normalizeWebDAVPath(newName)
 	dstParentPath, dstName := path.Split(cleanDst)
-	dstName = strings.TrimSuffix(dstName, "/")
 	if dstName == "" {
 		return os.ErrInvalid
+	}
+	if !fs.permits(ctx, src, service.PermDelete) {
+		return os.ErrPermission
 	}
 
 	var dstParentID *string
@@ -333,6 +388,9 @@ func (fs *webdavFS) Rename(ctx context.Context, oldName, newName string) error {
 			return os.ErrInvalid
 		}
 		dstParentID = &dstParent.ID
+		if !fs.permits(ctx, dstParent, service.PermWrite) {
+			return os.ErrPermission
+		}
 	}
 
 	if _, err := fs.files.MoveBatch([]string{src.ID}, dstParentID, nil); err != nil {
@@ -394,6 +452,9 @@ func (fs *webdavFS) resolvePath(ctx context.Context, p string) (*database.CloudF
 		if !found {
 			return nil, os.ErrNotExist
 		}
+	}
+	if !fs.permits(ctx, current, service.PermRead) {
+		return nil, os.ErrPermission
 	}
 	// Cache for subsequent lookups during this request
 	if fs.pathCache == nil {

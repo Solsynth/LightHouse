@@ -16,9 +16,68 @@ export interface FileObject {
 export interface PermissionStatus {
   readable: boolean
   writable: boolean
+  deletable: boolean
+  shareable: boolean
   manageable: boolean
   visibility: 'public' | 'private' | string
+  inherit_acl: boolean
+  effective_mask: number
   inherited_from?: string | null
+}
+
+/** Permission bits mirror the server's PermissionMask. */
+export const PERM_READ = 1
+export const PERM_WRITE = 1 << 1
+export const PERM_DELETE = 1 << 2
+export const PERM_SHARE = 1 << 3
+export const PERM_MANAGE = 1 << 4
+
+export type ACLSubjectType =
+  | 'account'
+  | 'workspace'
+  | 'workspace_role'
+  | 'workspace_group'
+  | 'authenticated'
+  | 'public'
+  | 'link'
+  | 'scope'
+
+export type ACLEffect = 'allow' | 'deny'
+
+export interface FileACLEntry {
+  id?: string
+  file_id: string
+  subject_type: ACLSubjectType
+  subject_id: string
+  effect: ACLEffect
+  permissions: number
+  inheritable: boolean
+  expires_at?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface InheritedFileACLEntry extends FileACLEntry {
+  source_file_id: string
+  source_file_name: string
+}
+
+export interface FileACLDetail {
+  file_id: string
+  inherit_acl: boolean
+  direct: FileACLEntry[]
+  inherited: InheritedFileACLEntry[]
+  effective: PermissionStatus
+}
+
+export interface ACLEntryInput {
+  subject_type: ACLSubjectType
+  subject_id: string
+  effect: ACLEffect
+  role?: 'viewer' | 'editor' | 'contributor' | 'manager'
+  permissions?: number
+  inheritable?: boolean
+  expires_at?: string | null
 }
 
 export interface CloudFile {
@@ -96,16 +155,6 @@ export interface UsageSummary {
 export interface PoolUsage {
   pool_id: string
   total_quota: number
-}
-
-export interface FilePermission {
-  id?: string
-  file_id: string
-  subject_type: 'public' | 'private' | 'account' | 'scope' | string
-  subject_id: string
-  permission: 'read' | 'write' | 'manage' | string
-  created_at?: string
-  updated_at?: string
 }
 
 export interface AccountIdentity {

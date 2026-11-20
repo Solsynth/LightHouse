@@ -164,7 +164,7 @@ func TestAdminReanalysisRunRepairsCandidates(t *testing.T) {
 
 	// The compression derivative and its flags must exist after the repair.
 	var child database.CloudFile
-	if err := db.Preload("Object").First(&child, "parent_id = ? AND application_type = ?", fileID, "system.compression.low").Error; err != nil {
+	if err := db.Preload("Object").First(&child, "derived_from_id = ? AND application_type = ?", fileID, "system.compression.low").Error; err != nil {
 		t.Fatalf("compression derivative not created: %v", err)
 	}
 	if child.Object == nil || child.Object.Size == 0 {
@@ -207,7 +207,7 @@ func TestAdminReanalysisFilesRepairsSpecificIDs(t *testing.T) {
 		t.Fatalf("files result = %+v, want scanned=1 updated=1 failed=0", result)
 	}
 	var child database.CloudFile
-	if err := db.First(&child, "parent_id = ? AND application_type = ?", fileID, "system.compression.low").Error; err != nil {
+	if err := db.First(&child, "derived_from_id = ? AND application_type = ?", fileID, "system.compression.low").Error; err != nil {
 		t.Fatalf("compression derivative not created: %v", err)
 	}
 

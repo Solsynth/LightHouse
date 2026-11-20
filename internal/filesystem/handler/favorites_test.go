@@ -133,6 +133,23 @@ func TestListFavoriteFilesScopesToWorkspace(t *testing.T) {
 			t.Fatalf("create favorite: %v", err)
 		}
 	}
+
+	// Workspace files are governed by ACLs, not ownership: grant the caller
+	// read on the workspace file so only the scoping filter is under test.
+	if err := db.Create(&database.FileACLEntry{
+		ID:          database.NewID(),
+		FileID:      workspace.ID,
+		SubjectType: service.ACLSubjectAccount,
+		SubjectID:   accountID.String(),
+		Effect:      service.ACLEffectAllow,
+		Permissions: uint32(service.PermRead),
+		Inheritable: true,
+	}).Error; err != nil {
+		t.Fatalf("create acl entry: %v", err)
+	}
+	if err := db.Model(&database.CloudFile{}).Where("id = ?", workspace.ID).Update("has_acl", true).Error; err != nil {
+		t.Fatalf("mark has_acl: %v", err)
+	}
 	r := favoritesTestRouter(t, db, accountID)
 
 	var items []database.CloudFile

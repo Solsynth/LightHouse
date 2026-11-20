@@ -74,7 +74,7 @@ func (m *Migrator) Run(ctx context.Context) (Summary, error) {
 	_ = ctx
 	var summary Summary
 	if err := m.dst.AutoMigrate(
-		&database.FilePool{}, &database.FileObject{}, &database.CloudFile{}, &database.FilePermission{}, &database.PoolPermission{}, &database.PersistentTask{},
+		&database.FilePool{}, &database.FileObject{}, &database.CloudFile{}, &database.FilePermission{}, &database.FileACLEntry{}, &database.PoolPermission{}, &database.PersistentTask{},
 	); err != nil {
 		return summary, err
 	}
@@ -97,6 +97,12 @@ func (m *Migrator) Run(ctx context.Context) (Summary, error) {
 		if err := m.migrateDerived(&summary); err != nil {
 			return summary, err
 		}
+	}
+	// Imported rows carry the legacy parent_id tree and file_permissions; the
+	// same idempotent migration the service runs on startup separates
+	// derivatives, backfills paths and converts the permission rows.
+	if err := database.MigrateACLAndTree(ctx, m.dst); err != nil {
+		return summary, err
 	}
 	return summary, nil
 }

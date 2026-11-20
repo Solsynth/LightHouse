@@ -45,6 +45,7 @@ declare module '@carbon/icons-vue' {
   export const PresentationFile16: Component
   export const Renew16: Component
   export const Search16: Component
+  export const Share16: Component
   export const SidePanelClose16: Component
   export const SidePanelOpen16: Component
   export const StoragePool16: Component

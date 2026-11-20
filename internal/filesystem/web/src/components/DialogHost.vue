@@ -6,7 +6,8 @@ import { Close16, View16, WarningAlt16 } from '@carbon/icons-vue'
 import CopyButton from './CopyButton.vue'
 import FolderPicker from './FolderPicker.vue'
 import IconButton from './IconButton.vue'
-import type { FilePermission } from '@/lib/api/types'
+import { PERM_DELETE, PERM_MANAGE, PERM_READ, PERM_SHARE, PERM_WRITE } from '@/lib/api/types'
+import type { ACLEffect, ACLEntryInput, ACLSubjectType, FileACLDetail } from '@/lib/api/types'
 import { publicFileUrl } from '@/lib/api/drive'
 import {
   formatBytes,
@@ -51,20 +52,27 @@ const inspectFile = computed(() => (dialog.value?.kind === 'inspect' ? dialog.va
 const permissionFile = computed(() =>
   dialog.value?.kind === 'permissions' ? dialog.value.file : null,
 )
-const permissionItems = ref<FilePermission[]>([])
+const permissionDetail = ref<FileACLDetail | null>(null)
+const permissionDraft = ref<ACLEntryInput[]>([])
+const inheritDraft = ref(true)
 const permissionLoading = ref(false)
 const permissionError = ref('')
-const newAccountId = ref('')
-const newLevel = ref<'read' | 'write' | 'manage'>('read')
+const newSubjectType = ref<ACLSubjectType>('account')
+const newSubjectId = ref('')
+const newEffect = ref<ACLEffect>('allow')
+const newRole = ref<'viewer' | 'editor' | 'contributor' | 'manager'>('viewer')
 const grantError = ref('')
 let permissionSeq = 0
-const publicAccess = computed(() =>
-  permissionItems.value.some((entry) => entry.subject_type === 'public'),
+const publicAccess = computed(
+  () =>
+    permissionDraft.value.find((entry) => entry.subject_type === 'public')?.effect === 'allow',
 )
 const grants = computed(() =>
-  permissionItems.value.filter(
-    (entry) => entry.subject_type !== 'public' && entry.subject_type !== 'private',
-  ),
+  permissionDraft.value.filter((entry) => entry.subject_type !== 'public'),
+)
+const inheritedEntries = computed(() => permissionDetail.value?.inherited ?? [])
+const subjectNeedsId = computed(
+  () => newSubjectType.value !== 'public' && newSubjectType.value !== 'authenticated',
 )
 const inspectOwner = computed(() => {
   const owner = inspectFile.value?.account_id
@@ -130,16 +138,28 @@ watch(
       destination.value = vault.folderId
     } else if (value.kind === 'permissions') {
       const seq = ++permissionSeq
-      permissionItems.value = []
+      permissionDetail.value = null
+      permissionDraft.value = []
       permissionError.value = ''
       permissionLoading.value = true
-      newAccountId.value = ''
-      newLevel.value = 'read'
+      newSubjectType.value = 'account'
+      newSubjectId.value = ''
+      newEffect.value = 'allow'
+      newRole.value = 'viewer'
       grantError.value = ''
       try {
-        const items = await vault.permissionsFor(value.file)
+        const detail = await vault.aclFor(value.file)
         if (seq !== permissionSeq) return
-        permissionItems.value = items
+        permissionDetail.value = detail
+        inheritDraft.value = detail.inherit_acl
+        permissionDraft.value = detail.direct.map((entry) => ({
+          subject_type: entry.subject_type,
+          subject_id: entry.subject_id,
+          effect: entry.effect,
+          permissions: entry.permissions,
+          inheritable: entry.inheritable,
+          expires_at: entry.expires_at ?? null,
+        }))
       } catch (caught) {
         if (seq !== permissionSeq) return
         permissionError.value =
@@ -223,70 +243,83 @@ async function toggleShare() {
   }
 }
 
-/** Flips the link marker in the staged rule set; nothing is sent until Save. */
+/** Flips the anonymous read grant in the staged set; nothing is sent until Save. */
 function togglePublicAccess() {
   if (!permissionFile.value || busy.value) return
-  const rest = permissionItems.value.filter(
-    (entry) => entry.subject_type !== 'public' && entry.subject_type !== 'private',
-  )
-  permissionItems.value = [
+  const rest = permissionDraft.value.filter((entry) => entry.subject_type !== 'public')
+  permissionDraft.value = [
     ...rest,
     {
-      file_id: permissionFile.value.id,
-      subject_type: publicAccess.value ? 'private' : 'public',
+      subject_type: 'public',
       subject_id: '',
-      permission: 'read',
+      effect: publicAccess.value ? 'deny' : 'allow',
+      permissions: PERM_READ,
+      inheritable: true,
     },
   ]
 }
 
-function removeGrant(entry: FilePermission) {
-  const index = permissionItems.value.indexOf(entry)
-  if (index < 0) return
-  const next = [...permissionItems.value]
+function toggleInheritance() {
+  if (busy.value) return
+  inheritDraft.value = !inheritDraft.value
+}
+
+function removeGrant(index: number) {
+  const next = [...permissionDraft.value]
   next.splice(index, 1)
-  permissionItems.value = next
+  permissionDraft.value = next
 }
 
 function addGrant() {
-  const file = permissionFile.value
-  const id = newAccountId.value.trim()
-  if (!file) return
-  if (!id) {
+  const id = newSubjectId.value.trim()
+  if (subjectNeedsId.value && !id) {
     grantError.value = t('dialog.permissionsInvalid')
     return
   }
-  if (grants.value.some((entry) => entry.subject_type === 'account' && entry.subject_id === id)) {
+  const duplicate = grants.value.some(
+    (entry) =>
+      entry.subject_type === newSubjectType.value &&
+      entry.subject_id === id &&
+      entry.effect === newEffect.value,
+  )
+  if (duplicate) {
     grantError.value = t('dialog.permissionsDuplicate')
     return
   }
-  permissionItems.value = [
-    ...permissionItems.value,
+  permissionDraft.value = [
+    ...permissionDraft.value,
     {
-      file_id: file.id,
-      subject_type: 'account',
+      subject_type: newSubjectType.value,
       subject_id: id,
-      permission: newLevel.value,
+      effect: newEffect.value,
+      role: newRole.value,
+      inheritable: true,
     },
   ]
-  newAccountId.value = ''
+  newSubjectId.value = ''
   grantError.value = ''
+}
+
+const ROLE_MASKS: Array<['viewer' | 'editor' | 'contributor' | 'manager', number]> = [
+  ['viewer', PERM_READ],
+  ['editor', PERM_READ | PERM_WRITE],
+  ['contributor', PERM_READ | PERM_WRITE | PERM_DELETE],
+  ['manager', PERM_READ | PERM_WRITE | PERM_DELETE | PERM_SHARE | PERM_MANAGE],
+]
+
+function roleText(mask: number): string {
+  const preset = ROLE_MASKS.find(([, value]) => value === mask)
+  return preset ? t(`dialog.permissions_${preset[0]}`) : t('dialog.permissions_custom')
 }
 
 async function submitPermissions() {
   const file = permissionFile.value
   if (!file || busy.value || permissionLoading.value || permissionError.value) return
-  const marker: FilePermission = {
-    file_id: file.id,
-    subject_type: publicAccess.value ? 'public' : 'private',
-    subject_id: '',
-    permission: 'read',
-  }
-  const rest = permissionItems.value.filter(
-    (entry) => entry.subject_type !== 'public' && entry.subject_type !== 'private',
-  )
   try {
-    await vault.savePermissions(file, [...rest, marker])
+    await vault.saveACL(file, {
+      inherit_acl: inheritDraft.value,
+      entries: permissionDraft.value,
+    })
     ui.closeDialog()
   } catch {
     // The store reports the failure and the dialog keeps the draft.
@@ -693,6 +726,42 @@ function openInspected() {
                 >
                   <div>
                     <div class="text-[12px] text-base-content">
+                      {{ t('dialog.permissionsInherit') }}
+                    </div>
+                    <div
+                      class="mt-0.5 text-[11px]"
+                      :class="inheritDraft ? 'text-primary' : 'text-faint'"
+                    >
+                      {{
+                        inheritDraft
+                          ? t('dialog.permissionsInheritOn')
+                          : t('dialog.permissionsInheritOff')
+                      }}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    :aria-checked="inheritDraft"
+                    class="relative h-6 w-11 shrink-0 rounded-full transition-colors duration-150 disabled:opacity-50"
+                    :class="inheritDraft ? 'bg-primary' : 'bg-base-300'"
+                    :disabled="busy"
+                    @click="toggleInheritance"
+                  >
+                    <span
+                      class="absolute top-[3px] size-[18px] rounded-full transition-[left] duration-150"
+                      :class="
+                        inheritDraft ? 'left-[23px] bg-primary-content' : 'left-[3px] bg-faint'
+                      "
+                    />
+                  </button>
+                </div>
+
+                <div
+                  class="mt-2 flex items-center justify-between gap-3 rounded-card bg-base-300/30 px-3.5 py-3"
+                >
+                  <div>
+                    <div class="text-[12px] text-base-content">
                       {{ t('dialog.permissionsPublic') }}
                     </div>
                     <div
@@ -735,21 +804,32 @@ function openInspected() {
                 <ul v-if="grants.length" class="mt-1 flex flex-col gap-0.5">
                   <li
                     v-for="(entry, index) in grants"
-                    :key="`${entry.subject_type}:${entry.subject_id}:${index}`"
+                    :key="`${entry.subject_type}:${entry.subject_id}:${entry.effect}:${index}`"
                     class="flex items-center gap-2 rounded-chip bg-base-300/30 px-2.5 py-1.5 text-[11px]"
                   >
-                    <span class="chip shrink-0">{{ entry.subject_type }}</span>
+                    <span class="chip shrink-0">{{
+                      t(`dialog.permissionsSubject_${entry.subject_type}`)
+                    }}</span>
                     <code class="min-w-0 flex-1 truncate font-mono text-[10.5px] text-dim">
-                      {{ entry.subject_id }}
+                      {{ entry.subject_id || '—' }}
                     </code>
-                    <span class="chip shrink-0">{{ entry.permission }}</span>
+                    <span
+                      class="chip shrink-0"
+                      :class="entry.effect === 'deny' ? 'text-error' : ''"
+                    >
+                      {{
+                        entry.effect === 'deny'
+                          ? t('dialog.permissionsDeny')
+                          : roleText(entry.permissions ?? 0)
+                      }}
+                    </span>
                     <button
                       type="button"
                       class="shrink-0 rounded-chip p-1 text-faint transition-colors hover:bg-base-200 hover:text-error"
                       :aria-label="t('dialog.permissionsRemove')"
                       :title="t('dialog.permissionsRemove')"
                       :disabled="busy"
-                      @click="removeGrant(entry)"
+                      @click="removeGrant(index)"
                     >
                       <Close16 class="h-3 w-3" />
                     </button>
@@ -759,18 +839,70 @@ function openInspected() {
                   {{ t('dialog.permissionsNoGrants') }}
                 </p>
 
+                <div v-if="inheritedEntries.length" class="mt-3">
+                  <div class="flex items-baseline justify-between gap-2 px-1">
+                    <span class="text-[11.5px] text-base-content">{{
+                      t('dialog.permissionsInherited')
+                    }}</span>
+                    <span class="text-[10.5px] tabular-nums text-faint">
+                      {{ formatCount(inheritedEntries.length) }}
+                    </span>
+                  </div>
+                  <ul class="mt-1 flex flex-col gap-0.5">
+                    <li
+                      v-for="entry in inheritedEntries"
+                      :key="entry.id"
+                      class="flex items-center gap-2 rounded-chip bg-base-300/20 px-2.5 py-1.5 text-[11px]"
+                    >
+                      <span class="chip shrink-0">{{
+                        t(`dialog.permissionsSubject_${entry.subject_type}`)
+                      }}</span>
+                      <code class="font-mono text-[10.5px] text-dim">{{
+                        entry.subject_id || '—'
+                      }}</code>
+                      <span class="chip shrink-0">{{
+                        entry.effect === 'deny'
+                          ? t('dialog.permissionsDeny')
+                          : roleText(entry.permissions)
+                      }}</span>
+                      <span class="min-w-0 flex-1 truncate text-right text-[10px] text-faint">
+                        {{ t('dialog.permissionsInheritedFrom', { name: entry.source_file_name }) }}
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+
                 <div class="mt-3 rounded-card bg-base-300/25 p-2.5">
-                  <label class="field-label" for="grant-account">{{
-                    t('dialog.permissionsAccount')
+                  <label class="field-label" for="grant-subject">{{
+                    t('dialog.permissionsSubject')
                   }}</label>
-                  <div class="mt-1.5 flex items-stretch gap-1.5">
+                  <select
+                    id="grant-subject"
+                    v-model="newSubjectType"
+                    class="input mt-1.5 h-9 w-full px-3 text-[11px]"
+                    :disabled="busy"
+                  >
+                    <option value="account">{{ t('dialog.permissionsSubject_account') }}</option>
+                    <option value="workspace">
+                      {{ t('dialog.permissionsSubject_workspace') }}
+                    </option>
+                    <option value="workspace_role">
+                      {{ t('dialog.permissionsSubject_workspace_role') }}
+                    </option>
+                    <option value="workspace_group">
+                      {{ t('dialog.permissionsSubject_workspace_group') }}
+                    </option>
+                    <option value="authenticated">
+                      {{ t('dialog.permissionsSubject_authenticated') }}
+                    </option>
+                  </select>
+                  <div v-if="subjectNeedsId" class="mt-1.5 flex items-stretch gap-1.5">
                     <input
-                      id="grant-account"
-                      v-model="newAccountId"
+                      v-model="newSubjectId"
                       class="input h-9 min-w-0 flex-1 px-3 font-mono text-[11px]"
                       type="text"
                       autocomplete="off"
-                      :placeholder="t('dialog.permissionsAccountPlaceholder')"
+                      :placeholder="t('dialog.permissionsSubjectId')"
                       :disabled="busy"
                     />
                     <button
@@ -782,19 +914,50 @@ function openInspected() {
                       {{ t('dialog.permissionsAdd') }}
                     </button>
                   </div>
-                  <div class="mt-2 flex items-center gap-2">
+                  <div v-else class="mt-1.5 flex justify-end">
+                    <button
+                      class="btn btn-outline btn-sm shrink-0"
+                      type="button"
+                      :disabled="busy"
+                      @click="addGrant"
+                    >
+                      {{ t('dialog.permissionsAdd') }}
+                    </button>
+                  </div>
+                  <div class="mt-2 flex flex-wrap items-center gap-2">
+                    <span class="text-[11px] text-faint">{{ t('dialog.permissionsEffect') }}</span>
+                    <div class="seg" role="group" :aria-label="t('dialog.permissionsEffect')">
+                      <button
+                        type="button"
+                        class="seg-item"
+                        :aria-selected="newEffect === 'allow'"
+                        :disabled="busy"
+                        @click="newEffect = 'allow'"
+                      >
+                        {{ t('dialog.permissionsAllow') }}
+                      </button>
+                      <button
+                        type="button"
+                        class="seg-item"
+                        :aria-selected="newEffect === 'deny'"
+                        :disabled="busy"
+                        @click="newEffect = 'deny'"
+                      >
+                        {{ t('dialog.permissionsDeny') }}
+                      </button>
+                    </div>
                     <span class="text-[11px] text-faint">{{ t('dialog.permissionsLevel') }}</span>
                     <div class="seg" role="group" :aria-label="t('dialog.permissionsLevel')">
                       <button
-                        v-for="level in ['read', 'write', 'manage'] as const"
-                        :key="level"
+                        v-for="option in ROLE_MASKS"
+                        :key="option[0]"
                         type="button"
                         class="seg-item"
-                        :aria-selected="newLevel === level"
+                        :aria-selected="newRole === option[0]"
                         :disabled="busy"
-                        @click="newLevel = level"
+                        @click="newRole = option[0]"
                       >
-                        {{ t(`dialog.permissions_${level}`) }}
+                        {{ t(`dialog.permissions_${option[0]}`) }}
                       </button>
                     </div>
                   </div>
