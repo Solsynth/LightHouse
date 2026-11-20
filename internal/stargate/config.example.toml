@@ -38,6 +38,12 @@ disabled = []
 # [modules.settings."app.solian.wallet".subscriptionCatalog]
 # settings = { defaultSubscriptionDurationDays = 30 }
 # definitions = []                  # empty = the default Stellar/Creator plans
+# The account-events module serves /api/fortune/random from the public 一言
+# sentence API by default. Point hitokotoEndpoint at a self-hosted instance to
+# change that, or set it to "" to serve only the embedded catalogue.
+# [modules.settings."app.solian.id.accountevents"]
+# hitokotoEndpoint = "https://v1.hitokoto.cn/"
+
 # The progression module ships its badge SVGs embedded, so this block is only
 # needed to serve an operator replacement set from disk (the C# [Badges]
 # iconsPath option). Unknown icon names answer 404.

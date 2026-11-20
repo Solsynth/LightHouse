@@ -426,7 +426,10 @@ Known gaps:
 
 - **AI fortune**: no MiChan/personality client exists, so check-in reports are
   always Passport's deterministic fallback. The fallback text is Chinese in
-  both locales, matching the C# fallback.
+  both locales, matching the C# fallback. The standalone `/api/fortune/random`
+  saying is separate: it now prefers a 一言 (`v1.hitokoto.cn`) sentence for
+  Chinese or unfiltered requests, cache- and rate-limited, and falls back to
+  the embedded catalogue.
 - **Lunar notable days**: no lunar-calendar dependency; projection uses an
   embedded 2020–2040 new-year table plus a mean synodic month, so a
   month-boundary date can be one day off.

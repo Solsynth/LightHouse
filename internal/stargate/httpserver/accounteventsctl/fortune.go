@@ -129,9 +129,15 @@ func (d Deps) listFortunes(c *gin.Context) {
 	c.JSON(http.StatusOK, fortuneSayings)
 }
 
-// randomFortune mirrors FortuneSayingController.GetRandomFortunes.
+// randomFortune mirrors FortuneSayingController.GetRandomFortunes. A Chinese
+// (or unfiltered) request prefers the remote 一言 sentence and falls back to
+// the embedded Passport catalogue when the upstream is unavailable.
 func (d Deps) randomFortune(c *gin.Context) {
 	language := strings.TrimSpace(c.Query("language"))
+	if saying, ok := d.randomFortuneSaying(c.Request.Context(), language); ok {
+		c.JSON(http.StatusOK, []fortuneSaying{saying})
+		return
+	}
 	filtered := fortuneSayings
 	if language != "" {
 		filtered = make([]fortuneSaying, 0, len(fortuneSayings))

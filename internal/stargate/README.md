@@ -128,6 +128,12 @@ Modules own their schema:
   `user_calendar_events`, calendar subscriptions and `notable_days`:
   check-in/rewards, calendar/merged/countdown/search, the CN holiday seed,
   timeline and the fortune surface.
+  `/api/fortune/random` serves a 一言 sentence from `v1.hitokoto.cn` for
+  Chinese (or unfiltered) requests, cached and rate-limited to respect the
+  endpoint's 2 QPS, and falls back to the embedded Passport catalogue when
+  the upstream fails or the request asks for another language.
+  `hitokotoEndpoint` in the module settings overrides the upstream (an empty
+  value disables it); `/api/fortune` always serves the static catalogue.
 - `app.solian.id.tickets` owns `tickets`, `ticket_messages` and
   `ticket_on_call_admins`; `app.solian.id.purchases` owns affiliation spells
   and name-change cards and fulfils wallet orders through `orderEvents`.

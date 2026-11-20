@@ -97,12 +97,20 @@ func (i *instance) Configure(ctx context.Context, host *module.Host[core.Service
 		return err
 	}
 
+	hitokoto := accounteventsctl.NewHitokotoClient(
+		accounteventsctl.HitokotoEndpointFromSettings(host.ModuleSettings(ModuleID)), log)
+	if hitokoto == nil {
+		log.Info("accountevents: hitokoto fortune source disabled; serving the local catalogue",
+			"module", ModuleID)
+	}
+
 	deps := accounteventsctl.Deps{
 		Service:  service,
 		Notable:  notable,
 		Store:    store,
 		Accounts: host.Core.Store,
 		Perm:     host.Core.Perm,
+		Hitokoto: hitokoto,
 		Log:      log,
 	}
 	accounteventsctl.Register(host.API, deps)

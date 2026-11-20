@@ -36,6 +36,9 @@ type Deps struct {
 	Store    *accountevents.Store
 	Accounts AccountLookup
 	Perm     middleware.PermissionChecker
+	// Hitokoto is the optional 一言 sentence client behind /fortune/random;
+	// nil serves the embedded catalogue only.
+	Hitokoto *HitokotoClient
 	Log      *slog.Logger
 }
 
