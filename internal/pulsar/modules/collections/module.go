@@ -544,11 +544,15 @@ type favouriteRequest struct {
 	Provider        string     `json:"provider,omitempty"`
 	ProviderKey     string     `json:"provider_key,omitempty"`
 	DurationSeconds int        `json:"duration_seconds,omitempty"`
+
+	// Kind says what is being favourited. Empty means a track, which is what
+	// every client wrote before albums and playlists could be hearts.
+	Kind string `json:"kind,omitempty"`
 }
 
-// setFavourite puts one track into the account's favourites. It is
-// idempotent: the same track twice is one entry, so a client may re-send on
-// every sync without growing the list.
+// setFavourite puts one thing into the account's favourites — a track, an
+// album or a playlist. It is idempotent: the same catalog record twice is one
+// entry, so a client may re-send on every sync without growing the list.
 func (i *instance) setFavourite(c *gin.Context) {
 	coll, ok := i.favouritesOf(c)
 	if !ok {
@@ -569,6 +573,11 @@ func (i *instance) setFavourite(c *gin.Context) {
 		Provider:        req.Provider,
 		ProviderKey:     req.ProviderKey,
 		DurationSeconds: req.DurationSeconds,
+		Kind:            req.Kind,
+	}
+	if req.Kind != "" && !model.FavouriteKinds[req.Kind] {
+		httpx.BadRequest(c, "INVALID_ARGUMENT", "unknown favourite kind "+req.Kind)
+		return
 	}
 	if entry.CatalogID == nil && strings.TrimSpace(entry.Title) == "" {
 		httpx.BadRequest(c, "INVALID_ARGUMENT", "catalog_id or title is required")

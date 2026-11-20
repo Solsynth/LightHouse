@@ -402,6 +402,9 @@ type ReplacementItem struct {
 	Provider        string
 	ProviderKey     string
 	DurationSeconds int
+	// Kind is what a favourites write says the entry is; a playlist upload
+	// leaves it empty and every row there is a track.
+	Kind string
 }
 
 // CollectionItemUpdate names the fields a caller wants to move on one
@@ -660,10 +663,22 @@ func (s *Store) GetMediaStats(ctx context.Context, accountID uuid.UUID, domain s
 	return stats, nil
 }
 
-// AddFavourite puts one track into the favourites collection, and reports
-// whether it was new. Idempotent on the catalog record: the same track sent
+// AddFavourite puts one thing into the favourites collection, and reports
+// whether it was new. Idempotent on the catalog record: the same thing sent
 // twice is one entry, which is what lets a client re-sync freely.
+//
+// The entry's kind says whether the row is a track, an album or a playlist.
+// It travels with the row because the list is read back by clients that draw
+// the three differently — an album opens a record page, a playlist its
+// tracks — and a list that only said "a thing" would make them all tracks.
 func (s *Store) AddFavourite(ctx context.Context, collectionID uuid.UUID, domain string, entry ReplacementItem) (*model.CollectionItem, bool, error) {
+	kind := entry.Kind
+	if kind == "" {
+		kind = model.FavouriteTrack
+	}
+	if !model.FavouriteKinds[kind] {
+		return nil, false, errors.New("unknown favourite kind: " + kind)
+	}
 	catalogID := entry.CatalogID
 	if catalogID == nil {
 		if strings.TrimSpace(entry.Title) == "" {
@@ -705,6 +720,7 @@ func (s *Store) AddFavourite(ctx context.Context, collectionID uuid.UUID, domain
 		CollectionID: collectionID,
 		CatalogID:    catalogID,
 		Position:     0,
+		Kind:         kind,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}

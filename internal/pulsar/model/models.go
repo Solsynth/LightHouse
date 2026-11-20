@@ -28,6 +28,26 @@ const (
 	KindCustom    = "custom"
 )
 
+// Favourite kinds: what a favourites entry says the account liked. A
+// collection is a list of things, and the things are not all recordings — an
+// album or a playlist is itself a catalog record, and a heart on one has to
+// stay distinguishable from a heart on a track when a client reads the list
+// back. Empty is read as [FavouriteTrack], which is what every row written
+// before this field existed meant.
+const (
+	FavouriteTrack    = "track"
+	FavouriteAlbum    = "album"
+	FavouritePlaylist = "playlist"
+)
+
+// FavouriteKinds is the set a request may name. Anything else is a client
+// bug, not a new kind the server should quietly store.
+var FavouriteKinds = map[string]bool{
+	FavouriteTrack:    true,
+	FavouriteAlbum:    true,
+	FavouritePlaylist: true,
+}
+
 // Collection item statuses.
 const (
 	StatusPlanToWatch = "plan_to_watch"
@@ -182,8 +202,13 @@ type CollectionItem struct {
 	Note         *string    `gorm:"type:text" json:"note,omitempty"`
 	Rating       *int       `json:"rating,omitempty"`
 	Status       *string    `gorm:"type:varchar(32)" json:"status,omitempty"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+
+	// Kind says what the entry is on a favourites collection: a track, an
+	// album or a playlist. Empty is a row written before the column existed
+	// and reads as a track, the only thing favourites used to hold.
+	Kind      string    `gorm:"type:varchar(32);not null;default:''" json:"kind,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 
 	CatalogItem *CatalogItem `gorm:"foreignKey:CatalogID" json:"catalog_item,omitempty"`
 }

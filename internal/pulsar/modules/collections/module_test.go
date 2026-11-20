@@ -181,6 +181,69 @@ func TestPlaylistUploadAndFavouriteRoutes(t *testing.T) {
 	}
 }
 
+// TestFavouritesCarryTheirKind covers the three things an account can heart.
+// The list is drawn differently per kind by every client, so the kind has to
+// survive the write and the read — and a request a client gets wrong must be
+// refused rather than stored as a track.
+func TestFavouritesCarryTheirKind(t *testing.T) {
+	engine, _, _ := testInstance(t)
+
+	entries := []map[string]any{
+		{
+			"kind": "track", "title": "Brave Song", "subtitle": "Aoi Tada",
+			"provider": "groovybox", "provider_key": "apple:home:i.1",
+		},
+		{
+			"kind": "album", "title": "Bronco", "subtitle": "Orville Peck",
+			"provider": "groovybox", "provider_key": "apple:home:l.1",
+		},
+		{
+			"kind": "playlist", "title": "A-team",
+			"provider": "groovybox", "provider_key": "apple:home:p.1",
+		},
+	}
+	for _, entry := range entries {
+		recorder := call(t, engine, http.MethodPut, "/api/collections/favourites", entry)
+		if recorder.Code != http.StatusCreated {
+			t.Fatalf("%s favourite status = %d, body %s", entry["kind"], recorder.Code, recorder.Body.String())
+		}
+	}
+
+	recorder := call(t, engine, http.MethodGet, "/api/collections/favourites", nil)
+	var listed struct {
+		Items []struct {
+			Kind        string `json:"kind"`
+			CatalogItem *struct {
+				Title string `json:"title"`
+			} `json:"catalog_item"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("decode favourites: %v", err)
+	}
+	if len(listed.Items) != 3 {
+		t.Fatalf("expected three favourites, got %d", len(listed.Items))
+	}
+	// Newest decision first, so the playlist leads.
+	want := []string{"playlist", "album", "track"}
+	for index, kind := range want {
+		if listed.Items[index].Kind != kind {
+			t.Fatalf("item %d: expected kind %s, got %q", index, kind, listed.Items[index].Kind)
+		}
+	}
+	if listed.Items[1].CatalogItem == nil || listed.Items[1].CatalogItem.Title != "Bronco" {
+		t.Fatalf("the album lost its catalog record: %+v", listed.Items[1])
+	}
+
+	// A kind the fleet does not know is a client bug, not a new drawer.
+	recorder = call(t, engine, http.MethodPut, "/api/collections/favourites", map[string]any{
+		"kind": "artist", "title": "Aoi Tada",
+	})
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("unknown kind status = %d, body %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 // TestUploadRejectsAnotherAccountsPlaylist keeps the replace verb from being a
 // write into someone else's collection.
 func TestUploadRejectsAnotherAccountsPlaylist(t *testing.T) {
