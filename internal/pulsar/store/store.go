@@ -410,9 +410,11 @@ type ReplacementItem struct {
 // CollectionItemUpdate names the fields a caller wants to move on one
 // collection item; nil leaves a field alone.
 type CollectionItemUpdate struct {
-	Note   *string
-	Rating *int
-	Status *string
+	Note           *string
+	Rating         *int
+	Status         *string
+	Progress       *int
+	VolumeProgress *int
 }
 
 // ReplaceCollectionItems makes the collection hold exactly the given items,
@@ -515,6 +517,12 @@ func (s *Store) UpdateCollectionItem(ctx context.Context, collectionID, itemID u
 	}
 	if req.Rating != nil {
 		item.Rating = req.Rating
+	}
+	if req.Progress != nil {
+		item.Progress = req.Progress
+	}
+	if req.VolumeProgress != nil {
+		item.VolumeProgress = req.VolumeProgress
 	}
 	if err := s.DB.WithContext(ctx).Save(&item).Error; err != nil {
 		return nil, err

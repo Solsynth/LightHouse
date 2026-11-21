@@ -33,6 +33,41 @@ type Config struct {
 		TMDbBaseURL string `toml:"tmdbBaseUrl"`
 	} `toml:"metadata"`
 
+	// Bangumi configures the account-linking OAuth app and the collection
+	// mirror. The metadata section only reads Bangumi's public catalog; this
+	// section is the write side, so its client credentials are required before
+	// an account can link.
+	Bangumi struct {
+		// ClientID and ClientSecret are the OAuth app credentials created at
+		// https://bgm.tv/dev/app. Empty values disable linking while leaving
+		// metadata search untouched.
+		ClientID     string `toml:"clientId"`
+		ClientSecret string `toml:"clientSecret"`
+		// RedirectURL is the callback registered on the Bangumi app. Empty
+		// derives {baseUrl}/api/bangumi/oauth/callback.
+		RedirectURL string `toml:"redirectUrl"`
+		// AuthorizeURL and TokenURL are the OAuth endpoints. They differ from
+		// the API host, which is why they are separate settings.
+		AuthorizeURL string `toml:"authorizeUrl"`
+		TokenURL     string `toml:"tokenUrl"`
+		// APIBaseURL is the api.bgm.tv base. Empty falls back to the metadata
+		// Bangumi base and then to the public API.
+		APIBaseURL string `toml:"apiBaseUrl"`
+		// UserAgent identifies Pulsar to Bangumi. Empty falls back to the
+		// metadata UserAgent.
+		UserAgent string `toml:"userAgent"`
+		// PostAuthRedirect is where the browser lands after a callback. Empty
+		// falls back to the site URL. It is not the OAuth redirect URI.
+		PostAuthRedirect string `toml:"postAuthRedirect"`
+		// SyncIntervalMinutes is how often linked accounts are reconciled.
+		// Zero selects the 30-minute default; a negative value disables the
+		// background job (manual sync still works).
+		SyncIntervalMinutes int `toml:"syncIntervalMinutes"`
+		// ConflictPolicy decides what happens when both sides changed since
+		// the last reconciliation: "local", "remote" (default) or "newest".
+		ConflictPolicy string `toml:"conflictPolicy"`
+	} `toml:"bangumi"`
+
 	// LibrarySync configures the per-account library mirror GroovyBox syncs.
 	LibrarySync struct {
 		// RetentionDays is how long a tombstone stays visible to pulls before
@@ -85,6 +120,46 @@ func applyDefaults(cfg *Config) {
 	}
 }
 
+// normalizeBangumi fills the OAuth and API defaults from the deployment's
+// public URLs. It runs after TOML and environment overrides so an explicit
+// value is never replaced.
+func normalizeBangumi(cfg *Config) {
+	b := &cfg.Bangumi
+	if strings.TrimSpace(b.AuthorizeURL) == "" {
+		b.AuthorizeURL = "https://bgm.tv/oauth/authorize"
+	}
+	if strings.TrimSpace(b.TokenURL) == "" {
+		b.TokenURL = "https://bgm.tv/oauth/access_token"
+	}
+	if strings.TrimSpace(b.APIBaseURL) == "" {
+		b.APIBaseURL = strings.TrimSpace(cfg.Metadata.BangumiBaseURL)
+	}
+	if strings.TrimSpace(b.APIBaseURL) == "" {
+		b.APIBaseURL = "https://api.bgm.tv"
+	}
+	if strings.TrimSpace(b.UserAgent) == "" {
+		b.UserAgent = cfg.Metadata.UserAgent
+	}
+	if strings.TrimSpace(b.RedirectURL) == "" {
+		base := strings.TrimRight(strings.TrimSpace(cfg.BaseUrl), "/")
+		if base != "" {
+			b.RedirectURL = base + "/api/bangumi/oauth/callback"
+		}
+	}
+	if strings.TrimSpace(b.PostAuthRedirect) == "" {
+		b.PostAuthRedirect = strings.TrimSpace(cfg.SiteUrl)
+	}
+	if b.SyncIntervalMinutes == 0 {
+		b.SyncIntervalMinutes = 30
+	}
+	switch strings.ToLower(strings.TrimSpace(b.ConflictPolicy)) {
+	case "local", "remote", "newest":
+		b.ConflictPolicy = strings.ToLower(strings.TrimSpace(b.ConflictPolicy))
+	default:
+		b.ConflictPolicy = "remote"
+	}
+}
+
 func applyEnv(cfg *Config) {
 	config.SetStr("PULSAR_SITE_URL", &cfg.SiteUrl)
 	config.SetStr("PULSAR_BASE_URL", &cfg.BaseUrl)
@@ -111,6 +186,16 @@ func applyEnv(cfg *Config) {
 	config.SetInt("PULSAR_LIBRARYSYNC_RETENTIONDAYS", &cfg.LibrarySync.RetentionDays)
 	config.SetInt("PULSAR_LIBRARYSYNC_MAXBATCH", &cfg.LibrarySync.MaxBatch)
 	config.SetStr("PULSAR_LIBRARYSYNC_DEVACCOUNTHEADER", &cfg.LibrarySync.DevAccountHeader)
+	config.SetStr("PULSAR_BANGUMI_CLIENTID", &cfg.Bangumi.ClientID)
+	config.SetStr("PULSAR_BANGUMI_CLIENTSECRET", &cfg.Bangumi.ClientSecret)
+	config.SetStr("PULSAR_BANGUMI_REDIRECTURL", &cfg.Bangumi.RedirectURL)
+	config.SetStr("PULSAR_BANGUMI_AUTHORIZEURL", &cfg.Bangumi.AuthorizeURL)
+	config.SetStr("PULSAR_BANGUMI_TOKENURL", &cfg.Bangumi.TokenURL)
+	config.SetStr("PULSAR_BANGUMI_APIBASEURL", &cfg.Bangumi.APIBaseURL)
+	config.SetStr("PULSAR_BANGUMI_USERAGENT", &cfg.Bangumi.UserAgent)
+	config.SetStr("PULSAR_BANGUMI_POSTAUTHREDIRECT", &cfg.Bangumi.PostAuthRedirect)
+	config.SetInt("PULSAR_BANGUMI_SYNCINTERVALMINUTES", &cfg.Bangumi.SyncIntervalMinutes)
+	config.SetStr("PULSAR_BANGUMI_CONFLICTPOLICY", &cfg.Bangumi.ConflictPolicy)
 	config.SetInt("PULSAR_SECURITY_TRUSTEDPROXYHOPS", &cfg.Security.TrustedProxyHops)
 	config.SetInt("PULSAR_SECURITY_MAXTAKE", &cfg.Security.MaxTake)
 	config.SetBool("PULSAR_DISCOVERY_ENABLED", &cfg.Discovery.Enabled)
@@ -121,6 +206,7 @@ func applyEnv(cfg *Config) {
 	config.SetStr("PULSAR_DISCOVERY_GRPC_ENDPOINT", &cfg.Discovery.GrpcEndpoint)
 	config.SetList("PULSAR_MODULES_ENABLED", &cfg.Modules.Enabled)
 	config.SetList("PULSAR_MODULES_DISABLED", &cfg.Modules.Disabled)
+	normalizeBangumi(cfg)
 }
 
 func validate(cfg *Config) error {

@@ -176,17 +176,24 @@ func (Scrobble) TableName() string { return "scrobbles" }
 
 // Collection represents a playlist, backlog, or watchlist.
 type Collection struct {
-	ID          uuid.UUID      `gorm:"type:uuid;primaryKey" json:"id"`
-	AccountID   uuid.UUID      `gorm:"type:uuid;not null;index:ix_coll_account" json:"account_id"`
-	Domain      string         `gorm:"type:varchar(32);not null" json:"domain"`
-	Kind        string         `gorm:"type:varchar(32);not null" json:"kind"`
-	Name        string         `gorm:"type:varchar(512);not null" json:"name"`
-	Description *string        `gorm:"type:text" json:"description,omitempty"`
-	IsPublic    bool           `gorm:"default:true" json:"is_public"`
-	ArtworkURL  *string        `gorm:"type:varchar(4096)" json:"artwork_url,omitempty"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	ID uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	// AccountID participates in the sync-collection unique key so one account
+	// cannot end up with two mirrors of the same remote provider and scope.
+	AccountID   uuid.UUID `gorm:"type:uuid;not null;index:ix_coll_account;uniqueIndex:ix_coll_sync,priority:1" json:"account_id"`
+	Domain      string    `gorm:"type:varchar(32);not null" json:"domain"`
+	Kind        string    `gorm:"type:varchar(32);not null" json:"kind"`
+	Name        string    `gorm:"type:varchar(512);not null" json:"name"`
+	Description *string   `gorm:"type:text" json:"description,omitempty"`
+	IsPublic    bool      `gorm:"default:true" json:"is_public"`
+	ArtworkURL  *string   `gorm:"type:varchar(4096)" json:"artwork_url,omitempty"`
+	// SyncProvider and SyncScope mark a collection as the mirror of one remote
+	// provider's list for one domain. NULL keeps ordinary user collections out
+	// of the unique key: Postgres treats NULLs as distinct.
+	SyncProvider *string        `gorm:"type:varchar(64);uniqueIndex:ix_coll_sync,priority:2" json:"sync_provider,omitempty"`
+	SyncScope    *string        `gorm:"type:varchar(64);uniqueIndex:ix_coll_sync,priority:3" json:"sync_scope,omitempty"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
 
 	Items []CollectionItem `gorm:"foreignKey:CollectionID" json:"items,omitempty"`
 }
@@ -196,12 +203,17 @@ func (Collection) TableName() string { return "collections" }
 // CollectionItem links a media item to a playlist or watchlist.
 type CollectionItem struct {
 	ID           uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
-	CollectionID uuid.UUID  `gorm:"type:uuid;not null;index:ix_coll_item_coll" json:"collection_id"`
+	CollectionID uuid.UUID  `gorm:"type:uuid;not null;index:ix_coll_item_coll;uniqueIndex:ix_coll_item_remote,priority:1" json:"collection_id"`
 	CatalogID    *uuid.UUID `gorm:"type:uuid;index:ix_coll_item_catalog" json:"catalog_id,omitempty"`
 	Position     int        `gorm:"not null;default:0" json:"position"`
 	Note         *string    `gorm:"type:text" json:"note,omitempty"`
 	Rating       *int       `json:"rating,omitempty"`
 	Status       *string    `gorm:"type:varchar(32)" json:"status,omitempty"`
+	// Progress is the watched/read unit count — episodes for a show, chapters
+	// for a book. VolumeProgress is the volume count a book collection tracks
+	// separately. Both are nil when the entry has no progress to report.
+	Progress       *int `json:"progress,omitempty"`
+	VolumeProgress *int `json:"volume_progress,omitempty"`
 
 	// Kind says what the entry is on a favourites collection: a track, an
 	// album or a playlist. Empty is a row written before the column existed
@@ -209,6 +221,16 @@ type CollectionItem struct {
 	Kind      string    `gorm:"type:varchar(32);not null;default:''" json:"kind,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// SyncRemoteID ties an item to its counterpart on the provider. The two
+	// fingerprints are the last values both sides agreed on, so a later sync
+	// can tell a local edit from a remote edit — and an edit on both sides
+	// from no edit at all. They are hidden from clients; the values they hash
+	// are already in the response.
+	SyncRemoteID          *string    `gorm:"type:varchar(128);uniqueIndex:ix_coll_item_remote,priority:2" json:"sync_remote_id,omitempty"`
+	SyncLocalFingerprint  *string    `gorm:"type:varchar(64)" json:"-"`
+	SyncRemoteFingerprint *string    `gorm:"type:varchar(64)" json:"-"`
+	SyncedAt              *time.Time `json:"synced_at,omitempty"`
 
 	CatalogItem *CatalogItem `gorm:"foreignKey:CatalogID" json:"catalog_item,omitempty"`
 }
@@ -254,22 +276,48 @@ type CatalogCreator struct {
 
 func (CatalogCreator) TableName() string { return "catalog_creators" }
 
-// ExternalSyncConnection configures background syncing with Last.fm, Steam, Spotify, AniList, etc.
+// ExternalSyncConnection stores one account's link to a remote tracker.
+// Tokens are never serialized to clients; API responses expose a separate
+// summary shape that omits them.
 type ExternalSyncConnection struct {
-	ID             uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
-	AccountID      uuid.UUID  `gorm:"type:uuid;not null;uniqueIndex:ix_sync_acc_prov" json:"account_id"`
-	Provider       string     `gorm:"type:varchar(64);not null;uniqueIndex:ix_sync_acc_prov" json:"provider"`
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	AccountID uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:ix_sync_acc_prov,priority:1" json:"account_id"`
+	Provider  string    `gorm:"type:varchar(64);not null;uniqueIndex:ix_sync_acc_prov,priority:2" json:"provider"`
+	// RemoteUserID is the provider's stable numeric id. RemoteUsername is the
+	// handle collection endpoints address; both are stored because Bangumi
+	// lets a user rename the handle once.
 	RemoteUserID   string     `gorm:"type:varchar(256);not null" json:"remote_user_id"`
+	RemoteUsername *string    `gorm:"type:varchar(256)" json:"remote_username,omitempty"`
 	AccessToken    *string    `gorm:"type:text" json:"-"`
 	RefreshToken   *string    `gorm:"type:text" json:"-"`
 	TokenExpiresAt *time.Time `json:"token_expires_at,omitempty"`
 	SyncEnabled    bool       `gorm:"default:true" json:"sync_enabled"`
+	// ConflictPolicy is this account's override: "local", "remote" or
+	// "newest". Empty uses the deployment default.
+	ConflictPolicy string     `gorm:"type:varchar(16);not null;default:''" json:"conflict_policy,omitempty"`
 	LastScannedAt  *time.Time `json:"last_scanned_at,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	LastSyncedAt   *time.Time `json:"last_synced_at,omitempty"`
+	LastError      *string    `gorm:"type:text" json:"last_error,omitempty"`
+	// Meta carries provider-specific profile facts (nickname, avatar) that do
+	// not deserve a column. Never put tokens here.
+	Meta      datatypes.JSON `gorm:"type:jsonb" json:"meta,omitempty"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 }
 
 func (ExternalSyncConnection) TableName() string { return "sync_connections" }
+
+// ExternalOAuthState is a single-use CSRF state for an account-linking
+// callback. Rows are short-lived and consumed atomically.
+type ExternalOAuthState struct {
+	State     string    `gorm:"type:varchar(128);primaryKey" json:"state"`
+	Provider  string    `gorm:"type:varchar(64);not null" json:"provider"`
+	AccountID uuid.UUID `gorm:"type:uuid;not null;index:ix_sync_oauth_account" json:"account_id"`
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `gorm:"index:ix_sync_oauth_expiry" json:"expires_at"`
+}
+
+func (ExternalOAuthState) TableName() string { return "sync_oauth_states" }
 
 // ToJSON safely marshals an arbitrary value into datatypes.JSON.
 func ToJSON(v any) datatypes.JSON {

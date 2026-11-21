@@ -231,11 +231,13 @@ func (i *instance) deleteCollection(c *gin.Context) {
 }
 
 type addItemRequest struct {
-	CatalogID *uuid.UUID `json:"catalog_id,omitempty"`
-	Position  int        `json:"position,omitempty"`
-	Note      *string    `json:"note,omitempty"`
-	Rating    *int       `json:"rating,omitempty"`
-	Status    *string    `json:"status,omitempty"`
+	CatalogID      *uuid.UUID `json:"catalog_id,omitempty"`
+	Position       int        `json:"position,omitempty"`
+	Note           *string    `json:"note,omitempty"`
+	Rating         *int       `json:"rating,omitempty"`
+	Status         *string    `json:"status,omitempty"`
+	Progress       *int       `json:"progress,omitempty"`
+	VolumeProgress *int       `json:"volume_progress,omitempty"`
 
 	// Optional inline catalog payload to create catalog item on the fly
 	Title           string  `json:"title,omitempty"`
@@ -293,12 +295,14 @@ func (i *instance) addItem(c *gin.Context) {
 	}
 
 	item := &model.CollectionItem{
-		CollectionID: collID,
-		CatalogID:    catalogID,
-		Position:     req.Position,
-		Note:         req.Note,
-		Rating:       req.Rating,
-		Status:       req.Status,
+		CollectionID:   collID,
+		CatalogID:      catalogID,
+		Position:       req.Position,
+		Note:           req.Note,
+		Rating:         req.Rating,
+		Status:         req.Status,
+		Progress:       req.Progress,
+		VolumeProgress: req.VolumeProgress,
 	}
 
 	if err := i.core.Store.AddCollectionItem(c.Request.Context(), item); err != nil {
@@ -348,9 +352,11 @@ func (i *instance) removeItem(c *gin.Context) {
 }
 
 type updateItemRequest struct {
-	Note   *string `json:"note,omitempty"`
-	Rating *int    `json:"rating,omitempty"`
-	Status *string `json:"status,omitempty"`
+	Note           *string `json:"note,omitempty"`
+	Rating         *int    `json:"rating,omitempty"`
+	Status         *string `json:"status,omitempty"`
+	Progress       *int    `json:"progress,omitempty"`
+	VolumeProgress *int    `json:"volume_progress,omitempty"`
 }
 
 // updateItem marks progress on one collection item — status, rating, or
@@ -396,9 +402,11 @@ func (i *instance) updateItem(c *gin.Context) {
 	}
 
 	item, err := i.core.Store.UpdateCollectionItem(c.Request.Context(), collID, itemID, store.CollectionItemUpdate{
-		Note:   req.Note,
-		Rating: req.Rating,
-		Status: req.Status,
+		Note:           req.Note,
+		Rating:         req.Rating,
+		Status:         req.Status,
+		Progress:       req.Progress,
+		VolumeProgress: req.VolumeProgress,
 	})
 	if err != nil {
 		httpx.NotFound(c, "collection item not found")
