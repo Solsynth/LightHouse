@@ -319,11 +319,13 @@ func (s *Store) UpdateDeviceName(ctx context.Context, accountID, deviceID, label
 
 // --- Auth factors ---
 
-// ListAllFactors lists every auth factor of the account (GetAuthFactors; no
-// soft-delete filter, matching the C# query).
+// ListAllFactors lists the account's live auth factors (GetAuthFactors). The
+// soft-delete scope is load-bearing: Padlock applied a global
+// `DeletedAt == null` filter to every factor query, so an admin-deleted factor
+// must not reappear in the account's own list.
 func (s *Store) ListAllFactors(ctx context.Context, accountID uuid.UUID) ([]model.AuthFactor, error) {
 	var entities []AuthFactorEntity
-	if err := s.DB.WithContext(ctx).Unscoped().
+	if err := s.DB.WithContext(ctx).
 		Where("account_id = ?", accountID).
 		Order("created_at").
 		Find(&entities).Error; err != nil {
@@ -336,10 +338,12 @@ func (s *Store) ListAllFactors(ctx context.Context, accountID uuid.UUID) ([]mode
 	return factors, nil
 }
 
-// GetAuthFactorByID loads one of the account's factors.
+// GetAuthFactorByID loads one of the account's live factors. A soft-deleted
+// factor is not found: it must not be re-enableable, usable as a challenge
+// step, or deletable a second time.
 func (s *Store) GetAuthFactorByID(ctx context.Context, accountID string, id uuid.UUID) (*model.AuthFactor, error) {
 	var entity AuthFactorEntity
-	if err := s.DB.WithContext(ctx).Unscoped().
+	if err := s.DB.WithContext(ctx).
 		Where("account_id = ? AND id = ?", accountID, id).
 		First(&entity).Error; err != nil {
 		return nil, mapNotFound(err)
@@ -378,11 +382,12 @@ func (s *Store) UpdateAuthFactorSecret(ctx context.Context, accountID string, fa
 	return nil
 }
 
-// CheckAuthFactorExists reports whether the account already has a factor of
-// the given type (CheckAuthFactorExists).
+// CheckAuthFactorExists reports whether the account has a live factor of the
+// given type (CheckAuthFactorExists). Soft-deleted rows do not count, so a
+// factor removed by an admin can be created again.
 func (s *Store) CheckAuthFactorExists(ctx context.Context, accountID string, ftype model.AuthFactorType) (bool, error) {
 	var count int64
-	if err := s.DB.WithContext(ctx).Unscoped().Model(&AuthFactorEntity{}).
+	if err := s.DB.WithContext(ctx).Model(&AuthFactorEntity{}).
 		Where("account_id = ? AND type = ?", accountID, int(ftype)).
 		Count(&count).Error; err != nil {
 		return false, err
@@ -430,7 +435,9 @@ func (s *Store) InsertAuthFactor(ctx context.Context, f *model.AuthFactor) (*mod
 	return f, nil
 }
 
-// UpdateAuthFactor persists the mutable factor columns.
+// UpdateAuthFactor persists the mutable factor columns of a live factor. The
+// soft-delete scope keeps an admin-deleted row from being resurrected by a
+// re-enable.
 func (s *Store) UpdateAuthFactor(ctx context.Context, f *model.AuthFactor) error {
 	var config *datatypes.JSON
 	if len(f.Config) > 0 {
@@ -442,7 +449,7 @@ func (s *Store) UpdateAuthFactor(ctx context.Context, f *model.AuthFactor) error
 	if f.Secret != "" {
 		secret = &f.Secret
 	}
-	return s.DB.WithContext(ctx).Unscoped().Model(&AuthFactorEntity{}).
+	res := s.DB.WithContext(ctx).Model(&AuthFactorEntity{}).
 		Where("id = ?", f.Id).
 		Updates(map[string]any{
 			"secret":      secret,
@@ -451,7 +458,14 @@ func (s *Store) UpdateAuthFactor(ctx context.Context, f *model.AuthFactor) error
 			"enabled_at":  timeValue(f.EnabledAt),
 			"expired_at":  timeValue(f.ExpiredAt),
 			"updated_at":  time.Now().UTC(),
-		}).Error
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // DeleteAuthFactorRow hard-deletes a factor row (DeleteAuthFactor).
@@ -471,10 +485,12 @@ func (s *Store) DeletePasskeysByAccount(ctx context.Context, accountID string) e
 
 // --- Passkeys ---
 
-// ListPasskeys lists the account's passkeys ordered by creation time.
+// ListPasskeys lists the account's live passkeys ordered by creation time. A
+// soft-deleted row is a revoked credential: it must not be offered as an
+// allow-credential at sign-in or listed in the console.
 func (s *Store) ListPasskeys(ctx context.Context, accountID string) ([]model.Passkey, error) {
 	var entities []PasskeyEntity
-	if err := s.DB.WithContext(ctx).Unscoped().
+	if err := s.DB.WithContext(ctx).
 		Where("account_id = ?", accountID).
 		Order("created_at").
 		Find(&entities).Error; err != nil {
@@ -487,10 +503,10 @@ func (s *Store) ListPasskeys(ctx context.Context, accountID string) ([]model.Pas
 	return passkeys, nil
 }
 
-// GetPasskeyByID loads one of the account's passkeys.
+// GetPasskeyByID loads one of the account's live passkeys.
 func (s *Store) GetPasskeyByID(ctx context.Context, accountID string, id uuid.UUID) (*model.Passkey, error) {
 	var entity PasskeyEntity
-	if err := s.DB.WithContext(ctx).Unscoped().
+	if err := s.DB.WithContext(ctx).
 		Where("id = ? AND account_id = ?", id, accountID).
 		First(&entity).Error; err != nil {
 		return nil, mapNotFound(err)
@@ -537,9 +553,9 @@ func (s *Store) InsertPasskey(ctx context.Context, p *model.Passkey) (*model.Pas
 	return p, nil
 }
 
-// UpdatePasskeyLabel renames the passkey.
+// UpdatePasskeyLabel renames a live passkey.
 func (s *Store) UpdatePasskeyLabel(ctx context.Context, id uuid.UUID, label string) (*model.Passkey, error) {
-	res := s.DB.WithContext(ctx).Unscoped().Model(&PasskeyEntity{}).
+	res := s.DB.WithContext(ctx).Model(&PasskeyEntity{}).
 		Where("id = ?", id).
 		Updates(map[string]any{"label": label, "updated_at": time.Now().UTC()})
 	if res.Error != nil {
@@ -549,17 +565,18 @@ func (s *Store) UpdatePasskeyLabel(ctx context.Context, id uuid.UUID, label stri
 		return nil, ErrNotFound
 	}
 	var entity PasskeyEntity
-	if err := s.DB.WithContext(ctx).Unscoped().Where("id = ?", id).First(&entity).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Where("id = ?", id).First(&entity).Error; err != nil {
 		return nil, mapNotFound(err)
 	}
 	passkey := passkeyFromEntity(&entity)
 	return &passkey, nil
 }
 
-// UpdatePasskeyCredential rewrites the stored credential JSON (used to persist
-// the authenticator's signature counter after a successful assertion).
+// UpdatePasskeyCredential rewrites the stored credential JSON of a live
+// passkey (used to persist the authenticator's signature counter after a
+// successful assertion).
 func (s *Store) UpdatePasskeyCredential(ctx context.Context, id uuid.UUID, credential string) (*model.Passkey, error) {
-	res := s.DB.WithContext(ctx).Unscoped().Model(&PasskeyEntity{}).
+	res := s.DB.WithContext(ctx).Model(&PasskeyEntity{}).
 		Where("id = ?", id).
 		Updates(map[string]any{"credential": datatypes.JSON([]byte(credential)), "updated_at": time.Now().UTC()})
 	if res.Error != nil {
@@ -569,18 +586,25 @@ func (s *Store) UpdatePasskeyCredential(ctx context.Context, id uuid.UUID, crede
 		return nil, ErrNotFound
 	}
 	var entity PasskeyEntity
-	if err := s.DB.WithContext(ctx).Unscoped().Where("id = ?", id).First(&entity).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Where("id = ?", id).First(&entity).Error; err != nil {
 		return nil, mapNotFound(err)
 	}
 	passkey := passkeyFromEntity(&entity)
 	return &passkey, nil
 }
 
-// DeletePasskeyRow hard-deletes a passkey row.
+// DeletePasskeyRow hard-deletes a live passkey row.
 func (s *Store) DeletePasskeyRow(ctx context.Context, id uuid.UUID) error {
-	return s.DB.WithContext(ctx).Unscoped().
+	res := s.DB.WithContext(ctx).
 		Where("id = ?", id).
-		Delete(&PasskeyEntity{}).Error
+		Delete(&PasskeyEntity{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // --- Contacts ---
