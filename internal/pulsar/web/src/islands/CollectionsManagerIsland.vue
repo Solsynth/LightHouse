@@ -67,7 +67,7 @@ async function deleteCollection(id: string) {
 async function removeFavourite(catalogId: string) {
   try {
     await request(`/api/collections/favourites/${catalogId}`, { method: 'DELETE' })
-    favourites.value = favourites.value.filter((f) => (f.catalog_id ?? f.catalog?.id) !== catalogId)
+    favourites.value = favourites.value.filter((f) => (f.catalog_id ?? f.catalog_item?.id ?? f.catalog?.id) !== catalogId)
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to remove favourite'
   }
@@ -169,14 +169,14 @@ onMounted(load)
       <div v-else class="rounded-2xl bg-base-200 divide-y divide-[var(--console-line-soft)]">
         <div v-for="f in favourites" :key="f.id" class="p-4 flex items-center gap-3.5">
           <div class="min-w-0 flex-1">
-            <p class="font-medium text-sm truncate">{{ f.catalog?.title ?? f.title }}</p>
-            <p class="text-xs text-[var(--console-dim)] truncate">{{ f.catalog?.subtitle ?? f.subtitle }}</p>
+            <p class="font-medium text-sm truncate">{{ (f.catalog_item || f.catalog)?.title ?? f.title ?? 'Untitled' }}</p>
+            <p class="text-xs text-[var(--console-dim)] truncate">{{ (f.catalog_item || f.catalog)?.subtitle ?? f.subtitle }}</p>
           </div>
           <button
-            v-if="f.catalog_id ?? f.catalog?.id"
+            v-if="f.catalog_id ?? (f.catalog_item || f.catalog)?.id"
             type="button"
             class="btn btn-ghost btn-xs text-error rounded-lg"
-            @click="removeFavourite((f.catalog_id ?? f.catalog?.id)!)"
+            @click="removeFavourite((f.catalog_id ?? (f.catalog_item || f.catalog)?.id)!)"
           >
             <TrashCan16 class="h-4 w-4" />
           </button>

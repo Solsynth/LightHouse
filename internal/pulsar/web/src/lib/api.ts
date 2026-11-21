@@ -163,6 +163,7 @@ export interface CollectionItem {
   notes?: string
   progress?: number
   volume_progress?: number
+  catalog_item?: CatalogItem
   catalog?: {
     id: string
     urn?: string

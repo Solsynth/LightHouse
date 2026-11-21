@@ -1,5 +1,5 @@
 @import 'tailwindcss';
-@source "../../webui/templates";
+@source "../../../webui/templates";
 
 @plugin 'daisyui' {
   themes: false;

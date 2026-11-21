@@ -119,7 +119,7 @@ onMounted(load)
       <textarea v-model="editDesc" rows="2" placeholder="Description" class="textarea textarea-bordered w-full rounded-xl"></textarea>
       <div class="flex items-center justify-between">
         <label class="label cursor-pointer gap-2 justify-start">
-          <input v-model="editPublic" type="checkbox" class="toggle toggle-primary toggle-sm" />
+          <input v-model="editPublic" type="checkbox" class="toggle toggle-primary toggle-sm bg-base-300 border border-[var(--console-line)]" />
           <span class="label-text text-sm">Publicly visible</span>
         </label>
         <button type="submit" class="btn btn-primary btn-sm rounded-xl" :disabled="savingMeta">
@@ -139,21 +139,28 @@ onMounted(load)
         <div class="flex items-center gap-3.5">
           <span class="w-6 text-center text-xs font-mono text-[var(--console-faint)]">{{ idx + 1 }}</span>
           <img
-            v-if="item.catalog?.artwork_url || item.artwork_url"
-            :src="item.catalog?.artwork_url || item.artwork_url"
+            v-if="(item.catalog_item || item.catalog)?.artwork_url || item.artwork_url"
+            :src="(item.catalog_item || item.catalog)?.artwork_url || item.artwork_url"
             class="h-11 w-11 rounded-lg object-cover bg-base-300 shrink-0"
           />
           <div class="min-w-0 flex-1">
             <a
-              v-if="item.catalog?.urn || item.urn"
-              :href="`/m/${encodeURIComponent((item.catalog?.urn || item.urn)!)}`"
+              v-if="(item.catalog_item || item.catalog)?.urn || item.urn"
+              :href="`/m/${encodeURIComponent(((item.catalog_item || item.catalog)?.urn || item.urn)!)}`"
               class="font-medium text-sm hover:text-primary transition-colors truncate block"
             >
-              {{ item.catalog?.title || item.title }}
+              {{ (item.catalog_item || item.catalog)?.title || item.title || 'Untitled' }}
             </a>
-            <p v-else class="font-medium text-sm truncate">{{ item.catalog?.title || item.title }}</p>
-            <p v-if="item.catalog?.subtitle || item.subtitle" class="text-xs text-[var(--console-dim)] truncate">
-              {{ item.catalog?.subtitle || item.subtitle }}
+            <a
+              v-else-if="item.catalog_id"
+              :href="`/catalog/${item.catalog_id}`"
+              class="font-medium text-sm hover:text-primary transition-colors truncate block"
+            >
+              {{ (item.catalog_item || item.catalog)?.title || item.title || 'Untitled' }}
+            </a>
+            <p v-else class="font-medium text-sm truncate">{{ (item.catalog_item || item.catalog)?.title || item.title || 'Untitled' }}</p>
+            <p v-if="(item.catalog_item || item.catalog)?.subtitle || item.subtitle" class="text-xs text-[var(--console-dim)] truncate">
+              {{ (item.catalog_item || item.catalog)?.subtitle || item.subtitle }}
             </p>
             <p v-if="item.note || item.notes" class="text-xs text-[var(--console-faint)] mt-1">
               {{ item.note || item.notes }}
