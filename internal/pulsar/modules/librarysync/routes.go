@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/core"
+	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/store"
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/authn"
@@ -120,13 +121,14 @@ func (h *handler) push(c *gin.Context) {
 	rejected := []int{}
 	finalRev := int64(0)
 	now := time.Now().UTC()
+	var createdScrobbles []*model.Scrobble
 
 	err := h.store.DB.Transaction(func(tx *gorm.DB) error {
 		base, err := store.NextLibrarySyncRevs(tx, accountID, len(request.Changes))
 		if err != nil {
 			return err
 		}
-		applied := &applier{tx: tx, accountID: accountID, deviceID: deviceID, now: now}
+		applied := &applier{tx: tx, accountID: accountID, deviceID: deviceID, now: now, scrobbler: h.core.Config.Scrobbler}
 		for index, change := range request.Changes {
 			ok, err := applied.applyOne(change, base+int64(index))
 			if err != nil {
@@ -137,12 +139,18 @@ func (h *handler) push(c *gin.Context) {
 			}
 		}
 		finalRev, err = store.CurrentLibrarySyncRev(tx, accountID)
+		createdScrobbles = applied.createdScrobbles
 		return err
 	})
 	if err != nil {
 		h.log.Error("rhythm sync push failed", "error", err)
 		httpx.Internal(c)
 		return
+	}
+	// Scrobble events go out only after the push committed, so consumers never
+	// see a row the transaction could still roll back.
+	for _, scrobble := range createdScrobbles {
+		h.core.PublishScrobbleCreated(c.Request.Context(), accountID, scrobble)
 	}
 
 	httpx.OK(c, PushResponse{Rev: finalRev, Rejected: rejected})

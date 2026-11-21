@@ -28,12 +28,18 @@ func New(db *gorm.DB) *Store {
 // FindOrCreateCatalogItem looks up a catalog item by provider & provider_key, or domain + title + subtitle,
 // or creates it if not found.
 func (s *Store) FindOrCreateCatalogItem(ctx context.Context, item *model.CatalogItem) (*model.CatalogItem, error) {
-	return findOrCreateCatalogItem(s.DB.WithContext(ctx), item)
+	return FindOrCreateCatalogItemDB(s.DB.WithContext(ctx), item)
 }
 
-// findOrCreateCatalogItem is FindOrCreateCatalogItem over a caller's handle,
-// so a transaction can resolve catalog records without opening a second
-// connection — SQLite and Postgres both refuse that inside a write.
+// FindOrCreateCatalogItemDB is FindOrCreateCatalogItem over a caller's handle,
+// so an in-flight transaction (library sync play projection) can resolve
+// catalog records without opening a second connection — SQLite and Postgres
+// both refuse that inside a write.
+func FindOrCreateCatalogItemDB(db *gorm.DB, item *model.CatalogItem) (*model.CatalogItem, error) {
+	return findOrCreateCatalogItem(db, item)
+}
+
+// findOrCreateCatalogItem is the shared probe-or-create used by both wrappers.
 func findOrCreateCatalogItem(db *gorm.DB, item *model.CatalogItem) (*model.CatalogItem, error) {
 	if item == nil {
 		return nil, errors.New("nil catalog item")

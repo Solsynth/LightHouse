@@ -328,7 +328,10 @@ func (a *applier) applyPlay(change Change, rev int64) (bool, error) {
 
 			LibrarySyncBase: model.LibrarySyncBase{CreatedAt: startedAt, UpdatedAt: clock},
 		}
-		return true, a.tx.Create(&row).Error
+		if err := a.tx.Create(&row).Error; err != nil {
+			return false, err
+		}
+		return true, a.syncPlayScrobble(record.TrackFingerprint, startedAt, record.ListenedMs, record.Completed)
 	}
 	if err != nil {
 		return false, err
@@ -354,7 +357,10 @@ func (a *applier) applyPlay(change Change, rev int64) (bool, error) {
 	if existing.SourceID == "" && record.SourceID != "" {
 		updates["source_id"] = record.SourceID
 	}
-	return true, key(a.tx).Updates(updates).Error
+	if err := key(a.tx).Updates(updates).Error; err != nil {
+		return false, err
+	}
+	return true, a.syncPlayScrobble(record.TrackFingerprint, startedAt, listened, existing.Completed || record.Completed)
 }
 
 func (a *applier) applySession(change Change, rev int64) (bool, error) {

@@ -19,7 +19,7 @@ func testDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite open: %v", err)
 	}
-	if err := db.AutoMigrate(model.LibrarySyncModels()...); err != nil {
+	if err := db.AutoMigrate(append(model.LibrarySyncModels(), &model.CatalogItem{}, &model.Scrobble{})...); err != nil {
 		t.Fatalf("automigrate: %v", err)
 	}
 	return db

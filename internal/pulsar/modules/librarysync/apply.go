@@ -9,6 +9,9 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/google/uuid"
+
+	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/config"
+	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/model"
 )
 
 // localSourceID is the client's local-file source. Its links carry absolute
@@ -114,6 +117,11 @@ type applier struct {
 	accountID uuid.UUID
 	deviceID  string
 	now       time.Time
+	// scrobbler gates which plays materialize into the scrobble history.
+	scrobbler config.Scrobbler
+	// createdScrobbles collects scrobbles born during this push so the
+	// handler can publish their events after the commit.
+	createdScrobbles []*model.Scrobble
 }
 
 // applyOne writes change at revision rev. It reports false when the change lost

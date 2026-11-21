@@ -65,11 +65,9 @@ type Config struct {
 		DevAccountHeader string `toml:"devAccountHeader"`
 	} `toml:"librarySync"`
 
-	Scrobbler struct {
-		AutoScrobbleThresholdPercent int `toml:"autoScrobbleThresholdPercent"`
-		AutoScrobbleMinSeconds       int `toml:"autoScrobbleMinSeconds"`
-		MaxBatchScrobble             int `toml:"maxBatchScrobble"`
-	} `toml:"scrobbler"`
+	// Scrobbler gates when a played session or a synced library play becomes a
+	// scrobble in the history.
+	Scrobbler Scrobbler `toml:"scrobbler"`
 
 	// Web configures the SSR templates and Vue island assets (web/dist).
 	Web struct {
@@ -84,6 +82,14 @@ type Config struct {
 		// https://id.example.com). Empty defaults to "/sign-in" on the same origin.
 		StargateURL string `toml:"stargateUrl"`
 	} `toml:"web"`
+}
+
+// Scrobbler carries the auto-scrobble thresholds shared by the sessions and
+// library sync modules.
+type Scrobbler struct {
+	AutoScrobbleThresholdPercent int `toml:"autoScrobbleThresholdPercent"`
+	AutoScrobbleMinSeconds       int `toml:"autoScrobbleMinSeconds"`
+	MaxBatchScrobble             int `toml:"maxBatchScrobble"`
 }
 
 // Load loads configuration from path or environment.

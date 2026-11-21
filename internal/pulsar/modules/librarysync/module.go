@@ -1,7 +1,9 @@
 // Package librarysync mirrors one account's GroovyBox music library: canonical
 // tracks, per-source links, stored lyrics, play events, and the singleton
-// session and settings documents. It is the device-to-device half of Pulsar;
-// scrobbles and live now-playing are the other modules' concern.
+// session and settings documents. It is the device-to-device half of Pulsar.
+// A play that crosses the scrobbler thresholds is also projected onto the
+// canonical scrobble history, so GroovyBox playback shows up in the same
+// history API as every other scrobble (see scrobble.go).
 package librarysync
 
 import (
