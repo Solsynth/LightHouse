@@ -135,6 +135,23 @@ type providerConfig struct {
 	RedirectUri  string
 }
 
+// socialUserAgent identifies Stargate to the social providers. Go's default
+// "Go-http-client/*" is rejected with a bare 403 by some provider edges (Afdian's
+// nginx, for one), so every provider request must carry a real User-Agent.
+const socialUserAgent = "LightHouse/1.0 (SolarNetwork)"
+
+// userAgentTransport stamps socialUserAgent on requests that do not set their
+// own User-Agent.
+type userAgentTransport struct{ next http.RoundTripper }
+
+func (t userAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Header.Get("User-Agent") == "" {
+		req = req.Clone(req.Context())
+		req.Header.Set("User-Agent", socialUserAgent)
+	}
+	return t.next.RoundTrip(req)
+}
+
 // baseProvider carries the shared OidcService machinery.
 type baseProvider struct {
 	d    Deps
@@ -175,7 +192,10 @@ func newBaseProvider(name string, d Deps) *baseProvider {
 		cfg.ClientId = d.Cfg.Oidc.Bangumi.ClientId
 		cfg.ClientSecret = d.Cfg.Oidc.Bangumi.ClientSecret
 	}
-	return &baseProvider{d: d, name: name, http: &http.Client{Timeout: 20 * time.Second}, cfg: cfg}
+	return &baseProvider{d: d, name: name, http: &http.Client{
+		Timeout:   20 * time.Second,
+		Transport: userAgentTransport{next: http.DefaultTransport},
+	}, cfg: cfg}
 }
 
 // discoveryDocument mirrors OidcDiscoveryDocument.

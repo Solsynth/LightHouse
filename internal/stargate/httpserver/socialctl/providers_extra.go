@@ -204,11 +204,15 @@ func (p *afdianProvider) processCallback(ctx context.Context, data *callbackData
 		return nil, err
 	}
 	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if err != nil {
+		return nil, err
+	}
 	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("afdian token endpoint returned %s", resp.Status)
+		return nil, fmt.Errorf("afdian token endpoint returned %s: %s", resp.Status, strings.TrimSpace(string(raw)))
 	}
 	var body map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+	if err := json.Unmarshal(raw, &body); err != nil {
 		return nil, err
 	}
 	dataEl, _ := body["data"].(map[string]any)

@@ -429,3 +429,40 @@ func TestTwitterProviderOAuthExchangeAndUser(t *testing.T) {
 		t.Fatalf("user = %+v", user)
 	}
 }
+
+func TestBaseProviderSendsUserAgent(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("User-Agent")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	b := newBaseProvider("afdian", testDeps(nil))
+
+	// Requests without their own User-Agent carry the shared identity instead
+	// of Go's default "Go-http-client/*", which Afdian's edge rejects with 403.
+	resp, err := b.http.Get(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if got != socialUserAgent {
+		t.Fatalf("default User-Agent = %q, want %q", got, socialUserAgent)
+	}
+
+	// Providers that set their own User-Agent keep it.
+	req, err := http.NewRequest(http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("User-Agent", "explicit-agent")
+	resp, err = b.http.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if got != "explicit-agent" {
+		t.Fatalf("explicit User-Agent = %q, want %q", got, "explicit-agent")
+	}
+}
