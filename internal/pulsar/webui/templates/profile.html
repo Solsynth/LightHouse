@@ -53,7 +53,7 @@
 
   {{if $p.Shelves}}
   <section class="space-y-6">
-    <h2 class="text-sm font-mono uppercase tracking-wider text-[var(--console-faint)]">Works &amp; Statuses</h2>
+    <h2 class="text-sm font-mono uppercase tracking-wider text-[var(--console-faint)]">Public Collections</h2>
     {{range $p.Shelves}}
     <div class="space-y-3">
       <div class="flex items-center justify-between gap-2">
@@ -64,6 +64,7 @@
         </a>
         <a href="/c/{{.ID}}" class="text-xs text-[var(--console-faint)] hover:text-primary transition-colors">View all</a>
       </div>
+      {{if .Items}}
       <div class="flex gap-3.5 overflow-x-auto pb-2 snap-x">
         {{range .Items}}
         {{$ci := .CatalogItem}}
@@ -105,34 +106,22 @@
           {{if and $ci $ci.Subtitle}}
           <p class="text-xs text-[var(--console-dim)] truncate">{{deref $ci.Subtitle}}</p>
           {{end}}
+          {{if .Note}}
+          <p class="mt-1 text-xs text-[var(--console-faint)] line-clamp-2">{{deref .Note}}</p>
+          {{end}}
         </a>
         {{end}}
       </div>
+      {{else}}
+      <p class="text-xs text-[var(--console-faint)]">No items in this collection yet.</p>
+      {{end}}
     </div>
     {{end}}
   </section>
   {{end}}
 
-  {{if $p.Collections}}
-  <section class="space-y-3">
-    <h2 class="text-sm font-mono uppercase tracking-wider text-[var(--console-faint)]">Public Collections</h2>
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {{range $p.Collections}}
-      <a href="/c/{{.ID}}" class="rounded-2xl bg-base-200 p-4 hover:bg-base-300/70 transition-colors block">
-        <div class="flex items-center justify-between gap-2">
-          <span class="badge badge-sm badge-ghost">{{domainLabel .Domain}}</span>
-          <span class="text-xs font-mono text-[var(--console-faint)]">{{.Kind}}</span>
-        </div>
-        <h3 class="mt-2 font-semibold truncate">{{.Name}}</h3>
-        {{if .Description}}<p class="mt-1 text-xs text-[var(--console-dim)] line-clamp-2">{{deref .Description}}</p>{{end}}
-      </a>
-      {{end}}
-    </div>
-  </section>
-  {{end}}
-
   <section class="space-y-4">
-    <h2 class="text-sm font-mono uppercase tracking-wider text-[var(--console-faint)]">Playback History</h2>
+    <h2 class="text-sm font-mono uppercase tracking-wider text-[var(--console-faint)]">Scrobble History</h2>
     <div data-island="user-history" data-props='{{json (dict "identifier" $p.Identifier)}}'></div>
     {{if $p.Scrobbles}}
     <noscript>

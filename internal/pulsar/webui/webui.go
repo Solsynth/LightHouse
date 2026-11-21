@@ -532,12 +532,26 @@ func (h *Handler) handleProfile(c *gin.Context) {
 	var publicColls []model.Collection
 	var shelves []model.Collection
 	for _, col := range allColls {
-		if col.IsPublic {
-			publicColls = append(publicColls, col)
-			if len(shelves) < 6 {
-				if full, err := h.core.Store.GetCollection(ctx, col.ID); err == nil && len(full.Items) > 0 {
-					shelves = append(shelves, *full)
+		if !col.IsPublic || col.Kind == model.KindFavorites {
+			continue
+		}
+		publicColls = append(publicColls, col)
+		if len(shelves) < 8 {
+			if full, err := h.core.Store.GetCollection(ctx, col.ID); err == nil {
+				for idx := range full.Items {
+					it := &full.Items[idx]
+					if it.CatalogID != nil && (it.Note == nil || strings.TrimSpace(*it.Note) == "" || it.Rating == nil) {
+						if rev, rErr := h.core.Store.GetCatalogReview(ctx, accountID, *it.CatalogID); rErr == nil {
+							if (it.Note == nil || strings.TrimSpace(*it.Note) == "") && rev.Body != nil && strings.TrimSpace(*rev.Body) != "" {
+								it.Note = rev.Body
+							}
+							if it.Rating == nil && rev.Rating != nil {
+								it.Rating = rev.Rating
+							}
+						}
+					}
 				}
+				shelves = append(shelves, *full)
 			}
 		}
 	}

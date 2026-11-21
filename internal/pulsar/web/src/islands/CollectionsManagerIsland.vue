@@ -24,7 +24,7 @@ async function load() {
       requestList<Collection>('/api/collections', { take: 50 }),
       request<{ items?: CollectionItem[] } | CollectionItem[]>('/api/collections/favourites').catch(() => []),
     ])
-    collections.value = colRes.items
+    collections.value = colRes.items.filter((c) => c.kind !== 'favorites')
     favourites.value = Array.isArray(favRes) ? favRes : (favRes.items ?? [])
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to load collections'

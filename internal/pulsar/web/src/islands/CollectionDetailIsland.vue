@@ -303,6 +303,9 @@ onMounted(load)
           <p v-if="itemCatalog(item)?.subtitle || item.subtitle" class="text-xs text-[var(--console-dim)] truncate">
             {{ itemCatalog(item)?.subtitle || item.subtitle }}
           </p>
+          <p v-if="item.note || item.notes" class="mt-1 text-xs text-[var(--console-faint)] line-clamp-2">
+            {{ item.note || item.notes }}
+          </p>
         </div>
       </div>
     </div>

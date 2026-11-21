@@ -74,8 +74,11 @@ onMounted(load)
           {{ s.domain }}
         </div>
         <div class="min-w-0 flex-1">
-          <p class="text-sm font-medium truncate">{{ s.title }}</p>
-          <p class="text-xs text-[var(--console-dim)] truncate">
+          <div class="flex items-center gap-2">
+            <span class="chip capitalize">{{ s.domain }}</span>
+            <p class="text-sm font-medium truncate">{{ s.title }}</p>
+          </div>
+          <p class="text-xs text-[var(--console-dim)] truncate mt-0.5">
             <span v-if="s.subtitle">{{ s.subtitle }} · </span>
             <span class="font-mono">{{ formatDuration(s.listened_seconds) }}</span>
           </p>
