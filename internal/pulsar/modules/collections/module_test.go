@@ -318,3 +318,51 @@ func TestUpdateItemStatus(t *testing.T) {
 		t.Fatalf("unknown status status = %d, body %s", recorder.Code, recorder.Body.String())
 	}
 }
+
+func TestUserShelvesFiltersFavoritesAndPrivate(t *testing.T) {
+	engine, inst, account := testInstance(t)
+	if err := inst.core.Env.DB.AutoMigrate(&model.Review{}); err != nil {
+		t.Fatalf("automigrate review: %v", err)
+	}
+
+	fav := &model.Collection{AccountID: account, Name: "Favourites", Domain: "anime", Kind: model.KindFavorites, IsPublic: true}
+	priv := &model.Collection{AccountID: account, Name: "Secret", Domain: "anime", Kind: model.KindWatchlist, IsPublic: false}
+	pub := &model.Collection{AccountID: account, Name: "Anime Shelf", Domain: "anime", Kind: model.KindWatchlist, IsPublic: true}
+	for _, col := range []*model.Collection{fav, priv, pub} {
+		if err := inst.core.Store.CreateCollection(t.Context(), col); err != nil {
+			t.Fatalf("create collection: %v", err)
+		}
+	}
+	if err := inst.core.Env.DB.Model(priv).Update("is_public", false).Error; err != nil {
+		t.Fatalf("make priv private: %v", err)
+	}
+
+	cat := &model.CatalogItem{ID: uuid.New(), Domain: "anime", Title: "Frieren"}
+	if err := inst.core.Env.DB.Create(cat).Error; err != nil {
+		t.Fatalf("create catalog: %v", err)
+	}
+	item := &model.CollectionItem{CollectionID: pub.ID, CatalogID: &cat.ID}
+	if err := inst.core.Store.AddCollectionItem(t.Context(), item); err != nil {
+		t.Fatalf("add item: %v", err)
+	}
+	score := 9
+	body := "Great journey"
+	if err := inst.core.Env.DB.Create(&model.Review{ID: uuid.New(), AccountID: account, CatalogID: cat.ID, Body: &body, Rating: &score}).Error; err != nil {
+		t.Fatalf("create review: %v", err)
+	}
+
+	recorder := call(t, engine, http.MethodGet, "/api/users/"+account.String()+"/shelves", nil)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("shelves status = %d, body %s", recorder.Code, recorder.Body.String())
+	}
+	var items []model.Collection
+	if err := json.Unmarshal(recorder.Body.Bytes(), &items); err != nil {
+		t.Fatalf("decode shelves: %v", err)
+	}
+	if len(items) != 1 || items[0].Name != "Anime Shelf" {
+		t.Fatalf("unexpected shelves: %+v", items)
+	}
+	if len(items[0].Items) != 1 || items[0].Items[0].Note == nil || *items[0].Items[0].Note != "Great journey" || items[0].Items[0].Rating == nil || *items[0].Items[0].Rating != 9 {
+		t.Fatalf("expected merged review on shelf item, got %+v", items[0].Items)
+	}
+}

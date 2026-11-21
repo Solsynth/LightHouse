@@ -200,17 +200,7 @@ func New(services *core.Services) (*Handler, error) {
 	}
 
 	pages := []string{
-		"home.html",
-		"profile.html",
 		"share_media.html",
-		"collection.html",
-		"catalog.html",
-		"catalog_item.html",
-		"activities.html",
-		"history.html",
-		"collections.html",
-		"settings.html",
-		"rewind.html",
 	}
 	for _, page := range pages {
 		tmpl, err := template.New("layout.html").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/"+page)
@@ -232,47 +222,95 @@ func (h *Handler) loadDist(distPath string) error {
 		return fmt.Errorf("%s is not a directory", distPath)
 	}
 	root := os.DirFS(distPath)
-	raw, err := fs.ReadFile(root, ".vite/manifest.json")
-	if err != nil {
-		return fmt.Errorf(".vite/manifest.json: %w", err)
-	}
-	var manifest map[string]manifestEntry
-	if err := json.Unmarshal(raw, &manifest); err != nil {
-		return fmt.Errorf("parse manifest.json: %w", err)
+	if _, err := fs.Stat(root, "index.html"); err != nil {
+		return fmt.Errorf("index.html: %w", err)
 	}
 	h.distFS = root
-	if entry, ok := manifest["src/main.ts"]; ok {
-		if entry.File != "" {
-			h.entryJS = "/" + strings.TrimLeft(entry.File, "/")
-		}
-		for _, css := range entry.CSS {
-			h.entryCSS = append(h.entryCSS, "/"+strings.TrimLeft(css, "/"))
+	if raw, err := fs.ReadFile(root, ".vite/manifest.json"); err == nil {
+		var manifest map[string]manifestEntry
+		if err := json.Unmarshal(raw, &manifest); err == nil {
+			if entry, ok := manifest["src/main.ts"]; ok {
+				if entry.File != "" {
+					h.entryJS = "/" + strings.TrimLeft(entry.File, "/")
+				}
+				for _, css := range entry.CSS {
+					h.entryCSS = append(h.entryCSS, "/"+strings.TrimLeft(css, "/"))
+				}
+			}
 		}
 	}
 	return nil
 }
 
-// RegisterRoutes mounts the SSR mainframe pages and static asset routes on the Gin engine.
+// RegisterRoutes mounts the Pulsar manage SPA, /api/me, and static asset routes on the Gin engine.
 func (h *Handler) RegisterRoutes(engine *gin.Engine) {
 	if engine == nil {
 		return
 	}
+	engine.GET("/api/me", h.handleMe)
 	engine.GET("/assets/*filepath", h.serveAsset)
 	engine.GET("/favicon.ico", h.serveRootFile("favicon.ico"))
 	engine.GET("/favicon.png", h.serveRootFile("favicon.png"))
 	engine.GET("/icon-outline.svg", h.serveRootFile("icon-outline.svg"))
 
-	engine.GET("/", h.handleHome)
-	engine.GET("/catalog", h.handleCatalog)
-	engine.GET("/catalog/:id", h.handleCatalogItem)
-	engine.GET("/activities", h.handleActivities)
-	engine.GET("/u/:identifier", h.handleProfile)
-	engine.GET("/u/:identifier/rewind/:year", h.handleUserRewind)
-	engine.GET("/rewind/:year", h.handleMyRewind)
-	engine.GET("/c/:id", h.handleCollection)
-	engine.GET("/history", h.handleHistory)
-	engine.GET("/collections", h.handleCollections)
-	engine.GET("/settings", h.handleSettings)
+	for _, p := range []string{
+		"/",
+		"/history",
+		"/collections",
+		"/collections/*path",
+		"/catalog",
+		"/catalog/*path",
+		"/activities",
+		"/rewind",
+		"/rewind/*path",
+		"/settings",
+	} {
+		engine.GET(p, h.serveSPA)
+	}
+}
+
+func (h *Handler) handleMe(c *gin.Context) {
+	signInURL := "/sign-in"
+	if h.core != nil && h.core.Config != nil && strings.TrimSpace(h.core.Config.Web.StargateURL) != "" {
+		signInURL = strings.TrimRight(strings.TrimSpace(h.core.Config.Web.StargateURL), "/") + "/sign-in"
+	}
+	if acc := authn.CurrentUser(c); acc != nil {
+		name := acc.GetName()
+		nick := acc.GetNick()
+		if nick == "" {
+			nick = name
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"authenticated": true,
+			"sign_in_url":   signInURL,
+			"user": gin.H{
+				"id":         acc.GetId(),
+				"name":       name,
+				"nick":       nick,
+				"avatar_url": accountAvatarURL(acc),
+			},
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"authenticated": false,
+		"sign_in_url":   signInURL,
+		"user":          nil,
+	})
+}
+
+func (h *Handler) serveSPA(c *gin.Context) {
+	if h.distFS == nil {
+		c.String(http.StatusServiceUnavailable, "Pulsar web manage panel is not built (dist/index.html missing)")
+		return
+	}
+	data, err := fs.ReadFile(h.distFS, "index.html")
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	c.Header("Cache-Control", "no-cache")
+	c.Data(http.StatusOK, "text/html; charset=utf-8", data)
 }
 
 func (h *Handler) serveAsset(c *gin.Context) {

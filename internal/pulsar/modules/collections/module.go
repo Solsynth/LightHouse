@@ -43,6 +43,8 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 	r.PUT("/:id/items", authn.RequireAuth(), i.replaceItems)
 	r.PATCH("/:id/items/:itemId", authn.RequireAuth(), i.updateItem)
 
+	host.API.GET("/users/:identifier/shelves", i.getUserShelves)
+
 	// The account's favourites are a collection of their own, kind
 	// favorites: one per account and domain, made on first use. They are
 	// reached by name rather than by id so a client never has to find them
@@ -633,4 +635,51 @@ func ownerOf(c *gin.Context, i *instance) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return accountID, true
+}
+
+func (i *instance) getUserShelves(c *gin.Context) {
+	identifier := strings.TrimSpace(c.Param("identifier"))
+	accountID, err := i.core.ResolveAccount(c.Request.Context(), identifier)
+	if err != nil {
+		httpx.NotFound(c, "user not found")
+		return
+	}
+
+	cols, _, err := i.core.Store.ListCollections(c.Request.Context(), accountID, "", "", 0, 50)
+	if err != nil {
+		httpx.Internal(c)
+		return
+	}
+
+	shelves := make([]*model.Collection, 0, len(cols))
+	for _, col := range cols {
+		if !col.IsPublic || col.Kind == model.KindFavorites {
+			continue
+		}
+		full, err := i.core.Store.GetCollection(c.Request.Context(), col.ID)
+		if err != nil || full == nil {
+			continue
+		}
+		for idx := range full.Items {
+			item := &full.Items[idx]
+			if item.CatalogID == nil || *item.CatalogID == uuid.Nil {
+				continue
+			}
+			needsNote := item.Note == nil || strings.TrimSpace(*item.Note) == ""
+			if needsNote || item.Rating == nil {
+				if rev, revErr := i.core.Store.GetCatalogReview(c.Request.Context(), accountID, *item.CatalogID); revErr == nil && rev != nil {
+					if needsNote && rev.Body != nil && strings.TrimSpace(*rev.Body) != "" {
+						body := *rev.Body
+						item.Note = &body
+					}
+					if item.Rating == nil && rev.Rating != nil {
+						item.Rating = rev.Rating
+					}
+				}
+			}
+		}
+		shelves = append(shelves, full)
+	}
+
+	httpx.List(c, shelves, int64(len(shelves)))
 }

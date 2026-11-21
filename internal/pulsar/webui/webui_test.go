@@ -22,20 +22,10 @@ func TestWebUISSROpenGraphAndIslands(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	dist := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dist, ".vite"), 0o755); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.MkdirAll(filepath.Join(dist, "assets"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	manifest := map[string]manifestEntry{
-		"src/main.ts": {
-			File: "assets/main-abc123.js",
-			CSS:  []string{"assets/main-abc123.css"},
-		},
-	}
-	raw, _ := json.Marshal(manifest)
-	if err := os.WriteFile(filepath.Join(dist, ".vite", "manifest.json"), raw, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dist, "index.html"), []byte(`<!doctype html><html><body><div id="app"></div><script type="module" src="/assets/main-abc123.js"></script></body></html>`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dist, "assets", "main-abc123.js"), []byte("console.log('pulsar');"), 0o644); err != nil {
@@ -71,25 +61,34 @@ func TestWebUISSROpenGraphAndIslands(t *testing.T) {
 		})
 	})
 
-	// 1. Home page renders SSR shell + catalog-search island + Vite manifest assets
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	engine.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("GET / status = %d, want 200", w.Code)
-	}
-	body := w.Body.String()
-	for _, want := range []string{
-		`data-island="catalog-search"`,
-		`/assets/main-abc123.js`,
-		`/assets/main-abc123.css`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("GET / body missing %q", want)
+	// 1. Home page and SPA routes serve index.html
+	for _, route := range []string{"/", "/collections", "/history", "/settings"} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, route, nil)
+		engine.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET %s status = %d, want 200", route, w.Code)
+		}
+		if !strings.Contains(w.Body.String(), `<div id="app"></div>`) {
+			t.Errorf("GET %s body missing SPA mount", route)
 		}
 	}
 
-	// 2. Media share page renders OpenGraph tags + media-actions island
+	// 2. /api/me returns unauthenticated envelope cleanly
+	wMe := httptest.NewRecorder()
+	engine.ServeHTTP(wMe, httptest.NewRequest(http.MethodGet, "/api/me", nil))
+	if wMe.Code != http.StatusOK {
+		t.Fatalf("GET /api/me status = %d, want 200", wMe.Code)
+	}
+	var me map[string]any
+	if err := json.Unmarshal(wMe.Body.Bytes(), &me); err != nil {
+		t.Fatalf("decode /api/me: %v", err)
+	}
+	if me["authenticated"] != false {
+		t.Errorf("expected authenticated=false, got %v", me["authenticated"])
+	}
+
+	// 3. Media share page renders OpenGraph tags
 	w2 := httptest.NewRecorder()
 	req2 := httptest.NewRequest(http.MethodGet, "/m/mb:recording:123", nil)
 	engine.ServeHTTP(w2, req2)
@@ -101,14 +100,13 @@ func TestWebUISSROpenGraphAndIslands(t *testing.T) {
 		`<meta property="og:title" content="Astral Projection · Solaris"`,
 		`<meta property="og:type" content="music.song"`,
 		`<meta property="og:image" content="https://example.com/cover.jpg"`,
-		`data-island="media-actions"`,
 	} {
 		if !strings.Contains(shareBody, want) {
 			t.Errorf("GET /m/:id body missing %q", want)
 		}
 	}
 
-	// 3. Asset route serves built JS with immutable cache header
+	// 4. Asset route serves built JS with immutable cache header
 	w3 := httptest.NewRecorder()
 	req3 := httptest.NewRequest(http.MethodGet, "/assets/main-abc123.js", nil)
 	engine.ServeHTTP(w3, req3)
