@@ -5,7 +5,6 @@ package events
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"log/slog"
 	"strings"
@@ -87,13 +86,19 @@ func (s *WebSocketService) publishPush(ctx context.Context, payload wsPushPayloa
 	return s.Bus.Conn.Publish(PushSubject, raw)
 }
 
-// marshalPacket returns the base64 of the protojson DyWebSocketPacket.
+// marshalPacket returns the UTF-8 protojson of packet.
+//
+// It must NOT base64-encode here: the field is a []byte, and encoding/json
+// base64-encodes a []byte on its own. Blade undoes exactly one layer
+// (json.Unmarshal into []byte, then protojson.Unmarshal), so encoding here
+// leaves it a base64 string that is not JSON and every websocket push from
+// Metoer is dropped on the gateway floor.
 func marshalPacket(packet *gen.DyWebSocketPacket) []byte {
 	data, err := protojson.Marshal(packet)
 	if err != nil {
 		return []byte{}
 	}
-	return []byte(base64.StdEncoding.EncodeToString(data))
+	return data
 }
 
 func distinctNonEmpty(ids []string) []string {

@@ -94,11 +94,16 @@ type appleMobileConnectRequest struct {
 
 // appleMobileSignInRequest mirrors AppleMobileSignInRequest (extends the
 // connect request with device fields).
+//
+// Platform is the device the credential came from: 2 for iOS, 4 for macOS.
+// It is optional because older builds sent neither, and those were all iOS; a
+// missing value therefore keeps the iOS default instead of failing the request.
 type appleMobileSignInRequest struct {
 	IdentityToken     string  `json:"identity_token" binding:"required"`
 	AuthorizationCode string  `json:"authorization_code" binding:"required"`
 	DeviceId          string  `json:"device_id" binding:"required"`
 	DeviceName        *string `json:"device_name"`
+	Platform          *int    `json:"platform"`
 }
 
 // ─────────────────────────── GET /api/auth/login/{provider} ───────────────────────────
@@ -220,7 +225,8 @@ func (d Deps) appleMobileLogin(c *gin.Context) {
 		return
 	}
 
-	challenge, err := d.requireSocialMFA(c, svc, userInfo, account, req.DeviceId, req.DeviceName, model.ClientPlatformIos)
+	platform := appleMobilePlatform(req.Platform)
+	challenge, err := d.requireSocialMFA(c, svc, userInfo, account, req.DeviceId, req.DeviceName, platform)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
 		return
@@ -236,7 +242,7 @@ func (d Deps) appleMobileLogin(c *gin.Context) {
 		})
 		return
 	}
-	session, err := d.createSessionForUser(c, svc, userInfo, account, req.DeviceId, req.DeviceName, model.ClientPlatformIos, middleware.CurrentSession(ctx), challenge)
+	session, err := d.createSessionForUser(c, svc, userInfo, account, req.DeviceId, req.DeviceName, platform, middleware.CurrentSession(ctx), challenge)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, errs.New("OIDC_AUTHENTICATION_FAILED", "Authentication failed: "+err.Error(), http.StatusInternalServerError))
 		return
@@ -1035,6 +1041,18 @@ func providerAvailable(name string, d Deps) bool {
 	default:
 		return false
 	}
+}
+
+// appleMobilePlatform is the platform an Apple mobile sign-in comes from.
+//
+// Only the two Apple platforms can produce one of these credentials, so a
+// declared macOS value is honoured and anything else — including a client too
+// old to declare anything — keeps the iOS default.
+func appleMobilePlatform(declared *int) model.ClientPlatform {
+	if declared != nil && model.ClientPlatform(*declared) == model.ClientPlatformMacOs {
+		return model.ClientPlatformMacOs
+	}
+	return model.ClientPlatformIos
 }
 
 func (d Deps) appleAvailable() bool {
