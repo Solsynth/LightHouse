@@ -126,6 +126,12 @@ func (d Deps) oidcLogin(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, errs.New("OIDC_PROVIDER_UNAVAILABLE", "The requested OIDC provider is not configured.", http.StatusServiceUnavailable))
 		return
 	}
+	// Bangumi is a data-source grant, not a login identity: it has no email
+	// and no registration path. Only the authenticated connect flow may use it.
+	if strings.EqualFold(provider, "bangumi") && middleware.CurrentUser(c.Request.Context()) == nil {
+		c.JSON(http.StatusUnauthorized, errs.New("OIDC_LINK_ONLY", "Sign in before linking Bangumi.", http.StatusUnauthorized))
+		return
+	}
 	state := uuid.NewString()
 	nonce := uuid.NewString()
 	ctx := c.Request.Context()
@@ -998,6 +1004,7 @@ func availableProviders(d Deps) []string {
 		"twitter",
 		"afdian",
 		"lastfm",
+		"bangumi",
 	}
 	available := make([]string, 0, len(providers))
 	for _, name := range providers {
@@ -1038,6 +1045,9 @@ func providerAvailable(name string, d Deps) bool {
 	case "lastfm":
 		return strings.TrimSpace(d.Cfg.Oidc.LastFm.ApiKey) != "" &&
 			strings.TrimSpace(d.Cfg.Oidc.LastFm.ApiSecret) != ""
+	case "bangumi":
+		return strings.TrimSpace(d.Cfg.Oidc.Bangumi.ClientId) != "" &&
+			strings.TrimSpace(d.Cfg.Oidc.Bangumi.ClientSecret) != ""
 	default:
 		return false
 	}

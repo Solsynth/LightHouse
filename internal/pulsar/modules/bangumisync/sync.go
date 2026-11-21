@@ -46,32 +46,18 @@ type CollectionSyncSummary struct {
 }
 
 // syncConnection reconciles every supported Bangumi subject type for one
-// account. Callers hold the per-connection lock. A token the API rejects even
-// though its recorded expiry looked fine is refreshed once and the pass is
-// retried; POST/PATCH collection writes are idempotent.
+// account. Callers hold the per-connection lock. The OAuth grant belongs to
+// Stargate; this pass borrows the access token for its API calls only.
 func (i *instance) syncConnection(ctx context.Context, conn *model.ExternalSyncConnection) (SyncSummary, error) {
-	summary, err := i.syncConnectionOnce(ctx, conn)
-	if err == nil || !errors.Is(err, bangumi.ErrUnauthorized) {
-		return summary, err
-	}
-	if refreshErr := i.refreshAccessToken(ctx, conn); refreshErr != nil {
-		return summary, err
-	}
-	return i.syncConnectionOnce(ctx, conn)
-}
-
-func (i *instance) syncConnectionOnce(ctx context.Context, conn *model.ExternalSyncConnection) (SyncSummary, error) {
 	summary := SyncSummary{Collections: []CollectionSyncSummary{}}
-	if err := i.ensureAccessToken(ctx, conn); err != nil {
-		return summary, fmt.Errorf("bangumi token: %w", err)
-	}
-	token, err := i.accessToken(conn)
+	link, err := i.stargateLink(ctx, conn.AccountID)
 	if err != nil {
 		return summary, err
 	}
-	username, err := i.ensureUsername(ctx, conn, token)
-	if err != nil {
-		return summary, fmt.Errorf("bangumi username: %w", err)
+	token := link.accessToken
+	username := strings.TrimSpace(link.username)
+	if username == "" {
+		return summary, errors.New("bangumi connection has no username")
 	}
 	policy := i.conflictPolicy(conn)
 

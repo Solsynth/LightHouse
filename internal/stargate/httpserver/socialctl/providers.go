@@ -52,6 +52,10 @@ type userInfo struct {
 	Provider          string
 	RefreshToken      string
 	AccessToken       string
+	// TokenExpiresAt is when the provider's access token stops working. Zero
+	// means the provider did not say; Stargate then treats the token as
+	// non-expiring and leaves refresh to a later explicit call.
+	TokenExpiresAt time.Time
 }
 
 // toMetadata mirrors OidcUserInfo.ToMetadata: snake_case keys, only
@@ -79,6 +83,9 @@ func (u *userInfo) toMetadata() map[string]any {
 	}
 	if u.ProfilePictureUrl != "" {
 		meta["profile_picture_url"] = u.ProfilePictureUrl
+	}
+	if !u.TokenExpiresAt.IsZero() {
+		meta["token_expires_at"] = u.TokenExpiresAt.UTC().Format(time.RFC3339)
 	}
 	return meta
 }
@@ -113,6 +120,8 @@ func newProvider(name string, d Deps) (provider, error) {
 		return &twitterProvider{base: newBaseProvider("twitter", d)}, nil
 	case "lastfm":
 		return &lastfmProvider{base: newBaseProvider("lastfm", d)}, nil
+	case "bangumi":
+		return &bangumiProvider{base: newBaseProvider("bangumi", d)}, nil
 	default:
 		return nil, fmt.Errorf("Unsupported provider: %s", name)
 	}
@@ -162,6 +171,9 @@ func newBaseProvider(name string, d Deps) *baseProvider {
 	case "lastfm":
 		cfg.ClientId = d.Cfg.Oidc.LastFm.ApiKey
 		cfg.ClientSecret = d.Cfg.Oidc.LastFm.ApiSecret
+	case "bangumi":
+		cfg.ClientId = d.Cfg.Oidc.Bangumi.ClientId
+		cfg.ClientSecret = d.Cfg.Oidc.Bangumi.ClientSecret
 	}
 	return &baseProvider{d: d, name: name, http: &http.Client{Timeout: 20 * time.Second}, cfg: cfg}
 }

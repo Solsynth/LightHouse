@@ -38,6 +38,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/middleware"
 	"src.solsynth.dev/sosys/stargate/migrate"
 	"src.solsynth.dev/sosys/stargate/nats"
+	"src.solsynth.dev/sosys/stargate/oauthconnections"
 	"src.solsynth.dev/sosys/stargate/permission"
 	presenceresolver "src.solsynth.dev/sosys/stargate/presence"
 	redisclient "src.solsynth.dev/sosys/stargate/redis"
@@ -205,6 +206,7 @@ func Run(parent context.Context, log *slog.Logger, factories []module.Factory[co
 	// devices, idle state, viewer visibility). Independent of the social
 	// graph, so it is built for every deployment; Redis and Blade degrade.
 	services.PresenceResolver = presenceresolver.NewResolver(st, rc, presence)
+	services.ConnectionTokens = oauthconnections.New(cfg, st, log)
 
 	// The social graph is a module-owned table. Build its read service only
 	// when the module is enabled: a disabled module leaves it nil, and the

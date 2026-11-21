@@ -45,35 +45,6 @@ func (i Images) Best() string {
 	return ""
 }
 
-// Token is the OAuth token response. Bangumi returns the numeric user id on
-// the initial exchange and on refresh, but not on every refresh implementation;
-// callers must treat zero as "ask /v0/me".
-type Token struct {
-	AccessToken  string  `json:"access_token"`
-	ExpiresIn    int64   `json:"expires_in"`
-	TokenType    string  `json:"token_type"`
-	Scope        *string `json:"scope"`
-	RefreshToken string  `json:"refresh_token"`
-	UserID       int64   `json:"user_id"`
-}
-
-// ExpiresAt converts ExpiresIn to an absolute UTC instant.
-func (t Token) ExpiresAt(now time.Time) time.Time {
-	if t.ExpiresIn <= 0 {
-		return time.Time{}
-	}
-	return now.UTC().Add(time.Duration(t.ExpiresIn) * time.Second)
-}
-
-// User is the profile /v0/me and /v0/users/{username} return.
-type User struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
-	Nickname string `json:"nickname"`
-	Sign     string `json:"sign"`
-	Avatar   Images `json:"avatar"`
-}
-
 // SubjectTag is one tag with its usage counts.
 type SubjectTag struct {
 	Name       string `json:"name"`

@@ -432,6 +432,18 @@ func (s *dyAccountService) ListConnections(ctx context.Context, req *gen.DyListC
 	}
 	response := &gen.DyListConnectionsResponse{}
 	for i := range connections {
+		// A tracker token can expire between syncs. Refresh it at the read
+		// boundary so Pulsar never needs the provider's client secret.
+		if s.d.ConnectionTokens != nil {
+			if refreshed, refreshErr := s.d.ConnectionTokens.EnsureFresh(ctx, &connections[i]); refreshErr == nil && refreshed != nil {
+				connections[i] = *refreshed
+			} else if refreshErr != nil && s.d.Log != nil {
+				s.d.Log.Warn("provider token refresh failed",
+					"connection_id", connections[i].Id,
+					"provider", connections[i].Provider,
+					"error", refreshErr)
+			}
+		}
 		response.Connections = append(response.Connections, connectionToProto(&connections[i]))
 	}
 	return response, nil

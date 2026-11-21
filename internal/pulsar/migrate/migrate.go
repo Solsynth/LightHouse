@@ -23,6 +23,26 @@ func Run(ctx context.Context, database *gorm.DB) error {
 	if err := renamePrefixedTables(ctx, database); err != nil {
 		return fmt.Errorf("pulsar migrate rename: %w", err)
 	}
+	if err := dropLegacyBangumiOAuth(ctx, database); err != nil {
+		return fmt.Errorf("pulsar migrate bangumi oauth: %w", err)
+	}
+	return nil
+}
+
+// dropLegacyBangumiOAuth removes credentials the first Pulsar-owned Bangumi
+// linking implementation stored. Stargate now owns the grant, so these columns
+// and the callback-state table would otherwise linger as unused secrets.
+func dropLegacyBangumiOAuth(ctx context.Context, database *gorm.DB) error {
+	for _, statement := range []string{
+		`ALTER TABLE IF EXISTS sync_connections DROP COLUMN IF EXISTS access_token`,
+		`ALTER TABLE IF EXISTS sync_connections DROP COLUMN IF EXISTS refresh_token`,
+		`ALTER TABLE IF EXISTS sync_connections DROP COLUMN IF EXISTS token_expires_at`,
+		`DROP TABLE IF EXISTS sync_oauth_states`,
+	} {
+		if err := database.WithContext(ctx).Exec(statement).Error; err != nil {
+			return fmt.Errorf("%q: %w", statement, err)
+		}
+	}
 	return nil
 }
 

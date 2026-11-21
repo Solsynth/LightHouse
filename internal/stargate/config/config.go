@@ -89,17 +89,17 @@ type Config struct {
 	} `toml:"discovery"`
 
 	Auth struct {
-		Issuer               string   `toml:"issuer"`
-		ValidIssuers         []string `toml:"validIssuers"`
-		Audiences            []string `toml:"audiences"`
-		PublicKeyPath        string   `toml:"publicKeyPath"`
-		PrivateKeyPath       string   `toml:"privateKeyPath"`
+		Issuer                   string   `toml:"issuer"`
+		ValidIssuers             []string `toml:"validIssuers"`
+		Audiences                []string `toml:"audiences"`
+		PublicKeyPath            string   `toml:"publicKeyPath"`
+		PrivateKeyPath           string   `toml:"privateKeyPath"`
 		AccessTokenLifetime      string   `toml:"accessTokenLifetime"`
 		RefreshTokenLifetime     string   `toml:"refreshTokenLifetime"`
 		RefreshGracePeriod       string   `toml:"refreshGracePeriod"`
 		TemporarySessionLifetime string   `toml:"temporarySessionLifetime"`
 		CookieDomain             string   `toml:"cookieDomain"`
-		CookieSecure         bool     `toml:"cookieSecure"`
+		CookieSecure             bool     `toml:"cookieSecure"`
 		// HandoffClients are the apps this deployment hands a session to with a
 		// single-use code. They exist because a cookie cannot cross registrable
 		// domains: an app on one of their hosts is signed in by the code flow
@@ -176,6 +176,7 @@ type Config struct {
 		Afdian    AfdianClient    `toml:"afdian"`
 		Twitter   TwitterClient   `toml:"twitter"`
 		LastFm    LastFmClient    `toml:"lastfm"`
+		Bangumi   BangumiClient   `toml:"bangumi"`
 	} `toml:"oidc"`
 
 	Security SecurityConfig `toml:"security"`
@@ -501,6 +502,18 @@ type LastFmClient struct {
 	ApiSecret string `toml:"apiSecret"`
 }
 
+// BangumiClient configures the bgm.tv OAuth2 application. The callback is
+// {SiteUrl}/auth/callback/bangumi. Endpoint overrides exist for mirrors and
+// tests; empty values select the public bgm.tv hosts.
+type BangumiClient struct {
+	ClientId     string `toml:"clientId"`
+	ClientSecret string `toml:"clientSecret"`
+	AuthorizeUrl string `toml:"authorizeUrl"`
+	TokenUrl     string `toml:"tokenUrl"`
+	ApiBaseUrl   string `toml:"apiBaseUrl"`
+	UserAgent    string `toml:"userAgent"`
+}
+
 // Default returns a config with production-shaped defaults so a missing
 // optional section never zeroes a critical value.
 func Default() *Config {
@@ -620,6 +633,12 @@ func applyEnvOverrides(cfg *Config) {
 	setStr("STARGATE_OIDC_TWITTER_CLIENT_SECRET", &cfg.Oidc.Twitter.ClientSecret)
 	setStr("STARGATE_OIDC_LASTFM_API_KEY", &cfg.Oidc.LastFm.ApiKey)
 	setStr("STARGATE_OIDC_LASTFM_API_SECRET", &cfg.Oidc.LastFm.ApiSecret)
+	setStr("STARGATE_OIDC_BANGUMI_CLIENT_ID", &cfg.Oidc.Bangumi.ClientId)
+	setStr("STARGATE_OIDC_BANGUMI_CLIENT_SECRET", &cfg.Oidc.Bangumi.ClientSecret)
+	setStr("STARGATE_OIDC_BANGUMI_AUTHORIZE_URL", &cfg.Oidc.Bangumi.AuthorizeUrl)
+	setStr("STARGATE_OIDC_BANGUMI_TOKEN_URL", &cfg.Oidc.Bangumi.TokenUrl)
+	setStr("STARGATE_OIDC_BANGUMI_API_BASE_URL", &cfg.Oidc.Bangumi.ApiBaseUrl)
+	setStr("STARGATE_OIDC_BANGUMI_USER_AGENT", &cfg.Oidc.Bangumi.UserAgent)
 	setStr("STARGATE_SERVICES_DRIVE__GRPC", &cfg.Services.Drive.GRPC)
 	setStr("STARGATE_SERVICES_WALLET__GRPC", &cfg.Services.Wallet.GRPC)
 	setStr("STARGATE_SERVICES_PASS__GRPC", &cfg.Services.Pass.GRPC)

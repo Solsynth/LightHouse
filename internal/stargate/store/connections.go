@@ -294,6 +294,24 @@ func (s *Store) UpdateConnection(ctx context.Context, c *model.Connection) error
 		Updates(map[string]any{"is_public": c.IsPublic, "updated_at": gorm.Expr("now()")}).Error
 }
 
+// UpdateConnectionTokensAndMeta writes a refreshed token pair and the provider
+// metadata that records its new expiry. Kept separate from the visibility
+// update so a token refresh never changes what other users may see.
+func (s *Store) UpdateConnectionTokensAndMeta(ctx context.Context, id uuid.UUID, accessToken, refreshToken string, meta map[string]any) error {
+	raw, err := json.Marshal(meta)
+	if err != nil {
+		return err
+	}
+	return s.DB.WithContext(ctx).Unscoped().Model(&ConnectionEntity{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"access_token":  nullStr(accessToken),
+			"refresh_token": nullStr(refreshToken),
+			"meta":          datatypes.JSON(raw),
+			"updated_at":    gorm.Expr("now()"),
+		}).Error
+}
+
 // DeleteConnectionRow hard-deletes a connection row.
 func (s *Store) DeleteConnectionRow(ctx context.Context, id uuid.UUID) error {
 	return s.DB.WithContext(ctx).Unscoped().Where("id = ?", id).Delete(&ConnectionEntity{}).Error

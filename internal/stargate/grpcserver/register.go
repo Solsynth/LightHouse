@@ -17,6 +17,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/config"
 	"src.solsynth.dev/sosys/stargate/grpcclient"
 	"src.solsynth.dev/sosys/stargate/httpserver/e2eectl"
+	"src.solsynth.dev/sosys/stargate/oauthconnections"
 	"src.solsynth.dev/sosys/stargate/permission"
 	"src.solsynth.dev/sosys/stargate/presence"
 	"src.solsynth.dev/sosys/stargate/redis"
@@ -40,6 +41,10 @@ type Deps struct {
 	Clients    *grpcclient.Clients
 	Cfg        *config.Config
 	Log        *slog.Logger
+
+	// ConnectionTokens refreshes provider credentials before ListConnections
+	// hands them to a trusted service. Nil leaves stored tokens untouched.
+	ConnectionTokens *oauthconnections.Service
 
 	// Relationships is the social-graph read service. It is nil when the
 	// relationships module is disabled, in which case the six relationship

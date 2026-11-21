@@ -16,6 +16,7 @@ import (
 	"src.solsynth.dev/sosys/stargate/grpcclient"
 	"src.solsynth.dev/sosys/stargate/middleware"
 	"src.solsynth.dev/sosys/stargate/nats"
+	"src.solsynth.dev/sosys/stargate/oauthconnections"
 	"src.solsynth.dev/sosys/stargate/permission"
 	"src.solsynth.dev/sosys/stargate/presence"
 	"src.solsynth.dev/sosys/stargate/redis"
@@ -51,6 +52,11 @@ type Services struct {
 	// Broadcast fans status and presence-activity changes out to friends on
 	// Blade's websocket push subject.
 	Broadcast *broadcast.Broadcaster
+
+	// ConnectionTokens refreshes expiring provider credentials before a
+	// trusted service reads them. It is nil only in tests that do not touch
+	// account connections.
+	ConnectionTokens *oauthconnections.Service
 
 	// Relationships is the social-graph read service. It is nil unless the
 	// relationships module is enabled, so gRPC relationship RPCs report

@@ -276,9 +276,10 @@ type CatalogCreator struct {
 
 func (CatalogCreator) TableName() string { return "catalog_creators" }
 
-// ExternalSyncConnection stores one account's link to a remote tracker.
-// Tokens are never serialized to clients; API responses expose a separate
-// summary shape that omits them.
+// ExternalSyncConnection stores one account's link to a remote tracker as
+// Pulsar sees it: remote identity plus local sync preferences. The
+// credentials themselves live in Stargate's account_connections and are
+// fetched on demand, so no token field belongs here.
 type ExternalSyncConnection struct {
 	ID        uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
 	AccountID uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:ix_sync_acc_prov,priority:1" json:"account_id"`
@@ -286,12 +287,9 @@ type ExternalSyncConnection struct {
 	// RemoteUserID is the provider's stable numeric id. RemoteUsername is the
 	// handle collection endpoints address; both are stored because Bangumi
 	// lets a user rename the handle once.
-	RemoteUserID   string     `gorm:"type:varchar(256);not null" json:"remote_user_id"`
-	RemoteUsername *string    `gorm:"type:varchar(256)" json:"remote_username,omitempty"`
-	AccessToken    *string    `gorm:"type:text" json:"-"`
-	RefreshToken   *string    `gorm:"type:text" json:"-"`
-	TokenExpiresAt *time.Time `json:"token_expires_at,omitempty"`
-	SyncEnabled    bool       `gorm:"default:true" json:"sync_enabled"`
+	RemoteUserID   string  `gorm:"type:varchar(256);not null" json:"remote_user_id"`
+	RemoteUsername *string `gorm:"type:varchar(256)" json:"remote_username,omitempty"`
+	SyncEnabled    bool    `gorm:"default:true" json:"sync_enabled"`
 	// ConflictPolicy is this account's override: "local", "remote" or
 	// "newest". Empty uses the deployment default.
 	ConflictPolicy string     `gorm:"type:varchar(16);not null;default:''" json:"conflict_policy,omitempty"`
@@ -306,18 +304,6 @@ type ExternalSyncConnection struct {
 }
 
 func (ExternalSyncConnection) TableName() string { return "sync_connections" }
-
-// ExternalOAuthState is a single-use CSRF state for an account-linking
-// callback. Rows are short-lived and consumed atomically.
-type ExternalOAuthState struct {
-	State     string    `gorm:"type:varchar(128);primaryKey" json:"state"`
-	Provider  string    `gorm:"type:varchar(64);not null" json:"provider"`
-	AccountID uuid.UUID `gorm:"type:uuid;not null;index:ix_sync_oauth_account" json:"account_id"`
-	CreatedAt time.Time `json:"created_at"`
-	ExpiresAt time.Time `gorm:"index:ix_sync_oauth_expiry" json:"expires_at"`
-}
-
-func (ExternalOAuthState) TableName() string { return "sync_oauth_states" }
 
 // ToJSON safely marshals an arbitrary value into datatypes.JSON.
 func ToJSON(v any) datatypes.JSON {

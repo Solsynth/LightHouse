@@ -341,6 +341,10 @@ twitter = { clientId = "", clientSecret = "" }
 # credentials. Register {SiteUrl}/auth/callback/lastfm as the API account's
 # callback URL.
 lastfm = { apiKey = "", apiSecret = "" }
+# Bangumi uses OAuth2 authorization-code linking for Pulsar collection sync.
+# Register {SiteUrl}/auth/callback/bangumi on https://bgm.tv/dev/app. The
+# endpoint overrides are optional; empty selects the public hosts.
+bangumi = { clientId = "", clientSecret = "", authorizeUrl = "", tokenUrl = "", apiBaseUrl = "", userAgent = "" }
 
 # Security controls: fail2ban (IP-level blocking after repeated failures),
 # challenge risk escalation, and per-account security mode preferences.

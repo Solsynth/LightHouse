@@ -36,8 +36,6 @@ type mockBangumi struct {
 	created     map[int]bangumi.CollectionPayload
 	subjectByID map[int]bangumi.SlimSubject
 	requests    int
-	denyOnce    bool
-	refreshed   int
 }
 
 func newMockBangumi(t *testing.T) *mockBangumi {
@@ -91,23 +89,7 @@ func (m *mockBangumi) handle(w http.ResponseWriter, r *http.Request) {
 	m.requests++
 
 	switch {
-	case r.Method == http.MethodPost && r.URL.Path == "/oauth/access_token":
-		m.refreshed++
-		_ = r.ParseForm()
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"access_token":  "access-value",
-			"refresh_token": "refresh-value",
-			"expires_in":    3600,
-			"token_type":    "Bearer",
-		})
-	case r.Method == http.MethodGet && r.URL.Path == "/v0/me":
-		_ = json.NewEncoder(w).Encode(bangumi.User{ID: 42, Username: m.username, Nickname: "Alice"})
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v0/users/") && strings.HasSuffix(r.URL.Path, "/collections"):
-		if m.denyOnce {
-			m.denyOnce = false
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
 		subjectType, _ := strconv.Atoi(r.URL.Query().Get("subject_type"))
 		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
@@ -240,7 +222,6 @@ func testInstance(t *testing.T) (*instance, *mockBangumi, uuid.UUID, *model.Exte
 		&model.Collection{},
 		&model.CollectionItem{},
 		&model.ExternalSyncConnection{},
-		&model.ExternalOAuthState{},
 	); err != nil {
 		t.Fatalf("automigrate: %v", err)
 	}
@@ -251,36 +232,31 @@ func testInstance(t *testing.T) (*instance, *mockBangumi, uuid.UUID, *model.Exte
 	inst := &instance{
 		core: coreServices,
 		client: bangumi.NewClient(bangumi.Config{
-			APIBaseURL:   mock.server.URL,
-			TokenURL:     mock.server.URL + "/oauth/access_token",
-			ClientID:     "client-id",
-			ClientSecret: "client-secret",
-			UserAgent:    "PulsarTest/1.0",
-			Interval:     time.Millisecond,
-			HTTPClient:   mock.server.Client(),
+			APIBaseURL: mock.server.URL,
+			UserAgent:  "PulsarTest/1.0",
+			Interval:   time.Millisecond,
+			HTTPClient: mock.server.Client(),
 		}),
 		log:     slog.Default(),
 		syncing: map[uuid.UUID]bool{},
 	}
 	account := uuid.New()
-	access := "token"
-	refresh := "refresh-value"
 	username := "alice"
-	conn := &model.ExternalSyncConnection{
+	remote := &model.ExternalSyncConnection{
 		AccountID:      account,
 		Provider:       provider,
 		RemoteUserID:   "42",
 		RemoteUsername: &username,
-		AccessToken:    &access,
-		RefreshToken:   &refresh,
-		SyncEnabled:    true,
 	}
-	if err := coreServices.Store.UpsertSyncConnection(context.Background(), conn); err != nil {
-		t.Fatalf("upsert connection: %v", err)
+	if _, err := coreServices.Store.EnsureSyncConnection(context.Background(), remote); err != nil {
+		t.Fatalf("ensure connection: %v", err)
 	}
 	stored, err := coreServices.Store.GetSyncConnection(context.Background(), account, provider)
 	if err != nil {
 		t.Fatalf("get connection: %v", err)
+	}
+	inst.linkOverride = func(context.Context, uuid.UUID) (*stargateLink, error) {
+		return &stargateLink{remote: remote, accessToken: "access-value", username: username}, nil
 	}
 	return inst, mock, account, stored
 }
@@ -476,81 +452,4 @@ func findSyncItem(t *testing.T, inst *instance, account uuid.UUID, domain, remot
 	}
 	t.Fatalf("no sync item %s in %s", remoteID, domain)
 	return nil, nil
-}
-
-func TestUpsertSyncConnectionRefreshesInPlace(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
-	if err != nil {
-		t.Fatalf("sqlite: %v", err)
-	}
-	if err := db.AutoMigrate(&model.ExternalSyncConnection{}); err != nil {
-		t.Fatalf("automigrate: %v", err)
-	}
-	st := store.New(db)
-	ctx := context.Background()
-	account := uuid.New()
-	firstAccess, firstRefresh := "first-access", "first-refresh"
-	firstPolicy := "local"
-	username := "alice"
-	first := &model.ExternalSyncConnection{
-		AccountID:      account,
-		Provider:       provider,
-		RemoteUserID:   "42",
-		RemoteUsername: &username,
-		AccessToken:    &firstAccess,
-		RefreshToken:   &firstRefresh,
-		SyncEnabled:    true,
-		ConflictPolicy: firstPolicy,
-	}
-	if err := st.UpsertSyncConnection(ctx, first); err != nil {
-		t.Fatalf("first upsert: %v", err)
-	}
-
-	secondAccess := "second-access"
-	secondUsername := "alice-renamed"
-	second := &model.ExternalSyncConnection{
-		AccountID:      account,
-		Provider:       provider,
-		RemoteUserID:   "42",
-		RemoteUsername: &secondUsername,
-		AccessToken:    &secondAccess,
-		SyncEnabled:    true,
-	}
-	if err := st.UpsertSyncConnection(ctx, second); err != nil {
-		t.Fatalf("second upsert: %v", err)
-	}
-	stored, err := st.GetSyncConnection(ctx, account, provider)
-	if err != nil {
-		t.Fatalf("get: %v", err)
-	}
-	if stored.AccessToken == nil || *stored.AccessToken != secondAccess {
-		t.Fatalf("access token = %v", stored.AccessToken)
-	}
-	if stored.RemoteUsername == nil || *stored.RemoteUsername != secondUsername {
-		t.Fatalf("username = %v", stored.RemoteUsername)
-	}
-	if stored.ConflictPolicy != firstPolicy {
-		t.Fatalf("conflict policy = %q, want preserved %q", stored.ConflictPolicy, firstPolicy)
-	}
-	if stored.ID != first.ID {
-		t.Fatalf("row replaced: %s != %s", stored.ID, first.ID)
-	}
-}
-
-func TestUnauthorizedRefreshesOnceAndRetries(t *testing.T) {
-	inst, mock, _, conn := testInstance(t)
-	mock.denyOnce = true
-	summary, err := inst.syncConnection(context.Background(), conn)
-	if err != nil {
-		t.Fatalf("sync: %v", err)
-	}
-	if summary.Pulled != 2 {
-		t.Fatalf("pulled = %d (%+v)", summary.Pulled, summary)
-	}
-	if mock.refreshed != 1 {
-		t.Fatalf("refreshes = %d, want 1", mock.refreshed)
-	}
-	if conn.AccessToken == nil || *conn.AccessToken == "token" {
-		t.Fatalf("token was not rotated: %v", conn.AccessToken)
-	}
 }

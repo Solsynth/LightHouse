@@ -8,12 +8,12 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/model"
 )
 
-// GetSyncConnection returns one account's link to a provider.
+// GetSyncConnection returns one account's local sync preferences for a
+// provider. The credential itself lives in Stargate.
 func (s *Store) GetSyncConnection(ctx context.Context, accountID uuid.UUID, provider string) (*model.ExternalSyncConnection, error) {
 	var conn model.ExternalSyncConnection
 	err := s.DB.WithContext(ctx).
@@ -25,48 +25,48 @@ func (s *Store) GetSyncConnection(ctx context.Context, accountID uuid.UUID, prov
 	return &conn, nil
 }
 
-// UpsertSyncConnection creates or refreshes a link. A reconnect replaces the
-// tokens and remote identity in place so the account does not accumulate dead
-// rows; an empty incoming conflict policy keeps the account's own choice.
-func (s *Store) UpsertSyncConnection(ctx context.Context, conn *model.ExternalSyncConnection) error {
+// EnsureSyncConnection creates the local row for a newly linked account, or
+// refreshes the remote identity on an existing one. Local preferences —
+// background sync and conflict policy — are never overwritten by a re-link.
+func (s *Store) EnsureSyncConnection(ctx context.Context, conn *model.ExternalSyncConnection) (bool, error) {
 	if conn == nil {
-		return errors.New("nil sync connection")
+		return false, errors.New("nil sync connection")
 	}
-	if conn.ID == uuid.Nil {
-		conn.ID = uuid.New()
+	db := s.DB.WithContext(ctx)
+	var existing model.ExternalSyncConnection
+	err := db.Where("account_id = ? AND LOWER(provider) = LOWER(?)", conn.AccountID, conn.Provider).
+		First(&existing).Error
+	if err == nil {
+		updates := map[string]any{
+			"remote_user_id":  conn.RemoteUserID,
+			"remote_username": conn.RemoteUsername,
+			"meta":            conn.Meta,
+			"updated_at":      time.Now().UTC(),
+		}
+		if conn.RemoteUserID == "" {
+			delete(updates, "remote_user_id")
+		}
+		return false, db.Model(&model.ExternalSyncConnection{}).
+			Where("id = ?", existing.ID).Updates(updates).Error
 	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, err
+	}
+
 	now := time.Now().UTC()
+	conn.ID = uuid.New()
 	conn.CreatedAt = now
 	conn.UpdatedAt = now
-
-	return s.DB.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "account_id"}, {Name: "provider"}},
-		DoUpdates: clause.Assignments(map[string]any{
-			"remote_user_id":   conn.RemoteUserID,
-			"remote_username":  conn.RemoteUsername,
-			"access_token":     conn.AccessToken,
-			"refresh_token":    conn.RefreshToken,
-			"token_expires_at": conn.TokenExpiresAt,
-			"sync_enabled":     conn.SyncEnabled,
-			"conflict_policy":  gorm.Expr("COALESCE(NULLIF(EXCLUDED.conflict_policy, ''), sync_connections.conflict_policy)"),
-			"meta":             conn.Meta,
-			"updated_at":       now,
-		}),
-	}).Create(conn).Error
-}
-
-// UpdateSyncConnectionTokens persists refreshed credentials and the new
-// expiry without touching the account's sync preferences.
-func (s *Store) UpdateSyncConnectionTokens(ctx context.Context, conn *model.ExternalSyncConnection) error {
-	now := time.Now().UTC()
-	return s.DB.WithContext(ctx).Model(&model.ExternalSyncConnection{}).
-		Where("id = ?", conn.ID).
-		Updates(map[string]any{
-			"access_token":     conn.AccessToken,
-			"refresh_token":    conn.RefreshToken,
-			"token_expires_at": conn.TokenExpiresAt,
-			"updated_at":       now,
-		}).Error
+	conn.SyncEnabled = true
+	if err := db.Create(conn).Error; err != nil {
+		// A concurrent first read may have won the unique key; re-read it.
+		if reread := db.Where("account_id = ? AND LOWER(provider) = LOWER(?)", conn.AccountID, conn.Provider).
+			First(&existing).Error; reread == nil {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // UpdateSyncConnectionResult records the outcome of one reconciliation.
@@ -109,22 +109,9 @@ func (s *Store) UpdateSyncConnectionSettings(ctx context.Context, accountID uuid
 	return nil
 }
 
-// DeleteSyncConnection unlinks an account from a provider.
-func (s *Store) DeleteSyncConnection(ctx context.Context, accountID uuid.UUID, provider string) error {
-	res := s.DB.WithContext(ctx).
-		Where("account_id = ? AND LOWER(provider) = LOWER(?)", accountID, provider).
-		Delete(&model.ExternalSyncConnection{})
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
-}
-
-// ListSyncConnections returns every link to a provider, newest first. The
-// background reconciler calls it with enabledOnly to skip paused accounts.
+// ListSyncConnections returns every local sync preference row for a provider,
+// oldest first. The background reconciler uses enabledOnly to skip paused
+// accounts.
 func (s *Store) ListSyncConnections(ctx context.Context, provider string, enabledOnly bool) ([]model.ExternalSyncConnection, error) {
 	query := s.DB.WithContext(ctx).
 		Where("LOWER(provider) = LOWER(?)", provider)
@@ -136,42 +123,6 @@ func (s *Store) ListSyncConnections(ctx context.Context, provider string, enable
 		return nil, err
 	}
 	return conns, nil
-}
-
-// CreateOAuthState stores the single-use state a callback must echo.
-func (s *Store) CreateOAuthState(ctx context.Context, state *model.ExternalOAuthState) error {
-	if state == nil {
-		return errors.New("nil oauth state")
-	}
-	state.CreatedAt = time.Now().UTC()
-	return s.DB.WithContext(ctx).Create(state).Error
-}
-
-// ConsumeOAuthState deletes and returns a live state row atomically. A
-// missing or expired row is the same answer: the callback is not allowed to
-// proceed, and the row is gone so it cannot be replayed.
-func (s *Store) ConsumeOAuthState(ctx context.Context, state, provider string) (*model.ExternalOAuthState, error) {
-	var row model.ExternalOAuthState
-	res := s.DB.WithContext(ctx).Raw(
-		`DELETE FROM sync_oauth_states
-		 WHERE state = ? AND LOWER(provider) = LOWER(?) AND expires_at > ?
-		 RETURNING state, provider, account_id, created_at, expires_at`,
-		state, provider, time.Now().UTC(),
-	).Scan(&row)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 && row.State == "" {
-		return nil, gorm.ErrRecordNotFound
-	}
-	return &row, nil
-}
-
-// PurgeOAuthStates removes expired callback states.
-func (s *Store) PurgeOAuthStates(ctx context.Context, before time.Time) error {
-	return s.DB.WithContext(ctx).
-		Where("expires_at < ?", before).
-		Delete(&model.ExternalOAuthState{}).Error
 }
 
 // EnsureSyncCollection returns the account's mirror of one provider list,

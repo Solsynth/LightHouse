@@ -46,24 +46,12 @@ tmdbBaseUrl = "https://api.themoviedb.org/3"
 tmdbApiKey = ""
 
 [bangumi]
-# Account linking and collection mirroring. Create an OAuth app at
-# https://bgm.tv/dev/app and register the callback URL before enabling this.
-# The metadata section above can search Bangumi without these credentials;
-# linking is disabled while clientId or clientSecret is empty.
-clientId = ""
-clientSecret = ""
-# Must match the callback registered on the Bangumi app. Empty derives
-# {baseUrl}/api/bangumi/oauth/callback.
-redirectUrl = ""
-# OAuth lives on bgm.tv while the API lives on api.bgm.tv.
-authorizeUrl = "https://bgm.tv/oauth/authorize"
-tokenUrl = "https://bgm.tv/oauth/access_token"
+# The Bangumi account link itself is owned by Stargate (see [oidc.bangumi]
+# there). Pulsar only reads the collection API with the token Stargate hands
+# it, so no client secret belongs in this file.
 apiBaseUrl = "https://api.bgm.tv"
 # Empty reuses metadata.userAgent.
 userAgent = ""
-# Browser destination after the callback. It receives ?bangumi=linked or
-# ?bangumi=error&message=...; empty falls back to siteUrl.
-postAuthRedirect = ""
 # Minutes between background reconciliations. Zero means 30; a negative
 # value disables the background job while leaving manual sync available.
 syncIntervalMinutes = 30

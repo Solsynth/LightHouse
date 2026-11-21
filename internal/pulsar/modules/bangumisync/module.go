@@ -2,6 +2,7 @@ package bangumisync
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -14,14 +15,15 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 )
 
-// Factory returns the Bangumi account-link and collection-mirror module.
+// Factory returns the Bangumi collection-mirror module. Account linking is
+// owned by Stargate; this module reads the grant on demand.
 func Factory() module.Factory[core.Services] {
 	return module.Factory[core.Services]{
 		ID:             "app.solian.pulsar.bangumi",
 		Kind:           module.KindFeature,
 		DefaultEnabled: true,
-		Models:         []any{&model.ExternalSyncConnection{}, &model.ExternalOAuthState{}},
-		Capabilities:   []string{"bangumi", "bangumi.sync", "account.connections"},
+		Models:         []any{&model.ExternalSyncConnection{}},
+		Capabilities:   []string{"bangumi", "bangumi.sync"},
 		New:            func() module.Instance[core.Services] { return &instance{} },
 	}
 }
@@ -38,9 +40,12 @@ type instance struct {
 	mu      sync.Mutex
 	syncing map[uuid.UUID]bool
 
-	// disableAutoSync lets tests exercise the callback without a background
+	// disableAutoSync lets tests exercise the read path without a background
 	// reconciliation racing their assertions and cleanup.
 	disableAutoSync bool
+	// linkOverride lets tests supply a Stargate link without a live gRPC
+	// server. Production leaves it nil.
+	linkOverride func(context.Context, uuid.UUID) (*stargateLink, error)
 }
 
 func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]) error {
@@ -54,21 +59,10 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 
 	cfg := host.Core.Config.Bangumi
 	i.client = bangumi.NewClient(bangumi.Config{
-		APIBaseURL:   cfg.APIBaseURL,
-		AuthorizeURL: cfg.AuthorizeURL,
-		TokenURL:     cfg.TokenURL,
-		ClientID:     cfg.ClientID,
-		ClientSecret: cfg.ClientSecret,
-		RedirectURL:  cfg.RedirectURL,
-		UserAgent:    cfg.UserAgent,
+		APIBaseURL: cfg.APIBaseURL,
+		UserAgent:  cfg.UserAgent,
 	})
 	i.registerRoutes(host.API)
-
-	// Expired callback states are useless the moment they expire; a sweep
-	// keeps the table from growing without bound.
-	host.Core.Jobs.Every("pulsar.bangumi.oauth_purge", time.Hour, func(ctx context.Context) error {
-		return host.Core.Store.PurgeOAuthStates(ctx, time.Now().UTC())
-	})
 
 	interval := time.Duration(cfg.SyncIntervalMinutes) * time.Minute
 	if interval > 0 {
@@ -105,6 +99,9 @@ func (i *instance) syncAll(ctx context.Context) error {
 		summary, syncErr := i.syncConnection(callCtx, conn)
 		cancel()
 		i.unlock(conn.ID)
+		if errors.Is(syncErr, errNotLinked) {
+			continue
+		}
 		now := time.Now().UTC()
 		_ = i.core.Store.UpdateSyncConnectionResult(context.Background(), conn.ID, &now, syncErr)
 		if syncErr != nil {
