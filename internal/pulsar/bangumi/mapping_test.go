@@ -21,6 +21,20 @@ func TestSubjectTypeAndDomainRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDefaultWatchlistNameMatchesClients(t *testing.T) {
+	cases := map[string]string{
+		model.DomainBook:   "Book Watchlist",
+		model.DomainAnime:  "Anime Watchlist",
+		model.DomainGaming: "Gaming Watchlist",
+		model.DomainVideo:  "Video Watchlist",
+	}
+	for domain, want := range cases {
+		if got := DefaultWatchlistName(domain); got != want {
+			t.Fatalf("DefaultWatchlistName(%q) = %q, want %q", domain, got, want)
+		}
+	}
+}
+
 func TestCollectionStatusRoundTrip(t *testing.T) {
 	cases := []struct {
 		subjectType int

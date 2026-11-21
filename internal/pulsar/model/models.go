@@ -186,9 +186,9 @@ type Collection struct {
 	Description *string   `gorm:"type:text" json:"description,omitempty"`
 	IsPublic    bool      `gorm:"default:true" json:"is_public"`
 	ArtworkURL  *string   `gorm:"type:varchar(4096)" json:"artwork_url,omitempty"`
-	// SyncProvider and SyncScope mark a collection as the mirror of one remote
-	// provider's list for one domain. NULL keeps ordinary user collections out
-	// of the unique key: Postgres treats NULLs as distinct.
+	// SyncProvider and SyncScope mark the account's watchlist as the target of
+	// one remote provider's list for one domain. NULL keeps ordinary user
+	// collections out of the unique key: Postgres treats NULLs as distinct.
 	SyncProvider *string        `gorm:"type:varchar(64);uniqueIndex:ix_coll_sync,priority:2" json:"sync_provider,omitempty"`
 	SyncScope    *string        `gorm:"type:varchar(64);uniqueIndex:ix_coll_sync,priority:3" json:"sync_scope,omitempty"`
 	CreatedAt    time.Time      `json:"created_at"`

@@ -428,6 +428,263 @@ func TestBookProgressIsPushed(t *testing.T) {
 	}
 }
 
+func TestSyncMergesIntoExistingDefaultWatchlist(t *testing.T) {
+	inst, _, account, conn := testInstance(t)
+	ctx := context.Background()
+
+	defaultList := &model.Collection{
+		AccountID: account,
+		Domain:    model.DomainAnime,
+		Kind:      model.KindWatchlist,
+		Name:      "Anime Watchlist",
+	}
+	if err := inst.core.Store.CreateCollection(ctx, defaultList); err != nil {
+		t.Fatalf("create default watchlist: %v", err)
+	}
+
+	summary, err := inst.syncConnection(ctx, conn)
+	if err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if summary.Pulled != 2 {
+		t.Fatalf("pulled = %d, want 2 (%+v)", summary.Pulled, summary)
+	}
+
+	watchlists := watchlistsForDomain(t, inst, account, model.DomainAnime)
+	if len(watchlists) != 1 {
+		t.Fatalf("anime watchlists = %d, want 1: %+v", len(watchlists), watchlists)
+	}
+	if watchlists[0].ID != defaultList.ID || watchlists[0].Name != "Anime Watchlist" {
+		t.Fatalf("watchlist = %+v, want the account's own list", watchlists[0])
+	}
+	if watchlists[0].SyncProvider == nil || *watchlists[0].SyncProvider != provider {
+		t.Fatalf("default watchlist was not tagged as the sync target: %+v", watchlists[0])
+	}
+
+	_, item := findSyncItem(t, inst, account, model.DomainAnime, "100")
+	if item.CollectionID != defaultList.ID {
+		t.Fatalf("item collection = %s, want %s", item.CollectionID, defaultList.ID)
+	}
+	if empty := watchlistsForDomain(t, inst, account, model.DomainGaming); len(empty) != 0 {
+		t.Fatalf("gaming watchlists = %d, want none for an empty Bangumi list", len(empty))
+	}
+}
+
+func TestSyncKeepsItsWatchlistAfterAnotherIsCreated(t *testing.T) {
+	inst, _, account, conn := testInstance(t)
+	ctx := context.Background()
+
+	if _, err := inst.syncConnection(ctx, conn); err != nil {
+		t.Fatalf("seed sync: %v", err)
+	}
+	chosen := watchlistsForDomain(t, inst, account, model.DomainAnime)
+	if len(chosen) != 1 {
+		t.Fatalf("anime watchlists = %d, want 1", len(chosen))
+	}
+
+	extra := &model.Collection{
+		AccountID: account,
+		Domain:    model.DomainAnime,
+		Kind:      model.KindWatchlist,
+		Name:      "Another Anime List",
+	}
+	if err := inst.core.Store.CreateCollection(ctx, extra); err != nil {
+		t.Fatalf("create extra watchlist: %v", err)
+	}
+	if _, err := inst.syncConnection(ctx, conn); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+
+	watchlists := watchlistsForDomain(t, inst, account, model.DomainAnime)
+	if len(watchlists) != 2 {
+		t.Fatalf("anime watchlists = %d, want 2", len(watchlists))
+	}
+	_, item := findSyncItem(t, inst, account, model.DomainAnime, "100")
+	if item.CollectionID != chosen[0].ID {
+		t.Fatalf("item moved to %s, want the original list %s", item.CollectionID, chosen[0].ID)
+	}
+	full, err := inst.core.Store.GetCollection(ctx, extra.ID)
+	if err != nil {
+		t.Fatalf("get extra watchlist: %v", err)
+	}
+	if len(full.Items) != 0 {
+		t.Fatalf("extra watchlist items = %d, want 0", len(full.Items))
+	}
+}
+
+func TestSyncFoldsLegacyMirrorIntoDefaultWatchlist(t *testing.T) {
+	inst, _, account, conn := testInstance(t)
+	ctx := context.Background()
+
+	defaultList := &model.Collection{
+		AccountID: account,
+		Domain:    model.DomainAnime,
+		Kind:      model.KindWatchlist,
+		Name:      "Anime Watchlist",
+	}
+	if err := inst.core.Store.CreateCollection(ctx, defaultList); err != nil {
+		t.Fatalf("create default watchlist: %v", err)
+	}
+	catalog, err := inst.findOrCreateCatalog(ctx, model.DomainAnime, 100, bangumi.SlimSubject{
+		ID: 100, Type: bangumi.SubjectTypeAnime, Name: "Cowboy Bebop",
+	})
+	if err != nil {
+		t.Fatalf("catalog: %v", err)
+	}
+
+	// The account already tracks the same work locally.
+	localStatus := model.StatusCompleted
+	localRating := 10
+	if err := inst.core.Store.AddCollectionItem(ctx, &model.CollectionItem{
+		CollectionID: defaultList.ID,
+		CatalogID:    &catalog.ID,
+		Status:       &localStatus,
+		Rating:       &localRating,
+	}); err != nil {
+		t.Fatalf("default item: %v", err)
+	}
+
+	// An older sync put the same work in its own mirror collection.
+	scope := strconv.Itoa(bangumi.SubjectTypeAnime)
+	legacy := &model.Collection{
+		AccountID:    account,
+		Domain:       model.DomainAnime,
+		Kind:         model.KindWatchlist,
+		Name:         "Bangumi · Anime",
+		SyncProvider: stringPointer(provider),
+		SyncScope:    &scope,
+	}
+	if err := inst.core.Store.CreateCollection(ctx, legacy); err != nil {
+		t.Fatalf("create legacy mirror: %v", err)
+	}
+	remoteID := "100"
+	mirrorStatus := model.StatusWatching
+	mirrorRating := 8
+	progress := 3
+	note := "nice"
+	localHash := bangumi.LocalFingerprint(bangumi.LocalState{
+		Status: mirrorStatus, Rating: &mirrorRating, Note: &note, Progress: &progress,
+	})
+	remoteHash := bangumi.RemoteFingerprint(bangumi.RemoteState{
+		Type: bangumi.CollectionDoing, Rate: 8, Comment: note, EpStatus: progress,
+	})
+	if err := inst.core.Store.AddCollectionItem(ctx, &model.CollectionItem{
+		CollectionID:          legacy.ID,
+		CatalogID:             &catalog.ID,
+		Status:                &mirrorStatus,
+		Rating:                &mirrorRating,
+		Note:                  &note,
+		Progress:              &progress,
+		SyncRemoteID:          &remoteID,
+		SyncLocalFingerprint:  &localHash,
+		SyncRemoteFingerprint: &remoteHash,
+	}); err != nil {
+		t.Fatalf("legacy item: %v", err)
+	}
+
+	if _, err := inst.syncConnection(ctx, conn); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	watchlists := watchlistsForDomain(t, inst, account, model.DomainAnime)
+	if len(watchlists) != 1 {
+		t.Fatalf("anime watchlists = %d, want 1: %+v", len(watchlists), watchlists)
+	}
+	if watchlists[0].ID != defaultList.ID {
+		t.Fatalf("watchlist = %s, want %s", watchlists[0].ID, defaultList.ID)
+	}
+
+	full, err := inst.core.Store.GetCollection(ctx, defaultList.ID)
+	if err != nil {
+		t.Fatalf("get default watchlist: %v", err)
+	}
+	matches := 0
+	for index := range full.Items {
+		item := &full.Items[index]
+		if item.CatalogID == nil || *item.CatalogID != catalog.ID {
+			continue
+		}
+		matches++
+		if item.SyncRemoteID == nil || *item.SyncRemoteID != remoteID {
+			t.Fatalf("merged item has no Bangumi link: %+v", item)
+		}
+		if item.Status == nil || *item.Status != model.StatusCompleted {
+			t.Fatalf("manual status was lost: %v", item.Status)
+		}
+	}
+	if matches != 1 {
+		t.Fatalf("catalog rows = %d, want the two entries folded into 1", matches)
+	}
+	if _, err := inst.core.Store.GetCollection(ctx, legacy.ID); err == nil {
+		t.Fatal("legacy mirror collection still exists")
+	}
+}
+
+func TestSyncAdoptsLegacyMirrorWhenNoDefaultWatchlistExists(t *testing.T) {
+	inst, _, account, conn := testInstance(t)
+	ctx := context.Background()
+
+	scope := strconv.Itoa(bangumi.SubjectTypeAnime)
+	legacy := &model.Collection{
+		AccountID:    account,
+		Domain:       model.DomainAnime,
+		Kind:         model.KindWatchlist,
+		Name:         "Bangumi · Anime",
+		SyncProvider: stringPointer(provider),
+		SyncScope:    &scope,
+	}
+	if err := inst.core.Store.CreateCollection(ctx, legacy); err != nil {
+		t.Fatalf("create legacy mirror: %v", err)
+	}
+	catalog, err := inst.findOrCreateCatalog(ctx, model.DomainAnime, 100, bangumi.SlimSubject{
+		ID: 100, Type: bangumi.SubjectTypeAnime, Name: "Cowboy Bebop",
+	})
+	if err != nil {
+		t.Fatalf("catalog: %v", err)
+	}
+	remoteID := "100"
+	status := model.StatusWatching
+	localHash := bangumi.LocalFingerprint(bangumi.LocalState{Status: status})
+	remoteHash := bangumi.RemoteFingerprint(bangumi.RemoteState{Type: bangumi.CollectionDoing})
+	if err := inst.core.Store.AddCollectionItem(ctx, &model.CollectionItem{
+		CollectionID:          legacy.ID,
+		CatalogID:             &catalog.ID,
+		Status:                &status,
+		SyncRemoteID:          &remoteID,
+		SyncLocalFingerprint:  &localHash,
+		SyncRemoteFingerprint: &remoteHash,
+	}); err != nil {
+		t.Fatalf("legacy item: %v", err)
+	}
+
+	if _, err := inst.syncConnection(ctx, conn); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	watchlists := watchlistsForDomain(t, inst, account, model.DomainAnime)
+	if len(watchlists) != 1 {
+		t.Fatalf("anime watchlists = %d, want 1: %+v", len(watchlists), watchlists)
+	}
+	if watchlists[0].ID != legacy.ID || watchlists[0].Name != "Anime Watchlist" {
+		t.Fatalf("adopted watchlist = %+v", watchlists[0])
+	}
+	_, item := findSyncItem(t, inst, account, model.DomainAnime, remoteID)
+	if item.CollectionID != legacy.ID {
+		t.Fatalf("item collection = %s, want %s", item.CollectionID, legacy.ID)
+	}
+}
+
+func watchlistsForDomain(t *testing.T, inst *instance, account uuid.UUID, domain string) []model.Collection {
+	t.Helper()
+	collections, _, err := inst.core.Store.ListCollections(context.Background(), account, domain, model.KindWatchlist, 0, 100)
+	if err != nil {
+		t.Fatalf("list watchlists: %v", err)
+	}
+	return collections
+}
+
+func stringPointer(value string) *string { return &value }
+
 func findSyncItem(t *testing.T, inst *instance, account uuid.UUID, domain, remoteID string) (*model.Collection, *model.CollectionItem) {
 	t.Helper()
 	collections, err := inst.core.Store.ListSyncCollections(context.Background(), account, provider)

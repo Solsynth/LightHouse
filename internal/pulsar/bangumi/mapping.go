@@ -45,7 +45,9 @@ func SubjectTypeForDomain(domain string) (int, bool) {
 	}
 }
 
-// DomainLabel is the human name in a mirror collection's title.
+// DomainLabel is the human name older Pulsar versions used in a mirror
+// collection's title. It stays exported so the Bangumi sync can recognise and
+// fold those collections into the account's own watchlists.
 func DomainLabel(domain string) string {
 	switch domain {
 	case model.DomainBook:
@@ -58,6 +60,25 @@ func DomainLabel(domain string) string {
 		return "Video"
 	default:
 		return strings.Title(domain)
+	}
+}
+
+// DefaultWatchlistName is the name of the single watchlist a domain uses
+// before the account renames it. Clients create the same list on first use, so
+// a synced item lands beside locally tracked ones instead of in a mirror
+// collection of its own.
+func DefaultWatchlistName(domain string) string {
+	switch domain {
+	case model.DomainBook:
+		return "Book Watchlist"
+	case model.DomainAnime:
+		return "Anime Watchlist"
+	case model.DomainGaming:
+		return "Gaming Watchlist"
+	case model.DomainVideo:
+		return "Video Watchlist"
+	default:
+		return strings.Title(domain) + " Watchlist"
 	}
 }
 

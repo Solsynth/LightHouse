@@ -13,6 +13,7 @@ import (
 
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/bangumi"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/model"
+	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/store"
 )
 
 // maxRemoteRows caps one domain's import. A library larger than this keeps
@@ -88,20 +89,30 @@ func (i *instance) syncConnection(ctx context.Context, conn *model.ExternalSyncC
 
 func (i *instance) syncDomain(ctx context.Context, conn *model.ExternalSyncConnection, token, username, domain string, subjectType int, policy string) (CollectionSyncSummary, error) {
 	stats := CollectionSyncSummary{Domain: domain}
-	collection, err := i.core.Store.EnsureSyncCollection(
-		ctx, conn.AccountID, domain, provider, strconv.Itoa(subjectType),
-		"Bangumi · "+bangumi.DomainLabel(domain),
-	)
-	if err != nil {
-		return stats, err
-	}
-	stats.CollectionID = collection.ID.String()
-
 	rows, complete, err := i.fetchAllCollections(ctx, token, username, subjectType)
 	if err != nil {
 		return stats, err
 	}
 	stats.Remote = len(rows)
+
+	collection, err := i.core.Store.EnsureWatchlistCollection(ctx, store.WatchlistTarget{
+		AccountID:  conn.AccountID,
+		Domain:     domain,
+		Provider:   provider,
+		Scope:      strconv.Itoa(subjectType),
+		Name:       bangumi.DefaultWatchlistName(domain),
+		LegacyName: "Bangumi · " + bangumi.DomainLabel(domain),
+		Create:     len(rows) > 0,
+	})
+	if err != nil {
+		return stats, err
+	}
+	if collection == nil {
+		// Nothing on Bangumi and no watchlist yet: leave the domain empty
+		// rather than creating a list the account never used.
+		return stats, nil
+	}
+	stats.CollectionID = collection.ID.String()
 
 	full, err := i.core.Store.GetCollection(ctx, collection.ID)
 	if err != nil {
