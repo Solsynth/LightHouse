@@ -81,8 +81,12 @@ type ChatRoom struct {
 
 // ChatMember is one room membership.
 type ChatMember struct {
-	ID                    string          `json:"id"`
-	ChatRoomID            string          `json:"chat_room_id"`
+	ID         string `json:"id"`
+	ChatRoomID string `json:"chat_room_id"`
+	// ChatRoom is the room snapshot a member row is rendered against. Invite
+	// rows must carry it: the Island client force-unwraps `invite.chatRoom` to
+	// draw a tile, so a null here is a sheet that cannot render one invite.
+	ChatRoom              *ChatRoom       `json:"chat_room"`
 	AccountID             string          `json:"account_id"`
 	Username              *string         `json:"username"`
 	Nick                  *string         `json:"nick"`

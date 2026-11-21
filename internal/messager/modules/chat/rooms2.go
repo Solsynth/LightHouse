@@ -807,8 +807,36 @@ func (i *instance) listInvites(c *gin.Context) {
 	accountUUID, _ := uuid.Parse(accountID)
 	var members []*store.ChatMemberEntity
 	_ = i.db.WithContext(ctx).Where("account_id = ? AND joined_at IS NULL", accountUUID).Find(&members).Error
+	// The client renders each invite from its room and force-unwraps it, so the
+	// room, the DM peer (as `members`) and the realm snapshot have to come along
+	// the way C# ListChatInvites hydrated them. An invite whose room row is gone
+	// cannot be accepted, so it is not offered.
+	roomIDs := make([]uuid.UUID, 0, len(members))
+	for _, member := range members {
+		roomIDs = append(roomIDs, member.ChatRoomID)
+	}
+	rooms := map[string]model.ChatRoom{}
+	if len(roomIDs) > 0 {
+		var entities []*store.ChatRoomEntity
+		_ = i.db.WithContext(ctx).Where("id IN ?", roomIDs).Find(&entities).Error
+		for _, room := range i.hydrateRooms(ctx, entities, accountID) {
+			rooms[room.ID] = room
+		}
+	}
 	models := i.memberModels(ctx, members)
-	httpx.OK(c, models)
+	out := make([]model.ChatMember, 0, len(models))
+	for idx := range models {
+		room, ok := rooms[models[idx].ChatRoomID]
+		if !ok {
+			continue
+		}
+		roomCopy := room
+		models[idx].ChatRoom = &roomCopy
+		out = append(out, models[idx])
+	}
+	// A member without a resolved account is not renderable by the client, and
+	// one such row fails the whole list.
+	httpx.OK(c, filterWithAccount(out))
 }
 
 func (i *instance) acceptInvite(c *gin.Context) {
