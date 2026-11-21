@@ -43,7 +43,7 @@ func (d *dummyProvider) Search(_ context.Context, _ string, _ int) ([]pulsarmeta
 	return nil, nil
 }
 
-func setupTestMetadataRouter(t *testing.T, testAccID uuid.UUID) (*gin.Engine, *gorm.DB) {
+func setupTestMetadataRouter(t *testing.T, testAccID uuid.UUID) (*gin.Engine, *gorm.DB, *instance) {
 	gin.SetMode(gin.TestMode)
 
 	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
@@ -60,6 +60,8 @@ func setupTestMetadataRouter(t *testing.T, testAccID uuid.UUID) (*gin.Engine, *g
 	cfg := &config.Config{}
 	cfg.SiteUrl = "https://solian.live"
 	cfg.Security.MaxTake = 50
+	// Give the module a key so the TMDb provider is part of the set under test.
+	cfg.Metadata.TMDbAPIKey = "test-key"
 
 	st := store.New(db)
 	services := &core.Services{
@@ -93,12 +95,26 @@ func setupTestMetadataRouter(t *testing.T, testAccID uuid.UUID) (*gin.Engine, *g
 	// Register dummy provider
 	inst.engine.RegisterProvider(&dummyProvider{})
 
-	return srv.Engine, db
+	return srv.Engine, db, inst
+}
+
+// The generic search asks only the track providers of the requested domain,
+// so each media domain needs its upstream registered. A refactor once dropped
+// every provider but MusicBrainz, leaving anime, video and gaming searches
+// with nothing but locally-cached catalog rows.
+func TestMetadataRegistersEveryDomainProvider(t *testing.T) {
+	_, _, inst := setupTestMetadataRouter(t, uuid.New())
+
+	for _, name := range []string{"musicbrainz", "steam", "anilist", "tmdb"} {
+		if _, ok := inst.engine.GetProvider(name); !ok {
+			t.Errorf("expected upstream metadata provider %q to be registered", name)
+		}
+	}
 }
 
 func TestMetadataEndpoints(t *testing.T) {
 	testAcc := uuid.New()
-	router, db := setupTestMetadataRouter(t, testAcc)
+	router, db, _ := setupTestMetadataRouter(t, testAcc)
 
 	// 1. Resolve metadata via API JSON
 	w := httptest.NewRecorder()

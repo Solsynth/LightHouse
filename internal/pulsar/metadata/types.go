@@ -7,6 +7,10 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/model"
 )
 
+// defaultUserAgent identifies Pulsar to upstream providers that do not require
+// a contact address. MusicBrainz has its own UA because its policy demands one.
+const defaultUserAgent = "Pulsar/1.0 (Solar Network)"
+
 // ExternalLink represents a link to an upstream media service.
 type ExternalLink struct {
 	Platform string `json:"platform"`

@@ -20,16 +20,19 @@ type TMDbProvider struct {
 	userAgent string
 }
 
+// NewTMDbProvider builds the TMDb provider. An API key is required: TMDb
+// search returns nothing without one, so callers should skip registering the
+// provider rather than construct it with an empty key.
 func NewTMDbProvider(apiKey, baseURL, userAgent string) *TMDbProvider {
 	if baseURL == "" {
 		baseURL = "https://api.themoviedb.org/3"
 	}
 	if userAgent == "" {
-		userAgent = "Pulsar/1.0 (Solar Network)"
+		userAgent = defaultUserAgent
 	}
 	return &TMDbProvider{
 		client:    &http.Client{Timeout: 8 * time.Second},
-		apiKey:    apiKey,
+		apiKey:    strings.TrimSpace(apiKey),
 		baseURL:   strings.TrimRight(baseURL, "/"),
 		userAgent: userAgent,
 	}

@@ -39,7 +39,9 @@ type MusicBrainzSet struct {
 	Album     *MusicBrainzAlbumProvider
 }
 
-// NewMusicBrainzSet builds the music providers over one transport.
+// NewMusicBrainzSet builds the music providers over one transport. Empty
+// values select the public MusicBrainz/Cover Art Archive endpoints and the
+// contact-bearing User-Agent MusicBrainz requires.
 func NewMusicBrainzSet(baseURL, caaURL, userAgent string) *MusicBrainzSet {
 	mb := newMBClient(baseURL, caaURL, userAgent)
 	wiki := newWikiClient(userAgent)

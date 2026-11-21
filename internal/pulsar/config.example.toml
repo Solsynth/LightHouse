@@ -24,6 +24,21 @@ websocketPushSubject = "websocket_push"
 stargate = { grpc = "localhost:9090" }
 blade    = { grpc = "localhost:7001" }
 
+[metadata]
+# Sent to every upstream provider. This value names Pulsar and carries the
+# fleet's contact URL, which MusicBrainz's terms require.
+userAgent = "Pulsar/1.0 (https://solsynth.dev; lily@solsynth.dev)"
+# Upstream endpoints. Point one at a mirror or a local test server when
+# needed; an empty value falls back to the provider's public default.
+musicBrainzBaseUrl = "https://musicbrainz.org"
+musicBrainzCoverArtUrl = "https://coverartarchive.org"
+anilistEndpoint = "https://graphql.anilist.co"
+steamBaseUrl = "https://store.steampowered.com"
+tmdbBaseUrl = "https://api.themoviedb.org/3"
+# TMDb API key for movie and TV search. Without it the video domain searches
+# only the locally cached catalog.
+tmdbApiKey = ""
+
 [discovery]
 enabled = false
 target = "localhost:7001"

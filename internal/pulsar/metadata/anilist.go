@@ -20,12 +20,14 @@ type AniListProvider struct {
 	userAgent string
 }
 
+// NewAniListProvider builds the AniList provider. Empty values select the
+// public GraphQL endpoint and the fleet User-Agent.
 func NewAniListProvider(endpoint, userAgent string) *AniListProvider {
 	if endpoint == "" {
 		endpoint = "https://graphql.anilist.co"
 	}
 	if userAgent == "" {
-		userAgent = "Pulsar/1.0 (Solar Network)"
+		userAgent = defaultUserAgent
 	}
 	return &AniListProvider{
 		client:    &http.Client{Timeout: 8 * time.Second},

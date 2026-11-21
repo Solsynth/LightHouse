@@ -10,6 +10,24 @@ import (
 type Config struct {
 	config.Base
 
+	// Metadata configures the upstream services the metadata engine queries.
+	// Empty endpoint values select the provider's public upstream; the values
+	// exist so a deployment can point at a mirror or a local test server.
+	Metadata struct {
+		// UserAgent is sent to every upstream provider. The default names
+		// Pulsar and carries the fleet's contact URL, which MusicBrainz's
+		// terms require.
+		UserAgent              string `toml:"userAgent"`
+		MusicBrainzBaseURL     string `toml:"musicBrainzBaseUrl"`
+		MusicBrainzCoverArtURL string `toml:"musicBrainzCoverArtUrl"`
+		AniListEndpoint        string `toml:"anilistEndpoint"`
+		SteamBaseURL           string `toml:"steamBaseUrl"`
+		// TMDbAPIKey enables movie and TV search. Empty leaves the video
+		// domain with only locally cached catalog rows.
+		TMDbAPIKey  string `toml:"tmdbApiKey"`
+		TMDbBaseURL string `toml:"tmdbBaseUrl"`
+	} `toml:"metadata"`
+
 	// LibrarySync configures the per-account library mirror GroovyBox syncs.
 	LibrarySync struct {
 		// RetentionDays is how long a tombstone stays visible to pulls before
@@ -25,7 +43,7 @@ type Config struct {
 
 	Scrobbler struct {
 		AutoScrobbleThresholdPercent int `toml:"autoScrobbleThresholdPercent"`
-		AutoScrobbleMinSeconds        int `toml:"autoScrobbleMinSeconds"`
+		AutoScrobbleMinSeconds       int `toml:"autoScrobbleMinSeconds"`
 		MaxBatchScrobble             int `toml:"maxBatchScrobble"`
 	} `toml:"scrobbler"`
 }
@@ -74,6 +92,13 @@ func applyEnv(cfg *Config) {
 	config.SetStr("PULSAR_REDIS_ADDR", &cfg.Redis.Addr)
 	config.SetStr("PULSAR_REDIS_PASSWORD", &cfg.Redis.Password)
 	config.SetStr("PULSAR_NATS_TARGET", &cfg.NATS.Target)
+	config.SetStr("PULSAR_METADATA_USERAGENT", &cfg.Metadata.UserAgent)
+	config.SetStr("PULSAR_METADATA_MUSICBRAINZBASEURL", &cfg.Metadata.MusicBrainzBaseURL)
+	config.SetStr("PULSAR_METADATA_MUSICBRAINZCOVERARTURL", &cfg.Metadata.MusicBrainzCoverArtURL)
+	config.SetStr("PULSAR_METADATA_ANILISTENDPOINT", &cfg.Metadata.AniListEndpoint)
+	config.SetStr("PULSAR_METADATA_STEAMBASEURL", &cfg.Metadata.SteamBaseURL)
+	config.SetStr("PULSAR_METADATA_TMDBAPIKEY", &cfg.Metadata.TMDbAPIKey)
+	config.SetStr("PULSAR_METADATA_TMDBBASEURL", &cfg.Metadata.TMDbBaseURL)
 	config.SetStr("PULSAR_SERVICES_STARGATE__GRPC", &cfg.Services.Stargate.GRPC)
 	config.SetStr("PULSAR_SERVICES_BLADE__GRPC", &cfg.Services.Blade.GRPC)
 	config.SetInt("PULSAR_LIBRARYSYNC_RETENTIONDAYS", &cfg.LibrarySync.RetentionDays)

@@ -21,12 +21,14 @@ type SteamProvider struct {
 	userAgent string
 }
 
+// NewSteamProvider builds the Steam store provider. Empty values select the
+// public store endpoint and the fleet User-Agent.
 func NewSteamProvider(baseURL, userAgent string) *SteamProvider {
 	if baseURL == "" {
 		baseURL = "https://store.steampowered.com"
 	}
 	if userAgent == "" {
-		userAgent = "Pulsar/1.0 (Solar Network)"
+		userAgent = defaultUserAgent
 	}
 	return &SteamProvider{
 		client:    &http.Client{Timeout: 8 * time.Second},

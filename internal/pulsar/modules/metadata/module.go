@@ -44,11 +44,27 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 	}
 	engine := metadata.NewEngine(host.Core.DB, siteURL)
 
-	// Register built-in upstream metadata providers
-	music := metadata.NewMusicBrainzSet("", "", "")
+	// Register built-in upstream metadata providers. The generic search asks
+	// the track providers of the requested domain, so every media domain
+	// needs one here: dropping a provider does not degrade the search, it
+	// makes that domain return only locally-cached catalog rows.
+	metaCfg := host.Core.Config.Metadata
+	music := metadata.NewMusicBrainzSet(
+		metaCfg.MusicBrainzBaseURL,
+		metaCfg.MusicBrainzCoverArtURL,
+		metaCfg.UserAgent,
+	)
 	engine.RegisterProvider(music.Recording)
 	engine.RegisterProvider(music.Artist)
 	engine.RegisterProvider(music.Album)
+	engine.RegisterProvider(metadata.NewSteamProvider(metaCfg.SteamBaseURL, metaCfg.UserAgent))
+	engine.RegisterProvider(metadata.NewAniListProvider(metaCfg.AniListEndpoint, metaCfg.UserAgent))
+	// TMDb is the one provider that cannot work without a deployment secret.
+	// Register it only when the key exists, so an unconfigured video search
+	// is an explicit absence rather than a provider that always returns nil.
+	if key := strings.TrimSpace(metaCfg.TMDbAPIKey); key != "" {
+		engine.RegisterProvider(metadata.NewTMDbProvider(key, metaCfg.TMDbBaseURL, metaCfg.UserAgent))
+	}
 
 	i.engine = engine
 
