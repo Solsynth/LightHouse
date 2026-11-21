@@ -66,3 +66,16 @@ func TestNormalizeBangumiPreservesExplicitValues(t *testing.T) {
 		t.Fatalf("policy = %q", cfg.Bangumi.ConflictPolicy)
 	}
 }
+
+func TestExampleConfigurationParsesBangumi(t *testing.T) {
+	cfg, err := Load("../config.example.toml")
+	if err != nil {
+		t.Fatalf("load example: %v", err)
+	}
+	if cfg.Bangumi.AuthorizeURL == "" || cfg.Bangumi.TokenURL == "" || cfg.Bangumi.APIBaseURL == "" {
+		t.Fatalf("bangumi defaults missing: %+v", cfg.Bangumi)
+	}
+	if cfg.Bangumi.SyncIntervalMinutes == 0 {
+		t.Fatal("bangumi sync interval was not defaulted")
+	}
+}
