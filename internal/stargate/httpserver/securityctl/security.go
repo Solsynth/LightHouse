@@ -570,11 +570,11 @@ func (c *controller) buildAuthFactor(ctx context.Context, account *model.Account
 		uri := fmt.Sprintf("otpauth://totp/SolarNetwork:%s?secret=%s&issuer=SolarNetwork&digits=6&period=30",
 			url.PathEscape(label), totpSecret)
 		return &model.AuthFactor{
-			Type:            ftype,
-			Trustworthy:     3,
-			AccountId:       account.Id,
-			Secret:          totpSecret,
-			EnabledAt:       now,
+			Type:        ftype,
+			Trustworthy: 3,
+			AccountId:   account.Id,
+			Secret:      totpSecret,
+			// TimedCode factors start disabled until verified with a generated code.
 			CreatedResponse: map[string]any{"secret": totpSecret, "uri": uri},
 		}, nil
 	case model.AuthFactorTypePinCode:
@@ -655,7 +655,7 @@ func (c *controller) enableFactorLogic(ctx context.Context, account *model.Accou
 		return nil
 	}
 	switch factor.Type {
-	case model.AuthFactorTypePassword, model.AuthFactorTypeTimedCode,
+	case model.AuthFactorTypePassword,
 		model.AuthFactorTypePasskey, model.AuthFactorTypeQrLogin:
 		factor.EnabledAt = model.NewTime(time.Now().UTC())
 		if err := c.d.Store.UpdateAuthFactor(ctx, factor); err != nil {
@@ -664,7 +664,7 @@ func (c *controller) enableFactorLogic(ctx context.Context, account *model.Accou
 		c.actionLog(ctx, account.Id, model.ActionLogAuthFactorEnable, meta, nil, nil)
 		return nil
 	}
-	// Code-verified factors: EmailCode / InAppCode / PinCode / NfcToken.
+	// Code-verified factors: TimedCode / EmailCode / InAppCode / PinCode / NfcToken.
 	if code == nil || *code == "" || !c.verifyFactorCode(ctx, factor, *code) {
 		return errors.New("Invalid factor code.")
 	}

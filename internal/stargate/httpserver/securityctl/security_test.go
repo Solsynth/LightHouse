@@ -17,6 +17,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/go-webauthn/webauthn/webauthn"
+	"github.com/pquerna/otp/totp"
 
 	"src.solsynth.dev/sosys/stargate/auth"
 	"src.solsynth.dev/sosys/stargate/model"
@@ -260,6 +261,37 @@ func TestBuildAuthFactorTimedCode(t *testing.T) {
 		"&issuer=SolarNetwork&digits=6&period=30"
 	if uri != wantPrefix {
 		t.Fatalf("uri = %q, want %q", uri, wantPrefix)
+	}
+	if factor.EnabledAt != nil {
+		t.Fatalf("timed-code factor should start disabled (EnabledAt nil), got %v", factor.EnabledAt)
+	}
+}
+
+// TestEnableFactorTimedCodeVerification verifies TimedCode requires a valid
+// TOTP code to enable rather than enabling unconditionally.
+func TestEnableFactorTimedCodeVerification(t *testing.T) {
+	c := &controller{}
+	account := &model.Account{Id: "11111111-1111-1111-1111-111111111111", Name: "testuser"}
+	factor, err := c.buildAuthFactor(context.Background(), account, model.AuthFactorTypeTimedCode, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.enableFactorLogic(context.Background(), account, factor, nil); err == nil {
+		t.Fatal("expected nil code to be rejected")
+	}
+	wrong := "000000"
+	if wrongCode, err := totp.GenerateCode(factor.Secret, time.Now()); err == nil && wrongCode == wrong {
+		wrong = "111111"
+	}
+	if err := c.enableFactorLogic(context.Background(), account, factor, &wrong); err == nil {
+		t.Fatal("expected wrong TOTP code to be rejected")
+	}
+	valid, err := totp.GenerateCode(factor.Secret, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.verifyFactorCode(context.Background(), factor, valid) {
+		t.Fatal("expected valid TOTP code to verify")
 	}
 }
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import QRCode from 'qrcode'
 import { Power16, TrashCan16 } from '@carbon/icons-vue'
 
 import { useNoticeStore } from '@/stores/notice'
@@ -13,7 +14,9 @@ import PageHeader from '@/components/PageHeader.vue'
 import ConsolePanel from '@/components/ConsolePanel.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import ConfirmAction from '@/components/ConfirmAction.vue'
+import CopyButton from '@/components/CopyButton.vue'
 import IconButton from '@/components/IconButton.vue'
+import OneTimeCodeField from '@/components/OneTimeCodeField.vue'
 import SecurityNav from '@/components/SecurityNav.vue'
 import TextField from '@/components/TextField.vue'
 
@@ -45,6 +48,12 @@ const addable = computed(() =>
 const chosenType = ref(3)
 const secret = ref('')
 const created = ref<AuthFactor | null>(null)
+const totpQr = ref('')
+const totpCode = ref('')
+const totpError = ref('')
+const pendingVerify = ref<AuthFactor | null>(null)
+const modalCode = ref('')
+const modalError = ref('')
 
 const hasRecovery = computed(() => factors.value.some((f) => f.type === 5))
 
@@ -113,12 +122,39 @@ async function load() {
   }
 }
 
+function clearCreated() {
+  created.value = null
+  totpQr.value = ''
+  totpCode.value = ''
+  totpError.value = ''
+}
+
+async function renderTotpQr(uri: unknown) {
+  if (typeof uri !== 'string' || !uri) {
+    totpQr.value = ''
+    return
+  }
+  try {
+    totpQr.value = await QRCode.toDataURL(uri, {
+      margin: 1,
+      width: 180,
+      errorCorrectionLevel: 'M',
+      color: { dark: '#171618', light: '#ffffff' },
+    })
+  } catch {
+    totpQr.value = ''
+  }
+}
+
 async function create() {
   busy.value = true
   try {
     const factor = await securityApi.createFactor(chosenType.value, secret.value || undefined)
     created.value = factor
     secret.value = ''
+    totpCode.value = ''
+    totpError.value = ''
+    await renderTotpQr(factor.created_response?.uri)
     notice.ok(t('factors.noticeAdded', { factor: factorTypeLabel(factor.type) }))
     await load()
   } catch (caught) {
@@ -128,7 +164,30 @@ async function create() {
   }
 }
 
+async function verifyCreatedTotp() {
+  const factor = created.value
+  if (!factor || totpCode.value.length !== 6) return
+  busy.value = true
+  totpError.value = ''
+  try {
+    await securityApi.enableFactor(factor.id, totpCode.value)
+    clearCreated()
+    notice.ok(t('factors.noticeEnabled', { factor: factorTypeLabel(factor.type) }))
+    await load()
+  } catch (caught) {
+    totpError.value = caught instanceof StargateError ? caught.message : t('factors.errorVerify')
+  } finally {
+    busy.value = false
+  }
+}
+
 async function toggle(factor: AuthFactor) {
+  if (!factor.enabled_at && factor.type === 3) {
+    pendingVerify.value = factor
+    modalCode.value = ''
+    modalError.value = ''
+    return
+  }
   busy.value = true
   try {
     if (factor.enabled_at) {
@@ -146,12 +205,32 @@ async function toggle(factor: AuthFactor) {
   }
 }
 
+async function verifyModalTotp() {
+  const factor = pendingVerify.value
+  if (!factor || modalCode.value.length !== 6) return
+  busy.value = true
+  modalError.value = ''
+  try {
+    await securityApi.enableFactor(factor.id, modalCode.value)
+    if (created.value?.id === factor.id) clearCreated()
+    pendingVerify.value = null
+    modalCode.value = ''
+    notice.ok(t('factors.noticeEnabled', { factor: factorTypeLabel(factor.type) }))
+    await load()
+  } catch (caught) {
+    modalError.value = caught instanceof StargateError ? caught.message : t('factors.errorVerify')
+  } finally {
+    busy.value = false
+  }
+}
+
 async function remove() {
   const target = pendingDelete.value
   if (!target) return
   busy.value = true
   try {
     await securityApi.deleteFactor(target.id)
+    if (created.value?.id === target.id) clearCreated()
     notice.ok(t('factors.noticeDeleted', { factor: factorTypeLabel(target.type) }))
     pendingDelete.value = null
     await load()
@@ -276,28 +355,63 @@ onMounted(load)
             >
               {{ busy ? t('factors.adding') : t('factors.addAction') }}
             </button>
-
-            <div v-if="created && createdSecret()" class="mt-4 rounded-chip bg-warning/12 p-3.5">
-              <p class="text-2xs uppercase tracking-[0.12em] text-warning">
-                {{
-                  created.type === 5 ? t('factors.recoveryCode') : t('factors.authenticatorSecret')
-                }}
-              </p>
-              <p class="mt-2 break-all font-mono text-xs text-base-content">
-                {{ createdSecret() }}
-              </p>
-              <p class="mt-2 voice text-[12px] text-faint">
-                {{ t('factors.shownOnce') }}
-              </p>
-              <p v-if="created.created_response?.uri" class="mt-2 break-all text-2xs text-faint">
-                {{ created.created_response.uri }}
-              </p>
-            </div>
           </template>
 
           <p v-else class="voice text-[12px]">
             {{ t('factors.allConfigured') }}
           </p>
+
+          <div v-if="created && createdSecret()" class="mt-4 rounded-chip bg-warning/12 p-3.5">
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-2xs uppercase tracking-[0.12em] text-warning">
+                {{
+                  created.type === 5 ? t('factors.recoveryCode') : t('factors.authenticatorSecret')
+                }}
+              </p>
+              <CopyButton
+                :value="createdSecret()"
+                :label="
+                  created.type === 5 ? t('factors.recoveryCode') : t('factors.authenticatorSecret')
+                "
+              />
+            </div>
+
+            <div
+              v-if="created.type === 3 && totpQr"
+              class="mt-3 flex justify-center rounded-card bg-white p-3 shadow-sm"
+            >
+              <img :src="totpQr" class="h-[180px] w-[180px]" :alt="t('factors.qrAlt')" />
+            </div>
+
+            <p class="mt-2 break-all font-mono text-xs text-base-content">
+              {{ createdSecret() }}
+            </p>
+            <p class="mt-2 voice text-[12px] text-faint">
+              {{ t('factors.shownOnce') }}
+            </p>
+
+            <form
+              v-if="created.type === 3"
+              class="mt-4 border-t border-base-content/10 pt-3"
+              @submit.prevent="verifyCreatedTotp"
+            >
+              <OneTimeCodeField
+                v-model="totpCode"
+                :label="t('factors.verifyCodeLabel')"
+                :disabled="busy"
+                :invalid="Boolean(totpError)"
+                :hint="totpError || t('factors.verifyCodeHint')"
+                autofocus
+              />
+              <button
+                type="submit"
+                class="btn btn-primary btn-sm mt-3 w-full"
+                :disabled="busy || totpCode.length !== 6"
+              >
+                {{ busy ? t('factors.verifying') : t('factors.verifyAction') }}
+              </button>
+            </form>
+          </div>
         </ConsolePanel>
 
         <ConsolePanel v-if="passwordFactor" :title="t('factors.changePassword')">
@@ -365,5 +479,51 @@ onMounted(load)
       @cancel="pendingDelete = null"
       @confirm="remove"
     />
+
+    <dialog
+      v-if="pendingVerify"
+      class="modal modal-open"
+      aria-modal="true"
+      :aria-label="t('factors.verifyTitle')"
+    >
+      <form class="modal-box max-w-sm overflow-hidden p-0" @submit.prevent="verifyModalTotp">
+        <div class="px-6 py-5">
+          <h2 class="text-sm text-base-content">{{ t('factors.verifyTitle') }}</h2>
+          <p class="voice mt-2">{{ t('factors.verifyBody') }}</p>
+          <OneTimeCodeField
+            v-model="modalCode"
+            root-class="mt-4"
+            :label="t('factors.verifyCodeLabel')"
+            :disabled="busy"
+            :invalid="Boolean(modalError)"
+            :hint="modalError || t('factors.verifyCodeHint')"
+            autofocus
+          />
+        </div>
+        <footer class="flex items-center justify-end gap-2 bg-base-200/50 px-5 py-3">
+          <button
+            type="button"
+            class="btn btn-ghost btn-xs"
+            :disabled="busy"
+            @click="pendingVerify = null"
+          >
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="submit"
+            class="btn btn-primary btn-xs"
+            :disabled="busy || modalCode.length !== 6"
+          >
+            {{ busy ? t('factors.verifying') : t('factors.verifyAction') }}
+          </button>
+        </footer>
+      </form>
+      <button
+        type="button"
+        class="modal-backdrop bg-black/60"
+        :aria-label="t('common.cancel')"
+        @click="pendingVerify = null"
+      />
+    </dialog>
   </div>
 </template>
