@@ -58,6 +58,18 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 	host.Core.Jobs.Every("pulsar.librarysync.purge", 24*time.Hour, func(ctx context.Context) error {
 		return store.PurgeLibrarySyncTombstones(ctx, host.Core.DB, retention)
 	})
+	// One-shot: plays that predate the play-to-scrobble projection are folded
+	// into the history. Idempotent per account via its marker row.
+	host.Core.Jobs.Now("pulsar.librarysync.scrobble-backfill", func(ctx context.Context) error {
+		created, err := BackfillPlayScrobbles(ctx, host.Core.DB, host.Core.Config.Scrobbler)
+		if err != nil {
+			return err
+		}
+		if created > 0 {
+			i.log.Info("backfilled historical plays into scrobble history", "scrobbles", created)
+		}
+		return nil
+	})
 	return nil
 }
 

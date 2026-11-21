@@ -140,6 +140,16 @@ type LibrarySyncSettings struct {
 
 func (LibrarySyncSettings) TableName() string { return "library_settings" }
 
+// LibrarySyncScrobbleBackfill marks an account whose historical plays were
+// projected onto the scrobble history. One row per account, written once: the
+// marker keeps later runs from resurrecting plays the user deleted.
+type LibrarySyncScrobbleBackfill struct {
+	AccountID   uuid.UUID `gorm:"type:uuid;primaryKey" json:"account_id"`
+	CompletedAt time.Time `gorm:"not null" json:"completed_at"`
+}
+
+func (LibrarySyncScrobbleBackfill) TableName() string { return "library_scrobble_backfill" }
+
 // LibrarySyncModels is every table the library sync module owns, for
 // AutoMigrate.
 func LibrarySyncModels() []any {
@@ -151,5 +161,6 @@ func LibrarySyncModels() []any {
 		&LibrarySyncPlay{},
 		&LibrarySyncSession{},
 		&LibrarySyncSettings{},
+		&LibrarySyncScrobbleBackfill{},
 	}
 }

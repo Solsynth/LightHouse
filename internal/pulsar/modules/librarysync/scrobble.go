@@ -11,6 +11,8 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/config"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/model"
@@ -57,16 +59,16 @@ func playScrobbleID(accountID uuid.UUID, fingerprint string, startedAt time.Time
 	))
 }
 
-// syncPlayScrobble projects a play onto the scrobble history. It creates the
-// scrobble when the play first crosses the scrobble threshold and folds later
-// progress pushes into the existing row. Newly created scrobbles are collected
-// on the applier so the push handler can publish their events after the
-// transaction commits.
-func (a *applier) syncPlayScrobble(fingerprint string, startedAt time.Time, listenedMs int64, completed bool) error {
-	cfg := normalizeScrobbler(a.scrobbler)
+// projectPlayScrobble builds the scrobble a play projects to and upserts it by
+// its deterministic id. It returns the row only when this call created it, so
+// the push handler publishes one event per scrobble. A concurrent writer (the
+// startup backfill racing a live push) loses the insert to ON CONFLICT and
+// falls through to the progress fold instead of aborting its transaction.
+func projectPlayScrobble(tx *gorm.DB, accountID uuid.UUID, cfg config.Scrobbler, fingerprint string, startedAt time.Time, listenedMs int64, completed bool) (*model.Scrobble, error) {
+	cfg = normalizeScrobbler(cfg)
 
 	track := model.LibrarySyncTrack{}
-	err := a.tx.Where("account_id = ? AND fingerprint = ?", a.accountID, fingerprint).Take(&track).Error
+	err := tx.Where("account_id = ? AND fingerprint = ?", accountID, fingerprint).Take(&track).Error
 	title, artist := track.Title, track.Artist
 	durationMs := track.DurationMs
 	if isNotFound(err) {
@@ -74,15 +76,15 @@ func (a *applier) syncPlayScrobble(fingerprint string, startedAt time.Time, list
 		// by fingerprint and let the threshold gate on listened seconds.
 		title, artist, durationMs = fingerprint, nil, 0
 	} else if err != nil {
-		return err
+		return nil, err
 	}
 
 	if !playScrobbleWorthy(cfg, listenedMs, durationMs, completed) {
-		return nil
+		return nil, nil
 	}
 
 	duration := int(durationMs / 1000)
-	catalog, err := store.FindOrCreateCatalogItemDB(a.tx, &model.CatalogItem{
+	catalog, err := store.FindOrCreateCatalogItemDB(tx, &model.CatalogItem{
 		Domain:          model.DomainMusic,
 		Provider:        "groovybox",
 		ProviderKey:     fingerprint,
@@ -91,7 +93,7 @@ func (a *applier) syncPlayScrobble(fingerprint string, startedAt time.Time, list
 		DurationSeconds: duration,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	meta, err := json.Marshal(map[string]any{
@@ -99,12 +101,12 @@ func (a *applier) syncPlayScrobble(fingerprint string, startedAt time.Time, list
 		"fingerprint": fingerprint,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	scrobble := model.Scrobble{
-		ID:              playScrobbleID(a.accountID, fingerprint, startedAt),
-		AccountID:       a.accountID,
+		ID:              playScrobbleID(accountID, fingerprint, startedAt),
+		AccountID:       accountID,
 		CatalogID:       &catalog.ID,
 		Domain:          model.DomainMusic,
 		ClientName:      groovyBoxClientName,
@@ -116,19 +118,29 @@ func (a *applier) syncPlayScrobble(fingerprint string, startedAt time.Time, list
 		Meta:            datatypes.JSON(meta),
 	}
 
-	existing := model.Scrobble{}
-	err = a.tx.Where("id = ?", scrobble.ID).Take(&existing).Error
-	if isNotFound(err) {
-		a.createdScrobbles = append(a.createdScrobbles, &scrobble)
-		return a.tx.Create(&scrobble).Error
+	res := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "id"}}, DoNothing: true}).Create(&scrobble)
+	if res.Error != nil {
+		return nil, res.Error
 	}
+	if res.RowsAffected > 0 {
+		return &scrobble, nil
+	}
+	// The scrobble already exists: a later push folded more progress into the
+	// same play.
+	return nil, tx.Model(&model.Scrobble{}).
+		Where("id = ? AND listened_seconds < ?", scrobble.ID, scrobble.ListenedSeconds).
+		Update("listened_seconds", scrobble.ListenedSeconds).Error
+}
+
+// syncPlayScrobble projects a play onto the scrobble history for the live push
+// path, collecting rows the handler publishes events for after the commit.
+func (a *applier) syncPlayScrobble(fingerprint string, startedAt time.Time, listenedMs int64, completed bool) error {
+	created, err := projectPlayScrobble(a.tx, a.accountID, a.scrobbler, fingerprint, startedAt, listenedMs, completed)
 	if err != nil {
 		return err
 	}
-	// A later push folded more progress into the same play.
-	if scrobble.ListenedSeconds > existing.ListenedSeconds {
-		return a.tx.Model(&model.Scrobble{}).Where("id = ?", existing.ID).
-			Update("listened_seconds", scrobble.ListenedSeconds).Error
+	if created != nil {
+		a.createdScrobbles = append(a.createdScrobbles, created)
 	}
 	return nil
 }
