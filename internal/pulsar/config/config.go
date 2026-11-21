@@ -70,6 +70,20 @@ type Config struct {
 		AutoScrobbleMinSeconds       int `toml:"autoScrobbleMinSeconds"`
 		MaxBatchScrobble             int `toml:"maxBatchScrobble"`
 	} `toml:"scrobbler"`
+
+	// Web configures the SSR templates and Vue island assets (web/dist).
+	Web struct {
+		// DistPath is the built Vite output directory containing .vite/manifest.json
+		// and assets/. Empty or missing disables static asset serving while keeping
+		// SSR templates operational.
+		DistPath string `toml:"distPath"`
+		// DevViteURL points at a running Vite dev server (e.g. http://localhost:5173)
+		// so SSR templates load live HMR scripts during local development.
+		DevViteURL string `toml:"devViteUrl"`
+		// StargateURL is the base URL of Stargate for sign-in links (e.g.
+		// https://id.example.com). Empty defaults to "/sign-in" on the same origin.
+		StargateURL string `toml:"stargateUrl"`
+	} `toml:"web"`
 }
 
 // Load loads configuration from path or environment.
@@ -101,6 +115,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Scrobbler.MaxBatchScrobble <= 0 {
 		cfg.Scrobbler.MaxBatchScrobble = 50
+	}
+	if strings.TrimSpace(cfg.Web.DistPath) == "" {
+		cfg.Web.DistPath = "web/dist"
 	}
 }
 
@@ -169,6 +186,9 @@ func applyEnv(cfg *Config) {
 	config.SetStr("PULSAR_DISCOVERY_GRPC_ENDPOINT", &cfg.Discovery.GrpcEndpoint)
 	config.SetList("PULSAR_MODULES_ENABLED", &cfg.Modules.Enabled)
 	config.SetList("PULSAR_MODULES_DISABLED", &cfg.Modules.Disabled)
+	config.SetStr("PULSAR_WEB_DISTPATH", &cfg.Web.DistPath)
+	config.SetStr("PULSAR_WEB_DEVVITEURL", &cfg.Web.DevViteURL)
+	config.SetStr("PULSAR_WEB_STARGATEURL", &cfg.Web.StargateURL)
 	normalizeBangumi(cfg)
 }
 

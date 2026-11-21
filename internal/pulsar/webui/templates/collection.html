@@ -1,0 +1,27 @@
+{{define "content"}}
+{{$c := .Data}}
+<div class="mx-auto max-w-4xl space-y-6">
+  <section class="rounded-2xl bg-base-200 p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center gap-6">
+    {{if $c.ArtworkURL}}
+    <img src="{{deref $c.ArtworkURL}}" alt="{{$c.Name}}" class="h-24 w-24 rounded-2xl object-cover bg-base-300 shrink-0" />
+    {{else}}
+    <div class="h-24 w-24 rounded-2xl bg-base-300 flex items-center justify-center font-mono text-xs text-[var(--console-faint)] shrink-0">
+      {{domainLabel $c.Domain}}
+    </div>
+    {{end}}
+    <div class="min-w-0 flex-1">
+      <div class="flex items-center gap-2">
+        <span class="badge badge-primary badge-sm">{{domainLabel $c.Domain}}</span>
+        <span class="badge badge-ghost badge-sm font-mono">{{$c.Kind}}</span>
+        {{if not $c.IsPublic}}<span class="badge badge-warning badge-sm">Private</span>{{end}}
+      </div>
+      <h1 class="mt-2 text-2xl sm:text-3xl font-bold tracking-tight">{{$c.Name}}</h1>
+      {{if $c.Description}}<p class="mt-1 text-sm text-[var(--console-dim)]">{{deref $c.Description}}</p>{{end}}
+    </div>
+  </section>
+
+  {{$isOwner := false}}
+  {{if .CurrentUser}}{{if eq .CurrentUser.ID $c.AccountID.String}}{{$isOwner = true}}{{end}}{{end}}
+  <div data-island="collection-detail" data-props='{{json (dict "collectionId" $c.ID.String "isOwner" $isOwner)}}'></div>
+</div>
+{{end}}

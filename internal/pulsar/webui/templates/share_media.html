@@ -1,0 +1,77 @@
+{{define "content"}}
+{{$m := index .Data "Media"}}
+{{$cid := index .Data "CatalogID"}}
+<div class="mx-auto max-w-3xl space-y-6">
+  <article class="overflow-hidden rounded-2xl bg-base-200">
+    {{if $m.BannerURL}}
+    <img src="{{$m.BannerURL}}" alt="{{$m.Title}}" class="h-44 sm:h-56 w-full object-cover" />
+    {{else}}
+    <div class="h-28 w-full bg-gradient-to-r from-primary/25 via-secondary/20 to-accent/25"></div>
+    {{end}}
+
+    <div class="p-6 sm:p-8">
+      <div class="flex flex-col sm:flex-row gap-5 sm:items-end -mt-16 sm:-mt-20 mb-6">
+        {{if $m.ArtworkURL}}
+        <img src="{{$m.ArtworkURL}}" alt="{{$m.Title}}" class="h-28 w-28 sm:h-32 sm:w-32 rounded-2xl object-cover shadow-lg ring-2 ring-base-100 bg-base-300 shrink-0" />
+        {{else}}
+        <div class="h-28 w-28 sm:h-32 sm:w-32 rounded-2xl bg-base-300 ring-2 ring-base-100 flex items-center justify-center font-mono text-sm text-[var(--console-faint)] shrink-0">
+          {{domainLabel $m.Domain}}
+        </div>
+        {{end}}
+        <div class="min-w-0 flex-1 pt-2">
+          <span class="badge badge-primary badge-sm uppercase tracking-wider">{{domainLabel $m.Domain}}</span>
+          <h1 class="mt-2 text-2xl sm:text-3xl font-bold tracking-tight">{{$m.Title}}</h1>
+          {{if $m.Subtitle}}<p class="text-base text-primary mt-0.5">{{$m.Subtitle}}</p>{{end}}
+          {{if $m.Caption}}<p class="text-sm text-[var(--console-dim)]">{{$m.Caption}}</p>{{end}}
+        </div>
+      </div>
+
+      {{if $m.Description}}
+      <p class="text-sm leading-relaxed text-[var(--console-dim)] whitespace-pre-line mb-6">{{$m.Description}}</p>
+      {{end}}
+
+      {{if $m.Genres}}
+      <div class="flex flex-wrap gap-2 mb-6">
+        {{range $m.Genres}}
+        <span class="rounded-lg bg-base-100 px-2.5 py-1 text-xs text-[var(--console-dim)]">{{.}}</span>
+        {{end}}
+      </div>
+      {{end}}
+
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 rounded-xl bg-base-100 p-4 mb-6">
+        <div>
+          <div class="text-lg font-bold font-mono">{{$m.ScrobbleCount}}</div>
+          <div class="text-[11px] uppercase tracking-wider text-[var(--console-faint)]">Scrobbles</div>
+        </div>
+        {{if gt $m.ActiveListenerCount 0}}
+        <div>
+          <div class="text-lg font-bold font-mono text-primary">{{$m.ActiveListenerCount}}</div>
+          <div class="text-[11px] uppercase tracking-wider text-[var(--console-faint)]">Active Now</div>
+        </div>
+        {{end}}
+        {{if $m.ReleaseDate}}
+        <div>
+          <div class="text-sm font-semibold font-mono mt-1">{{$m.ReleaseDate}}</div>
+          <div class="text-[11px] uppercase tracking-wider text-[var(--console-faint)]">Released</div>
+        </div>
+        {{end}}
+      </div>
+
+      {{if $m.ExternalLinks}}
+      <div class="flex flex-wrap gap-2">
+        {{range $m.ExternalLinks}}
+        <a href="{{.URL}}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-ghost bg-base-100 rounded-xl">
+          {{.Label}}
+        </a>
+        {{end}}
+      </div>
+      {{end}}
+    </div>
+  </article>
+
+  {{if $cid}}
+  <div data-island="media-actions" data-props='{{json (dict "catalogId" $cid "urn" $m.URN "title" $m.Title "domain" $m.Domain "signedIn" (ne .CurrentUser nil))}}'></div>
+  <div data-island="media-reviews" data-props='{{json (dict "catalogId" $cid "signedIn" (ne .CurrentUser nil))}}'></div>
+  {{end}}
+</div>
+{{end}}

@@ -1,0 +1,60 @@
+@import 'tailwindcss';
+
+@plugin 'daisyui' {
+  themes: false;
+}
+
+@plugin 'daisyui/theme' {
+  name: 'stargate';
+  default: true;
+  color-scheme: dark;
+
+  --color-base-100: #171618;
+  --color-base-200: #1d1d20;
+  --color-base-300: #2e2e31;
+  --color-base-content: #edeaee;
+
+  --console-line: #4b4b4f;
+  --console-line-soft: #2a2a2d;
+  --console-faint: #97959b;
+  --console-dim: #c8c5ca;
+
+  --color-primary: #bac3ff;
+  --color-primary-content: #222c61;
+  --color-secondary: #c3c5dd;
+  --color-secondary-content: #2d2f42;
+  --color-accent: #d9bfcf;
+  --color-accent-content: #3a2b35;
+  --color-neutral: #242326;
+  --color-neutral-content: #c8c5ca;
+
+  --color-info: #a1cce8;
+  --color-info-content: #171618;
+  --color-success: #a8d1a8;
+  --color-success-content: #171618;
+  --color-warning: #fdba55;
+  --color-warning-content: #171618;
+  --color-error: #ffb4ab;
+  --color-error-content: #171618;
+
+  --radius-selector: 12px;
+  --radius-field: 16px;
+  --radius-box: 20px;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 0;
+  --depth: 0;
+  --noise: 0;
+}
+
+@layer base {
+  body {
+    font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  code,
+  pre,
+  .font-mono {
+    font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+}

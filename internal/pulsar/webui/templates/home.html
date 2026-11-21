@@ -1,0 +1,42 @@
+{{define "content"}}
+<div class="space-y-8">
+  {{if .CurrentUser}}
+  <section class="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+    <div>
+      <p class="text-xs font-mono uppercase tracking-widest text-primary">Dashboard</p>
+      <h1 class="mt-1 text-2xl sm:text-3xl font-bold tracking-tight">Welcome back, {{.CurrentUser.Nick}}</h1>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="/u/{{.CurrentUser.Name}}" class="btn btn-sm btn-ghost rounded-xl">Public Profile</a>
+      <a href="/rewind/{{index .Data "Year"}}" class="btn btn-sm btn-primary rounded-xl">{{index .Data "Year"}} Rewind</a>
+    </div>
+  </section>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 space-y-6">
+      <div data-island="now-playing"></div>
+      <div data-island="recent-scrobbles" data-props='{"limit":12}'></div>
+    </div>
+    <div class="space-y-6">
+      <div data-island="quick-stats"></div>
+    </div>
+  </div>
+  {{else}}
+  <section class="rounded-2xl bg-base-200 p-8 sm:p-10">
+    <p class="text-xs font-mono uppercase tracking-widest text-primary">Solar Network</p>
+    <h1 class="mt-2 text-3xl sm:text-4xl font-bold tracking-tight">Your universal media &amp; scrobble log.</h1>
+    <p class="mt-3 max-w-2xl text-sm sm:text-base text-[var(--console-dim)]">
+      Track music, anime, games, books, and films in one place. Share rich media cards, curate playlists and watchlists, and sync with Bangumi.
+    </p>
+    <div class="mt-6 flex flex-wrap gap-3">
+      <a href="{{.SignInURL}}" class="btn btn-primary rounded-xl">Sign in with Solarpass</a>
+    </div>
+  </section>
+  {{end}}
+
+  <section class="space-y-4">
+    <h2 class="text-lg font-semibold tracking-tight">Search Catalog</h2>
+    <div data-island="catalog-search"></div>
+  </section>
+</div>
+{{end}}

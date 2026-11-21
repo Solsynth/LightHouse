@@ -1,0 +1,92 @@
+{{define "content"}}
+{{$p := .Data}}
+<div class="space-y-8">
+  <section class="rounded-2xl bg-base-200 p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+    <div class="flex items-center gap-4">
+      <div class="h-16 w-16 rounded-2xl bg-primary/15 text-primary flex items-center justify-center text-2xl font-bold shrink-0">
+        {{initial $p.DisplayName}}
+      </div>
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">{{$p.DisplayName}}</h1>
+        <p class="text-sm font-mono text-[var(--console-faint)]">@{{$p.Username}}</p>
+      </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-3">
+      {{if $p.Stats}}
+      <div class="rounded-xl bg-base-100 px-4 py-2.5 text-center">
+        <div class="text-lg font-bold font-mono">{{$p.Stats.TotalScrobbles}}</div>
+        <div class="text-[11px] uppercase tracking-wider text-[var(--console-faint)]">Scrobbles</div>
+      </div>
+      <div class="rounded-xl bg-base-100 px-4 py-2.5 text-center">
+        <div class="text-lg font-bold font-mono">{{formatDuration $p.Stats.TotalSeconds}}</div>
+        <div class="text-[11px] uppercase tracking-wider text-[var(--console-faint)]">Time</div>
+      </div>
+      {{end}}
+      <a href="/u/{{$p.Identifier}}/rewind/{{$p.CurrentYear}}" class="btn btn-primary btn-sm rounded-xl">{{$p.CurrentYear}} Rewind</a>
+    </div>
+  </section>
+
+  {{if $p.Active}}
+  <section class="space-y-3">
+    <h2 class="text-sm font-mono uppercase tracking-wider text-primary">Now Playing</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {{range $p.Active}}
+      <div class="rounded-2xl bg-base-200 p-4 flex items-center gap-4">
+        {{if .ArtworkURL}}
+        <img src="{{deref .ArtworkURL}}" alt="{{.Title}}" class="h-14 w-14 rounded-xl object-cover bg-base-300 shrink-0" />
+        {{else}}
+        <div class="h-14 w-14 rounded-xl bg-base-300 flex items-center justify-center text-xs font-mono text-[var(--console-faint)] shrink-0">{{domainLabel .Domain}}</div>
+        {{end}}
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <span class="badge badge-xs badge-primary">{{domainLabel .Domain}}</span>
+            {{if .IsPaused}}<span class="text-xs text-[var(--console-faint)]">Paused</span>{{end}}
+          </div>
+          <p class="font-semibold truncate mt-0.5">{{.Title}}</p>
+          {{if .Subtitle}}<p class="text-xs text-[var(--console-dim)] truncate">{{deref .Subtitle}}</p>{{end}}
+        </div>
+      </div>
+      {{end}}
+    </div>
+  </section>
+  {{end}}
+
+  {{if $p.Collections}}
+  <section class="space-y-3">
+    <h2 class="text-sm font-mono uppercase tracking-wider text-[var(--console-faint)]">Public Collections</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {{range $p.Collections}}
+      <a href="/c/{{.ID}}" class="rounded-2xl bg-base-200 p-4 hover:bg-base-300/70 transition-colors block">
+        <div class="flex items-center justify-between gap-2">
+          <span class="badge badge-sm badge-ghost">{{domainLabel .Domain}}</span>
+          <span class="text-xs font-mono text-[var(--console-faint)]">{{.Kind}}</span>
+        </div>
+        <h3 class="mt-2 font-semibold truncate">{{.Name}}</h3>
+        {{if .Description}}<p class="mt-1 text-xs text-[var(--console-dim)] line-clamp-2">{{deref .Description}}</p>{{end}}
+      </a>
+      {{end}}
+    </div>
+  </section>
+  {{end}}
+
+  <section class="space-y-4">
+    <h2 class="text-sm font-mono uppercase tracking-wider text-[var(--console-faint)]">Playback History</h2>
+    <div data-island="user-history" data-props='{{json (dict "identifier" $p.Identifier)}}'></div>
+    {{if $p.Scrobbles}}
+    <noscript>
+      <div class="space-y-2">
+        {{range $p.Scrobbles}}
+        <div class="rounded-xl bg-base-200 px-4 py-3 flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <p class="font-medium truncate">{{.Title}}</p>
+            {{if .Subtitle}}<p class="text-xs text-[var(--console-dim)] truncate">{{deref .Subtitle}}</p>{{end}}
+          </div>
+          <span class="text-xs font-mono text-[var(--console-faint)] shrink-0">{{formatDate .PlayedAt}}</span>
+        </div>
+        {{end}}
+      </div>
+    </noscript>
+    {{end}}
+  </section>
+</div>
+{{end}}

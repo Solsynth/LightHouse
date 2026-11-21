@@ -83,3 +83,11 @@ devAccountHeader = ""
 [security]
 trustedProxyHops = 1
 maxTake = 100
+
+[web]
+# Built Vue islands bundle (web/dist). Docker image ships it at /app/web/dist.
+distPath = "web/dist"
+# Optional Vite dev server URL for local SSR + HMR development.
+devViteUrl = ""
+# Optional Stargate base URL for sign-in links (empty uses same-origin /sign-in).
+stargateUrl = ""

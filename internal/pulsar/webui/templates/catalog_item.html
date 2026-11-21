@@ -1,0 +1,33 @@
+{{define "content"}}
+{{$item := .Data}}
+<div class="mx-auto max-w-3xl space-y-6">
+  <article class="rounded-2xl bg-base-200 p-6 sm:p-8 space-y-5">
+    <div class="flex flex-col sm:flex-row gap-5 sm:items-center">
+      {{if $item.ArtworkURL}}
+      <img src="{{deref $item.ArtworkURL}}" alt="{{$item.Title}}" class="h-28 w-28 rounded-2xl object-cover bg-base-300 shrink-0" />
+      {{else}}
+      <div class="h-28 w-28 rounded-2xl bg-base-300 flex items-center justify-center font-mono text-sm text-[var(--console-faint)] shrink-0">
+        {{domainLabel $item.Domain}}
+      </div>
+      {{end}}
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-2">
+          <span class="badge badge-primary badge-sm uppercase tracking-wider">{{domainLabel $item.Domain}}</span>
+          {{if $item.Provider}}<span class="badge badge-ghost badge-sm font-mono">{{$item.Provider}}</span>{{end}}
+        </div>
+        <h1 class="mt-2 text-2xl sm:text-3xl font-bold tracking-tight">{{$item.Title}}</h1>
+        {{if $item.Subtitle}}<p class="text-base text-primary mt-0.5">{{deref $item.Subtitle}}</p>{{end}}
+        {{if $item.Caption}}<p class="text-sm text-[var(--console-dim)]">{{deref $item.Caption}}</p>{{end}}
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-4 rounded-xl bg-base-100 p-4 text-xs font-mono text-[var(--console-dim)]">
+      <span>URN: {{$item.URN}}</span>
+      {{if gt $item.DurationSeconds 0}}<span>Duration: {{formatDuration $item.DurationSeconds}}</span>{{end}}
+    </div>
+  </article>
+
+  <div data-island="media-actions" data-props='{{json (dict "catalogId" $item.ID.String "urn" $item.URN "title" $item.Title "domain" $item.Domain "signedIn" (ne .CurrentUser nil))}}'></div>
+  <div data-island="media-reviews" data-props='{{json (dict "catalogId" $item.ID.String "signedIn" (ne .CurrentUser nil))}}'></div>
+</div>
+{{end}}

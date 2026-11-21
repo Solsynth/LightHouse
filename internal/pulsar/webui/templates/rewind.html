@@ -1,0 +1,11 @@
+{{define "content"}}
+{{$d := .Data}}
+<div class="space-y-6">
+  <div>
+    <p class="text-xs font-mono uppercase tracking-widest text-primary">Year in Review</p>
+    <h1 class="mt-1 text-2xl sm:text-3xl font-bold tracking-tight">Pulsar Rewind · {{index $d "Year"}}</h1>
+  </div>
+
+  <div data-island="rewind-view" data-props='{{json (dict "year" (index $d "Year") "identifier" (index $d "Identifier") "personal" (index $d "Personal"))}}'></div>
+</div>
+{{end}}

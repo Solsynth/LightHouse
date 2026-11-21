@@ -1,0 +1,18 @@
+{{define "content"}}
+<div class="mx-auto max-w-3xl space-y-6">
+  <div>
+    <p class="text-xs font-mono uppercase tracking-widest text-primary">Preferences</p>
+    <h1 class="mt-1 text-2xl sm:text-3xl font-bold tracking-tight">Pulsar Settings</h1>
+    <p class="mt-1 text-sm text-[var(--console-dim)]">Configure external sync connections like Bangumi and inspect library sync state.</p>
+  </div>
+
+  {{if .CurrentUser}}
+  <div data-island="settings-panel"></div>
+  {{else}}
+  <div class="rounded-2xl bg-base-200 p-8 text-center space-y-4">
+    <p class="text-sm text-[var(--console-dim)]">Sign in to manage your Pulsar settings.</p>
+    <a href="{{.SignInURL}}" class="btn btn-primary btn-sm rounded-xl">Sign in with Solarpass</a>
+  </div>
+  {{end}}
+</div>
+{{end}}

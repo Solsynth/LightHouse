@@ -13,6 +13,7 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/migrate"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/standard"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/store"
+	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/webui"
 	platformapp "src.solsynth.dev/sosys/lighthouse/shared/platform/app"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 )
@@ -43,6 +44,20 @@ func RunWith(parent context.Context, log *slog.Logger, cfg *config.Config, facto
 				Config: cfg,
 				Store:  st,
 			}, nil
+		},
+		RegisterCore: func(_ context.Context, host *module.Host[core.Services]) error {
+			web, err := webui.New(host.Core)
+			if err != nil {
+				return err
+			}
+			if web.DistError != nil {
+				log.Warn("web island assets not mounted; SSR templates active without built bundle", "dist", cfg.Web.DistPath, "error", web.DistError)
+			} else {
+				log.Info("web SSR + Vue islands mounted", "dist", cfg.Web.DistPath)
+			}
+			host.Core.RenderMediaShare = web.RenderMediaShare
+			web.RegisterRoutes(host.Engine)
+			return nil
 		},
 	})
 }

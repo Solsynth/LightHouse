@@ -5,8 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/config"
+	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/metadata"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/store"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/app"
@@ -18,6 +20,10 @@ type Services struct {
 	*app.Env
 	Config *config.Config
 	Store  *store.Store
+	// RenderMediaShare is an optional hook installed by webui to render
+	// media share pages (/m/:id, /share/m/:id) inside the SSR mainframe
+	// template with Vue islands.
+	RenderMediaShare func(c *gin.Context, m *metadata.UnifiedMedia)
 }
 
 // PublishSessionUpdate pushes live playback session changes to WebSocket

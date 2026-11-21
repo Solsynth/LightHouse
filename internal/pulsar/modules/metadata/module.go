@@ -197,7 +197,12 @@ func (i *instance) handleShare(c *gin.Context) {
 		return
 	}
 
-	// Render rich HTML OpenGraph preview
+	// Render rich HTML OpenGraph preview via webui mainframe if installed,
+	// falling back to the standalone card renderer.
+	if i.core != nil && i.core.RenderMediaShare != nil {
+		i.core.RenderMediaShare(c, media)
+		return
+	}
 	renderHTMLShare(c, media)
 }
 

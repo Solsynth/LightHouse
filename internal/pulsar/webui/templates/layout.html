@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="stargate">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#171618" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#faf7f9" media="(prefers-color-scheme: light)" />
+    <title>{{.Title}}</title>
+    <meta name="description" content="{{.Description}}" />
+
+    {{if .OG}}
+    <meta property="og:site_name" content="Pulsar · Solar Network" />
+    <meta property="og:title" content="{{.OG.Title}}" />
+    <meta property="og:description" content="{{.OG.Description}}" />
+    {{if .OG.Image}}<meta property="og:image" content="{{.OG.Image}}" />{{end}}
+    {{if .OG.URL}}<meta property="og:url" content="{{.OG.URL}}" />{{end}}
+    <meta property="og:type" content="{{if .OG.Type}}{{.OG.Type}}{{else}}website{{end}}" />
+    <meta name="twitter:card" content="{{if .OG.TwitterCard}}{{.OG.TwitterCard}}{{else}}summary{{end}}" />
+    <meta name="twitter:title" content="{{.OG.Title}}" />
+    <meta name="twitter:description" content="{{.OG.Description}}" />
+    {{if .OG.Image}}<meta name="twitter:image" content="{{.OG.Image}}" />{{end}}
+    {{end}}
+
+    <link rel="icon" href="/icon-outline.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    {{range .EntryCSS}}
+    <link rel="stylesheet" href="{{.}}" />
+    {{end}}
+    {{if .DevViteURL}}
+    <script type="module" src="{{.DevViteURL}}/@vite/client"></script>
+    <script type="module" src="{{.DevViteURL}}/src/main.ts"></script>
+    {{else if .EntryJS}}
+    <script type="module" src="{{.EntryJS}}"></script>
+    {{end}}
+  </head>
+  <body class="min-h-screen bg-base-100 text-base-content antialiased flex flex-col">
+    <header class="sticky top-0 z-30 border-b border-[var(--console-line-soft)] bg-base-100/85 backdrop-blur-md">
+      <div class="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+        <div class="flex items-center gap-6">
+          <a href="/" class="flex items-center gap-2.5 font-bold tracking-tight text-base-content hover:text-primary transition-colors">
+            <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-primary/15 text-primary font-mono text-sm">P</span>
+            <span class="text-base">Pulsar</span>
+          </a>
+          <nav class="hidden sm:flex items-center gap-1 text-sm">
+            <a href="/" class="px-3 py-1.5 rounded-lg transition-colors {{if eq .ActiveNav "home"}}bg-base-200 text-base-content font-semibold{{else}}text-[var(--console-dim)] hover:text-base-content hover:bg-base-200/60{{end}}">Explore</a>
+            <a href="/catalog" class="px-3 py-1.5 rounded-lg transition-colors {{if eq .ActiveNav "catalog"}}bg-base-200 text-base-content font-semibold{{else}}text-[var(--console-dim)] hover:text-base-content hover:bg-base-200/60{{end}}">Catalog</a>
+            {{if .CurrentUser}}
+            <a href="/activities" class="px-3 py-1.5 rounded-lg transition-colors {{if eq .ActiveNav "activities"}}bg-base-200 text-base-content font-semibold{{else}}text-[var(--console-dim)] hover:text-base-content hover:bg-base-200/60{{end}}">Activities</a>
+            <a href="/history" class="px-3 py-1.5 rounded-lg transition-colors {{if eq .ActiveNav "history"}}bg-base-200 text-base-content font-semibold{{else}}text-[var(--console-dim)] hover:text-base-content hover:bg-base-200/60{{end}}">History</a>
+            <a href="/collections" class="px-3 py-1.5 rounded-lg transition-colors {{if eq .ActiveNav "collections"}}bg-base-200 text-base-content font-semibold{{else}}text-[var(--console-dim)] hover:text-base-content hover:bg-base-200/60{{end}}">Collections</a>
+            <a href="/settings" class="px-3 py-1.5 rounded-lg transition-colors {{if eq .ActiveNav "settings"}}bg-base-200 text-base-content font-semibold{{else}}text-[var(--console-dim)] hover:text-base-content hover:bg-base-200/60{{end}}">Settings</a>
+            {{end}}
+          </nav>
+        </div>
+
+        <div class="flex items-center gap-2">
+          {{if .CurrentUser}}
+          <a href="/u/{{.CurrentUser.Name}}" class="inline-flex items-center gap-2 rounded-full bg-base-200 px-3 py-1.5 text-sm font-medium hover:bg-base-300 transition-colors">
+            <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/20 text-primary text-xs font-bold">{{initial .CurrentUser.Nick}}</span>
+            <span class="hidden sm:inline">{{.CurrentUser.Nick}}</span>
+          </a>
+          {{else}}
+          <a href="{{.SignInURL}}" class="btn btn-primary btn-sm rounded-xl">Sign in</a>
+          {{end}}
+        </div>
+      </div>
+      {{if .CurrentUser}}
+      <nav class="flex sm:hidden items-center gap-1 overflow-x-auto border-t border-[var(--console-line-soft)] px-4 py-1.5 text-xs">
+        <a href="/" class="px-2.5 py-1 rounded-md {{if eq .ActiveNav "home"}}bg-base-200 font-semibold{{else}}text-[var(--console-dim)]{{end}}">Explore</a>
+        <a href="/catalog" class="px-2.5 py-1 rounded-md {{if eq .ActiveNav "catalog"}}bg-base-200 font-semibold{{else}}text-[var(--console-dim)]{{end}}">Catalog</a>
+        <a href="/activities" class="px-2.5 py-1 rounded-md {{if eq .ActiveNav "activities"}}bg-base-200 font-semibold{{else}}text-[var(--console-dim)]{{end}}">Activities</a>
+        <a href="/history" class="px-2.5 py-1 rounded-md {{if eq .ActiveNav "history"}}bg-base-200 font-semibold{{else}}text-[var(--console-dim)]{{end}}">History</a>
+        <a href="/collections" class="px-2.5 py-1 rounded-md {{if eq .ActiveNav "collections"}}bg-base-200 font-semibold{{else}}text-[var(--console-dim)]{{end}}">Collections</a>
+        <a href="/settings" class="px-2.5 py-1 rounded-md {{if eq .ActiveNav "settings"}}bg-base-200 font-semibold{{else}}text-[var(--console-dim)]{{end}}">Settings</a>
+      </nav>
+      {{end}}
+    </header>
+
+    <main class="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+      {{template "content" .}}
+    </main>
+
+    <footer class="border-t border-[var(--console-line-soft)] py-6 text-center text-xs text-[var(--console-faint)]">
+      <div class="mx-auto max-w-6xl px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2">
+        <span>Pulsar · Solar Network</span>
+        <span>Multi-domain scrobbling, catalog &amp; collections</span>
+      </div>
+    </footer>
+  </body>
+</html>
