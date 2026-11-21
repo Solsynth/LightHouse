@@ -133,6 +133,48 @@ func New(services *core.Services) (*Handler, error) {
 			}
 			return *s
 		},
+		"derefInt": func(n *int) int {
+			if n == nil {
+				return 0
+			}
+			return *n
+		},
+		"statusLabel": func(s *string) string {
+			if s == nil {
+				return ""
+			}
+			switch *s {
+			case model.StatusPlanToWatch:
+				return "Plan to Watch"
+			case model.StatusWatching:
+				return "Watching"
+			case model.StatusCompleted:
+				return "Completed"
+			case model.StatusOnHold:
+				return "On Hold"
+			case model.StatusDropped:
+				return "Dropped"
+			default:
+				return strings.ReplaceAll(*s, "_", " ")
+			}
+		},
+		"statusDotClass": func(s *string) string {
+			if s == nil {
+				return "bg-[var(--console-faint)]"
+			}
+			switch *s {
+			case model.StatusWatching:
+				return "bg-primary"
+			case model.StatusCompleted:
+				return "bg-success"
+			case model.StatusOnHold:
+				return "bg-warning"
+			case model.StatusDropped:
+				return "bg-error"
+			default:
+				return "bg-[var(--console-faint)]"
+			}
+		},
 		"initial": func(s string) string {
 			s = strings.TrimSpace(s)
 			if s == "" {
@@ -447,6 +489,7 @@ type profileViewData struct {
 	Active      []model.ActiveSession
 	Scrobbles   []model.Scrobble
 	Collections []model.Collection
+	Shelves     []model.Collection
 	CurrentYear int
 }
 
@@ -487,9 +530,15 @@ func (h *Handler) handleProfile(c *gin.Context) {
 	scrobbles, _, _ := h.core.Store.ListScrobbles(ctx, accountID, "", nil, nil, 0, 12)
 	allColls, _, _ := h.core.Store.ListCollections(ctx, accountID, "", "", 0, 20)
 	var publicColls []model.Collection
+	var shelves []model.Collection
 	for _, col := range allColls {
 		if col.IsPublic {
 			publicColls = append(publicColls, col)
+			if len(shelves) < 6 {
+				if full, err := h.core.Store.GetCollection(ctx, col.ID); err == nil && len(full.Items) > 0 {
+					shelves = append(shelves, *full)
+				}
+			}
 		}
 	}
 
@@ -508,6 +557,7 @@ func (h *Handler) handleProfile(c *gin.Context) {
 		Active:      active,
 		Scrobbles:   scrobbles,
 		Collections: publicColls,
+		Shelves:     shelves,
 		CurrentYear: time.Now().UTC().Year(),
 	}
 
