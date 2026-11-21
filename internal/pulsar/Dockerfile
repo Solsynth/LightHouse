@@ -4,9 +4,10 @@
 
 # ---- Web Islands build (web/) ----
 FROM oven/bun:1.4-alpine AS web
-WORKDIR /web
+WORKDIR /src/internal/pulsar/web
 COPY internal/pulsar/web/package.json internal/pulsar/web/bun.lock* ./
 RUN --mount=type=cache,target=/root/.bun/install/cache bun install
+COPY internal/pulsar/webui/templates /src/internal/pulsar/webui/templates
 COPY internal/pulsar/web/ ./
 RUN bun run build-only
 
@@ -32,7 +33,7 @@ FROM scratch
 WORKDIR /app
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /out/pulsar /app/pulsar
-COPY --from=web /web/dist /app/web/dist
+COPY --from=web /src/internal/pulsar/web/dist /app/web/dist
 COPY internal/pulsar/config.example.toml /app/config.example.toml
 EXPOSE 5073 7101
 ENTRYPOINT ["/app/pulsar"]
