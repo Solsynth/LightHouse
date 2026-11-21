@@ -9,6 +9,8 @@ docs
 Keys
 **/*.md
 Makefile
+**/node_modules
+internal/pulsar/web/dist
 go.work
 go.work.sum
 internal/blade

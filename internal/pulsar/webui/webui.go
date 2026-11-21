@@ -95,8 +95,15 @@ func New(services *core.Services) (*Handler, error) {
 		if distPath != "" {
 			if err := h.loadDist(distPath); err != nil {
 				if distPath == "web/dist" {
-					if fallbackErr := h.loadDist("internal/pulsar/web/dist"); fallbackErr == nil {
-						err = nil
+					candidates := []string{"internal/pulsar/web/dist", "/app/web/dist"}
+					if exe, exeErr := os.Executable(); exeErr == nil {
+						candidates = append([]string{filepath.Join(filepath.Dir(exe), "web/dist")}, candidates...)
+					}
+					for _, candidate := range candidates {
+						if fallbackErr := h.loadDist(candidate); fallbackErr == nil {
+							err = nil
+							break
+						}
 					}
 				}
 				h.DistError = err
