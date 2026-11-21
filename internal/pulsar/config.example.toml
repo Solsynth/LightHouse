@@ -26,7 +26,8 @@ blade    = { grpc = "localhost:7001" }
 
 [metadata]
 # Sent to every upstream provider. This value names Pulsar and carries the
-# fleet's contact URL, which MusicBrainz's terms require.
+# fleet's contact URL, which MusicBrainz's terms and Bangumi's client guidance
+# require.
 userAgent = "Pulsar/1.0 (https://solsynth.dev; lily@solsynth.dev)"
 # Upstream endpoints. Point one at a mirror or a local test server when
 # needed; an empty value falls back to the provider's public default.
@@ -34,6 +35,11 @@ musicBrainzBaseUrl = "https://musicbrainz.org"
 musicBrainzCoverArtUrl = "https://coverartarchive.org"
 anilistEndpoint = "https://graphql.anilist.co"
 steamBaseUrl = "https://store.steampowered.com"
+# Bangumi answers for anime, manga/books, games and live-action video. The API
+# is public; an access token is optional and only raises quotas. Create one at
+# https://bgm.tv/dev/app if the deployment needs it.
+bangumiBaseUrl = "https://api.bgm.tv"
+bangumiAccessToken = ""
 tmdbBaseUrl = "https://api.themoviedb.org/3"
 # TMDb API key for movie and TV search. Without it the video domain searches
 # only the locally cached catalog.

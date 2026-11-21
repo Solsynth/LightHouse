@@ -59,6 +59,13 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 	engine.RegisterProvider(music.Album)
 	engine.RegisterProvider(metadata.NewSteamProvider(metaCfg.SteamBaseURL, metaCfg.UserAgent))
 	engine.RegisterProvider(metadata.NewAniListProvider(metaCfg.AniListEndpoint, metaCfg.UserAgent))
+	// Bangumi carries the book domain and adds a second anime and Japanese
+	// game source. Its API is public; the access token only raises quotas.
+	bangumi := metadata.NewBangumiSet(metaCfg.BangumiBaseURL, metaCfg.UserAgent, metaCfg.BangumiAccessToken)
+	engine.RegisterProvider(bangumi.Anime)
+	engine.RegisterProvider(bangumi.Book)
+	engine.RegisterProvider(bangumi.Game)
+	engine.RegisterProvider(bangumi.Video)
 	// TMDb is the one provider that cannot work without a deployment secret.
 	// Register it only when the key exists, so an unconfigured video search
 	// is an explicit absence rather than a provider that always returns nil.

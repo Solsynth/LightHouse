@@ -2,6 +2,8 @@ package metadata
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -26,6 +28,74 @@ func (m *mockProvider) FetchByProviderKey(_ context.Context, key string) (*Unifi
 }
 func (m *mockProvider) Search(_ context.Context, _ string, _ int) ([]UnifiedMedia, error) {
 	return []UnifiedMedia{*m.media}, nil
+}
+
+// TestMetadataEngineSplitsSearchAcrossProviders keeps a chatty upstream from
+// taking every slot: with two providers and ten slots each contributes five,
+// even though both ignore the limit they are handed.
+func TestMetadataEngineSplitsSearchAcrossProviders(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open sqlite test db: %v", err)
+	}
+	_ = db.AutoMigrate(
+		&model.CatalogItem{},
+		&model.Creator{},
+		&model.CatalogCreator{},
+		&model.Scrobble{},
+		&model.ActiveSession{},
+	)
+
+	engine := NewEngine(db, "https://solian.live")
+	engine.RegisterProvider(&bulkProvider{name: "first", domain: model.DomainAnime, count: 20})
+	engine.RegisterProvider(&bulkProvider{name: "second", domain: model.DomainAnime, count: 20})
+
+	results, err := engine.Search(context.Background(), model.DomainAnime, "anything", 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) != 10 {
+		t.Fatalf("expected the limit to hold, got %d results", len(results))
+	}
+
+	from := map[string]int{}
+	for _, result := range results {
+		for _, name := range []string{"first", "second"} {
+			prefix := "pulsar:anime:" + name + ":"
+			if strings.HasPrefix(result.URN, prefix) {
+				from[name]++
+			}
+		}
+	}
+	for _, name := range []string{"first", "second"} {
+		if from[name] == 0 {
+			t.Errorf("expected results from %q, got %+v", name, results)
+		}
+	}
+}
+
+type bulkProvider struct {
+	name   string
+	domain string
+	count  int
+}
+
+func (b *bulkProvider) Name() string   { return b.name }
+func (b *bulkProvider) Domain() string { return b.domain }
+func (b *bulkProvider) FetchByProviderKey(context.Context, string) (*UnifiedMedia, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+func (b *bulkProvider) Search(context.Context, string, int) ([]UnifiedMedia, error) {
+	out := make([]UnifiedMedia, 0, b.count)
+	for i := 0; i < b.count; i++ {
+		out = append(out, UnifiedMedia{
+			URN:    fmt.Sprintf("pulsar:%s:%s:%d", b.domain, b.name, i),
+			Domain: b.domain,
+			Slug:   fmt.Sprintf("%s-%d", b.name, i),
+			Title:  fmt.Sprintf("%s %d", b.name, i),
+		})
+	}
+	return out, nil
 }
 
 func TestMetadataEngine(t *testing.T) {

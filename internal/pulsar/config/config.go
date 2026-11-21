@@ -16,12 +16,17 @@ type Config struct {
 	Metadata struct {
 		// UserAgent is sent to every upstream provider. The default names
 		// Pulsar and carries the fleet's contact URL, which MusicBrainz's
-		// terms require.
+		// terms and Bangumi's client guidance require.
 		UserAgent              string `toml:"userAgent"`
 		MusicBrainzBaseURL     string `toml:"musicBrainzBaseUrl"`
 		MusicBrainzCoverArtURL string `toml:"musicBrainzCoverArtUrl"`
 		AniListEndpoint        string `toml:"anilistEndpoint"`
 		SteamBaseURL           string `toml:"steamBaseUrl"`
+		// BangumiBaseURL points at the bgm.tv API. Its access token is
+		// optional: the public endpoints work without one, but a token raises
+		// the account's quota and lets NSFW subjects be fetched.
+		BangumiBaseURL     string `toml:"bangumiBaseUrl"`
+		BangumiAccessToken string `toml:"bangumiAccessToken"`
 		// TMDbAPIKey enables movie and TV search. Empty leaves the video
 		// domain with only locally cached catalog rows.
 		TMDbAPIKey  string `toml:"tmdbApiKey"`
@@ -97,6 +102,8 @@ func applyEnv(cfg *Config) {
 	config.SetStr("PULSAR_METADATA_MUSICBRAINZCOVERARTURL", &cfg.Metadata.MusicBrainzCoverArtURL)
 	config.SetStr("PULSAR_METADATA_ANILISTENDPOINT", &cfg.Metadata.AniListEndpoint)
 	config.SetStr("PULSAR_METADATA_STEAMBASEURL", &cfg.Metadata.SteamBaseURL)
+	config.SetStr("PULSAR_METADATA_BANGUMIBASEURL", &cfg.Metadata.BangumiBaseURL)
+	config.SetStr("PULSAR_METADATA_BANGUMIACCESSTOKEN", &cfg.Metadata.BangumiAccessToken)
 	config.SetStr("PULSAR_METADATA_TMDBAPIKEY", &cfg.Metadata.TMDbAPIKey)
 	config.SetStr("PULSAR_METADATA_TMDBBASEURL", &cfg.Metadata.TMDbBaseURL)
 	config.SetStr("PULSAR_SERVICES_STARGATE__GRPC", &cfg.Services.Stargate.GRPC)

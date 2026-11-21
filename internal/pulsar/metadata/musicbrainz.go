@@ -81,16 +81,22 @@ func newMBClient(baseURL, caaURL, userAgent string) *mbClient {
 	}
 }
 
-// BusyError is MusicBrainz answering 503 or 429: the service is throttling
-// us, or is simply overloaded at this moment. It is explicitly *not* "no such
+// BusyError is an upstream answering 503 or 429: the service is throttling us,
+// or is simply overloaded at this moment. It is explicitly *not* "no such
 // entity", and the HTTP layer maps it to 503 so a client retries later rather
 // than concluding the artist or album does not exist.
 type BusyError struct {
-	Status int
+	// Service names the upstream in the message, e.g. "musicbrainz".
+	Service string
+	Status  int
 }
 
 func (e BusyError) Error() string {
-	return fmt.Sprintf("musicbrainz is busy (status %d)", e.Status)
+	service := e.Service
+	if service == "" {
+		service = "metadata upstream"
+	}
+	return fmt.Sprintf("%s is busy (status %d)", service, e.Status)
 }
 
 // get decodes one MusicBrainz JSON answer, honouring the shared rate limit.
@@ -127,7 +133,7 @@ func (c *mbClient) get(ctx context.Context, path string, query url.Values, dst a
 		// entity: the limiter spaces the retries, and a caller that still
 		// sees BusyError knows to say "try again", never "no such artist".
 		if resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusTooManyRequests {
-			lastErr = BusyError{Status: resp.StatusCode}
+			lastErr = BusyError{Service: "musicbrainz", Status: resp.StatusCode}
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {

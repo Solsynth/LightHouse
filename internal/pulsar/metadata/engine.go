@@ -307,25 +307,43 @@ func (e *Engine) Search(ctx context.Context, domain, query string, limit int) ([
 		seen[m.URN] = true
 	}
 
-	// If fewer than limit, search upstream providers for domain
+	// If fewer than limit, search upstream providers for domain. The slots are
+	// divided between the providers that can answer: a first upstream must not
+	// fill every slot before the second is asked, or adding a source would
+	// change nothing whenever the older one is chatty.
 	if len(results) < limit {
 		e.mu.RLock()
+		var providers []Provider
 		for _, prov := range e.trackProviders {
 			if domain != "" && prov.Domain() != domain {
 				continue
 			}
+			providers = append(providers, prov)
+		}
+		for idx, prov := range providers {
 			rem := limit - len(results)
 			if rem <= 0 {
 				break
 			}
-			upstreamResults, err := prov.Search(ctx, query, rem)
+			// Split what is left across the providers still to be asked, so a
+			// quiet provider hands its unused share to the next one.
+			share := (rem + len(providers) - idx - 1) / (len(providers) - idx)
+			target := len(results) + share
+			if target > limit {
+				target = limit
+			}
+			upstreamResults, err := prov.Search(ctx, query, share)
 			if err == nil {
 				for _, up := range upstreamResults {
-					if !seen[up.URN] {
-						up.ShareURL = e.FormatShareURL(up.Slug)
-						results = append(results, up)
-						seen[up.URN] = true
+					if len(results) >= target {
+						break
 					}
+					if seen[up.URN] {
+						continue
+					}
+					up.ShareURL = e.FormatShareURL(up.Slug)
+					results = append(results, up)
+					seen[up.URN] = true
 				}
 			}
 		}
@@ -365,6 +383,14 @@ func parseIdentifier(probe string) (domain, provider, key string) {
 			return model.DomainMusic, "musicbrainz", k
 		case "anilist":
 			return model.DomainAnime, "anilist", k
+		case "bangumi", "bgm":
+			return model.DomainAnime, "bangumi", k
+		case "bangumi-book", "bgm-book":
+			return model.DomainBook, "bangumi-book", k
+		case "bangumi-game", "bgm-game":
+			return model.DomainGaming, "bangumi-game", k
+		case "bangumi-video", "bgm-video":
+			return model.DomainVideo, "bangumi-video", k
 		case "imdb", "tmdb":
 			return model.DomainVideo, "tmdb", k
 		default:
@@ -372,7 +398,24 @@ func parseIdentifier(probe string) (domain, provider, key string) {
 		}
 	}
 
-	// 3. slug like steam-730, mbid-xxx, anilist-123, imdb-tt123
+	// 3. slug like steam-730, mbid-xxx, anilist-123, imdb-tt123,
+	// bangumi-book-123. Longest prefixes are matched first: the generic
+	// first-dash split below would read "bangumi-book" as a slug named
+	// "bangumi" with the key "book-123".
+	lowerProbe := strings.ToLower(probe)
+	for _, prefix := range []struct {
+		slug     string
+		domain   string
+		provider string
+	}{
+		{"bangumi-book-", model.DomainBook, "bangumi-book"},
+		{"bangumi-game-", model.DomainGaming, "bangumi-game"},
+		{"bangumi-video-", model.DomainVideo, "bangumi-video"},
+	} {
+		if strings.HasPrefix(lowerProbe, prefix.slug) {
+			return prefix.domain, prefix.provider, probe[len(prefix.slug):]
+		}
+	}
 	if idx := strings.Index(probe, "-"); idx > 0 {
 		prefix := strings.ToLower(probe[:idx])
 		k := probe[idx+1:]
@@ -383,6 +426,8 @@ func parseIdentifier(probe string) (domain, provider, key string) {
 			return model.DomainMusic, "musicbrainz", k
 		case "anilist":
 			return model.DomainAnime, "anilist", k
+		case "bangumi", "bgm":
+			return model.DomainAnime, "bangumi", k
 		case "imdb":
 			return model.DomainVideo, "tmdb", k
 		}

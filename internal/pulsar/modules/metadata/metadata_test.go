@@ -105,7 +105,10 @@ func setupTestMetadataRouter(t *testing.T, testAccID uuid.UUID) (*gin.Engine, *g
 func TestMetadataRegistersEveryDomainProvider(t *testing.T) {
 	_, _, inst := setupTestMetadataRouter(t, uuid.New())
 
-	for _, name := range []string{"musicbrainz", "steam", "anilist", "tmdb"} {
+	for _, name := range []string{
+		"musicbrainz", "steam", "anilist", "tmdb",
+		"bangumi", "bangumi-book", "bangumi-game", "bangumi-video",
+	} {
 		if _, ok := inst.engine.GetProvider(name); !ok {
 			t.Errorf("expected upstream metadata provider %q to be registered", name)
 		}
