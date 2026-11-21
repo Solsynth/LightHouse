@@ -161,7 +161,7 @@ func (s *Store) ConsumeOAuthState(ctx context.Context, state, provider string) (
 	if res.Error != nil {
 		return nil, res.Error
 	}
-	if res.RowsAffected == 0 {
+	if res.RowsAffected == 0 && row.State == "" {
 		return nil, gorm.ErrRecordNotFound
 	}
 	return &row, nil
