@@ -525,11 +525,19 @@ func (s *Store) UpdateCollectionItem(ctx context.Context, collectionID, itemID u
 // ─────────────────────────── Statistics & Rewind ───────────────────────────
 
 // TopEntity represents an aggregated count / duration leader.
+//
+// ArtworkURL is the cover the aggregated rows' scrobbles agreed on. A stat row
+// is a summary of plays, not a catalog item, so the cover cannot be read off a
+// single record: the SQL takes the most recent non-empty `artwork_url` among the
+// rows it grouped, which is what "the picture this thing is filed under today"
+// means. Empty when every row in the group came from a client that sent none —
+// an old scrobbler, or a source whose cover URL was not resolvable at play time.
 type TopEntity struct {
-	Name     string `json:"name"`
-	Subtitle string `json:"subtitle,omitempty"`
-	Count    int64  `json:"count"`
-	Seconds  int64  `json:"seconds"`
+	Name       string `json:"name"`
+	Subtitle   string `json:"subtitle,omitempty"`
+	Count      int64  `json:"count"`
+	Seconds    int64  `json:"seconds"`
+	ArtworkURL string `json:"artwork_url,omitempty"`
 }
 
 // MediaStats aggregates listening, gaming, or watching statistics.
@@ -591,25 +599,36 @@ func (s *Store) GetMediaStats(ctx context.Context, accountID uuid.UUID, domain s
 	}
 
 	// 3. Top items
+	//
+	// The cover travels with the row because the list is drawn with pictures and
+	// the aggregate is the only place the app reads these rows from. It cannot be
+	// read off a single scrobble — the group covers every play of the thing — so
+	// the query takes one non-empty `artwork_url` from the group. MAX rather than
+	// "the latest" because the same recording's URL only differs by a signed
+	// query string, and either spelling loads; a group whose every row came from
+	// a client that sent no art keeps the field empty, which the UI draws as a
+	// placeholder rather than a broken image.
 	type itemRow struct {
-		Title    string `gorm:"column:title"`
-		Subtitle string `gorm:"column:subtitle"`
-		Count    int64  `gorm:"column:count"`
-		Seconds  int64  `gorm:"column:seconds"`
+		Title      string `gorm:"column:title"`
+		Subtitle   string `gorm:"column:subtitle"`
+		Count      int64  `gorm:"column:count"`
+		Seconds    int64  `gorm:"column:seconds"`
+		ArtworkURL string `gorm:"column:artwork_url"`
 	}
 	var iRows []itemRow
 	if err := baseQuery.Session(&gorm.Session{}).
-		Select("title, subtitle, count(*) as count, coalesce(sum(listened_seconds), 0) as seconds").
+		Select("title, subtitle, count(*) as count, coalesce(sum(listened_seconds), 0) as seconds, coalesce(max(nullif(trim(artwork_url), '')), '') as artwork_url").
 		Group("title, subtitle").
 		Order("count DESC").
 		Limit(10).
 		Scan(&iRows).Error; err == nil {
 		for _, r := range iRows {
 			stats.TopItems = append(stats.TopItems, TopEntity{
-				Name:     r.Title,
-				Subtitle: r.Subtitle,
-				Count:    r.Count,
-				Seconds:  r.Seconds,
+				Name:       r.Title,
+				Subtitle:   r.Subtitle,
+				Count:      r.Count,
+				Seconds:    r.Seconds,
+				ArtworkURL: r.ArtworkURL,
 			})
 		}
 	}
