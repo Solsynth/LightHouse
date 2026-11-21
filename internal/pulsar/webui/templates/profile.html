@@ -1,32 +1,57 @@
 {{define "content"}}
 {{$p := .Data}}
 <div class="space-y-8">
-  <section class="rounded-2xl bg-base-200 p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-    <div class="flex items-center gap-4">
-      {{if $p.AvatarURL}}
-      <img data-src="{{$p.AvatarURL}}" alt="{{$p.DisplayName}}" loading="lazy" class="h-16 w-16 rounded-2xl object-cover bg-base-300 shrink-0" />
+  <section class="overflow-hidden">
+    <div class="h-36 sm:h-52 w-full overflow-hidden rounded-2xl bg-base-200">
+      {{if $p.BannerURL}}
+      <img data-src="{{$p.BannerURL}}" alt="{{$p.DisplayName}}" loading="lazy" class="h-full w-full object-cover" />
       {{else}}
-      <div class="h-16 w-16 rounded-2xl bg-primary/15 text-primary flex items-center justify-center text-2xl font-bold shrink-0">
-        {{initial $p.DisplayName}}
-      </div>
+      <div class="h-full w-full bg-gradient-to-r from-primary/20 via-secondary/15 to-accent/20"></div>
       {{end}}
-      <div>
-        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">{{$p.DisplayName}}</h1>
-        <p class="text-sm font-mono text-[var(--console-faint)]">@{{$p.Username}}</p>
-      </div>
     </div>
-    <div class="flex flex-wrap items-center gap-3">
-      {{if $p.Stats}}
-      <div class="rounded-xl bg-base-100 px-4 py-2.5 text-center">
-        <div class="text-lg font-bold font-mono">{{$p.Stats.TotalScrobbles}}</div>
-        <div class="text-[11px] uppercase tracking-wider text-[var(--console-faint)]">Scrobbles</div>
+
+    <div class="mt-3 px-2 sm:px-4 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+      <div class="flex items-start gap-4">
+        {{if $p.AvatarURL}}
+        <img
+          data-src="{{$p.AvatarURL}}"
+          alt="{{$p.DisplayName}}"
+          loading="lazy"
+          class="h-20 w-20 sm:h-24 sm:w-24 -mt-12 sm:-mt-14 rounded-full object-cover bg-base-200 ring-4 ring-base-100 shrink-0 relative z-10"
+        />
+        {{else}}
+        <div class="h-20 w-20 sm:h-24 sm:w-24 -mt-12 sm:-mt-14 rounded-full bg-primary/15 text-primary flex items-center justify-center text-2xl sm:text-3xl font-bold ring-4 ring-base-100 shrink-0 relative z-10">
+          {{initial $p.DisplayName}}
+        </div>
+        {{end}}
+        <div class="min-w-0 pt-0.5">
+          <h1 class="text-2xl sm:text-3xl font-bold tracking-tight truncate">{{$p.DisplayName}}</h1>
+          <p class="text-sm font-mono text-[var(--console-faint)]">@{{$p.Username}}</p>
+          <div class="mt-1.5 inline-flex items-center gap-1.5 text-xs text-[var(--console-dim)]">
+            {{if $p.Active}}
+            <span class="h-2 w-2 rounded-full bg-success"></span>
+            <span>Active now</span>
+            {{else}}
+            <span class="h-2 w-2 rounded-full bg-[var(--console-faint)]"></span>
+            <span class="text-[var(--console-faint)]">Offline</span>
+            {{end}}
+          </div>
+        </div>
       </div>
-      <div class="rounded-xl bg-base-100 px-4 py-2.5 text-center">
-        <div class="text-lg font-bold font-mono">{{formatDuration $p.Stats.TotalSeconds}}</div>
-        <div class="text-[11px] uppercase tracking-wider text-[var(--console-faint)]">Time</div>
+
+      <div class="flex flex-wrap items-center gap-2.5 sm:pb-1">
+        {{if $p.Stats}}
+        <div class="rounded-xl bg-base-200 px-3.5 py-2 text-center">
+          <div class="text-base font-bold font-mono">{{$p.Stats.TotalScrobbles}}</div>
+          <div class="text-[10px] uppercase tracking-wider text-[var(--console-faint)]">Scrobbles</div>
+        </div>
+        <div class="rounded-xl bg-base-200 px-3.5 py-2 text-center">
+          <div class="text-base font-bold font-mono">{{formatDuration $p.Stats.TotalSeconds}}</div>
+          <div class="text-[10px] uppercase tracking-wider text-[var(--console-faint)]">Time</div>
+        </div>
+        {{end}}
+        <a href="/u/{{$p.Identifier}}/rewind/{{$p.CurrentYear}}" class="btn btn-primary btn-sm rounded-xl">{{$p.CurrentYear}} Rewind</a>
       </div>
-      {{end}}
-      <a href="/u/{{$p.Identifier}}/rewind/{{$p.CurrentYear}}" class="btn btn-primary btn-sm rounded-xl">{{$p.CurrentYear}} Rewind</a>
     </div>
   </section>
 

@@ -485,6 +485,7 @@ type profileViewData struct {
 	DisplayName string
 	Username    string
 	AvatarURL   string
+	BannerURL   string
 	AccountID   string
 	Stats       *store.MediaStats
 	Active      []model.ActiveSession
@@ -511,6 +512,7 @@ func (h *Handler) handleProfile(c *gin.Context) {
 	displayName := identifier
 	username := identifier
 	avatarURL := ""
+	bannerURL := ""
 	if h.core.Clients != nil && h.core.Clients.Account != nil {
 		if acc, err := h.core.Clients.Account.GetAccount(ctx, &gen.DyGetAccountRequest{
 			Id: accountID.String(),
@@ -524,6 +526,7 @@ func (h *Handler) handleProfile(c *gin.Context) {
 				displayName = username
 			}
 			avatarURL = accountAvatarURL(acc)
+			bannerURL = cloudFileURL(acc.GetBackground())
 		}
 	}
 
@@ -568,6 +571,7 @@ func (h *Handler) handleProfile(c *gin.Context) {
 		DisplayName: displayName,
 		Username:    username,
 		AvatarURL:   avatarURL,
+		BannerURL:   bannerURL,
 		AccountID:   accountID.String(),
 		Stats:       stats,
 		Active:      active,
@@ -676,17 +680,20 @@ func accountAvatarURL(acc *gen.DyAccount) string {
 	if acc == nil {
 		return ""
 	}
-	pic := acc.GetPicture()
-	if pic == nil {
+	return cloudFileURL(acc.GetPicture())
+}
+
+func cloudFileURL(f *gen.DyCloudFile) string {
+	if f == nil {
 		return ""
 	}
-	if u := strings.TrimSpace(pic.GetUrl()); u != "" {
+	if u := strings.TrimSpace(f.GetUrl()); u != "" {
 		if strings.HasPrefix(u, "/") {
 			return "https://api.solian.app" + u
 		}
 		return u
 	}
-	if id := strings.TrimSpace(pic.GetId()); id != "" {
+	if id := strings.TrimSpace(f.GetId()); id != "" {
 		return "https://api.solian.app/drive/files/" + id
 	}
 	return ""
