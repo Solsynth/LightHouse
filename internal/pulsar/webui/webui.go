@@ -526,7 +526,7 @@ func (h *Handler) handleProfile(c *gin.Context) {
 				displayName = username
 			}
 			avatarURL = accountAvatarURL(acc)
-			bannerURL = cloudFileURL(acc.GetBackground())
+			bannerURL = accountBannerURL(acc)
 		}
 	}
 
@@ -680,7 +680,26 @@ func accountAvatarURL(acc *gen.DyAccount) string {
 	if acc == nil {
 		return ""
 	}
-	return cloudFileURL(acc.GetPicture())
+	if u := cloudFileURL(acc.GetPicture()); u != "" {
+		return u
+	}
+	if p := acc.GetProfile(); p != nil {
+		return cloudFileURL(p.GetPicture())
+	}
+	return ""
+}
+
+func accountBannerURL(acc *gen.DyAccount) string {
+	if acc == nil {
+		return ""
+	}
+	if u := cloudFileURL(acc.GetBackground()); u != "" {
+		return u
+	}
+	if p := acc.GetProfile(); p != nil {
+		return cloudFileURL(p.GetBackground())
+	}
+	return ""
 }
 
 func cloudFileURL(f *gen.DyCloudFile) string {
