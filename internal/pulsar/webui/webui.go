@@ -94,6 +94,11 @@ func New(services *core.Services) (*Handler, error) {
 		distPath := strings.TrimSpace(services.Config.Web.DistPath)
 		if distPath != "" {
 			if err := h.loadDist(distPath); err != nil {
+				if distPath == "web/dist" {
+					if fallbackErr := h.loadDist("internal/pulsar/web/dist"); fallbackErr == nil {
+						err = nil
+					}
+				}
 				h.DistError = err
 			}
 		}
