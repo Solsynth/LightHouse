@@ -339,9 +339,10 @@ func (h *Handler) basePage(c *gin.Context, title, desc, activeNav string, og *Op
 			nick = name
 		}
 		navUser = &NavUser{
-			ID:   acc.GetId(),
-			Name: name,
-			Nick: nick,
+			ID:        acc.GetId(),
+			Name:      name,
+			Nick:      nick,
+			AvatarURL: accountAvatarURL(acc),
 		}
 	}
 	signInURL := "/sign-in"
@@ -522,6 +523,7 @@ func (h *Handler) handleProfile(c *gin.Context) {
 			} else if username != "" {
 				displayName = username
 			}
+			avatarURL = accountAvatarURL(acc)
 		}
 	}
 
@@ -668,6 +670,26 @@ func (h *Handler) RenderMediaShare(c *gin.Context, m *metadata.UnifiedMedia) {
 		"CatalogID": catalogIDStr,
 	})
 	h.render(c, http.StatusOK, "share_media.html", page)
+}
+
+func accountAvatarURL(acc *gen.DyAccount) string {
+	if acc == nil {
+		return ""
+	}
+	pic := acc.GetPicture()
+	if pic == nil {
+		return ""
+	}
+	if u := strings.TrimSpace(pic.GetUrl()); u != "" {
+		if strings.HasPrefix(u, "/") {
+			return "https://api.solian.app" + u
+		}
+		return u
+	}
+	if id := strings.TrimSpace(pic.GetId()); id != "" {
+		return "https://api.solian.app/drive/files/" + id
+	}
+	return ""
 }
 
 func formatDuration(sec int64) string {

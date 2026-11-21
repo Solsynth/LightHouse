@@ -1,5 +1,6 @@
 import { createApp, defineAsyncComponent, type Component } from 'vue'
 import { createPinia } from 'pinia'
+import { lazyLoad } from 'unlazy'
 
 import '@fontsource/nunito/400.css'
 import '@fontsource/nunito/600.css'
@@ -53,8 +54,23 @@ export function mountIslands(root: ParentNode = document): void {
   }
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => mountIslands())
-} else {
+function initUnlazy(): void {
+  lazyLoad()
+  const observer = new MutationObserver(() => {
+    if (document.querySelector('img[data-src], img[data-srcset]')) {
+      lazyLoad()
+    }
+  })
+  observer.observe(document.body, { childList: true, subtree: true })
+}
+
+function boot(): void {
   mountIslands()
+  initUnlazy()
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot)
+} else {
+  boot()
 }

@@ -242,7 +242,7 @@ onMounted(load)
           <a v-if="itemHref(item)" :href="itemHref(item)" class="block h-full w-full">
             <img
               v-if="itemCatalog(item)?.artwork_url || item.artwork_url"
-              :src="itemCatalog(item)?.artwork_url || item.artwork_url"
+              :data-src="itemCatalog(item)?.artwork_url || item.artwork_url"
               :alt="itemCatalog(item)?.title || item.title"
               class="h-full w-full object-cover group-hover:scale-[1.03] transition-transform duration-200"
               loading="lazy"

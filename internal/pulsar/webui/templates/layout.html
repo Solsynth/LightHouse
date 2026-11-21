@@ -57,7 +57,11 @@
         <div class="flex items-center gap-2">
           {{if .CurrentUser}}
           <a href="/u/{{.CurrentUser.Name}}" class="inline-flex items-center gap-2 rounded-full bg-base-200 px-3 py-1.5 text-sm font-medium hover:bg-base-300 transition-colors">
+            {{if .CurrentUser.AvatarURL}}
+            <img src="{{.CurrentUser.AvatarURL}}" alt="{{.CurrentUser.Nick}}" class="h-5 w-5 rounded-full object-cover bg-base-300" />
+            {{else}}
             <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/20 text-primary text-xs font-bold">{{initial .CurrentUser.Nick}}</span>
+            {{end}}
             <span class="hidden sm:inline">{{.CurrentUser.Nick}}</span>
           </a>
           {{else}}

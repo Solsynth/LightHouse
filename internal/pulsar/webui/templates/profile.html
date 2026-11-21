@@ -3,9 +3,13 @@
 <div class="space-y-8">
   <section class="rounded-2xl bg-base-200 p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
     <div class="flex items-center gap-4">
+      {{if $p.AvatarURL}}
+      <img data-src="{{$p.AvatarURL}}" alt="{{$p.DisplayName}}" loading="lazy" class="h-16 w-16 rounded-2xl object-cover bg-base-300 shrink-0" />
+      {{else}}
       <div class="h-16 w-16 rounded-2xl bg-primary/15 text-primary flex items-center justify-center text-2xl font-bold shrink-0">
         {{initial $p.DisplayName}}
       </div>
+      {{end}}
       <div>
         <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">{{$p.DisplayName}}</h1>
         <p class="text-sm font-mono text-[var(--console-faint)]">@{{$p.Username}}</p>
@@ -74,7 +78,7 @@
         >
           <div class="relative aspect-[2/3] w-full overflow-hidden rounded-2xl bg-base-200 ring-1 ring-[var(--console-line-soft)]">
             {{if and $ci $ci.ArtworkURL}}
-            <img src="{{deref $ci.ArtworkURL}}" alt="{{$ci.Title}}" class="h-full w-full object-cover group-hover:scale-[1.03] transition-transform duration-200" loading="lazy" />
+            <img data-src="{{deref $ci.ArtworkURL}}" alt="{{$ci.Title}}" class="h-full w-full object-cover group-hover:scale-[1.03] transition-transform duration-200" loading="lazy" />
             {{else}}
             <div class="h-full w-full flex items-center justify-center p-3 text-center text-xs font-mono text-[var(--console-faint)]">
               {{if $ci}}{{$ci.Title}}{{end}}
