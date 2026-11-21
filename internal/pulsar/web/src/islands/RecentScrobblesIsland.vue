@@ -51,7 +51,7 @@ onMounted(async () => {
           <p v-if="s.subtitle" class="text-xs text-[var(--console-dim)] truncate">{{ s.subtitle }}</p>
         </div>
         <div class="text-right shrink-0">
-          <span class="badge badge-xs badge-ghost uppercase block ml-auto">{{ s.domain }}</span>
+          <span class="badge badge-xs badge-ghost uppercase">{{ s.domain }}</span>
           <span class="text-[11px] font-mono text-[var(--console-faint)]">{{ formatTimestamp(s.played_at) }}</span>
         </div>
       </div>
