@@ -8,6 +8,8 @@ interface ApiErrorBody {
   error?: string
   detail?: string
   errors?: ErrorFields
+  /** The prepared upload path cannot serve this pool; retry the proxy route. */
+  use_proxied_upload?: boolean
 }
 
 /** A typed failure from the DysonFS API. */
@@ -16,6 +18,8 @@ export class DriveError extends Error {
   readonly code: string
   readonly detail?: string
   readonly fields?: ErrorFields
+  /** The API explicitly asks the client to use the proxied upload endpoint. */
+  readonly useProxiedUpload: boolean
 
   constructor(
     status: number,
@@ -23,6 +27,7 @@ export class DriveError extends Error {
     code?: string,
     detail?: string,
     fields?: ErrorFields,
+    useProxiedUpload = false,
   ) {
     super(message)
     this.name = 'DriveError'
@@ -30,6 +35,7 @@ export class DriveError extends Error {
     this.code = code ?? `HTTP_${status}`
     this.detail = detail
     this.fields = fields
+    this.useProxiedUpload = useProxiedUpload
   }
 
   get isUnauthenticated(): boolean {
@@ -102,7 +108,14 @@ async function parseError(response: Response): Promise<DriveError> {
       payload.message ||
       (typeof payload.error === 'string' ? payload.error : '') ||
       fallback.message
-    return new DriveError(response.status, message, payload.code, payload.detail, payload.errors)
+    return new DriveError(
+      response.status,
+      message,
+      payload.code,
+      payload.detail,
+      payload.errors,
+      payload.use_proxied_upload === true,
+    )
   } catch {
     return fallback
   }

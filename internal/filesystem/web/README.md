@@ -69,6 +69,19 @@ then fetch it with `credentials: 'omit'`: storage answers CORS with
 request. Never follow `/open`'s cross-origin redirect with `credentials:
 'include'`; use the link endpoint instead.
 
+## Uploading file bytes in the browser
+
+Uploads use the presigned direct path: `POST /api/files/upload/prepare`, one
+`PUT` per file (or per 5 MiB part for files over 64 MiB), then
+`POST /api/files/upload/<task-id>/complete`. The bytes go straight from the
+browser to the bucket, and multipart parts upload three at a time.
+
+The bucket's CORS policy must allow `PUT` from the console origin and the
+`Content-Type` request header. When the API answers `use_proxied_upload`, the
+storage host is unreachable from the browser, or the presigned transfer fails,
+the client falls back to `POST /api/files/upload/direct`, which stages the
+bytes through the API and works with every pool.
+
 ## Scripts
 
 | Script               | Purpose                                            |
