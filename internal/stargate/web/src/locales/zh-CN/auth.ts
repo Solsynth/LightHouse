@@ -15,6 +15,7 @@ export default {
     timeLeft: '剩余 {time}',
     changeAccount: '更换账号',
     completing: '正在登录…',
+    handingOff: '正在返回应用…',
     passkeyVerify: '使用通行密钥验证',
     chooseMethod: '选择验证方式',
     useAnother: '换一种方式',

@@ -15,6 +15,7 @@ export default {
     timeLeft: '{time} left',
     changeAccount: 'Change Account',
     completing: 'Signing you in…',
+    handingOff: 'Taking you back to the app…',
     passkeyVerify: 'Verify with a Passkey',
     chooseMethod: 'Choose how to verify',
     useAnother: 'Use another method',

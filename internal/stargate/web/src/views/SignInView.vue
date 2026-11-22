@@ -77,6 +77,13 @@ let pollTimer: number | undefined
 /** True while the challenge is being redeemed; also shown to the person. */
 const finishing = ref(false)
 
+/**
+ * True while the session is being handed to another app. The hand-off mints a
+ * single-use code over the network before it can navigate, so without this the
+ * sign-in form stays on screen and looks like nothing is happening.
+ */
+const leaving = ref(false)
+
 /** True once the challenge's approval window has closed unfinished. */
 const expired = computed(() => {
   const at = signIn.challenge?.expired_at
@@ -325,6 +332,7 @@ async function leave() {
     await router.replace(target)
     return
   }
+  leaving.value = true
   if (kind === 'shared') {
     window.location.assign(target)
     return
@@ -332,6 +340,7 @@ async function leave() {
   try {
     window.location.assign(await handoffTargetUrl(target))
   } catch {
+    leaving.value = false
     notice.fail(t('signIn.errorRedirectRefused'))
     await router.replace('/account')
   }
@@ -487,7 +496,12 @@ onMounted(async () => {
         return
       }
     }
-    if (landingRequested) void leave()
+    if (landingRequested) {
+      // The hand-off is still a network round trip; show its loading state now
+      // rather than the form for a session that is already signed in.
+      leaving.value = true
+      void leave()
+    }
   }
 })
 onBeforeUnmount(stopPolling)
@@ -504,9 +518,14 @@ onBeforeUnmount(stopPolling)
       </p>
     </div>
 
-    <div v-if="finishing" class="flex flex-col items-center py-12 text-center" role="status">
+    <div
+      v-if="finishing || leaving"
+      class="flex flex-col items-center py-12 text-center"
+      role="status"
+      aria-live="polite"
+    >
       <span class="dot animate-pulse bg-primary" aria-hidden="true" />
-      <p class="voice mt-3">{{ t('signIn.completing') }}</p>
+      <p class="voice mt-3">{{ leaving ? t('signIn.handingOff') : t('signIn.completing') }}</p>
     </div>
 
     <Transition v-else name="step" mode="out-in">
@@ -674,7 +693,7 @@ onBeforeUnmount(stopPolling)
       <span>{{ t('signIn.watching') }}</span>
     </div>
 
-    <div class="mt-8 space-y-1 voice text-[12px] text-faint">
+    <div v-if="!finishing && !leaving" class="mt-8 space-y-1 voice text-[12px] text-faint">
       <p>
         {{ t('signIn.noAccount') }}
         <RouterLink
