@@ -7,6 +7,9 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	// The runtime image is FROM scratch with no /usr/share/zoneinfo; embed
+	// the IANA database so time.LoadLocation resolves profile time zones.
+	_ "time/tzdata"
 
 	"src.solsynth.dev/sosys/stargate/app"
 	"src.solsynth.dev/sosys/stargate/modules/standard"

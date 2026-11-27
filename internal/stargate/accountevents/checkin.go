@@ -216,14 +216,20 @@ func (s *Service) isBirthday(ctx context.Context, accountID uuid.UUID, now time.
 	if profile.Birthday == nil {
 		return false
 	}
+	// The birthday is the calendar date shown on the profile (models.Time
+	// serializes as UTC, and the web UI renders that UTC date); only "today"
+	// is resolved in the preferred zone. Shifting the stored instant into the
+	// zone would move the birthday a day for negative offsets.
+	birthday := profile.Birthday.Time().UTC()
 	location := time.UTC
 	if profile.TimeZone != nil {
 		if loaded, err := time.LoadLocation(*profile.TimeZone); err == nil {
 			location = loaded
+		} else {
+			s.log().Warn("invalid profile time zone", "account", accountID, "zone", *profile.TimeZone, "error", err)
 		}
 	}
 	localNow := now.In(location)
-	birthday := profile.Birthday.Time().In(location)
 	return birthday.Month() == localNow.Month() && birthday.Day() == localNow.Day()
 }
 
