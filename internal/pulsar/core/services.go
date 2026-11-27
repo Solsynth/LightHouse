@@ -81,15 +81,43 @@ func (s *Services) publishSessionToFriends(ctx context.Context, accountID uuid.U
 	}
 }
 
-// PublishScrobbleCreated pushes an event onto NATS JetStream when a scrobble is written.
+// PublishScrobbleCreated pushes one timeline event onto the fleet's
+// timeline_events stream when a scrobble is written. A disabled or absent
+// NATS connection is a no-op.
 func (s *Services) PublishScrobbleCreated(ctx context.Context, accountID uuid.UUID, scrobble *model.Scrobble) {
 	if s.NATS == nil || !s.NATS.Enabled() {
 		return
 	}
-	subject := "pulsar.scrobble.created"
-	if err := s.NATS.Publish(ctx, subject, "scrobbles", scrobble); err != nil {
+	if err := s.NATS.Bus.PublishTimeline(ctx, "pulsar", "scrobble.created", accountID.String(), scrobble.PlayedAt, scrobble); err != nil {
 		if s.Log != nil {
 			s.Log.Warn("failed to publish scrobble event", "scrobble_id", scrobble.ID, "error", err)
+		}
+	}
+}
+
+// reviewEventTypes maps a review mutation to its timeline event type; the
+// delete action folds in as its own event so the timeline records the removal
+// instead of silently keeping a review that no longer exists.
+var reviewEventTypes = map[string]string{
+	"created": "work.reviewed",
+	"updated": "work.reviewed",
+	"deleted": "work.review_deleted",
+}
+
+// PublishReviewUpdated pushes a review create, update or delete onto the
+// fleet's timeline_events stream so Stargate's account timeline can fold it
+// in. A disabled or absent NATS connection is a no-op.
+func (s *Services) PublishReviewUpdated(ctx context.Context, action string, review *model.Review) {
+	if s.NATS == nil || !s.NATS.Enabled() {
+		return
+	}
+	eventType, ok := reviewEventTypes[action]
+	if !ok {
+		return
+	}
+	if err := s.NATS.Bus.PublishTimeline(ctx, "pulsar", eventType, review.AccountID.String(), review.UpdatedAt, review); err != nil {
+		if s.Log != nil {
+			s.Log.Warn("failed to publish review event", "review_id", review.ID, "error", err)
 		}
 	}
 }

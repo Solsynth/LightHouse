@@ -2,8 +2,10 @@ package reviews
 
 import (
 	"context"
+	"time"
 
 	"github.com/gin-gonic/gin"
+
 	"github.com/google/uuid"
 
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/core"
@@ -103,6 +105,12 @@ func (i *instance) setReview(c *gin.Context) {
 		return
 	}
 
+	action := "updated"
+	if created {
+		action = "created"
+	}
+	i.core.PublishReviewUpdated(c.Request.Context(), action, review)
+
 	if created {
 		httpx.Created(c, review)
 	} else {
@@ -194,6 +202,9 @@ func (i *instance) deleteReview(c *gin.Context) {
 		httpx.NotFound(c, "review not found")
 		return
 	}
+	i.core.PublishReviewUpdated(c.Request.Context(), "deleted", &model.Review{
+		ID: id, AccountID: accountID, UpdatedAt: time.Now().UTC(),
+	})
 
 	httpx.NoContent(c)
 }

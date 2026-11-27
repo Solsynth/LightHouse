@@ -68,6 +68,7 @@ func Profile(c *core.Services, p *ports.Set) profilectl.Deps {
 	return profilectl.Deps{
 		Store: c.Store, Redis: c.Redis, Cfg: c.Config, Perm: c.Perm,
 		Logs: c.Logs, Clients: c.Clients, Ports: p, Log: c.Log,
+		Timeline: c.NATS,
 	}
 }
 

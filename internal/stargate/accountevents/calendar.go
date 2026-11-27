@@ -853,9 +853,12 @@ func (s *Service) Search(ctx context.Context, viewerID uuid.UUID, regionCode str
 
 // ─────────────────────────── timeline ───────────────────────────
 
-// Timeline mirrors the retired C# GetTimeline: every status and presence
-// activity of the account, newest first.
-func (s *Service) Timeline(ctx context.Context, accountID uuid.UUID, offset, take int) ([]AccountTimelineItem, int, error) {
+// Timeline mirrors the retired C# GetTimeline, extended with the persisted
+// event log: every status, presence activity and ingested service event of
+// the account, newest first. includeServiceEvents gates the event log: a
+// client that does not declare the timeline.service-events capability gets
+// the legacy status/activity shape only, so unknown items never reach it.
+func (s *Service) Timeline(ctx context.Context, accountID uuid.UUID, offset, take int, includeServiceEvents bool) ([]AccountTimelineItem, int, error) {
 	statuses, err := s.deps.Accounts.ListStatusesForTimeline(ctx, accountID)
 	if err != nil {
 		return nil, 0, err
@@ -864,8 +867,15 @@ func (s *Service) Timeline(ctx context.Context, accountID uuid.UUID, offset, tak
 	if err != nil {
 		return nil, 0, err
 	}
+	events, err := s.deps.Store.ListTimelineEvents(ctx, accountID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if !includeServiceEvents {
+		events = nil
+	}
 
-	items := make([]AccountTimelineItem, 0, len(statuses)+len(activities))
+	items := make([]AccountTimelineItem, 0, len(statuses)+len(activities)+len(events))
 	for i := range statuses {
 		status := statuses[i]
 		created := modelTime(time.Time{})
@@ -890,6 +900,15 @@ func (s *Service) Timeline(ctx context.Context, accountID uuid.UUID, offset, tak
 			CreatedAt: created,
 			EventType: TimelineActivity,
 			Activity:  &activity,
+		})
+	}
+	for i := range events {
+		event := events[i]
+		items = append(items, AccountTimelineItem{
+			Id:        event.Id,
+			CreatedAt: event.CreatedAt,
+			EventType: TimelineServiceEvent,
+			Event:     &event,
 		})
 	}
 	sortTimeline(items)

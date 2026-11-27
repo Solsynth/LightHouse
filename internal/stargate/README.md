@@ -128,6 +128,17 @@ Modules own their schema:
   `user_calendar_events`, calendar subscriptions and `notable_days`:
   check-in/rewards, calendar/merged/countdown/search, the CN holiday seed,
   timeline and the fortune surface.
+  It also owns `account_timeline_events`, the persisted timeline event log:
+  one durable JetStream consumer folds the fleet's `timeline_events` stream
+  (`timeline.<service>.<event>` subjects, `shared/pkg/eventbus.TimelineEvent`
+  envelope, deduped by `event_id`) into the account timeline. Stargate
+  publishes `profile.updated` (profile PATCH), `realm.created`/`realm.joined`
+  (realm routes) and `name.changed` (name-change card use) itself; Pulsar
+  publishes `scrobble.created`, `work.reviewed` and `work.review_deleted`. A
+  service joins by publishing — no consumer change.
+  The timeline endpoint serves the event log only to clients declaring the
+  `timeline.service-events` token in the `X-Client-Capabilities` header;
+  others get the legacy status/activity shape.
   `/api/fortune/random` serves a 一言 sentence from `v1.hitokoto.cn` for
   Chinese (or unfiltered) requests, cached and rate-limited to respect the
   endpoint's 2 QPS, and falls back to the embedded Passport catalogue when

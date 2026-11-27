@@ -493,6 +493,25 @@ func (d Deps) getAccountCountdown(c *gin.Context) {
 	c.JSON(http.StatusOK, items)
 }
 
+// timelineServiceEventsCapability is the X-Client-Capabilities token that
+// declares a client can render TimelineServiceEvent items (the persisted
+// timeline event log). Without it the endpoint serves the legacy
+// status/activity shape only, so older clients never receive an item type
+// they cannot render.
+const timelineServiceEventsCapability = "timeline.service-events"
+
+// hasClientCapability reports whether the request's X-Client-Capabilities
+// header (comma-separated tokens) declares the given capability.
+func hasClientCapability(c *gin.Context, capability string) bool {
+	raw := c.GetHeader("X-Client-Capabilities")
+	for _, token := range strings.Split(raw, ",") {
+		if strings.TrimSpace(token) == capability {
+			return true
+		}
+	}
+	return false
+}
+
 func (d Deps) getTimeline(c *gin.Context) {
 	account := d.lookupAccount(c)
 	if account == nil {
@@ -504,7 +523,7 @@ func (d Deps) getTimeline(c *gin.Context) {
 		return
 	}
 	offset, take := pagination(c, 20)
-	items, total, err := d.Service.Timeline(c.Request.Context(), accountID, offset, take)
+	items, total, err := d.Service.Timeline(c.Request.Context(), accountID, offset, take, hasClientCapability(c, timelineServiceEventsCapability))
 	if err != nil {
 		internalError(c, err)
 		return

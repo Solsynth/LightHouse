@@ -1,6 +1,8 @@
 package accountevents
 
 import (
+	"encoding/json"
+
 	"src.solsynth.dev/sosys/stargate/model"
 )
 
@@ -353,6 +355,7 @@ type TimelineEventType int
 const (
 	TimelineStatusChange TimelineEventType = 0
 	TimelineActivity     TimelineEventType = 1
+	TimelineServiceEvent TimelineEventType = 2
 )
 
 // AccountTimelineItem mirrors AccountTimelineItem.
@@ -362,4 +365,18 @@ type AccountTimelineItem struct {
 	EventType TimelineEventType       `json:"event_type"`
 	Status    *model.AccountStatus    `json:"status,omitempty"`
 	Activity  *model.PresenceActivity `json:"activity,omitempty"`
+	Event     *TimelineEvent          `json:"event,omitempty"`
+}
+
+// TimelineEvent is one persisted service event in the timeline log
+// (account_timeline_events): a fleet action log (profile change, realm
+// action) or another service's event (a Pulsar scrobble or review) folded in
+// by the JetStream ingester. Payload is the raw event envelope the source
+// published, so clients can render each type with its own shape.
+type TimelineEvent struct {
+	Id        string          `json:"id"`
+	CreatedAt model.Time      `json:"created_at"`
+	EventType string          `json:"event_type"`
+	Source    string          `json:"source,omitempty"`
+	Payload   json.RawMessage `json:"payload,omitempty"`
 }

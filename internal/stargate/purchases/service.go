@@ -44,6 +44,13 @@ type PublisherRenamer interface {
 	RenamePublisher(ctx context.Context, publisherID, accountID uuid.UUID, newName string) (oldName string, err error)
 }
 
+// TimelinePublisher publishes fleet timeline events (shared eventbus
+// convention); *nats.Client satisfies it. Nil — NATS disabled — means no
+// timeline event is emitted.
+type TimelinePublisher interface {
+	PublishTimeline(ctx context.Context, service, eventType, accountID string, occurredAt time.Time, data any) error
+}
+
 // Service owns the affiliation and name-change-card lifecycle.
 type Service struct {
 	store     *Store
@@ -51,20 +58,23 @@ type Service struct {
 	payments  ports.Payments
 	accounts  AccountStore
 	publisher PublisherRenamer
+	timeline  TimelinePublisher
 	log       *slog.Logger
 
 	now func() time.Time
 }
 
 // NewService wires the domain. payments may be nil; purchases then fail with
-// ports.ErrUnavailable, which the HTTP layer serves as 503.
-func NewService(store *Store, settings Settings, payments ports.Payments, accounts AccountStore, publisher PublisherRenamer, log *slog.Logger) *Service {
+// ports.ErrUnavailable, which the HTTP layer serves as 503. timeline may be
+// nil; a completed rename then skips its timeline event.
+func NewService(store *Store, settings Settings, payments ports.Payments, accounts AccountStore, publisher PublisherRenamer, timeline TimelinePublisher, log *slog.Logger) *Service {
 	return &Service{
 		store:     store,
 		settings:  settings,
 		payments:  payments,
 		accounts:  accounts,
 		publisher: publisher,
+		timeline:  timeline,
 		log:       log,
 		now:       func() time.Time { return time.Now().UTC() },
 	}
@@ -392,6 +402,14 @@ func (s *Service) UseNameChangeCard(ctx context.Context, accountID uuid.UUID, ta
 	}
 	if err := tx.Commit().Error; err != nil {
 		return nil, err
+	}
+	// The milestone is the rename itself, not the card purchase: emit only
+	// after the transaction commits, for account renames.
+	if target == TargetAccount && s.timeline != nil {
+		data, _ := json.Marshal(map[string]any{"old_name": oldName, "new_name": newName})
+		if err := s.timeline.PublishTimeline(ctx, "stargate", "name.changed", accountID.String(), time.Time{}, json.RawMessage(data)); err != nil && s.log != nil {
+			s.log.Warn("publish timeline event", "error", err)
+		}
 	}
 	return purchase.toWire(), nil
 }

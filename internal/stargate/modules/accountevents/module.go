@@ -65,7 +65,9 @@ func schemaHooks() []module.SchemaHook {
 	return out
 }
 
-type instance struct{}
+type instance struct {
+	stop func()
+}
 
 func (i *instance) Configure(ctx context.Context, host *module.Host[core.Services]) error {
 	if host == nil || host.Core == nil || host.Core.DB == nil {
@@ -115,10 +117,23 @@ func (i *instance) Configure(ctx context.Context, host *module.Host[core.Service
 	}
 	accounteventsctl.Register(host.API, deps)
 	accounteventsctl.RegisterPublic(host.API, deps)
+
+	// The persisted timeline event log folds fleet action logs and other
+	// services' events (Pulsar) into the account timeline. Owned here because
+	// the rows land in this module's account_timeline_events table.
+	if host.Core.NATS != nil {
+		i.stop = accountevents.StartTimelineEventIngest(
+			ctx, host.Core.NATS, store, log, accountevents.TimelineEventSources())
+	}
 	return nil
 }
 
-func (i *instance) Stop(context.Context) error { return nil }
+func (i *instance) Stop(context.Context) error {
+	if i.stop != nil {
+		i.stop()
+	}
+	return nil
+}
 
 func coreLog(host *module.Host[core.Services]) *slog.Logger {
 	if host != nil && host.Core != nil && host.Core.Log != nil {

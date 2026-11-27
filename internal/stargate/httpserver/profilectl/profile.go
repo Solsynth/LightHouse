@@ -36,16 +36,24 @@ import (
 	"src.solsynth.dev/sosys/stargate/store"
 )
 
+// TimelinePublisher publishes fleet timeline events (shared eventbus
+// convention); *nats.Client satisfies it. Nil — NATS disabled — means no
+// timeline event is emitted.
+type TimelinePublisher interface {
+	PublishTimeline(ctx context.Context, service, eventType, accountID string, occurredAt time.Time, data any) error
+}
+
 // Deps is the dependency set the profile controllers need.
 type Deps struct {
-	Store   *store.Store
-	Redis   *redis.Client
-	Cfg     *config.Config
-	Perm    *permission.Service
-	Logs    *actionlog.Service
-	Clients *grpcclient.Clients
-	Ports   *ports.Set
-	Log     *slog.Logger
+	Store    *store.Store
+	Redis    *redis.Client
+	Cfg      *config.Config
+	Perm     *permission.Service
+	Logs     *actionlog.Service
+	Clients  *grpcclient.Clients
+	Ports    *ports.Set
+	Log      *slog.Logger
+	Timeline TimelinePublisher
 }
 
 // Register mounts the profile + public account routes. The social graph
@@ -617,6 +625,13 @@ func (d Deps) updateProfile(c *gin.Context) {
 	profile.UpdatedAt = model.NewTime(time.Now())
 	if len(changed) > 0 {
 		d.logAction(c, user.Id, model.ActionLogAccountProfileUpdate, map[string]any{"fields": changed})
+		// Fold the change into the account timeline for clients that render
+		// service events. A failed publish never fails the request.
+		if d.Timeline != nil {
+			if err := d.Timeline.PublishTimeline(ctx, "stargate", "profile.updated", user.Id, time.Time{}, map[string]any{"fields": changed}); err != nil {
+				d.Log.Warn("publish timeline event", "error", err)
+			}
+		}
 	}
 	if req.PictureId != nil && profile.Picture != nil {
 		d.logAction(c, user.Id, model.ActionLogAccountAvatar, map[string]any{})

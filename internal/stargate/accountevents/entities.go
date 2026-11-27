@@ -1,10 +1,14 @@
 // Package accountevents is the ported Passport account-events domain: the
 // daily check-in with its fortune tips, the user calendar (events,
-// subscriptions, merged aggregation and countdowns), notable days/holidays and
-// the public account timeline.
+// subscriptions, merged aggregation and countdowns), notable days/holidays
+// and the public account timeline, extended with a persisted event log
+// (account_timeline_events) that ingests fleet action logs and other
+// services' JetStream events — profile changes, realm actions, Pulsar
+// scrobbles and reviews — into the timeline.
 //
 // Tables keep the legacy Passport names and columns so an existing deployment
-// needs no data copy. The status and presence-activity tables stay core
+// needs no data copy; account_timeline_events is the one new table this
+// package owns outright. The status and presence-activity tables stay core
 // (internal/stargate/store); this package only reads them.
 package accountevents
 
@@ -95,3 +99,21 @@ type NotableDayEntity struct {
 }
 
 func (NotableDayEntity) TableName() string { return "notable_days" }
+
+// TimelineEventEntity is `account_timeline_events`: the persisted event log
+// the account timeline mixes in alongside statuses and presence activities.
+// Rows are written by the JetStream ingester (ingest.go) from the fleet's
+// action-log events and other services' events (e.g. Pulsar reviews); the
+// (source, source_id) unique index makes the at-least-once delivery
+// idempotent.
+type TimelineEventEntity struct {
+	ID uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
+	EntityBase
+	AccountID uuid.UUID      `gorm:"column:account_id;type:uuid"`
+	EventType string         `gorm:"column:event_type;size:128;not null"`
+	Source    string         `gorm:"column:source;size:64;not null"`
+	SourceID  string         `gorm:"column:source_id;size:256;not null"`
+	Payload   datatypes.JSON `gorm:"column:payload;type:jsonb"`
+}
+
+func (TimelineEventEntity) TableName() string { return "account_timeline_events" }

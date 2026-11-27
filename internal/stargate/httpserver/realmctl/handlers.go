@@ -199,6 +199,9 @@ func (d Deps) createRealm(c *gin.Context) {
 		"realm_id": entity.ID.String(), "name": entity.Name, "slug": entity.Slug,
 		"is_community": entity.IsCommunity, "is_public": entity.IsPublic,
 	})
+	d.publishTimeline(c.Request.Context(), "realm.created", account.Id, map[string]any{
+		"realm_id": entity.ID.String(), "name": entity.Name, "slug": entity.Slug,
+	})
 	c.JSON(http.StatusOK, realm.RealmFromEntity(entity))
 }
 
@@ -724,6 +727,9 @@ func (d Deps) joinRealm(c *gin.Context) {
 		d.logAction(c, account.Id, model.ActionLogRealmJoin, map[string]any{
 			"realm_id": entity.ID.String(), "account_id": account.Id, "is_community": entity.IsCommunity,
 		})
+		d.publishTimeline(c.Request.Context(), "realm.joined", account.Id, map[string]any{
+			"realm_id": entity.ID.String(), "slug": entity.Slug,
+		})
 		d.respondMember(c, entity, existing)
 		return
 	}
@@ -736,6 +742,9 @@ func (d Deps) joinRealm(c *gin.Context) {
 	}
 	d.logAction(c, account.Id, model.ActionLogRealmJoin, map[string]any{
 		"realm_id": entity.ID.String(), "account_id": account.Id, "is_community": entity.IsCommunity,
+	})
+	d.publishTimeline(c.Request.Context(), "realm.joined", account.Id, map[string]any{
+		"realm_id": entity.ID.String(), "slug": entity.Slug,
 	})
 	d.respondMember(c, entity, member)
 }

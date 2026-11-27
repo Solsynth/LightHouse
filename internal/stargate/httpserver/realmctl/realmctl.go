@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -21,6 +22,13 @@ import (
 	"src.solsynth.dev/sosys/stargate/permission"
 	"src.solsynth.dev/sosys/stargate/realm"
 )
+
+// TimelinePublisher publishes fleet timeline events (shared eventbus
+// convention); *nats.Client satisfies it. Nil — NATS disabled — means no
+// timeline event is emitted.
+type TimelinePublisher interface {
+	PublishTimeline(ctx context.Context, service, eventType, accountID string, occurredAt time.Time, data any) error
+}
 
 // Deps is the dependency set the realm controllers need.
 type Deps struct {
@@ -41,9 +49,22 @@ type Deps struct {
 	Relationships BlockChecker
 	// Payments opens the wallet order a boost purchase is charged on.
 	Payments realm.Payments
+	// Timeline folds realm milestones into the account timeline. Nil omits them.
+	Timeline TimelinePublisher
 	Perm     middleware.PermissionChecker
 	Logs     ActionLogSink
 	Log      *slog.Logger
+}
+
+// publishTimeline emits one realm timeline event; failures log and never
+// fail the request.
+func (d Deps) publishTimeline(ctx context.Context, eventType, accountID string, data any) {
+	if d.Timeline == nil {
+		return
+	}
+	if err := d.Timeline.PublishTimeline(ctx, "stargate", eventType, accountID, time.Time{}, data); err != nil && d.Log != nil {
+		d.Log.Warn("publish timeline event", "event", eventType, "error", err)
+	}
 }
 
 // ActionLogSink records account action logs; it matches actionlog.Service.

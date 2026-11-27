@@ -12,7 +12,7 @@ func Models() []any {
 		&CheckInResultEntity{},
 		&UserCalendarEventEntity{},
 		&CalendarEventSubscriptionEntity{},
-		&NotableDayEntity{},
+		&TimelineEventEntity{},
 	}
 }
 
@@ -33,8 +33,12 @@ func Hooks() []SchemaHook {
 			 ON calendar_event_subscriptions (subscriber_id) WHERE deleted_at IS NULL`,
 			`CREATE INDEX IF NOT EXISTS ix_calendar_event_subscriptions_target
 			 ON calendar_event_subscriptions (target_account_id) WHERE deleted_at IS NULL`,
-			`CREATE INDEX IF NOT EXISTS ix_notable_days_region
-			 ON notable_days (lower(region), start_date) WHERE deleted_at IS NULL`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS ux_account_timeline_events_source
+			 ON account_timeline_events (source, source_id)`,
+			`CREATE INDEX IF NOT EXISTS ix_account_timeline_events_account_created
+			 ON account_timeline_events (account_id, created_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS ix_account_check_in_results_account_created
+			 ON account_check_in_results (account_id, created_at DESC)`,
 		}
 		for _, statement := range statements {
 			if err := db.WithContext(ctx).Exec(statement).Error; err != nil {
