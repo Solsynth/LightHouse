@@ -345,13 +345,19 @@ func challengeFactorOptions(factors []model.AuthFactor, passwordFirst bool, minT
 }
 
 // challengeMinTrustworthy is the factor-strength floor for a challenge step.
-// Sudo demands a second, stronger proof than the login password; every other
-// challenge keeps the historical "any enabled factor above zero" rule.
-func challengeMinTrustworthy(challenge *model.AuthChallenge) int {
-	if challenge != nil && challenge.Purpose == model.AuthChallengePurposeSudo {
-		return auth.SudoMinTrustworthy
+// Sudo demands a proof that matches the account's security mode: lockdown
+// keeps the strong floor, every other mode accepts any enabled factor (>= 1).
+// Every other challenge keeps the historical "any enabled factor above zero"
+// rule. A lookup failure is an error, never an implicit floor.
+func (h *handler) challengeMinTrustworthy(ctx context.Context, challenge *model.AuthChallenge) (int, error) {
+	if challenge == nil || challenge.Purpose != model.AuthChallengePurposeSudo {
+		return 1, nil
 	}
-	return 1
+	mode, err := h.d.Store.GetSecurityMode(ctx, challenge.AccountId)
+	if err != nil {
+		return 0, err
+	}
+	return auth.SudoMinTrustworthyFor(mode), nil
 }
 
 // allRequiredStepCount returns the number of completable auth factors for the
@@ -976,7 +982,12 @@ func (h *handler) getChallengeFactors(c *gin.Context) {
 		challenge.Origin == model.ChallengeOriginPassword {
 		_, passwordFirst = enabledPasswordFactor(factors)
 	}
-	minTrustworthy := challengeMinTrustworthy(challenge)
+	minTrustworthy, err := h.challengeMinTrustworthy(c.Request.Context(), challenge)
+	if err != nil {
+		h.logError("load security mode", err)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
 	// The first step accepts only the password. Once it is settled, the
 	// remaining steps offer every other factor the flow can verify (TOTP, NFC,
 	// passkey, email code); a used factor never comes back. An email code is
@@ -1119,7 +1130,12 @@ func (h *handler) doChallenge(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_ENABLED", "Auth factor is not enabled."))
 		return
 	}
-	minTrustworthy := challengeMinTrustworthy(challenge)
+	minTrustworthy, err := h.challengeMinTrustworthy(ctx, challenge)
+	if err != nil {
+		h.logError("load security mode", err)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
 	if factor.Trustworthy < minTrustworthy {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_TRUSTWORTHY", "Auth factor is not trustworthy."))
 		return
@@ -1754,7 +1770,12 @@ func (h *handler) startPasskeyChallenge(c *gin.Context) {
 	if err != nil {
 		h.logError("load factors", err)
 	}
-	minTrustworthy := challengeMinTrustworthy(challenge)
+	minTrustworthy, err := h.challengeMinTrustworthy(ctx, challenge)
+	if err != nil {
+		h.logError("load security mode", err)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
 	var passkeyFactor *model.AuthFactor
 	for i := range factors {
 		f := &factors[i]
@@ -1847,7 +1868,13 @@ func (h *handler) completePasskeyChallenge(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_ENABLED", "Auth factor is not enabled."))
 		return
 	}
-	if factor.Trustworthy < challengeMinTrustworthy(challenge) {
+	minTrustworthy, err := h.challengeMinTrustworthy(ctx, challenge)
+	if err != nil {
+		h.logError("load security mode", err)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+	if factor.Trustworthy < minTrustworthy {
 		c.JSON(http.StatusBadRequest, errs.BadRequest("AUTH_FACTOR_NOT_TRUSTWORTHY", "Auth factor is not trustworthy."))
 		return
 	}
@@ -3137,12 +3164,22 @@ func (h *handler) createSudoChallenge(c *gin.Context) {
 		return
 	}
 	// Sudo asks for exactly one acceptable factor, not one per enabled factor.
-	// "Acceptable" means Trustworthy >= auth.SudoMinTrustworthy: a password or
-	// NFC token proves the login secret, not that the account owner is present.
-	// An account with nothing acceptable never reaches this handler: RequireSudo
-	// treats it as lifted and lets the action through without a challenge.
-	pickable := auth.SudoPickableFactorTypes(factors)
-	assertable := auth.SudoAssertableFactorTypes(factors)
+	// "Acceptable" follows the account's security mode: lockdown demands
+	// Trustworthy >= auth.SudoMinTrustworthy (a password or NFC token proves
+	// the login secret, not that the account owner is present), every other
+	// mode accepts any enabled factor, password included. An account with
+	// nothing acceptable never reaches this handler: RequireSudo treats it as
+	// lifted and lets the action through without a challenge.
+	mode, err := h.d.Store.GetSecurityMode(ctx, user.Id)
+	if err != nil {
+		h.logError("sudo security mode", err)
+		risk.ReleaseChallenge(ctx, h.d.Redis, ipAddress, challengeID)
+		c.JSON(http.StatusInternalServerError, errs.New("SERVER_ERROR", "An internal server error occurred.", http.StatusInternalServerError))
+		return
+	}
+	floor := auth.SudoMinTrustworthyFor(mode)
+	pickable := auth.SudoPickableFactorTypes(factors, floor)
+	assertable := auth.SudoAssertableFactorTypes(factors, floor)
 	steps := 0
 	if len(pickable) > 0 || len(assertable) > 0 {
 		// One pickable factor (email/TOTP/...) or a passkey ceremony is enough.

@@ -305,8 +305,9 @@ func getSudoChecker() SudoChecker {
 //   - otherwise it answers 403 AUTH_SUDO_REQUIRED with the usable factor type
 //     names in `detail`, and records the denied attempt.
 //
-// An account with nothing it could present anyway (no factor at or above
-// auth.SudoMinTrustworthy, so an empty hint) is treated as lifted: elevation
+// An account with nothing it could present anyway (no enabled factor at or
+// above its security mode's elevation floor — auth.SudoMinTrustworthy under
+// lockdown, 1 elsewhere — so an empty hint) is treated as lifted: elevation
 // would be impossible for it to complete, and asking for a challenge would
 // dead-end. Every other account must prove presence before the action runs.
 func RequireSudo() gin.HandlerFunc {

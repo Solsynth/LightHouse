@@ -102,9 +102,9 @@ func newQrSudoHarness(t *testing.T) *qrSudoHarness {
 
 	accountID := seedRiskAccount(t, ctx, pool, model.AuthFactorTypeQrLogin)
 	now := time.Now().UTC()
-	// The seeded QR factor is only Trustworthy 1, and elevation demands >= 2
-	// (auth.SudoMinTrustworthy), so add one that can satisfy it: the refusal
-	// then names a real way up.
+	// The seeded QR factor is only Trustworthy 1, and elevation under lockdown
+	// demands >= 2 (auth.SudoMinTrustworthy). Under the default mode it
+	// qualifies (floor 1) and the hint advertises it alongside the timed code.
 	if _, err := pool.Exec(ctx, `INSERT INTO account_auth_factors
 		(id, account_id, type, secret, config, trustworthy, enabled_at, created_at, updated_at)
 		VALUES ($1, $2, $3, '', '{}', 3, $4, $4, $4)`,
@@ -257,8 +257,8 @@ func TestQrApprovalRequiresElevation(t *testing.T) {
 			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if detail, _ := body["detail"].(string); detail != "timed_code" {
-				t.Fatalf("%s: detail = %v, want the account's timed_code hint", action, body["detail"])
+			if detail, _ := body["detail"].(string); detail != "qr_login,timed_code" {
+				t.Fatalf("%s: detail = %v, want the account's qr_login,timed_code hint", action, body["detail"])
 			}
 			if status := qh.qrStatus(t, qrID); status != qrStatusPending {
 				t.Fatalf("%s: qr status = %d, want pending", action, status)

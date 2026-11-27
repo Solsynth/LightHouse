@@ -683,16 +683,23 @@ func sudoFactorTypeName(t model.AuthFactorType) string {
 }
 
 // SudoFactorHint returns the comma-joined lowercase factor type names the
-// account may use to elevate (see SudoFactorHintAnswers for the rules). An
-// empty hint means the account has nothing it can present — RequireSudo then
-// treats the session as lifted instead of starting a challenge. A lookup
-// failure is returned as an error, never as an empty hint.
+// account may use to elevate (see SudoFactorHintAnswers for the rules). The
+// floor follows the account's security mode: lockdown demands a factor
+// stronger than the login secret, every other mode accepts any enabled
+// factor. An empty hint means the account has nothing it can present —
+// RequireSudo then treats the session as lifted instead of starting a
+// challenge. A lookup failure is returned as an error, never as an empty
+// hint.
 func (s *AuthService) SudoFactorHint(ctx context.Context, accountID string) (string, error) {
 	factors, err := s.store.GetAuthFactors(ctx, uuid.MustParse(accountID))
 	if err != nil {
 		return "", err
 	}
-	return strings.Join(SudoFactorHintAnswers(factors), ","), nil
+	mode, err := s.store.GetSecurityMode(ctx, accountID)
+	if err != nil {
+		return "", err
+	}
+	return strings.Join(SudoFactorHintAnswers(factors, SudoMinTrustworthyFor(mode)), ","), nil
 }
 
 // RecordSudoElevated writes the accounts.sudo.elevate action log.

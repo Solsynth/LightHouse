@@ -46,6 +46,7 @@ type sudoFactorSeed struct {
 
 type sudoSeed struct {
 	verifiedEmail bool
+	mode          model.SecurityMode
 	factors       []sudoFactorSeed
 }
 
@@ -135,6 +136,11 @@ func newSudoHarness(t *testing.T, seed sudoSeed) *sudoHarness {
 	accountID := seedSudoAccount(t, ctx, pool, seed.verifiedEmail)
 	for _, f := range seed.factors {
 		insertSudoFactor(t, ctx, pool, accountID, f.ftype, f.trustworthy, f.secret)
+	}
+	if seed.mode != model.SecurityModeDefault {
+		if err := st.SetSecurityMode(ctx, accountID, seed.mode); err != nil {
+			t.Fatalf("set security mode: %v", err)
+		}
 	}
 
 	clientID := uuid.NewString()
@@ -317,15 +323,20 @@ func decodeChallenge(t *testing.T, rec *httptest.ResponseRecorder) *model.AuthCh
 	return &ch
 }
 
-// TestSudoStrongFactorCountsAsOneStep pins (b): one factor at or above
-// SudoMinTrustworthy satisfies the challenge, regardless of how many strong
-// factors the account has. The picker hides the password it would reject.
+// TestSudoStrongFactorCountsAsOneStep pins (b) under lockdown: one factor at
+// or above SudoMinTrustworthy satisfies the challenge, regardless of how many
+// strong factors the account has. The picker hides the password it would
+// reject; outside lockdown the password itself can lift
+// (TestSudoPasswordLiftsOutsideLockdown).
 func TestSudoStrongFactorCountsAsOneStep(t *testing.T) {
 	key, _ := totp.Generate(totp.GenerateOpts{Issuer: "SolarNetwork", AccountName: "sudo-test"})
-	sh := newSudoHarness(t, sudoSeed{factors: []sudoFactorSeed{
-		sudoPasswordSeed(t, model.AuthFactorTypePassword, sudoTestPassword, 1),
-		{ftype: model.AuthFactorTypeTimedCode, trustworthy: 3, secret: key.Secret()},
-	}})
+	sh := newSudoHarness(t, sudoSeed{
+		mode: model.SecurityModeLockdown,
+		factors: []sudoFactorSeed{
+			sudoPasswordSeed(t, model.AuthFactorTypePassword, sudoTestPassword, 1),
+			{ftype: model.AuthFactorTypeTimedCode, trustworthy: 3, secret: key.Secret()},
+		},
+	})
 	ch := sh.createSudo(t)
 	if ch.StepTotal != 1 || ch.StepRemain != 1 {
 		t.Fatalf("step %d/%d, want 1/1", ch.StepRemain, ch.StepTotal)
@@ -351,18 +362,22 @@ func TestSudoStrongFactorCountsAsOneStep(t *testing.T) {
 	}
 }
 
-// TestSudoPasswordRejectedButTotpElevates pins (c): submitting the login
-// password cannot consume the sudo step; a qualifying TOTP code completes it.
+// TestSudoPasswordRejectedButTotpElevates pins (c) under lockdown: submitting
+// the login password cannot consume the sudo step; a qualifying TOTP code
+// completes it.
 func TestSudoPasswordRejectedButTotpElevates(t *testing.T) {
 	key, err := totp.Generate(totp.GenerateOpts{Issuer: "SolarNetwork", AccountName: "sudo-test"})
 	if err != nil {
 		t.Fatalf("generate totp: %v", err)
 	}
 	totpSecret := key.Secret()
-	sh := newSudoHarness(t, sudoSeed{factors: []sudoFactorSeed{
-		sudoPasswordSeed(t, model.AuthFactorTypePassword, sudoTestPassword, 1),
-		{ftype: model.AuthFactorTypeTimedCode, trustworthy: 3, secret: totpSecret},
-	}})
+	sh := newSudoHarness(t, sudoSeed{
+		mode: model.SecurityModeLockdown,
+		factors: []sudoFactorSeed{
+			sudoPasswordSeed(t, model.AuthFactorTypePassword, sudoTestPassword, 1),
+			{ftype: model.AuthFactorTypeTimedCode, trustworthy: 3, secret: totpSecret},
+		},
+	})
 	ch := sh.createSudo(t)
 	if ch.StepTotal != 1 {
 		t.Fatalf("step_total = %d, want 1", ch.StepTotal)
@@ -427,20 +442,65 @@ func TestSudoRejectsPinAndRecoveryCode(t *testing.T) {
 }
 
 // TestSudoNoPresentableFactorTreatedAsLifted pins (e): an account with nothing
-// presentable — no factor at or above SudoMinTrustworthy, verified email or
-// not — never gets a challenge: RequireSudo treats the session as lifted and
-// lets gated actions through without a re-authentication round trip.
+// presentable — no enabled factor at or above its floor (here only PIN and
+// recovery codes, which never qualify), verified email or not — never gets a
+// challenge: RequireSudo treats the session as lifted and lets gated actions
+// through without a re-authentication round trip.
 func TestSudoNoPresentableFactorTreatedAsLifted(t *testing.T) {
 	sh := newSudoHarness(t, sudoSeed{
 		verifiedEmail: true,
+		factors: []sudoFactorSeed{
+			sudoPasswordSeed(t, model.AuthFactorTypePinCode, "9999", 0),
+			{ftype: model.AuthFactorTypeRecoveryCode, trustworthy: 0, secret: "RECOVERY-CODE"},
+		},
+	})
+	rec := sh.request(t, http.MethodGet, "/gated", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("gated (pin/recovery only): got %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	if sh.isElevated(t) {
+		t.Fatal("lifted-by-default must not mint an elevation grant")
+	}
+}
+
+// TestSudoLockdownPasswordOnlyTreatedAsLifted pins (e) under lockdown: the
+// password sits below the lockdown floor, so a password-only account still has
+// nothing presentable and is treated as lifted.
+func TestSudoLockdownPasswordOnlyTreatedAsLifted(t *testing.T) {
+	sh := newSudoHarness(t, sudoSeed{
+		verifiedEmail: true,
+		mode:          model.SecurityModeLockdown,
 		factors:       []sudoFactorSeed{sudoPasswordSeed(t, model.AuthFactorTypePassword, sudoTestPassword, 1)},
 	})
 	rec := sh.request(t, http.MethodGet, "/gated", nil)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("gated (password-only): got %d, want 200 (body %s)", rec.Code, rec.Body.String())
+		t.Fatalf("gated (lockdown password-only): got %d, want 200 (body %s)", rec.Code, rec.Body.String())
 	}
 	if sh.isElevated(t) {
 		t.Fatal("lifted-by-default must not mint an elevation grant")
+	}
+}
+
+// TestSudoPasswordLiftsOutsideLockdown pins the default-mode rule: any enabled
+// factor at Trustworthy >= 1 satisfies the elevation, the login password
+// included.
+func TestSudoPasswordLiftsOutsideLockdown(t *testing.T) {
+	sh := newSudoHarness(t, sudoSeed{
+		factors: []sudoFactorSeed{sudoPasswordSeed(t, model.AuthFactorTypePassword, sudoTestPassword, 1)},
+	})
+	ch := sh.createSudo(t)
+	if ch.StepTotal != 1 || ch.StepRemain != 1 {
+		t.Fatalf("step %d/%d, want 1/1", ch.StepRemain, ch.StepTotal)
+	}
+	rec := sh.submitFactor(t, ch.Id, sh.factorID(t, model.AuthFactorTypePassword), sudoTestPassword)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("password step: got %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	if got := decodeChallenge(t, rec); got.StepRemain != 0 {
+		t.Fatalf("step_remain = %d, want 0", got.StepRemain)
+	}
+	if !sh.isElevated(t) {
+		t.Fatal("password did not elevate the session outside lockdown")
 	}
 }
 
@@ -464,8 +524,8 @@ func TestSudoGatedRouteRequiresElevation(t *testing.T) {
 	if body["code"] != "AUTH_SUDO_REQUIRED" {
 		t.Fatalf("code = %v, want AUTH_SUDO_REQUIRED", body["code"])
 	}
-	if body["detail"] != "timed_code" {
-		t.Fatalf("detail = %v, want timed_code", body["detail"])
+	if body["detail"] != "password,timed_code" {
+		t.Fatalf("detail = %v, want password,timed_code (outside lockdown the password can lift)", body["detail"])
 	}
 
 	if _, err := sh.authSvc.GrantSudo(sh.ctx, sh.sessionID); err != nil {

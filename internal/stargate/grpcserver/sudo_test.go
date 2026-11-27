@@ -81,13 +81,14 @@ func TestValidateSudoRPC(t *testing.T) {
 	svc := auth.NewAuthService(st, rc, config.Default(), nil, nil, nil, nil, nil, sudoGrpcLogger())
 	client := startSudoGrpcServer(t, Deps{Store: st, Auth: svc})
 
-	// An account whose only factor is a password (Trustworthy 1) cannot
-	// elevate, so the hint is empty: such a session is treated as lifted.
+	// Under lockdown a password (Trustworthy 1) cannot elevate, so the hint is
+	// empty: such a session is treated as lifted. (Outside lockdown the
+	// password itself would be advertised.)
 	now := time.Now().UTC()
 	accountID := uuid.New()
 	sessionID := uuid.New()
-	if _, err := pool.Exec(ctx, `INSERT INTO accounts (id, name, nick, language, region, is_superuser, created_at, updated_at)
-		VALUES ($1, $2, $2, 'en', 'US', false, $3, $3)`, accountID, "sudo_grpc_"+uuid.NewString()[:8], now); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO accounts (id, name, nick, language, region, is_superuser, security_mode, created_at, updated_at)
+		VALUES ($1, $2, $2, 'en', 'US', false, 1, $3, $3)`, accountID, "sudo_grpc_"+uuid.NewString()[:8], now); err != nil {
 		t.Fatalf("seed account: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO auth_sessions (id, account_id, audiences, scopes, type, epoch, created_at, updated_at)
