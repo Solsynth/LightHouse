@@ -13,6 +13,8 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/rewind"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/scrobbles"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/sessions"
+	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/synckeys"
+	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/syncyomi"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 )
 
@@ -26,6 +28,8 @@ func Modules() []module.Factory[core.Services] {
 		scrobbles.Factory(),
 		collections.Factory(),
 		librarysync.Factory(),
+		synckeys.Factory(),
+		syncyomi.Factory(),
 		rewind.Factory(),
 		activities.Factory(),
 		presenceingest.Factory(),
