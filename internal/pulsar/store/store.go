@@ -40,18 +40,42 @@ func FindOrCreateCatalogItemDB(db *gorm.DB, item *model.CatalogItem) (*model.Cat
 }
 
 // findOrCreateCatalogItem is the shared probe-or-create used by both wrappers.
+//
+// Three probes, cheapest first: the writer's own key, the normalized
+// artist+title fingerprint, then the case-insensitive title+subtitle pair the
+// catalog has always matched on. The middle one is what makes two devices
+// holding the same library agree: their keys differ, their metadata does not.
+// A record matched on metadata adopts the new key when it has none, so the
+// next write from that device takes the cheap path.
 func findOrCreateCatalogItem(db *gorm.DB, item *model.CatalogItem) (*model.CatalogItem, error) {
 	if item == nil {
 		return nil, errors.New("nil catalog item")
 	}
 
-	// If provider & provider_key are supplied, probe on that unique tuple first.
+	if item.Fingerprint == "" {
+		item.Fingerprint = catalogFingerprint(item.Title, item.Subtitle)
+	}
+
+	// If provider & provider_key are supplied, probe on that tuple first.
 	if item.Provider != "" && item.ProviderKey != "" {
 		var existing model.CatalogItem
 		err := db.Where("domain = ? AND provider = ? AND provider_key = ?", item.Domain, item.Provider, item.ProviderKey).
 			First(&existing).Error
 		if err == nil {
 			return &existing, nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+	}
+
+	// The metadata identity: the same recording under another device's key.
+	if item.Fingerprint != "" {
+		var match model.CatalogItem
+		err := db.Where("domain = ? AND fingerprint = ?", item.Domain, item.Fingerprint).
+			First(&match).Error
+		if err == nil {
+			return adoptCatalogKey(db, &match, item)
 		}
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, err
@@ -69,7 +93,7 @@ func findOrCreateCatalogItem(db *gorm.DB, item *model.CatalogItem) (*model.Catal
 
 	err := query.First(&match).Error
 	if err == nil {
-		return &match, nil
+		return adoptCatalogKey(db, &match, item)
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
@@ -89,6 +113,34 @@ func findOrCreateCatalogItem(db *gorm.DB, item *model.CatalogItem) (*model.Catal
 	return item, nil
 }
 
+// adoptCatalogKey fills a matched record's gaps from the write that found it:
+// the fingerprint when the row predates the column, and the caller's
+// provider_key when the row has none. Neither overwrites an existing value —
+// the first writer's key stays the record's identity, and a later writer's
+// probe still finds it by metadata.
+func adoptCatalogKey(db *gorm.DB, existing, incoming *model.CatalogItem) (*model.CatalogItem, error) {
+	updates := map[string]any{}
+	if existing.Fingerprint == "" && incoming.Fingerprint != "" {
+		existing.Fingerprint = incoming.Fingerprint
+		updates["fingerprint"] = incoming.Fingerprint
+	}
+	if existing.ProviderKey == "" && incoming.ProviderKey != "" && incoming.Provider != "" {
+		existing.Provider = incoming.Provider
+		existing.ProviderKey = incoming.ProviderKey
+		updates["provider"] = incoming.Provider
+		updates["provider_key"] = incoming.ProviderKey
+	}
+	if len(updates) == 0 {
+		return existing, nil
+	}
+	if err := db.Model(&model.CatalogItem{}).
+		Where("id = ?", existing.ID).
+		Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	return existing, nil
+}
+
 // GetCatalogItem fetches a catalog item by its ID.
 func (s *Store) GetCatalogItem(ctx context.Context, id uuid.UUID) (*model.CatalogItem, error) {
 	var item model.CatalogItem
@@ -96,6 +148,50 @@ func (s *Store) GetCatalogItem(ctx context.Context, id uuid.UUID) (*model.Catalo
 		return nil, err
 	}
 	return &item, nil
+}
+
+// BackfillCatalogFingerprints fills the fingerprint column for records
+// written before it existed. It is a module schema hook: idempotent, batched,
+// and it never touches a row that already has one. Without it a pre-existing
+// record would answer only the old title+subtitle probe, and a device whose
+// spelling differs slightly would file a second row beside it.
+//
+// The cursor is the record id, not the row count: a record with no usable
+// title cannot be fingerprinted, and paging by "still empty" would never
+// advance past it.
+func BackfillCatalogFingerprints(ctx context.Context, db *gorm.DB) error {
+	const batch = 500
+	var cursor uuid.UUID
+	for {
+		var rows []model.CatalogItem
+		query := db.WithContext(ctx).
+			Where("fingerprint = '' OR fingerprint IS NULL")
+		if cursor != uuid.Nil {
+			query = query.Where("id > ?", cursor)
+		}
+		if err := query.Order("id").Limit(batch).Find(&rows).Error; err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		for i := range rows {
+			fingerprint := catalogFingerprint(rows[i].Title, rows[i].Subtitle)
+			if fingerprint == "" {
+				continue
+			}
+			if err := db.WithContext(ctx).
+				Model(&model.CatalogItem{}).
+				Where("id = ?", rows[i].ID).
+				Update("fingerprint", fingerprint).Error; err != nil {
+				return err
+			}
+		}
+		if len(rows) < batch {
+			return nil
+		}
+		cursor = rows[len(rows)-1].ID
+	}
 }
 
 // ListCatalogItems queries catalog entries with optional domain, provider, and search filters.

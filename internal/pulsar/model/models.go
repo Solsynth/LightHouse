@@ -98,6 +98,14 @@ type CatalogItem struct {
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
 	DeletedAt       gorm.DeletedAt `gorm:"index" json:"-"`
+
+	// Fingerprint is the normalized artist+title identity of the record.
+	// Two devices that hold the same library but mint different provider
+	// keys for one recording still land on one row, because the key probe
+	// misses and this one does not. Empty when there is no usable title,
+	// which never matches anything: an unidentified record is not every
+	// unidentified record.
+	Fingerprint string `gorm:"type:varchar(512);index:ix_catalog_fingerprint" json:"-"`
 }
 
 func (CatalogItem) TableName() string { return "catalog_items" }

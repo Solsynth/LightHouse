@@ -278,6 +278,77 @@ func TestCatalogProviderKeyScoping(t *testing.T) {
 	}
 }
 
+// Two devices holding the same library mint different connection-scoped keys
+// for one recording. The metadata fingerprint is what must keep them on one
+// catalog row — otherwise a heart set on one device never matches the other's
+// list, which is the whole bug this column exists for.
+func TestCatalogDedupesAcrossDeviceKeys(t *testing.T) {
+	s := setupTestDB(t)
+	ctx := context.Background()
+
+	artist := "Aoi Tada"
+	first, err := s.FindOrCreateCatalogItem(ctx, &model.CatalogItem{
+		Domain:      model.DomainMusic,
+		Provider:    "groovybox",
+		ProviderKey: "netease-l1x2j3:1901371647",
+		Title:       "Brave Song",
+		Subtitle:    &artist,
+	})
+	if err != nil {
+		t.Fatalf("FindOrCreateCatalogItem failed: %v", err)
+	}
+
+	// The other device's connection is called something else; its metadata is
+	// the same song, spelled with a case and diacritic the first did not use.
+	tabletArtist := "AOI TADA"
+	second, err := s.FindOrCreateCatalogItem(ctx, &model.CatalogItem{
+		Domain:      model.DomainMusic,
+		Provider:    "groovybox",
+		ProviderKey: "netease-9zz8qq:1901371647",
+		Title:       "brave song",
+		Subtitle:    &tabletArtist,
+	})
+	if err != nil {
+		t.Fatalf("FindOrCreateCatalogItem for second device failed: %v", err)
+	}
+	if second.ID != first.ID {
+		t.Fatalf("expected one catalog row for one recording, got %s and %s",
+			first.ID, second.ID)
+	}
+
+	// A featured credit the other source carries is not a different song.
+	featured := "Aoi Tada feat. Someone"
+	third, err := s.FindOrCreateCatalogItem(ctx, &model.CatalogItem{
+		Domain:      model.DomainMusic,
+		Provider:    "groovybox",
+		ProviderKey: "apple:1901371647",
+		Title:       "Brave Song (Live)",
+		Subtitle:    &featured,
+	})
+	if err != nil {
+		t.Fatalf("FindOrCreateCatalogItem for featured credit failed: %v", err)
+	}
+	if third.ID != first.ID {
+		t.Fatalf("expected edition credits to meet the same row, got %s", third.ID)
+	}
+
+	// An unrelated recording keeps its own row.
+	otherArtist := "Coldplay"
+	unrelated, err := s.FindOrCreateCatalogItem(ctx, &model.CatalogItem{
+		Domain:      model.DomainMusic,
+		Provider:    "groovybox",
+		ProviderKey: "netease-l1x2j3:77",
+		Title:       "Yellow",
+		Subtitle:    &otherArtist,
+	})
+	if err != nil {
+		t.Fatalf("FindOrCreateCatalogItem for unrelated track failed: %v", err)
+	}
+	if unrelated.ID == first.ID {
+		t.Fatalf("two recordings collapsed onto one catalog item %s", unrelated.ID)
+	}
+}
+
 func TestReplaceCollectionItemsIsTheClientList(t *testing.T) {
 	s := setupTestDB(t)
 	ctx := context.Background()

@@ -9,6 +9,7 @@ import (
 
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/model"
+	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/store"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/authn"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/httpx"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
@@ -20,8 +21,12 @@ func Factory() module.Factory[core.Services] {
 		Kind:           module.KindFeature,
 		DefaultEnabled: true,
 		Models:         []any{&model.CatalogItem{}, &model.Creator{}, &model.CatalogCreator{}},
-		Capabilities:   []string{"catalog", "creators"},
-		New:            func() module.Instance[core.Services] { return &instance{} },
+		// The fingerprint column is new: records written before it need it
+		// filled, or a device that spells a song slightly differently files
+		// a second row beside the first.
+		SQL:          []module.SchemaHook{store.BackfillCatalogFingerprints},
+		Capabilities: []string{"catalog", "creators"},
+		New:          func() module.Instance[core.Services] { return &instance{} },
 	}
 }
 
