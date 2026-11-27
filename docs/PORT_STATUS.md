@@ -4,6 +4,51 @@ What is implemented in this monorepo today, what was verified against a live
 PostgreSQL, and what is knowingly missing. Everything below was exercised
 either by starting the service and calling it, or by the module's own test.
 
+## Shared lyrics and metadata suggestions (Pulsar module)
+
+`internal/pulsar/modules/lyrics` (`app.solian.pulsar.lyrics`) is the shared
+half of GroovyBox's lyrics: the words one account picked, readable and
+rankable by every other listener, plus metadata corrections proposed for the
+catalog record a song resolves to. The private per-account copy stays in
+`librarysync`.
+
+Four tables — `shared_lyrics`, `shared_lyric_votes`, `metadata_suggestions`,
+`metadata_suggestion_votes` — one row per (catalog, account, language) and one
+per (catalog, account, field), so a re-send edits an account's own opinion
+instead of appending a revision.
+
+- `GET /api/lyrics/catalog` resolves the catalog id behind a track key (the
+  `provider:provider_key` pair a client already mints), so a client reaches a
+  recording's suggestions without a share first.
+- `GET /api/lyrics/suggestions` lists contributions for one catalog item,
+  ranked by standing: `score` then `synced` then `adoption_count` then
+  freshness. Filters: `language`, `synced=true`, `exclude_me=true`.
+- `PUT /api/lyrics` contributes words; `DELETE /api/lyrics/:id` withdraws them
+  (owner only); `POST /api/lyrics/:id/adopt` records a listener keeping them;
+  `POST /api/lyrics/:id/vote` with `{"value": 1|-1}` thumbs a contribution.
+- The standing is recomputed from the vote rows in the same transaction, so a
+  retried request, a replaced vote and a withdrawal converge: `score` is
+  upvotes minus downvotes, `adoption_count` the number of distinct adopters.
+  An account cannot vote on its own contribution (403), which stops one
+  listener promoting its own text.
+- `GET /api/metadata/suggestions` lists corrections grouped by value with the
+  number of accounts proposing that exact value (`support`);
+  `GET /api/metadata/suggestions/leaders` reports, per field, the value at
+  least two accounts proposed — the only agreement strong enough to act on.
+  `PUT /api/metadata/suggestions` and
+  `POST /api/metadata/suggestions/:id/vote` write them. Fields are `title`,
+  `subtitle`, `caption`, `release_date`, `artwork_url`, `genre`; proposing the
+  value the record already has is a 400.
+- Nothing here writes onto `catalog_items`: a leader is reported, not applied,
+  so a shared record never changes behind a listener's back.
+
+Verified: `go build ./...`, `go vet ./internal/pulsar/...`,
+`go test ./internal/pulsar/modules/lyrics/ ./internal/pulsar/store/` — the
+adoption ranking path, repeat adoption counting once, self-vote rejection,
+two-account agreement becoming a leader (and one account's proposal not),
+unknown-field rejection, a no-op proposal, and a contribution under an
+unknown catalog id.
+
 ## Library sync (Pulsar module)
 
 `internal/pulsar/modules/librarysync` mirrors one account's GroovyBox music

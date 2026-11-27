@@ -7,6 +7,7 @@ import (
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/catalog"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/collections"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/librarysync"
+	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/lyrics"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/metadata"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/presenceingest"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/reviews"
@@ -34,5 +35,6 @@ func Modules() []module.Factory[core.Services] {
 		activities.Factory(),
 		presenceingest.Factory(),
 		reviews.Factory(),
+		lyrics.Factory(),
 	}
 }
