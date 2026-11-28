@@ -52,6 +52,24 @@ type Config struct {
 		ConflictPolicy string `toml:"conflictPolicy"`
 	} `toml:"bangumi"`
 
+	// Lyrics configures the upstreams Pulsar queries on the app's behalf.
+	// GroovyBox no longer calls these services itself: the LRCLIB lookup and
+	// the model-backed translation both travel through this service, so one
+	// shared rate limit and one place to swap a mirror.
+	Lyrics struct {
+		// UserAgent is sent to LRCLIB and Persona. Empty reuses the metadata
+		// user agent, which carries the deployment's contact URL.
+		UserAgent string `toml:"userAgent"`
+		// LRCLIBBaseURL is the public LRCLIB API. Empty selects the public
+		// service; set it to a mirror or a test server when needed.
+		LRCLIBBaseURL string `toml:"lrclibBaseUrl"`
+		// PersonaBaseURL is the gateway base including the `/persona` prefix
+		// (for example `https://api.example.com/persona`). Empty disables
+		// model-backed translation through Pulsar; clients then fall back to
+		// their own engine.
+		PersonaBaseURL string `toml:"personaBaseUrl"`
+	} `toml:"lyrics"`
+
 	// LibrarySync configures the per-account library mirror GroovyBox syncs.
 	LibrarySync struct {
 		// RetentionDays is how long a tombstone stays visible to pulls before
@@ -127,6 +145,22 @@ func applyDefaults(cfg *Config) {
 	}
 }
 
+// normalizeLyrics fills the upstream defaults from the deployment's metadata
+// settings. Explicit values are never replaced.
+func normalizeLyrics(cfg *Config) {
+	if strings.TrimSpace(cfg.Lyrics.LRCLIBBaseURL) == "" {
+		cfg.Lyrics.LRCLIBBaseURL = "https://lrclib.net"
+	}
+	if strings.TrimSpace(cfg.Lyrics.UserAgent) == "" {
+		cfg.Lyrics.UserAgent = cfg.Metadata.UserAgent
+	}
+	if strings.TrimSpace(cfg.Lyrics.UserAgent) == "" {
+		cfg.Lyrics.UserAgent = "Pulsar/1.0 (+https://solsynth.dev)"
+	}
+	cfg.Lyrics.LRCLIBBaseURL = strings.TrimRight(strings.TrimSpace(cfg.Lyrics.LRCLIBBaseURL), "/")
+	cfg.Lyrics.PersonaBaseURL = strings.TrimRight(strings.TrimSpace(cfg.Lyrics.PersonaBaseURL), "/")
+}
+
 // normalizeBangumi fills the OAuth and API defaults from the deployment's
 // public URLs. It runs after TOML and environment overrides so an explicit
 // value is never replaced.
@@ -173,6 +207,9 @@ func applyEnv(cfg *Config) {
 	config.SetStr("PULSAR_METADATA_BANGUMIACCESSTOKEN", &cfg.Metadata.BangumiAccessToken)
 	config.SetStr("PULSAR_METADATA_TMDBAPIKEY", &cfg.Metadata.TMDbAPIKey)
 	config.SetStr("PULSAR_METADATA_TMDBBASEURL", &cfg.Metadata.TMDbBaseURL)
+	config.SetStr("PULSAR_LYRICS_USERAGENT", &cfg.Lyrics.UserAgent)
+	config.SetStr("PULSAR_LYRICS_LRCLIBBASEURL", &cfg.Lyrics.LRCLIBBaseURL)
+	config.SetStr("PULSAR_LYRICS_PERSONABASEURL", &cfg.Lyrics.PersonaBaseURL)
 	config.SetStr("PULSAR_SERVICES_STARGATE__GRPC", &cfg.Services.Stargate.GRPC)
 	config.SetStr("PULSAR_SERVICES_BLADE__GRPC", &cfg.Services.Blade.GRPC)
 	config.SetInt("PULSAR_LIBRARYSYNC_RETENTIONDAYS", &cfg.LibrarySync.RetentionDays)
@@ -195,6 +232,7 @@ func applyEnv(cfg *Config) {
 	config.SetStr("PULSAR_WEB_DISTPATH", &cfg.Web.DistPath)
 	config.SetStr("PULSAR_WEB_DEVVITEURL", &cfg.Web.DevViteURL)
 	config.SetStr("PULSAR_WEB_STARGATEURL", &cfg.Web.StargateURL)
+	normalizeLyrics(cfg)
 	normalizeBangumi(cfg)
 }
 

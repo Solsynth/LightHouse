@@ -45,6 +45,16 @@ tmdbBaseUrl = "https://api.themoviedb.org/3"
 # only the locally cached catalog.
 tmdbApiKey = ""
 
+[lyrics]
+# LRCLIB's public API. GroovyBox asks Pulsar instead of calling it directly, so
+# the shared rate limit lives in one place; point this at a mirror if needed.
+lrclibBaseUrl = "https://lrclib.net"
+# Persona's gateway base, including the /persona prefix. Empty disables
+# model-backed lyric translation through Pulsar (clients fall back to Google).
+personaBaseUrl = ""
+# Sent to both upstreams. Empty reuses metadata.userAgent.
+userAgent = ""
+
 [bangumi]
 # The Bangumi account link itself is owned by Stargate (see [oidc.bangumi]
 # there). Pulsar only reads the collection API with the token Stargate hands

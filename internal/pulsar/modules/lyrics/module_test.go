@@ -32,9 +32,15 @@ type harness struct {
 	account  uuid.UUID
 	catalog  uuid.UUID
 	services *core.Services
+	token    string
 }
 
 func newHarness(t *testing.T) *harness {
+	t.Helper()
+	return newHarnessWithConfig(t, &config.Config{})
+}
+
+func newHarnessWithConfig(t *testing.T, cfg *config.Config) *harness {
 	t.Helper()
 
 	db, err := gorm.Open(sqlite.Open("file:"+uuid.NewString()+"?mode=memory&cache=shared"), &gorm.Config{})
@@ -45,12 +51,12 @@ func newHarness(t *testing.T) *harness {
 		t.Fatalf("automigrate: %v", err)
 	}
 
-	cfg := &config.Config{}
 	cfg.Security.MaxTake = 100
 	h := &harness{
 		db:       db,
 		account:  uuid.New(),
 		services: &core.Services{Env: &platformapp.Env{DB: db}, Store: store.New(db), Config: cfg},
+		token:    "test-token",
 	}
 	item := &model.CatalogItem{
 		ID:          uuid.New(),
@@ -93,6 +99,9 @@ func (h *harness) call(t *testing.T, method, path string, body any) *httptest.Re
 	}
 	request := httptest.NewRequest(method, path, reader)
 	request.Header.Set("Content-Type", "application/json")
+	if h.token != "" {
+		request.Header.Set("Authorization", "Bearer "+h.token)
+	}
 	recorder := httptest.NewRecorder()
 	h.engine.ServeHTTP(recorder, request)
 	return recorder

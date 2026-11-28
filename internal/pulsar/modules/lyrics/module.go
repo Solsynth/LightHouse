@@ -50,13 +50,19 @@ func Factory() module.Factory[core.Services] {
 }
 
 type instance struct {
-	core  *core.Services
-	store *store.Store
+	core    *core.Services
+	store   *store.Store
+	lrclib  *lrclibClient
+	persona *personaClient
 }
 
 func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]) error {
 	i.core = host.Core
 	i.store = host.Core.Store
+
+	lyricCfg := host.Core.Config.Lyrics
+	i.lrclib = newLRCLIBClient(lyricCfg.LRCLIBBaseURL, lyricCfg.UserAgent)
+	i.persona = newPersonaClient(lyricCfg.PersonaBaseURL, lyricCfg.UserAgent)
 
 	// Reading is public: a share page or a signed-out client still benefits
 	// from what listeners agreed on, and the ranking is a shared artefact
@@ -68,6 +74,18 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 	host.API.GET("/lyrics/catalog", i.resolveCatalog)
 	host.API.GET("/lyrics/suggestions", i.listLyrics)
 	host.API.GET("/lyrics/:id", i.getLyric)
+
+	// The app no longer calls LRCLIB itself. These two endpoints keep the
+	// shared pacing and rate-limit window in one place; the response is the
+	// upstream record, so the app's own selection rules still apply.
+	host.API.GET("/lyrics/lrclib/get", i.lrclibGet)
+	host.API.GET("/lyrics/lrclib/search", i.lrclibSearch)
+
+	// Translation is a request made with the listener's own Persona grant:
+	// the token travels from the inbound request to Persona unchanged, and
+	// the prompt stays on the client so its engine choice is still visible.
+	host.API.POST("/lyrics/translate", authn.RequireAuth(), i.translateLyrics)
+	host.API.GET("/lyrics/models", authn.RequireAuth(), i.listModels)
 
 	// Writing needs an account: a contribution is an opinion attributed to
 	// somebody, and a vote from nobody would let one client stuff the ballot.

@@ -55,3 +55,21 @@ func TestExampleConfigurationParsesBangumi(t *testing.T) {
 		t.Fatal("bangumi sync interval was not defaulted")
 	}
 }
+
+func TestNormalizeLyricsDefaults(t *testing.T) {
+	cfg := &Config{}
+	cfg.Metadata.UserAgent = "Pulsar/1.0 (contact@example.com)"
+	cfg.Lyrics.LRCLIBBaseURL = "https://lrclib.example/"
+
+	normalizeLyrics(cfg)
+
+	if cfg.Lyrics.LRCLIBBaseURL != "https://lrclib.example" {
+		t.Fatalf("lrclib base = %q", cfg.Lyrics.LRCLIBBaseURL)
+	}
+	if cfg.Lyrics.UserAgent != cfg.Metadata.UserAgent {
+		t.Fatalf("user agent = %q", cfg.Lyrics.UserAgent)
+	}
+	if cfg.Lyrics.PersonaBaseURL != "" {
+		t.Fatalf("persona must stay disabled until configured: %q", cfg.Lyrics.PersonaBaseURL)
+	}
+}
