@@ -8,9 +8,11 @@ import "strings"
 var messages = map[string]map[string]string{
 	"en": {
 		"chatEncryptedMessageBody": "You've received a message",
+		"chatRedirectHistory":      "Redirect chat history",
 	},
 	"zh-hans": {
 		"chatEncryptedMessageBody": "您收到了一条消息",
+		"chatRedirectHistory":      "转发聊天记录",
 	},
 }
 
