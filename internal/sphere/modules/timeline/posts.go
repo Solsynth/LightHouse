@@ -11,9 +11,9 @@ import (
 	"gorm.io/gorm"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
-	"src.solsynth.dev/sosys/lighthouse/shared/platform/filejson"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/filejson"
 )
 
 // visibilityFilter mirrors the arguments PostQueryExtensions.FilterWithVisibility

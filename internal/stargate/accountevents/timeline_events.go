@@ -165,51 +165,27 @@ func (r *TimelineRecorder) Record(ctx context.Context, service, eventType, accou
 	return r.Events.PublishTimelineEvent(ctx, envelope)
 }
 
-// timelineEnvelope is the fleet timeline protocol wire shape
-// (shared/pkg/eventbus.TimelineEvent): the EventBase envelope plus the
-// account-scoped milestone.
-type timelineEnvelope struct {
-	EventID    string          `json:"event_id"`
-	EventType  string          `json:"event_type"`
-	AccountID  string          `json:"account_id"`
-	OccurredAt time.Time       `json:"occurred_at"`
-	Timestamp  time.Time       `json:"timestamp"`
-	Data       json.RawMessage `json:"data"`
-}
-
-// parseTimelineEnvelope folds one timeline_events message into a row. The
-// subject (mirrored in the envelope event_type, timeline.<service>.<event>)
-// names the source and event type; the envelope event_id is the dedupe key.
-// Anything that is not a timeline event, or lacks an account/event id,
-// acks-and-drops.
+// parseTimelineEnvelope folds one timeline_events message into a row via the
+// shared protocol parser. The subject (mirrored in the envelope event_type,
+// timeline.<service>.<event>) names the source and event type; the envelope
+// event_id is the dedupe key. Anything that is not a timeline event, or
+// lacks an account/event id, acks-and-drops.
 func parseTimelineEnvelope(payload []byte) (timelineEventRow, bool) {
-	var envelope timelineEnvelope
-	if err := json.Unmarshal(payload, &envelope); err != nil {
+	parsed, ok := eventbus.ParseTimelineEvent(payload)
+	if !ok {
 		return timelineEventRow{}, false
 	}
-	source, eventType, ok := eventbus.SplitTimelineSubject(envelope.EventType)
-	if !ok || envelope.EventID == "" || envelope.AccountID == "" {
-		return timelineEventRow{}, false
-	}
-	accountID, err := uuid.Parse(envelope.AccountID)
+	accountID, err := uuid.Parse(parsed.AccountID)
 	if err != nil {
 		return timelineEventRow{}, false
 	}
-	occurred := envelope.OccurredAt
-	if occurred.IsZero() {
-		occurred = envelope.Timestamp
-	}
-	data := envelope.Data
-	if len(data) == 0 {
-		data = payload
-	}
 	return timelineEventRow{
 		AccountID:  accountID,
-		EventType:  eventType,
-		Source:     source,
-		SourceID:   envelope.EventID,
-		OccurredAt: occurred,
-		Payload:    data,
+		EventType:  parsed.EventType,
+		Source:     parsed.Service,
+		SourceID:   parsed.EventID,
+		OccurredAt: parsed.OccurredAt,
+		Payload:    parsed.Data,
 	}, true
 }
 

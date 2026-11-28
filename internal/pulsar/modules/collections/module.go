@@ -415,6 +415,9 @@ func (i *instance) updateItem(c *gin.Context) {
 		httpx.NotFound(c, "collection item not found")
 		return
 	}
+	if req.Status != nil {
+		i.core.PublishWorkStatusUpdated(c.Request.Context(), accountID, item)
+	}
 
 	httpx.OK(c, item)
 }

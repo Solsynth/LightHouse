@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // The fleet's timeline protocol: a dedicated JetStream stream services
@@ -96,4 +98,54 @@ func SplitTimelineSubject(subject string) (service, eventType string, ok bool) {
 		return "", "", false
 	}
 	return service, eventType, true
+}
+
+// ParsedTimelineEvent is a decoded timeline envelope.
+type ParsedTimelineEvent struct {
+	EventID    string
+	Service    string
+	EventType  string
+	AccountID  string
+	OccurredAt time.Time
+	Data       json.RawMessage
+}
+
+// ParseTimelineEvent decodes one timeline_events message. It reports ok=false
+// for a foreign subject, a malformed envelope, a missing event/account id, or
+// an unparseable account id — consumers ack-and-drop those.
+func ParseTimelineEvent(payload []byte) (ParsedTimelineEvent, bool) {
+	var envelope struct {
+		EventID    string          `json:"event_id"`
+		EventType  string          `json:"event_type"`
+		AccountID  string          `json:"account_id"`
+		OccurredAt time.Time       `json:"occurred_at"`
+		Timestamp  time.Time       `json:"timestamp"`
+		Data       json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err != nil {
+		return ParsedTimelineEvent{}, false
+	}
+	service, eventType, ok := SplitTimelineSubject(envelope.EventType)
+	if !ok || envelope.EventID == "" || envelope.AccountID == "" {
+		return ParsedTimelineEvent{}, false
+	}
+	if _, err := uuid.Parse(envelope.AccountID); err != nil {
+		return ParsedTimelineEvent{}, false
+	}
+	occurred := envelope.OccurredAt
+	if occurred.IsZero() {
+		occurred = envelope.Timestamp
+	}
+	data := envelope.Data
+	if len(data) == 0 {
+		data = payload
+	}
+	return ParsedTimelineEvent{
+		EventID:    envelope.EventID,
+		Service:    service,
+		EventType:  eventType,
+		AccountID:  envelope.AccountID,
+		OccurredAt: occurred,
+		Data:       data,
+	}, true
 }

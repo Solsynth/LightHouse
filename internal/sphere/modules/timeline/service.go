@@ -15,12 +15,12 @@ import (
 	"gorm.io/gorm"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
-	"src.solsynth.dev/sosys/lighthouse/shared/platform/app"
-	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpcclient"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/ports"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/store"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/app"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/grpcclient"
 )
 
 // Ranking constants, copied from TimelineService.
@@ -68,6 +68,8 @@ type service struct {
 	maxTake int
 	signals ports.PostSignals
 	realms  ports.Realms
+	// events is the folded fleet timeline event log (timeline_service_events).
+	events *store.Store
 }
 
 func newService(c *core.Services, log *slog.Logger) *service {
@@ -81,6 +83,9 @@ func newService(c *core.Services, log *slog.Logger) *service {
 	s.db = c.DB
 	s.cache = c.Redis
 	s.clients = c.Clients
+	if c.DB != nil {
+		s.events = store.New(c.DB)
+	}
 	if c.Config != nil && c.Config.Security.MaxTake > 0 {
 		s.maxTake = c.Config.Security.MaxTake
 	}
@@ -524,13 +529,21 @@ func (s *service) listEventsForAnyone(ctx context.Context, take int, cursor *tim
 		}
 	} else {
 		posts = s.insertSponsored(ctx, posts)
+		postEvents := make([]model.TimelineEvent, 0, len(posts))
 		for i := range posts {
+			postEvents = append(postEvents, postTimelineEvent(posts[i], postInstant(&posts[i])))
+		}
+		// The explorable feed mixes in the fleet timeline events (realm joins,
+		// work reviews/status). Discovery blocks are inserted after the merge
+		// so their "now" timestamp cannot reorder the time-sorted feed.
+		postEvents = mergeEventsByTime(take, postEvents, s.serviceFeedEvents(ctx, cursor, take))
+		for i := range postEvents {
 			if rand.Float64() < 0.15 {
 				if discovery := s.maybeGetAnonymousDiscoveryActivity(ctx); discovery != nil {
 					activities = append(activities, *discovery)
 				}
 			}
-			activities = append(activities, postTimelineEvent(posts[i], postInstant(&posts[i])))
+			activities = append(activities, postEvents[i])
 		}
 	}
 	if len(activities) == 0 {
@@ -699,7 +712,12 @@ func (s *service) listEvents(
 	statusEvents := s.cachedFriendsStatuses(ctx, accountID, friends)
 	presenceAccountIDs := append(append([]uuid.UUID{}, friends...), accountID)
 	presenceEvents := s.cachedFriendsPresence(ctx, accountID, presenceAccountIDs, cursor, take)
-	merged := mergeEventsByTime(postEvents, presenceEvents, statusEvents, take)
+	// The explorable feed mixes in the fleet timeline events (realm joins,
+	// work reviews/status) between posts; filtered feeds stay post-only.
+	merged := mergeEventsByTime(take, postEvents, presenceEvents, statusEvents)
+	if trimSpace(filter) == "" {
+		merged = mergeEventsByTime(take, merged, s.serviceFeedEvents(ctx, cursor, take))
+	}
 
 	discoveryIndex := -1
 	if cursor == nil && len(merged) >= 4 {
@@ -961,11 +979,15 @@ func shouldIncludeFriendStatus(status *accountStatus) bool {
 }
 
 // mergeEventsByTime mirrors MergeEventsByTime.
-func mergeEventsByTime(postEvents, presenceEvents, statusEvents []model.TimelineEvent, take int) []model.TimelineEvent {
-	merged := make([]model.TimelineEvent, 0, len(postEvents)+len(presenceEvents)+len(statusEvents))
-	merged = append(merged, postEvents...)
-	merged = append(merged, presenceEvents...)
-	merged = append(merged, statusEvents...)
+func mergeEventsByTime(take int, groups ...[]model.TimelineEvent) []model.TimelineEvent {
+	total := 0
+	for _, group := range groups {
+		total += len(group)
+	}
+	merged := make([]model.TimelineEvent, 0, total)
+	for _, group := range groups {
+		merged = append(merged, group...)
+	}
 	sort.SliceStable(merged, func(i, j int) bool {
 		return eventInstant(merged[j]).Before(eventInstant(merged[i]))
 	})
@@ -974,7 +996,6 @@ func mergeEventsByTime(postEvents, presenceEvents, statusEvents []model.Timeline
 	}
 	return merged
 }
-
 func eventInstant(event model.TimelineEvent) time.Time {
 	if event.CreatedAt == nil {
 		return time.Time{}

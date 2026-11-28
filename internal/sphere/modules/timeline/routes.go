@@ -10,10 +10,10 @@ import (
 	"github.com/google/uuid"
 	"src.solsynth.dev/sosys/lighthouse/shared/pkg/errs"
 
+	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/authn"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/httpx"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
-	"src.solsynth.dev/sosys/lighthouse/internal/sphere/core"
 )
 
 // requireAuth mirrors [Authorize]: it rejects anonymous requests with the

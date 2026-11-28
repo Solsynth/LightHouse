@@ -136,8 +136,10 @@ Modules own their schema:
   consumer folds that stream (`timeline.<service>.<event>` subjects,
   `shared/pkg/eventbus.TimelineEvent` envelope) into the same table, deduped
   by `event_id` — the echo is a no-op. Pulsar publishes `scrobble.created`,
-  `work.reviewed` and `work.review_deleted` on the same protocol; a service
-  joins by publishing, no consumer change.
+  `work.reviewed`, `work.review_deleted` and `work.status_updated` on the same
+  protocol; a service joins by publishing, no consumer change. Sphere folds
+  the same stream into its own `timeline_service_events` table and interleaves
+  the rows as `service.event` items in the explorable feed.
   The timeline endpoint serves the event log only to clients declaring the
   `timeline.service-events` token in the `X-Client-Capabilities` header;
   others get the legacy status/activity shape.

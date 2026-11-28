@@ -122,6 +122,38 @@ func (s *Services) PublishReviewUpdated(ctx context.Context, action string, revi
 	}
 }
 
+// WorkStatusEvent is the timeline payload of one collection item status
+// change (`plan_to_watch` → `watching`, …).
+type WorkStatusEvent struct {
+	CollectionID string  `json:"collection_id"`
+	ItemID       string  `json:"item_id"`
+	CatalogID    *string `json:"catalog_id,omitempty"`
+	Status       string  `json:"status"`
+}
+
+// PublishWorkStatusUpdated emits the timeline event for a work status change
+// so Stargate's account timeline and Sphere's explorable feed can fold it in.
+// A disabled or absent NATS connection is a no-op.
+func (s *Services) PublishWorkStatusUpdated(ctx context.Context, accountID uuid.UUID, item *model.CollectionItem) {
+	if s.NATS == nil || !s.NATS.Enabled() || item == nil || item.Status == nil {
+		return
+	}
+	event := WorkStatusEvent{
+		CollectionID: item.CollectionID.String(),
+		ItemID:       item.ID.String(),
+		Status:       *item.Status,
+	}
+	if item.CatalogID != nil {
+		catalogID := item.CatalogID.String()
+		event.CatalogID = &catalogID
+	}
+	if err := s.NATS.Bus.PublishTimeline(ctx, "pulsar", "work.status_updated", accountID.String(), time.Now().UTC(), event); err != nil {
+		if s.Log != nil {
+			s.Log.Warn("failed to publish work status event", "item_id", item.ID, "error", err)
+		}
+	}
+}
+
 // ResolveAccount resolves an identifier (UUID or username) to an account UUID.
 func (s *Services) ResolveAccount(ctx context.Context, identifier string) (uuid.UUID, error) {
 	identifier = strings.TrimSpace(identifier)

@@ -10,8 +10,8 @@ import (
 	models "src.solsynth.dev/sosys/lighthouse/shared/pkg/models"
 	gen "src.solsynth.dev/sosys/lighthouse/shared/proto"
 
-	"src.solsynth.dev/sosys/lighthouse/shared/platform/accountjson"
 	"src.solsynth.dev/sosys/lighthouse/internal/sphere/model"
+	"src.solsynth.dev/sosys/lighthouse/shared/platform/accountjson"
 )
 
 // Permission nodes the discovery routes ask for, mirroring PermissionKeys.
