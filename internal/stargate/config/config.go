@@ -30,6 +30,10 @@ type Config struct {
 	Web struct {
 		DistPath string `toml:"distPath"`
 	} `toml:"web"`
+
+	// Landing configures cloud-updated startup splash artwork served at
+	// GET /api/landing.
+	Landing LandingConfig `toml:"landing"`
 	GRPC struct {
 		Port     string `toml:"port"`
 		UseTLS   bool   `toml:"useTLS"`
@@ -840,7 +844,95 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("[auth] temporarySessionLifetime must be positive")
 		}
 	}
+	for i, asset := range c.Landing.Assets {
+		if err := asset.validate(i); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// LandingConfig configures cloud-updated startup splash artwork.
+type LandingConfig struct {
+	Assets []LandingAsset `toml:"assets"`
+}
+
+// LandingAsset describes a single cloud-updated startup splash image.
+// Omit StartsAt and EndsAt for a general (always-active) asset; set either or
+// both (RFC3339 timestamps) for a limited-time asset.
+type LandingAsset struct {
+	ID              string `toml:"id"`
+	URL             string `toml:"url"`
+	Orientation     string `toml:"orientation"`
+	BackgroundColor string `toml:"backgroundColor"`
+	StartsAt        string `toml:"startsAt"`
+	EndsAt          string `toml:"endsAt"`
+}
+
+// NormalizedOrientation returns "landscape" or "vertical" (accepting
+// "portrait" as an alias for "vertical"), or "" if unrecognized.
+func (a LandingAsset) NormalizedOrientation() string {
+	switch strings.ToLower(strings.TrimSpace(a.Orientation)) {
+	case "landscape":
+		return "landscape"
+	case "vertical", "portrait":
+		return "vertical"
+	default:
+		return ""
+	}
+}
+
+func (a LandingAsset) validate(index int) error {
+	rawURL := strings.TrimSpace(a.URL)
+	if rawURL == "" {
+		return fmt.Errorf("[landing.assets[%d]] url is required", index)
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return fmt.Errorf("[landing.assets[%d]] url %q must be an http or https URL", index, rawURL)
+	}
+	if a.NormalizedOrientation() == "" {
+		return fmt.Errorf("[landing.assets[%d]] orientation %q must be \"landscape\" or \"vertical\"", index, a.Orientation)
+	}
+	if bg := strings.TrimSpace(a.BackgroundColor); bg != "" && !isValidHexColor(bg) {
+		return fmt.Errorf("[landing.assets[%d]] backgroundColor %q must be #RRGGBB or #AARRGGBB", index, bg)
+	}
+	var startsAt, endsAt *time.Time
+	if raw := strings.TrimSpace(a.StartsAt); raw != "" {
+		t, err := time.Parse(time.RFC3339Nano, raw)
+		if err != nil {
+			return fmt.Errorf("[landing.assets[%d]] startsAt %q must be RFC3339", index, raw)
+		}
+		startsAt = &t
+	}
+	if raw := strings.TrimSpace(a.EndsAt); raw != "" {
+		t, err := time.Parse(time.RFC3339Nano, raw)
+		if err != nil {
+			return fmt.Errorf("[landing.assets[%d]] endsAt %q must be RFC3339", index, raw)
+		}
+		endsAt = &t
+	}
+	if startsAt != nil && endsAt != nil && endsAt.Before(*startsAt) {
+		return fmt.Errorf("[landing.assets[%d]] endsAt must not be before startsAt", index)
+	}
+	return nil
+}
+
+func isValidHexColor(s string) bool {
+	if len(s) != 7 && len(s) != 9 {
+		return false
+	}
+	if s[0] != '#' {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		c := s[i]
+		isHex := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+		if !isHex {
+			return false
+		}
+	}
+	return true
 }
 
 // WebAuthnOrigins returns the exact origins a WebAuthn ceremony may come from:

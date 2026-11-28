@@ -412,3 +412,16 @@ sudoChallengeLifetime = "10m"
 # Falls back to mailto:security@solsynth.dev when unset.
 [securityTxt]
 contact = "mailto:security@solsynth.dev"
+
+# Cloud-updated landing splash artwork served at GET /api/landing (/stargate/landing).
+# Each entry provides a direct CDN URL and orientation ("landscape" or "vertical").
+# Omit startsAt and endsAt for a general (always-active) asset; set either or both
+# (RFC3339 timestamps) for a limited-time asset.
+# [landing]
+# [[landing.assets]]
+# id = "spring-2026-landscape"
+# url = "https://cdn.solian.app/landing/spring-2026-landscape.webp"
+# orientation = "landscape"
+# backgroundColor = "#F7EBCF"
+# startsAt = "2026-03-01T00:00:00Z"
+# endsAt = "2026-03-15T23:59:59Z"

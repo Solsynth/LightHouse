@@ -3,6 +3,7 @@ package standard
 import (
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/core"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/activities"
+	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/applemusic"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/bangumisync"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/catalog"
 	"src.solsynth.dev/sosys/lighthouse/internal/pulsar/modules/collections"
@@ -36,5 +37,6 @@ func Modules() []module.Factory[core.Services] {
 		presenceingest.Factory(),
 		reviews.Factory(),
 		lyrics.Factory(),
+		applemusic.Factory(),
 	}
 }

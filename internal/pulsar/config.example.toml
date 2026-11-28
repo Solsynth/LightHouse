@@ -101,3 +101,15 @@ distPath = "web/dist"
 devViteUrl = ""
 # Optional Stargate base URL for sign-in links (empty uses same-origin /sign-in).
 stargateUrl = ""
+
+[appleMusic]
+# Server-side Apple MusicKit Developer Token minting (ES256 JWT) so non-Apple
+# clients (Android, Web, Windows, Linux) never bundle the .p8 private key.
+# Leave empty to disable the /api/apple-music/developer-token endpoint.
+teamId = ""
+keyId = ""
+# Path to the downloaded AuthKey_<KEYID>.p8 file on disk, or inline PEM below.
+privateKeyPath = ""
+privateKeyPem = ""
+# Minted token lifetime in hours (defaults to 12, max 4320 = 180 days).
+tokenTtlHours = 12

@@ -22,7 +22,9 @@ func Factory() module.Factory[core.Services] {
 type instance struct{}
 
 func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]) error {
-	wellknownctl.RegisterTop(host.Engine, wellknownctl.Deps{})
+	deps := wellknownctl.Deps{Cfg: host.Core.Config}
+	wellknownctl.Register(host.API, deps)
+	wellknownctl.RegisterTop(host.Engine, deps)
 	return nil
 }
 

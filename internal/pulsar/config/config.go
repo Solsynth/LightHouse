@@ -87,6 +87,24 @@ type Config struct {
 	// scrobble in the history.
 	Scrobbler Scrobbler `toml:"scrobbler"`
 
+	// AppleMusic configures server-side ES256 Developer Token minting for
+	// non-Apple GroovyBox clients (Android, Web, Windows, Linux) so client apps
+	// never bundle the .p8 private key.
+	AppleMusic struct {
+		// TeamID is the 10-character Apple Developer Team ID (`iss` claim).
+		TeamID string `toml:"teamId"`
+		// KeyID is the 10-character MusicKit Key ID (`kid` header).
+		KeyID string `toml:"keyId"`
+		// PrivateKeyPath points to the downloaded AuthKey_<KEYID>.p8 file.
+		PrivateKeyPath string `toml:"privateKeyPath"`
+		// PrivateKeyPEM holds the inline PEM contents of the .p8 key when
+		// injected via environment variables or container secrets.
+		PrivateKeyPEM string `toml:"privateKeyPem"`
+		// TokenTTLHours is the lifetime of each minted developer JWT in hours.
+		// Zero defaults to 12 hours; Apple caps developer tokens at 180 days (4320h).
+		TokenTTLHours int `toml:"tokenTtlHours"`
+	} `toml:"appleMusic"`
+
 	// Web configures the SSR templates and Vue island assets (web/dist).
 	Web struct {
 		// DistPath is the built Vite output directory containing .vite/manifest.json
@@ -232,8 +250,28 @@ func applyEnv(cfg *Config) {
 	config.SetStr("PULSAR_WEB_DISTPATH", &cfg.Web.DistPath)
 	config.SetStr("PULSAR_WEB_DEVVITEURL", &cfg.Web.DevViteURL)
 	config.SetStr("PULSAR_WEB_STARGATEURL", &cfg.Web.StargateURL)
+	config.SetStr("PULSAR_APPLEMUSIC_TEAMID", &cfg.AppleMusic.TeamID)
+	config.SetStr("PULSAR_APPLEMUSIC_KEYID", &cfg.AppleMusic.KeyID)
+	config.SetStr("PULSAR_APPLEMUSIC_PRIVATEKEYPATH", &cfg.AppleMusic.PrivateKeyPath)
+	config.SetStr("PULSAR_APPLEMUSIC_PRIVATEKEYPEM", &cfg.AppleMusic.PrivateKeyPEM)
+	config.SetInt("PULSAR_APPLEMUSIC_TOKENTTLHOURS", &cfg.AppleMusic.TokenTTLHours)
 	normalizeLyrics(cfg)
 	normalizeBangumi(cfg)
+	normalizeAppleMusic(cfg)
+}
+
+func normalizeAppleMusic(cfg *Config) {
+	cfg.AppleMusic.TeamID = strings.TrimSpace(cfg.AppleMusic.TeamID)
+	cfg.AppleMusic.KeyID = strings.TrimSpace(cfg.AppleMusic.KeyID)
+	cfg.AppleMusic.PrivateKeyPath = strings.TrimSpace(cfg.AppleMusic.PrivateKeyPath)
+	cfg.AppleMusic.PrivateKeyPEM = strings.TrimSpace(cfg.AppleMusic.PrivateKeyPEM)
+	if cfg.AppleMusic.TokenTTLHours <= 0 {
+		cfg.AppleMusic.TokenTTLHours = 12
+	}
+	// Apple MusicKit rejects developer tokens valid for longer than 6 months (180 days).
+	if cfg.AppleMusic.TokenTTLHours > 4320 {
+		cfg.AppleMusic.TokenTTLHours = 4320
+	}
 }
 
 func validate(cfg *Config) error {

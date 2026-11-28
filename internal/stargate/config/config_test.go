@@ -307,3 +307,55 @@ func countOrigin(origins []string, want string) int {
 	}
 	return count
 }
+
+func TestLandingConfigValidation(t *testing.T) {
+	valid := func() *Config {
+		cfg := Default()
+		cfg.Captcha.AllowDisabled = true
+		cfg.Landing.Assets = []LandingAsset{
+			{
+				ID:              "general-1",
+				URL:             "https://cdn.solian.app/landing/general.webp",
+				Orientation:     "landscape",
+				BackgroundColor: "#F7EBCF",
+			},
+			{
+				ID:          "event-1",
+				URL:         "https://cdn.solian.app/landing/event.webp",
+				Orientation: "vertical",
+				StartsAt:    "2026-06-01T00:00:00Z",
+				EndsAt:      "2026-06-30T23:59:59Z",
+			},
+		}
+		return cfg
+	}
+
+	if err := valid().Validate(); err != nil {
+		t.Fatalf("valid landing config failed: %v", err)
+	}
+
+	badURL := valid()
+	badURL.Landing.Assets[0].URL = "ftp://cdn.solian.app/a.webp"
+	if err := badURL.Validate(); err == nil {
+		t.Fatal("expected error for non-http(s) landing URL")
+	}
+
+	badOrientation := valid()
+	badOrientation.Landing.Assets[0].Orientation = "square"
+	if err := badOrientation.Validate(); err == nil {
+		t.Fatal("expected error for invalid landing orientation")
+	}
+
+	badColor := valid()
+	badColor.Landing.Assets[0].BackgroundColor = "red"
+	if err := badColor.Validate(); err == nil {
+		t.Fatal("expected error for invalid landing backgroundColor")
+	}
+
+	badWindow := valid()
+	badWindow.Landing.Assets[1].StartsAt = "2026-07-01T00:00:00Z"
+	badWindow.Landing.Assets[1].EndsAt = "2026-06-01T00:00:00Z"
+	if err := badWindow.Validate(); err == nil {
+		t.Fatal("expected error when endsAt is before startsAt")
+	}
+}

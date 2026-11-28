@@ -7,8 +7,11 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"src.solsynth.dev/sosys/stargate/config"
 )
 
 func newTestEngine() *gin.Engine {
@@ -206,5 +209,78 @@ func TestSwaggerManifests(t *testing.T) {
 				t.Fatalf("%s: path %q is not keyed /api/...", path, p)
 			}
 		}
+	}
+}
+
+func TestGetLanding(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+
+	cfg := &config.Config{
+		Landing: config.LandingConfig{
+			Assets: []config.LandingAsset{
+				{
+					ID:              "general-landscape",
+					URL:             "https://cdn.solian.app/landing/general.webp",
+					Orientation:     "landscape",
+					BackgroundColor: "#F7EBCF",
+				},
+				{
+					URL:         "https://cdn.solian.app/landing/active-event.webp",
+					Orientation: "portrait",
+					StartsAt:    "2026-06-01T00:00:00Z",
+					EndsAt:      "2026-06-30T23:59:59Z",
+				},
+				{
+					ID:          "expired-event",
+					URL:         "https://cdn.solian.app/landing/expired.webp",
+					Orientation: "landscape",
+					StartsAt:    "2026-05-01T00:00:00Z",
+					EndsAt:      "2026-05-31T23:59:59Z",
+				},
+			},
+		},
+	}
+
+	resp := buildLandingResponse(cfg, now)
+	if len(resp.Assets) != 2 {
+		t.Fatalf("got %d assets, want 2 (expired should be filtered out)", len(resp.Assets))
+	}
+	if resp.Assets[0].ID != "general-landscape" || resp.Assets[0].IsLimitedTime {
+		t.Fatalf("unexpected first asset: %+v", resp.Assets[0])
+	}
+	if resp.Assets[1].ID == "" || resp.Assets[1].Orientation != "vertical" || !resp.Assets[1].IsLimitedTime {
+		t.Fatalf("unexpected second asset: %+v", resp.Assets[1])
+	}
+
+	e := gin.New()
+	liveCfg := &config.Config{
+		Landing: config.LandingConfig{
+			Assets: []config.LandingAsset{
+				{
+					ID:          "general-landscape",
+					URL:         "https://cdn.solian.app/landing/general.webp",
+					Orientation: "landscape",
+				},
+				{
+					ID:          "future-event",
+					URL:         "https://cdn.solian.app/landing/future.webp",
+					Orientation: "vertical",
+					StartsAt:    time.Now().UTC().Add(-time.Hour).Format(time.RFC3339),
+					EndsAt:      time.Now().UTC().Add(24 * time.Hour).Format(time.RFC3339),
+				},
+			},
+		},
+	}
+	Register(e.Group("/api"), Deps{Cfg: liveCfg})
+	_, body := get(t, e, "/api/landing")
+	assets, ok := body["assets"].([]any)
+	if !ok || len(assets) != 2 {
+		t.Fatalf("GET /api/landing assets = %#v", body["assets"])
+	}
+
+	empty := buildLandingResponse(nil, now)
+	if len(empty.Assets) != 0 {
+		t.Fatalf("expected 0 assets for nil config, got %d", len(empty.Assets))
 	}
 }

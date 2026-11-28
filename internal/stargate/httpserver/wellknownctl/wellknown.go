@@ -10,17 +10,19 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"src.solsynth.dev/sosys/stargate/config"
 )
 
-// Deps carries dependencies for the well-known endpoints. The manifests are
-// static registry dumps, so no services are required.
-type Deps struct{}
+// Deps carries dependencies for the well-known and landing endpoints.
+type Deps struct {
+	Cfg *config.Config
+}
 
-// Register wires the /api surface of WellKnownController. The C# controller
-// declares no /api routes — both of its endpoints are absolute /.well-known
-// paths served via RegisterTop — so this is intentionally empty. It exists to
-// satisfy the standard controller registration contract.
-func Register(api *gin.RouterGroup, d Deps) {}
+// Register wires the /api surface of WellKnownController (GET /api/landing).
+func Register(api *gin.RouterGroup, d Deps) {
+	api.GET("/landing", d.getLanding)
+}
 
 // RegisterTop wires the top-level (non-/api) endpoints the gateway serves
 // unprefixed: the WellKnownController manifests and the swagger playground
