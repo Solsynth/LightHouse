@@ -534,9 +534,12 @@ func (s *service) listEventsForAnyone(ctx context.Context, take int, cursor *tim
 			postEvents = append(postEvents, postTimelineEvent(posts[i], postInstant(&posts[i])))
 		}
 		// The explorable feed mixes in the fleet timeline events (realm joins,
-		// work reviews/status). Discovery blocks are inserted after the merge
-		// so their "now" timestamp cannot reorder the time-sorted feed.
-		postEvents = mergeEventsByTime(take, postEvents, s.serviceFeedEvents(ctx, cursor, take))
+		// work reviews/status). `top` ranks by score, so a time-ordered merge
+		// would distort it; discovery blocks are inserted after the merge so
+		// their "now" timestamp cannot reorder the feed.
+		if mode != modeTop {
+			postEvents = mergeEventsByTime(take, postEvents, s.serviceFeedEvents(ctx, cursor, take))
+		}
 		for i := range postEvents {
 			if rand.Float64() < 0.15 {
 				if discovery := s.maybeGetAnonymousDiscoveryActivity(ctx); discovery != nil {
@@ -713,9 +716,10 @@ func (s *service) listEvents(
 	presenceAccountIDs := append(append([]uuid.UUID{}, friends...), accountID)
 	presenceEvents := s.cachedFriendsPresence(ctx, accountID, presenceAccountIDs, cursor, take)
 	// The explorable feed mixes in the fleet timeline events (realm joins,
-	// work reviews/status) between posts; filtered feeds stay post-only.
+	// work reviews/status) between posts; filtered feeds stay post-only, and
+	// `top` keeps its score ranking intact.
 	merged := mergeEventsByTime(take, postEvents, presenceEvents, statusEvents)
-	if trimSpace(filter) == "" {
+	if trimSpace(filter) == "" && mode != modeTop {
 		merged = mergeEventsByTime(take, merged, s.serviceFeedEvents(ctx, cursor, take))
 	}
 
