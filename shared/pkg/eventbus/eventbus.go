@@ -13,7 +13,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -115,37 +117,108 @@ func (b *Bus) PublishJetStream(ctx context.Context, subject, stream string, v an
 	return nil
 }
 
-// EnsureStream creates a JetStream stream if missing, or updates it to also
-// cover the given subjects — always preserving subjects other processes
-// registered (the C# fleet shares streams like account_events).
+// EnsureStream creates a JetStream stream if missing, or extends it with the
+// given subjects — always preserving subjects other processes registered (the
+// C# fleet shares streams like account_events). JetStream rejects a stream
+// whose own subjects overlap, so a wanted subject already covered by a
+// registered broader pattern (timeline.pulsar.scrobble.created under
+// timeline.>) is dropped, and nothing is written when every wanted subject is
+// already covered.
 func (b *Bus) EnsureStream(ctx context.Context, stream string, subjects []string) error {
 	if b == nil || b.Conn == nil || b.JS == nil {
 		return nil
 	}
-	covered := make(map[string]struct{}, len(subjects))
-	for _, s := range subjects {
-		covered[s] = struct{}{}
-	}
+	var existing jetstream.StreamConfig
+	found := false
 	if cur, err := b.JS.Stream(ctx, stream); err == nil {
 		if info, err := cur.Info(ctx); err == nil {
-			for _, s := range info.Config.Subjects {
-				covered[s] = struct{}{}
-			}
+			existing = info.Config
+			found = true
 		}
 	}
-	union := make([]string, 0, len(covered))
-	for s := range covered {
-		union = append(union, s)
+	missing := make([]string, 0, len(subjects))
+	for _, subject := range subjects {
+		if !coveredByAny(subject, existing.Subjects) {
+			missing = append(missing, subject)
+		}
 	}
-	sort.Strings(union)
-	if _, err := b.JS.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+	if found && len(missing) == 0 {
+		return nil
+	}
+	merged := mergeSubjects(existing.Subjects, missing)
+	cfg := jetstream.StreamConfig{
 		Name:      stream,
-		Subjects:  union,
+		Subjects:  merged,
 		Retention: jetstream.LimitsPolicy,
-	}); err != nil {
+	}
+	if found {
+		cfg = existing
+		cfg.Subjects = merged
+	}
+	if _, err := b.JS.CreateOrUpdateStream(ctx, cfg); err != nil {
 		return fmt.Errorf("ensure %s stream: %w", stream, err)
 	}
 	return nil
+}
+
+// mergeSubjects unions the registered and wanted subjects, dropping any that
+// another pattern already covers: JetStream rejects a stream config whose own
+// subjects overlap, so timeline.> and timeline.pulsar.scrobble.created cannot
+// coexist.
+func mergeSubjects(existing, wanted []string) []string {
+	union := append(append([]string(nil), existing...), wanted...)
+	sort.Strings(union)
+	union = slices.Compact(union)
+	kept := make([]string, 0, len(union))
+	for i, subject := range union {
+		covered := false
+		for j, other := range union {
+			if i != j && subjectIsSubsetMatch(subject, other) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			kept = append(kept, subject)
+		}
+	}
+	return kept
+}
+
+// coveredByAny reports whether one of the registered patterns matches subj.
+func coveredByAny(subj string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if subjectIsSubsetMatch(subj, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// subjectIsSubsetMatch reports whether every subject matched by subj is also
+// matched by pattern, using NATS wildcard semantics: "*" matches exactly one
+// token and ">" matches one or more trailing tokens.
+func subjectIsSubsetMatch(subj, pattern string) bool {
+	if subj == pattern {
+		return true
+	}
+	subjTokens := strings.Split(subj, ".")
+	patternTokens := strings.Split(pattern, ".")
+	for i, token := range patternTokens {
+		if token == ">" {
+			return i < len(subjTokens)
+		}
+		if i >= len(subjTokens) {
+			return false
+		}
+		if subjTokens[i] == ">" {
+			return false
+		}
+		if token != "*" && token != subjTokens[i] {
+			return false
+		}
+	}
+	return len(subjTokens) == len(patternTokens)
 }
 
 // Consume runs a durable JetStream consumer for one subject on the stream,
