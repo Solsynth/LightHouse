@@ -19,7 +19,7 @@ require (
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.1
-	src.solsynth.dev/sosys/lighthouse/shared v0.2.10
+	src.solsynth.dev/sosys/lighthouse/shared v0.2.11
 )
 
 require (
