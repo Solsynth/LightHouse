@@ -270,6 +270,44 @@ func TestMetadataSuggestionAgreement(t *testing.T) {
 	}
 }
 
+// TestMetadataSuggestionPerCatalog: an account's proposal is keyed by
+// (catalog, field), so correcting the same field on a second recording is a
+// second row rather than a uniqueness failure. The first shape of the index
+// omitted the catalog and turned this into a 500.
+func TestMetadataSuggestionPerCatalog(t *testing.T) {
+	h := newHarness(t)
+	second := &model.CatalogItem{
+		ID:          uuid.New(),
+		Domain:      model.DomainMusic,
+		Provider:    "groovybox",
+		ProviderKey: "lib:2",
+		Title:       "Second Track",
+		Subtitle:    new("Wrong Artist"),
+	}
+	if err := h.db.Create(second).Error; err != nil {
+		t.Fatalf("seed second catalog: %v", err)
+	}
+
+	for _, catalog := range []uuid.UUID{h.catalog, second.ID} {
+		response := h.call(t, http.MethodPut, "/api/metadata/suggestions", map[string]any{
+			"catalog_id": catalog,
+			"field":      "title",
+			"value":      "Corrected " + catalog.String(),
+		})
+		if response.Code != http.StatusCreated {
+			t.Fatalf("proposal for %s = %d, want 201: %s", catalog, response.Code, response.Body.String())
+		}
+	}
+
+	for _, catalog := range []uuid.UUID{h.catalog, second.ID} {
+		list := h.call(t, http.MethodGet, "/api/metadata/suggestions?catalog_id="+catalog.String(), nil)
+		rows := decode[[]store.MetadataFieldSuggestion](t, list)
+		if len(rows) != 1 || rows[0].CatalogID != catalog {
+			t.Fatalf("listing for %s = %+v", catalog, rows)
+		}
+	}
+}
+
 // TestMetadataFieldRejected: an unknown field is a client bug, not a new
 // column the server should store.
 func TestMetadataFieldRejected(t *testing.T) {

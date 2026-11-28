@@ -14,6 +14,7 @@ package lyrics
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -43,6 +44,13 @@ func Factory() module.Factory[core.Services] {
 				ON shared_lyrics (catalog_id, language, score DESC)`,
 			`CREATE INDEX IF NOT EXISTS ix_meta_sugg_rank
 				ON metadata_suggestions (catalog_id, field, score DESC)`,
+			// The first shape of the uniqueness rule keyed an account's
+			// proposal by field alone, so a second recording's suggestion
+			// collided with the first and the write failed. AutoMigrate has
+			// already created the (catalog, account, field) replacement under
+			// its new name; the old index would still reject the write until
+			// it is dropped.
+			`DROP INDEX IF EXISTS ux_meta_sugg_account`,
 		)},
 		Capabilities: []string{"lyrics", "lyrics.contributions", "metadata.suggestions"},
 		New:          func() module.Instance[core.Services] { return &instance{} },
@@ -52,6 +60,7 @@ func Factory() module.Factory[core.Services] {
 type instance struct {
 	core    *core.Services
 	store   *store.Store
+	log     *slog.Logger
 	lrclib  *lrclibClient
 	persona *personaClient
 }
@@ -59,6 +68,10 @@ type instance struct {
 func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]) error {
 	i.core = host.Core
 	i.store = host.Core.Store
+	i.log = host.Log
+	if i.log == nil {
+		i.log = slog.Default()
+	}
 
 	lyricCfg := host.Core.Config.Lyrics
 	i.lrclib = newLRCLIBClient(lyricCfg.LRCLIBBaseURL, lyricCfg.UserAgent)
@@ -179,6 +192,8 @@ func (i *instance) putLyric(c *gin.Context) {
 	}
 	saved, created, err := i.store.UpsertSharedLyric(c.Request.Context(), contribution)
 	if err != nil {
+		i.log.Error("put lyric contribution failed",
+			"account_id", accountID, "catalog_id", req.CatalogID, "language", contribution.Language, "error", err)
 		httpx.Internal(c)
 		return
 	}
@@ -317,7 +332,7 @@ func (i *instance) voteLyric(c *gin.Context) {
 	}
 	lyric, err := i.store.VoteSharedLyric(c.Request.Context(), accountID, id, body.Value)
 	if err != nil {
-		suggestionFailure(c, err)
+		i.suggestionFailure(c, err)
 		return
 	}
 	httpx.OK(c, lyric)
@@ -373,6 +388,8 @@ func (i *instance) putSuggestion(c *gin.Context) {
 		Value:     value,
 	})
 	if err != nil {
+		i.log.Error("put metadata suggestion failed",
+			"account_id", accountID, "catalog_id", req.CatalogID, "field", field, "error", err)
 		httpx.Internal(c)
 		return
 	}
@@ -437,7 +454,7 @@ func (i *instance) voteSuggestion(c *gin.Context) {
 	}
 	suggestion, err := i.store.VoteMetadataSuggestion(c.Request.Context(), accountID, id, body.Value)
 	if err != nil {
-		suggestionFailure(c, err)
+		i.suggestionFailure(c, err)
 		return
 	}
 	httpx.OK(c, suggestion)
@@ -522,13 +539,14 @@ func queryID(c *gin.Context, name string) (uuid.UUID, bool) {
 // suggestionFailure maps a contribution write failure onto its status: an
 // unknown id is 404, voting on one's own contribution is 403, and anything
 // else is the server's problem.
-func suggestionFailure(c *gin.Context, err error) {
+func (i *instance) suggestionFailure(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		httpx.NotFound(c, "contribution not found")
 	case errors.Is(err, store.ErrSuggestionOwn):
 		httpx.Fail(c, errs.Forbidden("You cannot vote on your own contribution."))
 	default:
+		i.log.Error("contribution write failed", "error", err)
 		httpx.Internal(c)
 	}
 }

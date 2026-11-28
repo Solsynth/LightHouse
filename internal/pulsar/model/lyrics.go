@@ -117,9 +117,9 @@ var MetadataFields = map[string]bool{
 // independently suggest outranks one nobody else confirms.
 type MetadataSuggestion struct {
 	ID        uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
-	CatalogID uuid.UUID `gorm:"type:uuid;not null;index:ix_meta_sugg_catalog" json:"catalog_id"`
-	AccountID uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:ux_meta_sugg_account" json:"account_id"`
-	Field     string    `gorm:"type:varchar(32);not null;uniqueIndex:ux_meta_sugg_account;index:ix_meta_sugg_field" json:"field"`
+	CatalogID uuid.UUID `gorm:"type:uuid;not null;index:ix_meta_sugg_catalog;uniqueIndex:ux_meta_sugg_catalog_account_field" json:"catalog_id"`
+	AccountID uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:ux_meta_sugg_catalog_account_field" json:"account_id"`
+	Field     string    `gorm:"type:varchar(32);not null;uniqueIndex:ux_meta_sugg_catalog_account_field;index:ix_meta_sugg_field" json:"field"`
 	Value     string    `gorm:"type:varchar(4096);not null" json:"value"`
 
 	// Score is the suggestion's standing among the values proposed for the same
