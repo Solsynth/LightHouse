@@ -42,6 +42,7 @@ func (i *instance) Configure(_ context.Context, host *module.Host[core.Services]
 	r.POST("/:id/items", authn.RequireAuth(), i.addItem)
 	r.PUT("/:id/items", authn.RequireAuth(), i.replaceItems)
 	r.PATCH("/:id/items/:itemId", authn.RequireAuth(), i.updateItem)
+	r.DELETE("/:id/items/:itemId", authn.RequireAuth(), i.removeItem)
 
 	host.API.GET("/users/:identifier/shelves", i.getUserShelves)
 
