@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -34,6 +35,7 @@ func timelineEventFromEntity(entity *TimelineEventEntity) *TimelineEvent {
 		CreatedAt: model.Time(entity.CreatedAt),
 		EventType: entity.EventType,
 		Source:    entity.Source,
+		SourceId:  entity.SourceID,
 		Payload:   json.RawMessage(entity.Payload),
 	}
 }
@@ -109,6 +111,58 @@ type TimelineEventSource struct {
 	Subject  string
 	Consumer string
 	Parse    func(payload []byte) (timelineEventRow, bool)
+}
+
+// TimelineRecorder is the write path Stargate's own modules use for timeline
+// events: it persists the row in-process (so the timeline works even when no
+// message broker is configured) and echoes the same envelope onto the fleet
+// stream for other consumers. The accountevents ingest consumer receives that
+// echo and dedupes it on the shared event_id, so exactly one row lands.
+//
+// It is published as the module's `timeline` port.
+type TimelineRecorder struct {
+	Store *Store
+	// Events is the fleet bus. Nil — NATS disabled — skips the echo; the row
+	// is still recorded.
+	Events *eventbus.Bus
+}
+
+// Record persists one account timeline event and publishes its envelope.
+func (r *TimelineRecorder) Record(ctx context.Context, service, eventType, accountID string, occurredAt time.Time, data any) error {
+	if r == nil || r.Store == nil {
+		return nil
+	}
+	envelope, err := eventbus.BuildTimelineEvent(service, eventType, accountID, occurredAt, data)
+	if err != nil {
+		return err
+	}
+	source, storedType, ok := eventbus.SplitTimelineSubject(envelope.EventType)
+	if !ok {
+		return fmt.Errorf("timeline event has an invalid subject %q", envelope.EventType)
+	}
+	accountUUID, err := uuid.Parse(envelope.AccountID)
+	if err != nil {
+		return fmt.Errorf("timeline event has an invalid account id: %w", err)
+	}
+	payload := envelope.Data
+	if len(payload) == 0 {
+		encoded, err := json.Marshal(envelope)
+		if err != nil {
+			return fmt.Errorf("marshal timeline envelope: %w", err)
+		}
+		payload = encoded
+	}
+	if _, err := r.Store.InsertTimelineEvent(ctx, timelineEventRow{
+		AccountID:  accountUUID,
+		EventType:  storedType,
+		Source:     source,
+		SourceID:   envelope.EventID,
+		OccurredAt: envelope.OccurredAt,
+		Payload:    payload,
+	}); err != nil {
+		return err
+	}
+	return r.Events.PublishTimelineEvent(ctx, envelope)
 }
 
 // timelineEnvelope is the fleet timeline protocol wire shape

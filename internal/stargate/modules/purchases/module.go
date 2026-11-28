@@ -73,7 +73,7 @@ func (i *instance) Configure(ctx context.Context, host *module.Host[core.Service
 	// here; the domain and wire contract already support it.
 	service := purchases.NewService(purchases.NewStore(host.Core.DB),
 		purchases.ParseSettings(host.ModuleSettings(purchases.ModuleID)),
-		payments, accounts, nil, host.Core.NATS, log)
+		payments, accounts, nil, set.Timeline, log)
 
 	purchasectl.Register(host.API, purchasectl.Deps{
 		Service: service,

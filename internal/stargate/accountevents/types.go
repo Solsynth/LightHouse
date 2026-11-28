@@ -369,14 +369,17 @@ type AccountTimelineItem struct {
 }
 
 // TimelineEvent is one persisted service event in the timeline log
-// (account_timeline_events): a fleet action log (profile change, realm
-// action) or another service's event (a Pulsar scrobble or review) folded in
-// by the JetStream ingester. Payload is the raw event envelope the source
-// published, so clients can render each type with its own shape.
+// (account_timeline_events): a milestone another Stargate module recorded
+// (profile change, realm action, name change) or another service's event (a
+// Pulsar scrobble or review) folded in by the JetStream ingester. Payload is
+// the event's data, so clients can render each type with its own shape.
 type TimelineEvent struct {
-	Id        string          `json:"id"`
-	CreatedAt model.Time      `json:"created_at"`
-	EventType string          `json:"event_type"`
-	Source    string          `json:"source,omitempty"`
-	Payload   json.RawMessage `json:"payload,omitempty"`
+	Id        string     `json:"id"`
+	CreatedAt model.Time `json:"created_at"`
+	EventType string     `json:"event_type"`
+	Source    string     `json:"source,omitempty"`
+	// SourceId is the upstream event id (the timeline envelope's event_id);
+	// (source, source_id) is the idempotency key.
+	SourceId string          `json:"source_id,omitempty"`
+	Payload  json.RawMessage `json:"payload,omitempty"`
 }

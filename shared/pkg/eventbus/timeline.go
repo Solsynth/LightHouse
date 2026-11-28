@@ -37,13 +37,10 @@ type TimelineEvent struct {
 	Data json.RawMessage `json:"data,omitempty"`
 }
 
-// PublishTimeline emits one timeline event on
-// timeline.<service>.<eventType>. A nil Bus or one without a JetStream
-// context is a no-op, matching the fleet's degraded-events convention.
-func (b *Bus) PublishTimeline(ctx context.Context, service, eventType, accountID string, occurredAt time.Time, data any) error {
-	if b == nil || b.Conn == nil || b.JS == nil {
-		return nil
-	}
+// BuildTimelineEvent constructs the envelope for one milestone:
+// event_type is the timeline.<service>.<eventType> subject, event_id the
+// dedupe key consumers persist.
+func BuildTimelineEvent(service, eventType, accountID string, occurredAt time.Time, data any) (TimelineEvent, error) {
 	subject := TimelineSubjectPrefix + service + "." + eventType
 	envelope := TimelineEvent{
 		Event:      NewEvent(TimelineStream, subject),
@@ -56,11 +53,35 @@ func (b *Bus) PublishTimeline(ctx context.Context, service, eventType, accountID
 	if data != nil {
 		raw, err := json.Marshal(data)
 		if err != nil {
-			return fmt.Errorf("marshal timeline data: %w", err)
+			return TimelineEvent{}, fmt.Errorf("marshal timeline data: %w", err)
 		}
 		envelope.Data = raw
 	}
-	return b.PublishJetStream(ctx, subject, TimelineStream, envelope)
+	return envelope, nil
+}
+
+// PublishTimelineEvent publishes a prebuilt envelope (BuildTimelineEvent) on
+// its timeline.<service>.<eventType> subject. A nil Bus or one without a
+// JetStream context is a no-op, matching the fleet's degraded-events
+// convention.
+func (b *Bus) PublishTimelineEvent(ctx context.Context, event TimelineEvent) error {
+	if b == nil || b.Conn == nil || b.JS == nil {
+		return nil
+	}
+	if event.EventType == "" {
+		return fmt.Errorf("timeline event needs an event type")
+	}
+	return b.PublishJetStream(ctx, event.EventType, TimelineStream, event)
+}
+
+// PublishTimeline emits one timeline event on
+// timeline.<service>.<eventType>.
+func (b *Bus) PublishTimeline(ctx context.Context, service, eventType, accountID string, occurredAt time.Time, data any) error {
+	envelope, err := BuildTimelineEvent(service, eventType, accountID, occurredAt, data)
+	if err != nil {
+		return err
+	}
+	return b.PublishTimelineEvent(ctx, envelope)
 }
 
 // SplitTimelineSubject splits timeline.<service>.<event-type...> into its

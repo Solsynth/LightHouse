@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"src.solsynth.dev/sosys/lighthouse/shared/pkg/eventbus"
 	"src.solsynth.dev/sosys/lighthouse/shared/platform/module"
 	"src.solsynth.dev/sosys/stargate/accountevents"
 	"src.solsynth.dev/sosys/stargate/accountrecords"
@@ -78,6 +79,19 @@ func (i *instance) Configure(ctx context.Context, host *module.Host[core.Service
 	notable := accountevents.NewNotableService(store)
 	set := ports.FromRegistry(host.Ports)
 
+	// The timeline recorder is this module's write path for other modules:
+	// it persists account_timeline_events rows in-process and echoes the
+	// envelope onto the fleet stream. A nil NATS client (events disabled)
+	// leaves only the local write.
+	if host.Ports != nil {
+		var bus *eventbus.Bus
+		if host.Core.NATS != nil {
+			bus = host.Core.NATS.Bus
+		}
+		module.Provide[ports.TimelineRecorder](host.Ports, ports.PortTimeline, ModuleID, module.KindFeature,
+			&accountevents.TimelineRecorder{Store: store, Events: bus})
+	}
+
 	var captcha accountevents.CaptchaValidator
 	if host.Core.Auth != nil {
 		captcha = host.Core.Auth
@@ -118,9 +132,10 @@ func (i *instance) Configure(ctx context.Context, host *module.Host[core.Service
 	accounteventsctl.Register(host.API, deps)
 	accounteventsctl.RegisterPublic(host.API, deps)
 
-	// The persisted timeline event log folds fleet action logs and other
-	// services' events (Pulsar) into the account timeline. Owned here because
-	// the rows land in this module's account_timeline_events table.
+	// The persisted timeline event log: Stargate's own milestones are written
+	// in-process through the `timeline` port above; this consumer folds other
+	// services' events (Pulsar scrobbles/reviews) from the fleet
+	// timeline_events stream into the same table, deduped by event_id.
 	if host.Core.NATS != nil {
 		i.stop = accountevents.StartTimelineEventIngest(
 			ctx, host.Core.NATS, store, log, accountevents.TimelineEventSources())

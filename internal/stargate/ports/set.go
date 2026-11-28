@@ -18,6 +18,7 @@ type Set struct {
 	VerificationSpells VerificationSpells
 	Payments           Payments
 	OrderEvents        OrderEvents
+	Timeline           TimelineRecorder
 }
 
 // FromRegistry resolves every known port. Missing providers stay nil.
@@ -39,5 +40,6 @@ func FromRegistry(registry *module.PortRegistry) *Set {
 	set.VerificationSpells, _ = module.Get[VerificationSpells](registry, PortVerificationSpells)
 	set.Payments, _ = module.Get[Payments](registry, PortPayments)
 	set.OrderEvents, _ = module.Get[OrderEvents](registry, PortOrderEvents)
+	set.Timeline, _ = module.Get[TimelineRecorder](registry, PortTimeline)
 	return set
 }

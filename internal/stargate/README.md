@@ -128,14 +128,16 @@ Modules own their schema:
   `user_calendar_events`, calendar subscriptions and `notable_days`:
   check-in/rewards, calendar/merged/countdown/search, the CN holiday seed,
   timeline and the fortune surface.
-  It also owns `account_timeline_events`, the persisted timeline event log:
-  one durable JetStream consumer folds the fleet's `timeline_events` stream
-  (`timeline.<service>.<event>` subjects, `shared/pkg/eventbus.TimelineEvent`
-  envelope, deduped by `event_id`) into the account timeline. Stargate
-  publishes `profile.updated` (profile PATCH), `realm.created`/`realm.joined`
-  (realm routes) and `name.changed` (name-change card use) itself; Pulsar
-  publishes `scrobble.created`, `work.reviewed` and `work.review_deleted`. A
-  service joins by publishing — no consumer change.
+  It also owns `account_timeline_events`, the persisted timeline event log.
+  Stargate's own milestones (`profile.updated`, `realm.created`/`realm.joined`,
+  `name.changed`) are written in-process through the module's `timeline` port,
+  so they land even without a message broker; the port also echoes the
+  envelope onto the fleet `timeline_events` stream. One durable JetStream
+  consumer folds that stream (`timeline.<service>.<event>` subjects,
+  `shared/pkg/eventbus.TimelineEvent` envelope) into the same table, deduped
+  by `event_id` — the echo is a no-op. Pulsar publishes `scrobble.created`,
+  `work.reviewed` and `work.review_deleted` on the same protocol; a service
+  joins by publishing, no consumer change.
   The timeline endpoint serves the event log only to clients declaring the
   `timeline.service-events` token in the `X-Client-Capabilities` header;
   others get the legacy status/activity shape.

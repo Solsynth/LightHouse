@@ -80,7 +80,7 @@ func (i *instance) Configure(ctx context.Context, host *module.Host[core.Service
 		Files:         fileResolver(set),
 		Relationships: relationshipChecker(host),
 		Payments:      paymentsPort(set),
-		Timeline:      host.Core.NATS,
+		Timeline:      set.Timeline,
 		Perm:          host.Core.Perm,
 		Logs:          host.Core.Logs,
 		Log:           log,

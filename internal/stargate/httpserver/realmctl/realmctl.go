@@ -23,11 +23,11 @@ import (
 	"src.solsynth.dev/sosys/stargate/realm"
 )
 
-// TimelinePublisher publishes fleet timeline events (shared eventbus
-// convention); *nats.Client satisfies it. Nil — NATS disabled — means no
-// timeline event is emitted.
-type TimelinePublisher interface {
-	PublishTimeline(ctx context.Context, service, eventType, accountID string, occurredAt time.Time, data any) error
+// TimelineRecorder persists account timeline events; the accountevents
+// module provides it through the `timeline` port. Nil means the module (or
+// the whole feature) is disabled and no event is recorded.
+type TimelineRecorder interface {
+	Record(ctx context.Context, service, eventType, accountID string, occurredAt time.Time, data any) error
 }
 
 // Deps is the dependency set the realm controllers need.
@@ -50,7 +50,7 @@ type Deps struct {
 	// Payments opens the wallet order a boost purchase is charged on.
 	Payments realm.Payments
 	// Timeline folds realm milestones into the account timeline. Nil omits them.
-	Timeline TimelinePublisher
+	Timeline TimelineRecorder
 	Perm     middleware.PermissionChecker
 	Logs     ActionLogSink
 	Log      *slog.Logger
@@ -62,7 +62,7 @@ func (d Deps) publishTimeline(ctx context.Context, eventType, accountID string, 
 	if d.Timeline == nil {
 		return
 	}
-	if err := d.Timeline.PublishTimeline(ctx, "stargate", eventType, accountID, time.Time{}, data); err != nil && d.Log != nil {
+	if err := d.Timeline.Record(ctx, "stargate", eventType, accountID, time.Time{}, data); err != nil && d.Log != nil {
 		d.Log.Warn("publish timeline event", "event", eventType, "error", err)
 	}
 }

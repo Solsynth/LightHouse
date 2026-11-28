@@ -6,6 +6,7 @@ package ports
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/shopspring/decimal"
 
@@ -30,7 +31,16 @@ const (
 	PortVerificationSpells module.PortID = "verificationSpells"
 	PortPayments           module.PortID = "payments"
 	PortOrderEvents        module.PortID = "orderEvents"
+	PortTimeline           module.PortID = "timeline"
 )
+
+// TimelineRecorder persists account timeline events. The accountevents module
+// provides it: it writes the account_timeline_events row in-process (so the
+// timeline works without a broker) and echoes the envelope onto the fleet
+// timeline stream.
+type TimelineRecorder interface {
+	Record(ctx context.Context, service, eventType, accountID string, occurredAt time.Time, data any) error
+}
 
 // Files resolves a stored file reference (profile picture, background).
 type Files interface {

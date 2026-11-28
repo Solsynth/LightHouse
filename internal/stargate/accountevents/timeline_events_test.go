@@ -194,6 +194,63 @@ func TestIngestDropsForeignAndBadPayloads(t *testing.T) {
 	}
 }
 
+// TestTimelineRecorderPersistsWithoutBroker pins the in-process write path:
+// Stargate's own events land in the table even with no NATS client (Events
+// nil), and the stream echo of the same envelope dedupes on the shared
+// event id instead of inserting a second row.
+func TestTimelineRecorderPersistsWithoutBroker(t *testing.T) {
+	store := newTimelineStore(t)
+	recorder := &TimelineRecorder{Store: store}
+	account := uuid.NewString()
+	occurred := time.Date(2026, 11, 28, 10, 0, 0, 0, time.UTC)
+	data := map[string]any{"old_name": "before", "new_name": "after"}
+	if err := recorder.Record(context.Background(), "stargate", "name.changed", account, occurred, data); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	id, _ := uuid.Parse(account)
+	events, err := store.ListTimelineEvents(context.Background(), id)
+	if err != nil {
+		t.Fatalf("list timeline events: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("events = %d, want 1 (recorded without a broker)", len(events))
+	}
+	event := events[0]
+	if event.EventType != "name.changed" || event.Source != "stargate" {
+		t.Fatalf("event = %+v, want name.changed from stargate", event)
+	}
+	if !time.Time(event.CreatedAt).Equal(occurred) {
+		t.Fatalf("created_at = %v, want the recorded occurred_at", event.CreatedAt)
+	}
+	var payload struct {
+		NewName string `json:"new_name"`
+	}
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if payload.NewName != "after" {
+		t.Fatalf("payload.new_name = %q, want after", payload.NewName)
+	}
+
+	// The recorder's echo carries the same event id; ingesting it is a no-op.
+	consumer := &stubConsumer{}
+	startIngest(t, consumer, store, TimelineEventSources())
+	echo := map[string]any{
+		"event_id":    event.SourceId,
+		"event_type":  "timeline.stargate.name.changed",
+		"account_id":  account,
+		"occurred_at": occurred,
+		"data":        data,
+	}
+	if err := feed(t, consumer, store, "timeline.stargate.name.changed", echo); err != nil {
+		t.Fatalf("echo handler: %v", err)
+	}
+	if count := countEvents(t, store, id, "name.changed"); count != 1 {
+		t.Fatalf("name.changed events = %d, want 1 (the echo must dedupe)", count)
+	}
+}
+
 // TestIngestDeduplicatesRedeliveries pins the idempotency contract: a
 // redelivered message with the same envelope event_id inserts nothing.
 func TestIngestDeduplicatesRedeliveries(t *testing.T) {
